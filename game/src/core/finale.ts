@@ -22,7 +22,7 @@ import { attachLedger, ledgerOf } from './stats';
 import { CITY_NAMES, type World } from './world';
 import type { GameEvent, GameSettings, Option, Player, TravelOption } from './types';
 
-export { HALLS, HALL_GAME, HALL_NAMES, HALL_TYPE, isHall, CAPS, DENY, FINALE_MAP, FINALE_NAME, MIN_STAKE, PLOT_PRICE, BUILD_COST, SLOT_TOP, type CasinoChoice, type CasinoStats } from './casino-rules';
+export { HALLS, HALL_GAME, HALL_NAMES, HALL_TYPE, isHall, CAPS, DENY, FINALE_MAP, FINALE_NAME, MIN_STAKE, PLOT_PRICE, BUILD_COST, UPGRADE_COST, SLOT_TOP, type CasinoChoice, type CasinoStats } from './casino-rules';
 
 /** The finale starts when this many players (or fewer, at least two) are left. */
 export const FINALE_PLAYERS = 4;
@@ -177,7 +177,7 @@ export class Finale extends CasinoRules implements WorldHooks {
    */
   aiRemoteDice(g: Game, p: Player, nodes: number[]): number | null | undefined {
     if (!this.active || g !== this.game()) return undefined;
-    const mult = this.blind(), me = p.id + 1;
+    const mult = this.blind(), me = p.id + 1, god = g.objects.godType(p);
     const worth = (id: number) => {
       const n = g.node(id);
       if (FINALE_COUPON[n.event]) return FINALE_COUPON[n.event] * FINALE_CHIP * mult;
@@ -186,8 +186,11 @@ export class Finale extends CasinoRules implements WorldHooks {
       if (!f) return 0;
       if (!f.owner) return p.cash > this.plotPrice(g) * 3 ? 1 : 0;
       if (f.owner === me) return f.level < 5 && p.cash > this.buildCost(g) * 3 ? 1 : 0;
+      // The god at the tables (19 §5.6): 福神 / 財神 make a rival's hall worth a stop, 衰神 / 窮神 one to keep away from.
+      if (god === 4 || god === 2) return this.cap(f.level) / 2;
       const [lo, hi] = FINALE_FEE[Math.max(1, Math.min(5, f.level))];
-      return -((lo + hi) / 2) * FINALE_CHIP * mult - this.cap(f.level) / 8;
+      const cost = ((lo + hi) / 2) * FINALE_CHIP * mult + this.cap(f.level) / 8;
+      return god === 3 || god === 1 ? cost / 4 : god >= 5 && god <= 8 ? -cost * 2 : -cost;
     };
     const score = nodes.slice(0, 6).map(worth);
     if (score.length < 6) return null;

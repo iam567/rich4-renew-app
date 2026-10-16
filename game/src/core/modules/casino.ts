@@ -349,3 +349,149 @@ export const BANKER_TABLE: Record<CasinoGame, string> = {
   holdem: '莊家葫蘆 ×2・四條 ×5・同花順 ×10・皇家同花順 全部現金',
   sicbo: '豹子（三顆一樣）×10・三個6 全部現金',
 };
+
+// ================================================================== words for the screen and the ticker
+
+const ROULETTE_WORDS: Record<RouletteBet['kind'], string> = { red: '紅', black: '黑', odd: '單', even: '雙', low: '小（1–18）', high: '大（19–36）', dozen: '', number: '' };
+
+/** What the visitor bet on: 「押紅」「押 17 號」「押第 2 打」「押莊」「押大」; 21點 and 德州 just 「下注」. */
+export function betLabel(r: CasinoResult): string {
+  if (r.game === 'roulette') return r.bet.kind === 'number' ? `押 ${r.bet.n} 號` : r.bet.kind === 'dozen' ? `押第 ${r.bet.n} 打` : `押${ROULETTE_WORDS[r.bet.kind]}`;
+  if (r.game === 'baccarat') return `押${BACCARAT_NAMES[r.bet]}`;
+  if (r.game === 'sicbo') return `押${SICBO_NAMES[r.bet]}`;
+  return '下注';
+}
+
+/** What happened at the table, before the money: 「開出 紅 23 → 押紅中，1 賠 1」「20 點對莊家 19 點 → 贏，1 賠 1」. */
+export function tableLine(r: CasinoResult): string {
+  switch (r.game) {
+    case 'roulette': {
+      const colour = r.number === 0 ? '' : RED.has(r.number) ? '紅 ' : '黑 ';
+      return `開出 ${colour}${r.number} → ${betLabel(r)}${r.win ? `中，1 賠 ${rouletteOdds(r.bet)}` : '沒中'}`;
+    }
+    case 'blackjack': {
+      const pv = bjValue(r.player).total, dv = bjValue(r.dealer).total, dbl = r.doubled ? '（加倍）' : '';
+      const what = { blackjack: '黑傑克，1 賠 1.5', win: '贏，1 賠 1', push: '平手，退回', lose: '輸', bust: '爆牌，輸', 'dealer-blackjack': '莊家黑傑克，輸' }[r.outcome];
+      if (r.outcome === 'bust') return `${pv} 點${dbl} → ${what}`;
+      return dv > 21 ? `${pv} 點${dbl}，莊家 ${dv} 點爆牌 → ${what}` : `${pv} 點${dbl}對莊家 ${dv} 點 → ${what}`;
+    }
+    case 'baccarat': {
+      const w = r.winner === 'tie' ? '和局' : `${BACCARAT_NAMES[r.winner]}贏`;
+      const hit = r.winner === r.bet ? (r.bet === 'tie' ? '中，1 賠 8' : r.bet === 'banker' ? '中，1 賠 0.95' : '中，1 賠 1') : r.winner === 'tie' ? '退回' : '沒中';
+      return `閒 ${r.pt} 點對莊 ${r.bt} 點，${w} → ${betLabel(r)}${hit}`;
+    }
+    case 'holdem':
+      if (!r.called) return '棄牌 → 輸掉底注';
+      return `${r.playerHand}對莊家${r.dealerHand} → ${r.outcome === 'win' ? '贏，兩份 1 賠 1' : r.outcome === 'lose' ? '輸兩份' : '平手，退回'}`;
+    case 'sicbo':
+      return r.triple ? `${r.dice.join('・')} 豹子 → 通殺` : `${r.dice.join('・')} = ${r.total} 點・${r.total >= 11 ? '大' : '小'} → ${betLabel(r)}${r.win ? '中，1 賠 1' : '沒中'}`;
+  }
+}
+
+/**
+ * The visit in one line with the arithmetic (the replay's caption, the ticker): the table, then the money —
+ * 「… 贏 2,000（上限 10,000）」「… 莊家同花順 ×10 → 輸 30,000」, a win cut to the cap, a loss cut to what the visitor held.
+ */
+export function resultLine(r: CasinoResult, d: { net: number; cap: number; mult: number; all: boolean; why: string }, fmt: (n: number) => string, word = '現金'): string {
+  const raw = r.net, net = d.net;
+  let money: string;
+  if (net > 0) money = raw > d.cap ? `贏 ${fmt(raw)}，超過上限以 ${fmt(d.cap)} 計` : `贏 ${fmt(net)}（上限 ${fmt(d.cap)}）`;
+  else if (net < 0) {
+    const full = d.all ? Infinity : -raw * d.mult;
+    const big = d.why ? `${d.why}${d.all ? `：全部${word}` : ` ×${d.mult}`} → ` : '';
+    money = `${big}輸 ${fmt(-net)}${!d.all && -net < full ? `（應輸 ${fmt(full)}，只有這些）` : ''}`;
+  } else money = raw < 0 ? '輸了但不用付' : '不輸不贏';
+  return `${tableLine(r)}，${money}`;
+}
+
+// ================================================================== gods at the tables (大富翁城, 19 §5.6)
+
+/** The outcome a god forces on the visitor: 'win' (net > 0) or 'lose' (net < 0); null leaves the table alone. */
+export type Rig = 'win' | 'lose' | null;
+const fits = (net: number, rig: Rig) => (rig === 'win' ? net > 0 : rig === 'lose' ? net < 0 : true);
+const RIG_TRIES = 600;
+
+/**
+ * Chances of a plain visit by game and bet (for 小福神 / 小衰神's ×1.5): exact for roulette, 骰寶 and 百家樂;
+ * 21點 and 德州撲克 measured with the computers' strategy (400,000 hands each).
+ */
+export function baseOdds(game: CasinoGame, bet?: unknown): { win: number; lose: number } {
+  switch (game) {
+    case 'roulette': {
+      const b = bet as RouletteBet | undefined, k = !b ? 18 : b.kind === 'number' ? 1 : b.kind === 'dozen' ? 12 : 18;
+      return { win: k / 37, lose: 1 - k / 37 };
+    }
+    case 'sicbo': return { win: 105 / 216, lose: 111 / 216 };
+    case 'baccarat': return bet === 'tie' ? { win: 0.0952, lose: 0.9048 } : bet === 'player' ? { win: 0.4462, lose: 0.4586 } : { win: 0.4586, lose: 0.4462 };
+    case 'blackjack': return { win: 0.437, lose: 0.479 };
+    case 'holdem': return { win: 0.445, lose: 0.523 };
+  }
+}
+
+/** Plays a non-interactive game again until the god's outcome comes up (what is shown is a real spin / deal / shake). */
+export function rigged<R extends { net: number }>(rig: Rig, play: () => R): R {
+  let r = play();
+  for (let i = 0; rig && !fits(r.net, rig) && i < RIG_TRIES; i++) r = play();
+  return r;
+}
+
+const shuffle = (rng: Rng, a: number[]) => { for (let i = a.length - 1; i > 0; i--) { const j = rng.below(i + 1); [a[i], a[j]] = [a[j], a[i]]; } return a; };
+
+/** 21點's deal for a god: no dealer natural when it must win, no player natural when it must lose. */
+export function bjDealFor(rng: Rng, rig: Rig): BjTable {
+  let t = bjDeal(rng);
+  for (let i = 0; i < RIG_TRIES; i++) {
+    if (rig === 'win' && !isBlackjack(t.dealer)) break;
+    if (rig === 'lose' && !isBlackjack(t.player)) break;
+    if (!rig) break;
+    t = bjDeal(rng);
+  }
+  return t;
+}
+
+/** Before a hit or a double under a god: the next card keeps a winner from busting, a loser from reaching 21. */
+export function bjRigDraw(t: BjTable, rig: Rig): void {
+  if (!rig || !t.deck.length) return;
+  const ok = (c: number) => { const v = bjValue([...t.player, c]).total; return rig === 'win' ? v <= 21 : v !== 21; };
+  const i = t.deck.length - 1;
+  if (ok(t.deck[i])) return;
+  const j = t.deck.findIndex(ok);
+  if (j >= 0) [t.deck[i], t.deck[j]] = [t.deck[j], t.deck[i]];
+}
+
+/** 21點 settled for a god: the hole card and the dealer's draws (none seen yet) are dealt so the outcome is the god's. */
+export function bjSettleFor(t: BjTable, stake: number, moves: BjMove[], extra: number, rig: Rig, rng: Rng): BlackjackResult {
+  if (!rig) return bjSettle(t, stake, moves, extra);
+  const unseen = [t.dealer[1], ...t.deck];
+  let first: BlackjackResult | null = null;
+  for (let i = 0; i < RIG_TRIES; i++) {
+    const u = i === 0 ? [...unseen] : shuffle(rng, [...unseen]);
+    const copy: BjTable = { ...t, dealer: [t.dealer[0], u[0]], deck: u.slice(1), player: [...t.player] };
+    const r = bjSettle(copy, stake, moves, extra);
+    first ??= r;
+    if (fits(r.net, rig)) { Object.assign(t, { dealer: copy.dealer, deck: copy.deck }); return r; }
+  }
+  return first!;
+}
+
+/** 德州撲克's deal for a god: a hand worth calling when it must win (the computers call it; a human sees why). */
+export function holdemDealFor(rng: Rng, rig: Rig): HoldemTable {
+  let t = holdemDeal(rng);
+  for (let i = 0; rig === 'win' && !holdemCall(t) && i < RIG_TRIES; i++) t = holdemDeal(rng);
+  return t;
+}
+
+/** 德州撲克 settled for a god: the dealer's cards, the turn and the river (none seen yet) dealt for the god's outcome. */
+export function holdemSettleFor(t: HoldemTable, stake: number, called: boolean, extra: number, rig: Rig, rng: Rng): HoldemResult {
+  if (!rig || !called) return holdemSettle(t, stake, called, extra);
+  const unseen = [...t.dealer, ...t.deck];
+  let first: HoldemResult | null = null;
+  for (let i = 0; i < RIG_TRIES; i++) {
+    const u = i === 0 ? [...unseen] : shuffle(rng, [...unseen]);
+    const copy: HoldemTable = { hole: [...t.hole], board: [...t.board], dealer: u.slice(0, 2), deck: u.slice(2) };
+    const r = holdemSettle(copy, stake, called, extra);
+    first ??= r;
+    if (fits(r.net, rig)) { Object.assign(t, copy); return r; }
+  }
+  return first!;
+}

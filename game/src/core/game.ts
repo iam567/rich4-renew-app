@@ -109,6 +109,16 @@ export interface MapRules {
   daily?(g: Game): void;
   /** The bank counter is closed (no loans: 大富翁城's finale plays in chips); the ATM stays open. */
   readonly noLoans?: boolean;
+  /** A plot's worth in the total assets here (大富翁城's halls: plot + build + token upgrades). */
+  facilityWorth?(f: Facility): number;
+  /** Gods and objects that may appear here (大富翁城: no 天使 / 小惡魔 / 土地公 / 死神). */
+  godAllowed?(type: number): boolean;
+  /** Days a god stays here (undefined: the original's). */
+  godDays?(type: number): number | undefined;
+  /** Gods here have none of their original effects (luck values, attach effects): only the map's own. */
+  readonly godsCasinoOnly?: boolean;
+  /** What a god does here, said when it attaches (「：必勝」). */
+  godNote?(type: number): string;
   /** A stop on any square, before the original's handling (大富翁城's finale: road tax, chip coupons); true when handled. */
   landSquare?(g: Game, p: Player, n: BoardNode): Flow<boolean>;
   /** The computer's remote dice here (the die value, null none); undefined: the original's judgement. */
@@ -269,7 +279,7 @@ export class Game {
     let w = this.stocks.holdingsValue(p.cash + p.bank - p.loan, p);
     const owner = p.id + 1;
     for (const l of this.board.lands) if (l.owner === owner) w += l.price + (l.chain ? l.perLevel : l.level * l.perLevel);
-    for (const f of this.board.facilities) if (f.owner === owner) w += f.price + f.level * f.fees[0];
+    for (const f of this.board.facilities) if (f.owner === owner) w += this.rules?.facilityWorth?.(f) ?? f.price + f.level * f.fees[0];
     return w;
   }
 

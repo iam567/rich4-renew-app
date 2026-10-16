@@ -43,7 +43,7 @@ export function describe(game: Game, at: Pt, actorPos: (id: number) => Pt | unde
   // Objects lying on the map (gods, dog, gift, chest, roadblocks, mines, bombs).
   const objs = game.objects.slots.filter(o => o.node && !o.owner).map(o => ({ ...nodeById(b, o.node), o }));
   const o = near(objs, 24);
-  if (o) return { pos: o, lines: [OBJECT_NAMES[o.o.type - 1]] };
+  if (o) return { pos: o, lines: [OBJECT_NAMES[o.o.type - 1], ...(game.rules?.godNote?.(o.o.type) ? [`賭場${game.rules.godNote(o.o.type).slice(1)}`] : [])] };
   const land = near(b.lands, 30);
   if (land) {
     const owned = land.owner > 0;

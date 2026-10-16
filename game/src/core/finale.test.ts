@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { parseBoard, type Board, type RawMap } from './board';
-import { CAPS, CasinoRules, ClassicCasino, DENY, HALLS, isHall, SLOT_TOP } from './casino-rules';
+import { parseBoard, type Board, type Facility, type RawMap } from './board';
+import { BUILD_COST, CAPS, CasinoRules, ClassicCasino, DENY, HALL_NAMES, HALLS, hallWorth, isHall, NO_GODS_HERE, PLOT_PRICE, SLOT_TOP, UPGRADE_COST } from './casino-rules';
 import { pack } from './date';
 import type { Flow } from './flow';
 import { FINALE_MAP, setFinaleBoard } from './finale';
@@ -208,10 +208,125 @@ describe.skipIf(!haveFinale)('大富翁城 as a normal map (19 §9)', () => {
     });
   }
 
+  it('builds a hall for 10,000 and raises it for a token 1,000 a level (× the price index); worth counts what was paid', () => {
+    const g = new Game(classic(2, 7), finaleBoard());
+    const f = g.board.facilities[0], p = g.players[1];
+    Object.assign(p, { whoPlays: 2, cash: 500_000, bank: 0, node: f.id });
+    Object.assign(f, { owner: p.id + 1, level: 0, type: 0 });
+    g.priceIndex = 2;
+    const step = () => drain(g.rules!.landOnFacility!(g, p, f) as Flow<unknown>);
+    step();
+    expect(f.level).toBe(1);
+    expect(p.cash).toBe(500_000 - BUILD_COST * 2);
+    for (let lv = 2; lv <= 5; lv++) { const c0 = p.cash; step(); expect(f.level).toBe(lv); expect(c0 - p.cash).toBe(UPGRADE_COST * 2); }
+    expect(hallWorth(f)).toBe(PLOT_PRICE + BUILD_COST + 4 * UPGRADE_COST);
+    const before = g.wealth(p);
+    f.owner = 0;
+    expect(before - g.wealth(p)).toBe(PLOT_PRICE + BUILD_COST + 4 * UPGRADE_COST);
+    expect(f.fees[0]).toBe(UPGRADE_COST);
+  });
+
   it('leaves every other map alone (no map rules there)', () => {
     const r = JSON.parse(readFileSync(file(100), 'utf8')) as RawMap;
     const g = new Game({ ...classic(2, 1), mapId: 100 }, parseBoard(r));
     expect(g.rules).toBeUndefined();
+  });
+});
+
+describe.skipIf(!haveFinale)('大富翁城 gods (19 §5.6)', () => {
+  const setupGame = (seed = 11) => {
+    const g = new Game({ mapId: FINALE_MAP, players: [0, 3].map(c => ({ character: c, human: false })), fundIndex: 1, traffic: 1, landLimitIndex: 0, daysLimitIndex: 3, victoryIndex: 0, startDate: pack(2026, 10, 16), seed }, finaleBoard());
+    const b = g.players[0], v = g.players[1], f = g.board.facilities[0];
+    Object.assign(b, { whoPlays: 2 }); Object.assign(v, { whoPlays: 2 });
+    Object.assign(f, { owner: b.id + 1, level: 5, tmpState: 0 });
+    return { g, b, v, f };
+  };
+  const give = (g: Game, p: Game['players'][number], type: number) => { const id = g.objects.slots.findIndex(o => o.type === type) + 1; return drain(g.objects.attach(p, id)); };
+  type Res = { net: number; raw: number; mult: number; all: boolean; pay: number; fee: number };
+  /** n visits of v to the hall (type) on varied squares and days; the visitor rich, the banker richer. */
+  const visits = (g: Game, v: Game['players'][number], f: Facility, type: number, n: number): Res[] => {
+    f.type = type;
+    const out: Res[] = [];
+    for (let i = 0; i < n; i++) {
+      Object.assign(v, { cash: 10_000_000, bank: 0 }); g.players[0].cash = 1_000_000_000;
+      v.node = g.board.nodes[i % g.board.nodes.length].id; g.daysElapsed = Math.floor(i / g.board.nodes.length);
+      const steps = drain(g.rules!.landOnFacility!(g, v, f) as Flow<unknown>);
+      const fee = (steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as { data: { fee: number } } | undefined)?.data.fee ?? 0;
+      const r = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as { data: Res } | undefined;
+      if (r) out.push({ ...r.data, fee });
+    }
+    return out;
+  };
+
+  it('only the eight money and luck gods are on the map; 3 days, no luck values, no original effect', () => {
+    const { g, v } = setupGame();
+    expect(g.objects.slots.filter(o => o.node && NO_GODS_HERE.has(o.type))).toEqual([]);
+    // The dog leaving would put its pair 土地公 on the map: not here.
+    const dog = g.objects.slots.findIndex(o => o.type === 11) + 1;
+    if (g.objects.slots[dog - 1].node) g.objects.remove(dog);
+    expect(g.objects.slots.filter(o => o.node && NO_GODS_HERE.has(o.type))).toEqual([]);
+    const steps = give(g, v, 2);   // 大財神: no slot machine, no money
+    expect(v.god).toBeTruthy();
+    expect(g.objects.slots[v.god - 1].life).toBe(3);
+    expect([v.luckBad, v.luckMoney, v.luckFate]).toEqual([0, 0, 0]);
+    expect(steps.some(s => s.t === 'fx' && s.kind === 'slot-machine')).toBe(false);
+    expect(steps.some(s => s.t === 'say' && s.text.includes('大財神附身：'))).toBe(true);
+    for (const t of [1, 3, 4, 5, 6, 7, 8]) { give(g, v, t); expect(g.objects.godType(v)).toBe(t); expect(g.objects.slots[v.god - 1].life).toBe(3); }
+    expect([v.luckBad, v.luckMoney, v.luckFate]).toEqual([0, 0, 0]);
+    const before = v.god;
+    give(g, v, 9);   // 天使 never attaches here
+    expect(v.god).toBe(before);
+    // Elsewhere the originals are untouched.
+    const other = new Game({ mapId: 100, players: [0, 3].map(c => ({ character: c, human: false })), fundIndex: 1, traffic: 1, landLimitIndex: 0, daysLimitIndex: 3, victoryIndex: 0, startDate: pack(2026, 10, 16), seed: 3 }, parseBoard(JSON.parse(readFileSync(file(100), 'utf8')) as RawMap));
+    const q = other.players[1]; q.whoPlays = 2;
+    give(other, q, 4);
+    expect(other.objects.slots[q.god - 1].life).toBe(7);
+    expect(q.luckFate).toBe(150);
+  });
+
+  for (const type of HALLS) {
+    it(`大福神 always wins, 大衰神 always loses at the ${HALL_NAMES[type]}; the table shown is a real one`, () => {
+      const { g, v, f } = setupGame(20 + type);
+      give(g, v, 4);
+      const wins = visits(g, v, f, type, 150);
+      expect(wins.length).toBe(150);
+      expect(wins.every(r => r.net > 0)).toBe(true);
+      give(g, v, 8);
+      const losses = visits(g, v, f, type, 150);
+      expect(losses.every(r => r.net < 0)).toBe(true);
+    });
+
+    it(`小福神 / 小衰神 make winning / losing 1.5 times as likely at the ${HALL_NAMES[type]}`, () => {
+      const { g, v, f } = setupGame(40 + type);
+      const rate = (rs: Res[], k: 'win' | 'lose') => rs.filter(r => (k === 'win' ? r.net > 0 : r.net < 0)).length / rs.length;
+      const N = 2400;
+      const plain = visits(g, v, f, type, N);
+      give(g, v, 3);
+      const lucky = visits(g, v, f, type, N);
+      give(g, v, 7);
+      const unlucky = visits(g, v, f, type, N);
+      const w0 = rate(plain, 'win'), l0 = rate(plain, 'lose');
+      expect(rate(lucky, 'win') / w0).toBeGreaterThan(1.32);
+      expect(rate(lucky, 'win') / w0).toBeLessThan(1.68);
+      expect(rate(unlucky, 'lose')).toBeGreaterThan(Math.min(0.97, l0 * 1.32));
+      if (l0 < 0.6) expect(rate(unlucky, 'lose') / l0).toBeLessThan(1.68);
+    });
+  }
+
+  it('財神 / 窮神: the loss and 門票 × 0, 0.5, 2, 1.5 (at most what the visitor holds); the banker side unchanged', () => {
+    const { g, v, f } = setupGame(77);
+    const fees = visits(g, v, f, 5, 60).map(r => r.fee);   // the same squares and days: the same 門票 drawn
+    for (const [god, pay] of [[2, 0], [1, 0.5], [6, 2], [5, 1.5]] as const) {
+      give(g, v, god);
+      const rs = visits(g, v, f, 5, 60);
+      rs.forEach((r, i) => expect(r.fee).toBe(Math.floor((fees[i] * pay) / 100) * 100));
+      const lost = rs.filter(r => r.raw < 0);
+      expect(lost.length).toBeGreaterThan(5);
+      for (const r of lost) expect(-r.net).toBe(Math.trunc(-r.raw * r.mult * pay));
+      expect(rs.filter(r => r.raw > 0).every(r => r.net === Math.min(r.raw, CAPS[5]))).toBe(true);
+    }
+    // At most what the visitor holds: 大窮神 with 3,000 left after a 6,000 loss.
+    expect(CasinoRules.settle({ game: 'sicbo', bet: 'big', dice: [1, 2, 3], total: 6, triple: false, win: false, net: -6000 }, CAPS[1], 3000, 2).net).toBe(-3000);
   });
 });
 
@@ -462,6 +577,10 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(finaleBoard());
     // Seed 6: with 大富豪模式's stock-free shops (17 §3.10) seed 5's finale ended before any hall visit.
     const w = nearFinale(6, [1, 4, 7, 10]);
+    // The shortcut's 40 days earn a few dozen chips (less than a plot): give each finalist a whole game's median
+    // (about 2,000 chips, 19 §11) so that halls get built and visited before the road tax ends it.
+    drain(w.finale.check());
+    for (const id of w.finale.finalists) w.players[id].cash = 2000 * FINALE_CHIP;
     play(w, w.run(), () => w.daysElapsed > 3000);
     expect(w.over).toBeTruthy();
     expect(w.finale.active).toBe(true);

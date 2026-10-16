@@ -168,3 +168,15 @@
 .cs-toast.coupon { background: linear-gradient(#ffd860, #e09000); }
 .cs-toast b { font-weight: 400; font-size: 15px; } .cs-toast span { font-size: 26px; line-height: 1.1; } .cs-toast small { font-size: 12px; opacity: .9; }
 .cs-toast.out { opacity: 0; transform: translateX(-50%) translateY(-12px); }
+
+/* A computer's visit (19 §7): what it does now, the arithmetic under the result, 你是莊家. */
+.cs-caption { position: absolute; left: 0; right: 0; margin: 0 auto; top: 14px; z-index: 4; max-width: calc(100% - 60px); width: fit-content;
+  padding: 6px 18px; border-radius: 16px; font-size: 19px; line-height: 1.3; text-align: center; color: #3a1a00;
+  background: linear-gradient(#fff8dc, #ffd86a); border: 3px solid #fff; box-shadow: 0 4px 0 #b07a00, 0 8px 16px rgba(0,0,0,.45); animation: pl-pop .3s cubic-bezier(.3, 1.6, .5, 1) both; }
+.cs-banner .cs-math { font-style: normal; font-size: 17px; line-height: 1.35; white-space: normal; max-width: 640px; text-align: center; }
+.cs-root.por .cs-banner { max-width: 470px; padding: 14px 22px; }
+.cs-root.por .cs-banner .cs-math { max-width: 420px; }
+.cs-banker.you span { color: #ffe36a; }
+/* The visitor's god at the table (19 §5.6). */
+.cs-god { display: inline-block; margin-left: 6px; vertical-align: 1px; white-space: nowrap; font-style: normal; font-size: 11px; line-height: 1.5; padding: 0 7px; border-radius: 10px;
+  color: #fff; background: linear-gradient(#ff8a5a, #d8202c); box-shadow: 0 2px 0 rgba(0,0,0,.3); }

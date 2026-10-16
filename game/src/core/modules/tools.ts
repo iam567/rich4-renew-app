@@ -968,11 +968,16 @@ export class Tools {
   /** fcn_00421827: pick a value 1..6 landing on something worth buying or building. Prices not price-indexed. */
   private judgeRemoteDice(p: Player): number | null {
     const g = this.g, me = p.id + 1, god = g.objects.godType(p);
+    if (g.rules?.aiRemoteDice) {
+      // 大富翁城's squares and gods (docs/rules/19 §6): its own judgement, whatever god is attached.
+      const ahead = this.ahead(p, 6);
+      if (ahead.fork || p.turtle) return null;
+      const own = g.rules.aiRemoteDice(g, p, ahead.nodes);
+      if (own !== undefined) return own;
+    }
     if (god === 7 || god === 8 || god === 15 || p.turtle || p.cash + p.bank < 10000 || p.luckMoney < 0) return null;
     const { nodes, fork } = this.ahead(p, 6);
     if (fork) return null;
-    const own = g.rules?.aiRemoteDice?.(g, p, nodes); // 大富翁城's squares (docs/rules/19 §6)
-    if (own !== undefined) return own;
     let cand: number | null = null, candLevel = -1;
     for (let v = 1; v <= 6; v++) {
       const id = nodes[v - 1], n = g.node(id);

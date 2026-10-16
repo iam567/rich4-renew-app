@@ -1,14 +1,9 @@
-/* 大富翁城's hall picker (casino-hall.ts): one row of the five plates. */
-.ch-box { max-width: min(760px, 100%); }
-.ch-row { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; width: 100%; margin: 6px 0 10px; }
-.ch-hall { font: inherit; display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 6px 4px 8px; border-radius: 16px; cursor: pointer;
-  color: #3a1a00; background: linear-gradient(#fffbe8, #ffe08a); border: 3px solid #fff; box-shadow: 0 4px 0 #c98a00, 0 6px 10px rgba(0,0,0,.25); }
-.ch-hall:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #c98a00; }
-.ch-hall:disabled { filter: grayscale(.9); opacity: .5; }
-.ch-hall b { font-weight: 400; font-size: 15px; }
-.ch-hall small { font-size: 10px; line-height: 1.25; color: #8a3a10; text-align: center; }
-.ch-hall .cs-hplate { width: 78px; height: 78px; }
-@media (max-width: 560px) { .ch-row { grid-template-columns: repeat(3, 1fr); } }
+/* 大富翁城's hall picker (casino-hall.ts): the original facility picker's row (style.css .msg.fac), the plates as its icons. */
+.ch-box .fac-pic .cs-hplate { width: 66px; height: 66px; border-radius: 14px; }
+.ch-box .fac-cell { -webkit-touch-callout: none; user-select: none; }
+.ch-rule { width: 100%; min-height: 1.4em; margin-top: 6px; font-size: 13px; line-height: 1.4; text-align: center; color: #cfe0ff; }
+.ch-rule.on { color: #ffe36a; text-shadow: 0 1px 0 rgba(0,0,0,.35); }
+@media (max-width: 480px) { .ch-box .fac-pic .cs-hplate { width: 48px; height: 48px; border-radius: 10px; } .ch-box .fac-name { font-size: 11px; letter-spacing: -0.5px; } }
 /* the plate: the drawn art, or the game's sign on a coloured tile while it is missing */
 .cs-hplate { position: relative; display: grid; place-items: center; border-radius: 18px; overflow: hidden; flex: none;
   box-shadow: 0 0 0 3px #fff, 0 3px 6px rgba(0,0,0,.35); }

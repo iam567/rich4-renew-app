@@ -102,6 +102,7 @@ export class Objects {
 
   /** _rich4_place_object: first free slot of the type; facing = towards the node's first exit. Returns the slot id or 0. */
   private put(type: number, node: number): number {
+    if (this.g.rules?.godAllowed && !this.g.rules.godAllowed(type)) return 0; // 大富翁城 (docs/rules/19 §5.6)
     const i = this.slots.findIndex(o => o.type === type && o.node === 0 && o.owner === 0);
     if (i < 0) return 0;
     const o = this.slots[i], n = this.g.node(node), exit = n.adjacent.find(Boolean);
@@ -130,9 +131,11 @@ export class Objects {
       stock[tool - 1] = (stock[tool - 1] ?? 0) + 1;
       if (holder && holder.bomb === id) holder.bomb = 0;
     } else if (holder && holder.god === id) {
-      holder.luckBad -= LUCK_BAD[o.type - 1];
-      holder.luckMoney -= LUCK_MONEY[o.type - 1];
-      holder.luckFate -= LUCK_FATE[o.type - 1];
+      if (!this.g.rules?.godsCasinoOnly) {
+        holder.luckBad -= LUCK_BAD[o.type - 1];
+        holder.luckMoney -= LUCK_MONEY[o.type - 1];
+        holder.luckFate -= LUCK_FATE[o.type - 1];
+      }
       holder.god = 0;
     }
     Object.assign(o, { node: 0, life: 0, owner: 0 });
@@ -168,17 +171,21 @@ export class Objects {
   *attach(p: Player, id: number): Flow {
     const o = this.slots[id - 1];
     if (!o || p.id >= this.g.npcBase || !p.whoPlays) return;
+    const rules = this.g.rules;
+    if (rules?.godAllowed && !rules.godAllowed(o.type)) return; // 大富翁城 (docs/rules/19 §5.6)
     if (p.god) yield* this.detachGod(p);
     const type = o.type;
-    Object.assign(o, { node: 0, owner: p.id + 1, life: type === OBJ.Death ? DEATH_DAYS : GOD_DAYS });
+    Object.assign(o, { node: 0, owner: p.id + 1, life: rules?.godDays?.(type) ?? (type === OBJ.Death ? DEATH_DAYS : GOD_DAYS) });
     p.god = id;
-    p.luckBad += LUCK_BAD[type - 1];
-    p.luckMoney += LUCK_MONEY[type - 1];
-    p.luckFate += LUCK_FATE[type - 1];
+    if (!rules?.godsCasinoOnly) {
+      p.luckBad += LUCK_BAD[type - 1];
+      p.luckMoney += LUCK_MONEY[type - 1];
+      p.luckFate += LUCK_FATE[type - 1];
+    }
     yield { t: 'fx', kind: 'god-attach', p: p.id, data: { type } };
     yield { t: 'board' };
-    yield* this.say(p, `${OBJECT_NAMES[type - 1]}附身`);
-    yield* this.attachEffect(p, type);
+    yield* this.say(p, `${OBJECT_NAMES[type - 1]}附身${rules?.godNote?.(type) ?? ''}`);
+    if (!rules?.godsCasinoOnly) yield* this.attachEffect(p, type);
   }
 
   /** One-off effects on attaching (jump table ref_0040ea9b, rich4_gods.asm:540-1194). */

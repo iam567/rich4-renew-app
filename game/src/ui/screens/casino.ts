@@ -20,7 +20,7 @@ import { ASSETS } from '../assets';
 import './casino.css';
 
 type Fx = { t: 'fx'; kind: string; p?: number; target?: number; node?: number; data?: Record<string, unknown> };
-interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; mult?: number; cash: number; fee: number }
+interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; mult?: number; cash: number; fee: number; godLine?: string }
 interface BjAsk { t: 'casino'; p: number; phase: 'blackjack'; player: number[]; up: number; canDouble: boolean; double?: number; stake: number }
 interface HeAsk { t: 'casino'; p: number; phase: 'holdem'; hole: number[]; board: number[]; stake: number; call?: number }
 type CasinoAsk = ChooseAsk | BjAsk | HeAsk;
@@ -81,7 +81,11 @@ class CasinoPage {
   /** What the table shows now (rebuilt on rotation). */
   table: { dealer: (number | null)[]; player: (number | null)[]; board: (number | null)[]; note: string; dealerNote: string; playerNote: string } =
     { dealer: [], player: [], board: [], note: '', dealerNote: '', playerNote: '' };
-  banner: { text: string; cls: string; sub: string } | null = null;
+  banner: { text: string; cls: string; sub: string; math?: string } | null = null;
+  /** A computer's replay: what it does now (「沙隆巴斯 押紅 2,000」「沙隆巴斯：要牌」). */
+  caption = '';
+  /** A tap on a replay: the rest at once (the result stays readable). */
+  skip = false;
   /** Cards on the table at the last drawing (new ones are dealt in, turned ones flip). */
   seen: Record<'dealer' | 'player' | 'board', (number | null)[]> = { dealer: [], player: [], board: [] };
   wheelAt = 0;
@@ -97,8 +101,12 @@ class CasinoPage {
 
   open() {
     this.scene = openScene(this.ctx, 'cs-scene', portrait => (portrait ? [500, 880] : [880, 500]), s => { this.scene = s; this.render(); });
+    if (this.watch) this.scene.root.addEventListener('pointerdown', () => { this.skip = true; }, { capture: true });
     audio.ui('click');
   }
+
+  /** The human is the banker of this table (a computer's visit to the human's hall). */
+  private get youBank(): boolean { return !!this.ctx.game.players[this.choose.banker]?.human; }
 
   close() { if (this.closed) return; this.closed = true; this.scene.close(); }
 
@@ -107,8 +115,8 @@ class CasinoPage {
     const bk = ctx.game.players[a.banker];
     return `<div class="cs-plate"><span class="cs-sign">${esc(a.name)}${esc(a.hall)}</span><span class="cs-lv">Lv${a.level}</span>
       <span class="cs-cap">贏錢上限 <b>${money(a.cap)}</b>${a.fee ? `・門票 <b>${money(a.fee)}</b>` : ''}</span></div>
-      <div class="cs-banker">${face(ctx, bk?.character ?? 0, 'cs-face')}<span>莊家<br><b>${esc(name(ctx, a.banker))}</b></span></div>
-      <div class="cs-guest">${face(ctx, ctx.game.players[a.p]?.character ?? 0, 'cs-face')}<span>${esc(name(ctx, a.p))}<br><b>${money(a.cash)}</b></span></div>`;
+      <div class="cs-banker${this.youBank && this.watch ? ' you' : ''}">${face(ctx, bk?.character ?? 0, 'cs-face')}<span>${this.youBank && this.watch ? '你是莊家' : '莊家'}<br><b>${esc(name(ctx, a.banker))}</b></span></div>
+      <div class="cs-guest">${face(ctx, ctx.game.players[a.p]?.character ?? 0, 'cs-face')}<span>${esc(name(ctx, a.p))}${a.godLine ? `<em class="cs-god">${esc(a.godLine)}</em>` : ''}<br><b>${money(a.cash)}</b></span></div>`;
   }
 
   render() {
@@ -200,8 +208,9 @@ class CasinoPage {
         <div class="cs-center">${center}<div class="cs-note">${esc(t.note)}</div></div>
         ${this.game === 'roulette' || this.game === 'sicbo' ? '' : `<div class="cs-side player"><span class="cs-who">${playerLabel}</span>${row(t.player, 'player')}<span class="cs-total">${esc(t.playerNote)}</span></div>`}
       </div>
+      ${this.caption ? `<div class="cs-caption">${esc(this.caption)}</div>` : ''}
       <div class="cs-bar"><span class="cs-on">${esc(this.betText())}</span><div class="cs-moves"></div></div>
-      ${this.banner ? `<div class="cs-banner ${this.banner.cls}"><b>${esc(this.banner.text)}</b><span>${esc(this.banner.sub)}</span></div>` : ''}`;
+      ${this.banner ? `<div class="cs-banner ${this.banner.cls}"><b>${esc(this.banner.text)}</b>${this.banner.math ? `<i class="cs-math">${esc(this.banner.math)}</i>` : ''}<span>${esc(this.banner.sub)}</span></div>` : ''}`;
     const moves = main.querySelector<HTMLElement>('.cs-moves')!;
     if (this.phase === 'blackjack' && this.ask?.phase === 'blackjack' && !this.watch) {
       const a = this.ask;
@@ -247,16 +256,25 @@ class CasinoPage {
     this.ask = null;
     this.game = r.game;
     this.stake = Number(d.stake);
+    if (typeof d.godLine === 'string' && d.godLine) this.choose = { ...this.choose, godLine: d.godLine };
     if (r.game === 'roulette') { this.bet = r.bet.kind === 'number' ? 'num' : r.bet.kind === 'dozen' ? `d${r.bet.n}` : r.bet.kind; if (r.bet.kind === 'number') this.number = r.bet.n; }
     if (r.game === 'baccarat') this.bacBet = r.bet;
     if (r.game === 'sicbo') this.sicBet = r.bet;
-    const k = this.watch ? 0.45 : 1, step = (ms: number) => sleep(ms * k * this.ctx.scale());
+    // A computer's visit is played at a readable pace (19 §7): its bet first, its moves one by one; a tap skips ahead.
+    const step = (ms: number) => (this.skip ? Promise.resolve() : sleep(ms * this.ctx.scale()));
     const show = () => this.render();
+    const who = name(this.ctx, this.choose.p), extra = Number(d.extra ?? this.stake);
+    if (this.watch) {
+      this.caption = `${who} ${r.game === 'blackjack' || r.game === 'holdem' ? '下注' : C.betLabel(r)} ${money(this.stake)}${Number(d.fee) ? `・門票 ${money(Number(d.fee))}` : ''}`;
+      this.table = { dealer: [], player: [], board: [], note: '', dealerNote: '', playerNote: '' };
+      show();
+      await step(1100);
+    }
     if (r.game === 'roulette') {
       this.table = { dealer: [], player: [], board: [], note: '', dealerNote: '', playerNote: '' };
       show();
       audio.sfx(Sfx.wheel, true);
-      await this.spinWheel(r.number, 2600 * k * this.ctx.scale());
+      await this.spinWheel(r.number, this.skip ? 300 : (this.watch ? 2200 : 2600) * this.ctx.scale());
       audio.stop(Sfx.wheel);
       this.table.note = `${r.number} 號${r.number === 0 ? '' : C.RED.has(r.number) ? '・紅' : '・黑'}`;
       show();
@@ -264,7 +282,23 @@ class CasinoPage {
     } else if (r.game === 'blackjack') {
       const dealer: (number | null)[] = [r.dealer[0], null];
       this.table = { dealer, player: [...r.player], board: [], note: '', dealerNote: '', playerNote: `${C.bjValue(r.player).total} 點${r.doubled ? '（加倍）' : ''}` };
-      if (this.watch) { this.table.player = r.player.slice(0, 2); show(); for (let i = 2; i < r.player.length; i++) { await step(380); this.table.player = r.player.slice(0, i + 1); audio.sfx(Sfx.cardFlip); show(); } }
+      if (this.watch) {
+        // The computer's moves one by one (要牌 / 停牌 / 加倍), each with a short pause.
+        let dealt = 2;
+        this.table.player = r.player.slice(0, 2);
+        this.table.playerNote = `${C.bjValue(this.table.player as number[]).total} 點`;
+        audio.sfx(Sfx.cardFlip); show(); await step(700);
+        for (const m of r.moves) {
+          this.caption = `${who}：${m === 'hit' ? '要牌' : m === 'stand' ? '停牌' : `加倍 +${money(extra)}`}`;
+          show(); await step(750);
+          if (m === 'stand') continue;
+          dealt += 1;
+          this.table.player = r.player.slice(0, dealt);
+          this.table.playerNote = `${C.bjValue(this.table.player as number[]).total} 點${m === 'double' ? '（加倍）' : ''}`;
+          audio.sfx(Sfx.cardFlip); show(); await step(500);
+        }
+        this.caption = '';
+      }
       show();
       await step(420);
       for (let i = 1; i < r.dealer.length; i++) {
@@ -299,8 +333,15 @@ class CasinoPage {
       this.table.note = r.triple ? `豹子 ${r.dice[0]}${r.dice[0]}${r.dice[0]}！` : `${r.total} 點・${r.total >= 11 ? '大' : '小'}`;
       show();
     } else {
-      this.table = { dealer: [null, null], player: [...r.hole], board: [...r.board.slice(0, 3), null, null], note: r.called ? '跟注' : '棄牌', dealerNote: '', playerNote: C.bestHand([...r.hole, ...r.board.slice(0, 3)]).name };
+      this.table = { dealer: [null, null], player: [...r.hole], board: [...r.board.slice(0, 3), null, null], note: this.watch ? '翻牌' : r.called ? '跟注' : '棄牌', dealerNote: '', playerNote: C.bestHand([...r.hole, ...r.board.slice(0, 3)]).name };
       show();
+      if (this.watch) {
+        await step(800);
+        this.caption = `${who}：${r.called ? `${extra < this.stake ? '全押' : '跟注'} +${money(extra)}` : '棄牌'}`;
+        this.table.note = r.called ? '跟注' : '棄牌';
+        show(); await step(850);
+        this.caption = '';
+      }
       if (r.called) {
         for (let i = 3; i < 5; i++) { await step(450); this.table.board[i] = r.board[i]; audio.sfx(Sfx.cardFlip); show(); }
         await step(400);
@@ -313,12 +354,15 @@ class CasinoPage {
     await step(500);
     const clipped = !!d.clipped, why = typeof d.why === 'string' ? d.why : '';
     const big = why ? `${why}${d.all ? `：全部${chipMode() ? '籌碼' : '現金'}` : ` ×${Number(d.mult)}`}・` : '';
-    this.banner = net > 0 ? { text: `贏 +${money(net)}`, cls: 'win', sub: clipped ? `超過上限，以 ${money(cap)} 計` : `莊家${name(this.ctx, this.choose.banker)}付出` }
-      : net < 0 ? { text: `輸 −${money(-net)}`, cls: `lose${why ? ' big' : ''}`, sub: `${big}付給莊家${name(this.ctx, this.choose.banker)}` }
-        : { text: '平手', cls: 'push', sub: '退回賭注' };
+    const bk = this.youBank ? '你（莊家）' : `莊家${name(this.ctx, this.choose.banker)}`;
+    const math = typeof d.line === 'string' ? d.line : '';
+    this.caption = '';
+    this.banner = net > 0 ? { text: `${this.watch ? `${who} ` : ''}贏 +${money(net)}`, cls: 'win', math, sub: clipped && !math ? `超過上限，以 ${money(cap)} 計` : `${bk}付出` }
+      : net < 0 ? { text: `${this.watch ? `${who} ` : ''}輸 −${money(-net)}`, cls: `lose${why ? ' big' : ''}`, math, sub: `${math ? '' : big}付給${bk}` }
+        : { text: '平手', cls: 'push', math, sub: '退回賭注' };
     audio.sfx(net > 0 ? (net >= cap / 2 ? Sfx.fireworks : Sfx.points) : net < 0 ? Sfx.monthlyLow : Sfx.couponFlip);
     show();
-    await this.scene.wait(this.watch ? 1300 : 2600);
+    await this.scene.wait(this.watch ? 2000 : 2600);
     this.close();
   }
 
@@ -505,5 +549,5 @@ fxScreens['finale-blinds'] = async (ctx, fx) => {
 fxScreens['casino-fee'] = async (ctx, fx) => {
   const d = fx.data ?? {};
   audio.sfx(Sfx.rent);
-  await ctx.flash(`${name(ctx, fx.p ?? 0)}進入${String(d.name ?? '')}${String(d.hall ?? '賭場')}\n\n門票 ${fmtMoney(Number(d.fee))}\n（付給莊家${name(ctx, fx.target ?? 0)}）`, 1100 * Math.max(0.5, ctx.scale()));
+  await ctx.flash(`${name(ctx, fx.p ?? 0)}進入${String(d.name ?? '')}${String(d.hall ?? '賭場')}\n\n門票 ${fmtMoney(Number(d.fee))}\n（付給莊家${name(ctx, fx.target ?? 0)}）`, (ctx.game.players[fx.p ?? 0]?.human ? 1100 : 750) * Math.max(0.5, ctx.scale()));
 };

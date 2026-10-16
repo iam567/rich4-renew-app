@@ -57,7 +57,7 @@ export class InfoScreen {
     const side = `<div class="info-side">
       <div class="info-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
       ${w ? `<div class="info-where">${w.whereText(p)}</div>${w.overlordTitles(p).map(t => `<div class="info-where overlord">${t}</div>`).join('')}${p.human && w.fallen.some(x => x.title) ? `<div class="info-where gold">${w.fallen.filter(x => x.title).slice(-1)[0].title}</div>` : ''}` : ''}
-      ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small></div>` : ''}
+      ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small>${godSlot && g.rules?.godNote ? `<small class="info-god-note">${g.rules.godNote(godSlot.type).replace(/^：/, '賭場')}</small>` : ''}</div>` : ''}
       ${PAGES.map((t, i) => `<button class="info-page${i === this.page ? ' on' : ''}" data-page="${i}">${t}</button>`).join('')}</div>`;
     const body = this.page === 0 ? this.assets() : this.page === 1 ? this.property() : this.stocks();
     this.el.innerHTML = `<div class="info-tabs">${tabs}</div><div class="info-main">${side}<div class="info-body">${body}</div></div>`;
