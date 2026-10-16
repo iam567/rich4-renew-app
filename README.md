@@ -19,7 +19,7 @@ npm install
 # 素材：下載 Releases 裡的 rich4-assets.tar（和 .sha256），檢查後解壓到 game/public
 gh release download assets -p 'rich4-assets.tar*'
 shasum -a 256 -c rich4-assets.tar.sha256
-tar -xf rich4-assets.tar -C public
+mkdir -p public && tar -xf rich4-assets.tar -C public
 npm run dev
 npm test
 npm run ios      # 打包並安裝到已連接的 iPhone
