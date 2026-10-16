@@ -1,0 +1,161 @@
+/* 大富翁城's casino (casino.ts, docs/rules/19 §5): a toy-style golden casino page, one page in both orientations. */
+.cs-scene .pl-stage { box-shadow: 0 0 0 3px #ffd860, 0 0 0 7px #b0182c, 0 0 30px rgba(255, 200, 80, .45), 0 18px 40px rgba(0,0,0,.6); background: #2a0d1c; border-radius: 22px; }
+.cs-root { position: absolute; color: #fff; display: grid; overflow: hidden; border-radius: 22px; }
+.cs-root.land { grid-template-rows: 74px 1fr; }
+.cs-root.por { grid-template-rows: 150px 1fr; }
+.cs-bg { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 10%, #7a1830 0%, #3a0a22 55%, #1a0412 100%);
+  background-size: cover; background-position: center; z-index: 0; }
+.cs-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(90% 70% at 50% 45%, transparent 40%, rgba(20, 0, 10, .55) 100%); }
+.cs-head { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+.cs-root.por .cs-head { flex-wrap: wrap; justify-content: center; padding: 10px 12px 4px; row-gap: 6px; }
+.cs-plate { display: flex; align-items: center; gap: 8px; padding: 4px 16px; border-radius: 18px; flex: none;
+  background: linear-gradient(#3a0816, #1c0410); border: 3px solid #ffd860; box-shadow: 0 0 14px rgba(255, 200, 80, .55), inset 0 0 10px rgba(255, 120, 60, .35); }
+.cs-sign { font-size: 24px; color: #fff3c2; letter-spacing: 2px; text-shadow: 0 0 6px #ff9a3c, 0 0 14px #ff3a6a; }
+.cs-lv { font-size: 15px; padding: 1px 8px; border-radius: 10px; color: #4a2a00; background: linear-gradient(#fff3b0, #f2b82a); }
+.cs-cap { font-size: 13px; color: #ffd9a8; } .cs-cap b { font-weight: 400; color: #ffe36a; font-size: 17px; }
+.cs-root.por .cs-plate { width: 100%; justify-content: center; }
+.cs-banker, .cs-guest { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.15; color: #ffd9e0; }
+.cs-banker { margin-left: auto; } .cs-root.por .cs-banker { margin-left: 0; }
+.cs-banker b, .cs-guest b { font-weight: 400; font-size: 16px; color: #fff; }
+.cs-guest b { color: #9cf5a6; }
+.cs-face { width: 42px; height: 42px; border: 3px solid #ffd860; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
+.cs-main { position: relative; z-index: 1; min-height: 0; display: grid; padding: 4px 14px 14px; gap: 12px; }
+
+/* choose: the hall and the stake */
+.ph-choose.land .cs-main { grid-template-columns: 250px 1fr; }
+.ph-choose.por .cs-main { grid-template-rows: 250px 1fr; }
+.cs-hallcard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 20px;
+  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.04)), #3a0a22; border: 3px solid rgba(255, 216, 96, .6); text-align: center; }
+.cs-root.por .cs-hallcard { display: grid; grid-template-columns: 120px 1fr; grid-template-rows: auto auto 1fr; column-gap: 12px; text-align: left; justify-items: start; }
+.cs-root.por .cs-hallcard .cs-hplate { grid-row: 1 / 4; }
+.cs-hallcard .cs-hplate { width: 110px; height: 110px; }
+.cs-hname { font-weight: 400; font-size: 24px; color: #fff3c2; letter-spacing: 2px; text-shadow: 0 0 8px #ff9a3c; }
+.cs-hgame { font-size: 13px; color: #ffd9a8; }
+.cs-big { font-size: 13px; line-height: 1.45; color: #fff; padding: 6px 10px; border-radius: 12px; background: rgba(176, 24, 44, .55); border: 1px dashed #ffd860; }
+.cs-big i { display: block; font-style: normal; font-size: 11px; color: #ffe36a; }
+.cs-opt.k-big { background: linear-gradient(#ff8a8a, #c8202c); color: #fff; box-shadow: 0 3px 0 #6a0a10; }
+.cs-opt.k-small { background: linear-gradient(#8ac8ff, #2a6ad8); color: #fff; box-shadow: 0 3px 0 #10306a; }
+.cs-bac.sic { grid-template-columns: repeat(2, 1fr); }
+/* 骰寶: the cup and the dice */
+.g-sicbo .cs-felt { grid-template-rows: 1fr; }
+.cs-dice-box { position: relative; width: 300px; height: 200px; display: grid; place-items: center; }
+.cs-dice { display: flex; gap: 14px; }
+.cs-die { width: 58px; height: 58px; padding: 7px; border-radius: 12px; background: #fffef8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+  box-shadow: 0 5px 0 #c9c2b0, 0 8px 12px rgba(0,0,0,.4); animation: pl-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; }
+.cs-die i { border-radius: 50%; } .cs-die i.on { background: radial-gradient(circle at 35% 35%, #555, #111); }
+.cs-die.red i.on { background: radial-gradient(circle at 35% 35%, #ff6a6a, #b0101a); }
+.cs-cup { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -100px 0 0 -85px; z-index: 2; border-radius: 50% 50% 18px 18px;
+  background: radial-gradient(circle at 35% 25%, #fff3b0, #e0a020 45%, #8a5a10); box-shadow: 0 10px 18px rgba(0,0,0,.45), inset 0 -10px 0 rgba(0,0,0,.18);
+  transition: transform .45s cubic-bezier(.3, 1.4, .5, 1), opacity .45s; }
+.cs-cup::after { content: '骰'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 54px; color: #8a1020; text-shadow: 0 2px 0 #ffe9a0; }
+.cs-cup.shake { animation: cs-shake .18s ease-in-out infinite alternate; }
+@keyframes cs-shake { from { transform: rotate(-9deg) translateY(-6px); } to { transform: rotate(9deg) translateY(4px); } }
+.cs-cup.up { transform: translateY(-150px) rotate(-12deg); opacity: 0; }
+.cs-banner.lose.big { background: linear-gradient(#b0182c, #5a0612); border-color: #ffd860; box-shadow: 0 0 40px rgba(255, 60, 60, .8), 0 10px 0 #3a0008; }
+.cs-games { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
+.cs-game { font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 20px; cursor: pointer;
+  color: #fff; border: 3px solid rgba(255, 216, 96, .5); background: linear-gradient(160deg, rgba(255,255,255,.18), rgba(255,255,255,.04)), #3a0a22;
+  box-shadow: 0 5px 0 #14030c, 0 8px 14px rgba(0,0,0,.35); transition: transform .08s; }
+.cs-game.on { border-color: #ffe36a; background: linear-gradient(#ffeb8a, #f2a81e); color: #4a1a00; box-shadow: 0 5px 0 #9a5a00, 0 0 20px rgba(255, 210, 80, .8); transform: translateY(-2px); }
+.cs-game:active { transform: translateY(3px); }
+.cs-gico { font-size: 44px; line-height: 1; filter: drop-shadow(0 3px 2px rgba(0,0,0,.4)); }
+.cs-gname { font-size: 20px; letter-spacing: 2px; }
+.cs-bet { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 20px; min-height: 0;
+  background: rgba(20, 2, 10, .55); border: 2px solid rgba(255, 216, 96, .45); }
+.cs-rule { font-size: 14px; color: #ffe2b8; line-height: 1.4; }
+.cs-pick { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
+.cs-hint { font-size: 15px; color: #fff; opacity: .85; text-align: center; }
+.cs-rbets { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
+.cs-root.por .cs-rbets { grid-template-columns: repeat(5, 1fr); }
+.cs-opt { font: inherit; font-size: 13px; padding: 5px 2px; border-radius: 10px; border: 2px solid #fff; cursor: pointer; color: #3a1a00;
+  background: linear-gradient(#fff8d8, #ffd86a); box-shadow: 0 3px 0 #b07a00; white-space: nowrap; }
+.cs-opt.k-red { background: linear-gradient(#ff8a8a, #d8242f); color: #fff; box-shadow: 0 3px 0 #7a0a10; }
+.cs-opt.k-black { background: linear-gradient(#6a6a78, #1d1d26); color: #fff; box-shadow: 0 3px 0 #000; }
+.cs-opt.on { outline: 3px solid #5df07a; outline-offset: 1px; transform: translateY(1px); }
+.cs-opt.big { font-size: 26px; padding: 10px 0; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
+.cs-opt.big small { font-size: 12px; opacity: .8; }
+.cs-opt.k-player { background: linear-gradient(#8ac8ff, #2a6ad8); color: #fff; box-shadow: 0 3px 0 #10306a; }
+.cs-opt.k-banker { background: linear-gradient(#ff8a8a, #c8202c); color: #fff; box-shadow: 0 3px 0 #6a0a10; }
+.cs-opt.k-tie { background: linear-gradient(#9cf5a6, #1c9a4a); color: #fff; box-shadow: 0 3px 0 #0a4a20; }
+.cs-bac { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.cs-nums { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
+.cs-root.por .cs-nums { grid-template-columns: repeat(10, 1fr); }
+.cs-num { font: inherit; font-size: 12px; padding: 3px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,.6); color: #fff; cursor: pointer; }
+.cs-num.r { background: #c41f2a; } .cs-num.b { background: #22222c; } .cs-num.z { background: #1c9a4a; }
+.cs-num.on { outline: 3px solid #ffe36a; transform: scale(1.12); z-index: 1; }
+.cs-stake { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
+.cs-stk-l { font-size: 15px; color: #ffd9a8; }
+.cs-stk { font-weight: 400; font-size: 34px; color: #ffe36a; text-shadow: 0 0 10px rgba(255, 210, 80, .7), 0 2px 0 #7a3a00; }
+.cs-range { font-size: 12px; color: #d8b0b8; }
+.cs-chips { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
+.cs-chip { font: inherit; font-size: 13px; width: 54px; height: 54px; border-radius: 50%; cursor: pointer; color: #fff; border: 4px dashed rgba(255,255,255,.9);
+  box-shadow: 0 0 0 3px #fff inset, 0 4px 0 rgba(0,0,0,.4); text-shadow: 0 1px 0 rgba(0,0,0,.5); }
+.cs-chip.c1 { background: #2a6ad8; } .cs-chip.c5 { background: #c8202c; } .cs-chip.c10 { background: #1c9a4a; } .cs-chip.c50 { background: #6b2bd0; }
+.cs-chip.min { background: #555a66; } .cs-chip.max { background: linear-gradient(#ffd860, #e09010); color: #4a2000; text-shadow: none; }
+.cs-chip:active { transform: translateY(3px); }
+.cs-bet .cs-go { position: static; align-self: center; font-size: 22px; padding: 8px 40px; }
+
+/* the table */
+.cs-root.land:not(.ph-choose) .cs-main { grid-template-rows: 1fr 54px; }
+.cs-root.por:not(.ph-choose) .cs-main { grid-template-rows: 1fr 64px; }
+.cs-felt { position: relative; display: grid; grid-template-rows: 1fr auto 1fr; align-items: center; justify-items: center; border-radius: 120px / 60px;
+  background: radial-gradient(90% 80% at 50% 50%, #1fa35a 0%, #0f7a3e 60%, #0a5a2c 100%); border: 8px solid #7a3a14;
+  box-shadow: 0 0 0 4px #ffd860, inset 0 0 40px rgba(0,0,0,.4), 0 10px 20px rgba(0,0,0,.4); }
+.g-roulette .cs-felt { grid-template-rows: 1fr; }
+.cs-root.por .cs-felt { border-radius: 60px / 120px; }
+.cs-side { display: flex; align-items: center; gap: 10px; }
+.cs-root.por .cs-side { flex-direction: column; gap: 4px; }
+.cs-who { font-size: 14px; padding: 2px 10px; border-radius: 10px; background: rgba(0,0,0,.35); color: #ffe9a0; }
+.cs-total { font-size: 18px; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.4); min-width: 64px; text-align: center; }
+.cs-center { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.cs-note { font-size: 20px; color: #fff6c8; text-shadow: 0 0 8px rgba(255, 220, 120, .8), 0 2px 0 rgba(0,0,0,.4); min-height: 26px; }
+.cs-cards { display: flex; gap: 8px; min-height: 92px; }
+.cs-card { position: relative; width: 64px; height: 90px; border-radius: 8px; background: #fffef8; color: #1d1d26; box-shadow: 0 4px 8px rgba(0,0,0,.35);
+  border: 1px solid #ccc; }
+.cs-card.deal { animation: cs-deal .28s cubic-bezier(.3, 1.3, .5, 1) both; }
+.cs-card.flip { animation: cs-flip .3s ease-out both; }
+@keyframes cs-flip { from { transform: scaleX(.1); } to { transform: none; } }
+.cs-card.red { color: #d0202c; }
+.cs-card b { position: absolute; left: 6px; top: 3px; font-weight: 400; font-size: 20px; }
+.cs-card s { position: absolute; left: 7px; top: 26px; text-decoration: none; font-size: 15px; }
+.cs-card em { position: absolute; right: 6px; bottom: 2px; font-style: normal; font-size: 38px; line-height: 1; }
+.cs-card.back { background: repeating-linear-gradient(45deg, #b0182c 0 6px, #8a0f22 6px 12px); border: 4px solid #fff; }
+.cs-card.back i { position: absolute; inset: 8px; border: 2px solid #ffd860; border-radius: 4px; }
+@keyframes cs-deal { from { transform: translate(0, -60px) rotate(-12deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.cs-cards.board .cs-card { width: 56px; height: 80px; }
+.cs-cards.board .cs-card em { font-size: 32px; }
+.cs-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cs-root.por .cs-bar { flex-direction: column; justify-content: center; gap: 4px; }
+.cs-on { font-size: 16px; padding: 4px 14px; border-radius: 14px; background: rgba(0,0,0,.4); color: #ffe9a0; }
+.cs-moves { display: flex; gap: 10px; }
+.cs-moves .candy { position: static; font-size: 19px; padding: 6px 22px; }
+
+/* roulette */
+.cs-wheel-box { position: relative; width: 300px; height: 300px; }
+.cs-root.por .cs-wheel-box { width: 380px; height: 380px; }
+.cs-wheel { width: 100%; height: 100%; display: block; filter: drop-shadow(0 8px 10px rgba(0,0,0,.5)); }
+.cs-wheel text { font-size: 7.5px; fill: #fff; font-family: inherit; }
+.cs-ball { position: absolute; left: 50%; top: 6%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #c8c8d0); box-shadow: 0 2px 4px rgba(0,0,0,.5); }
+.cs-ball::after { content: '▼'; position: absolute; left: 50%; top: -22px; transform: translateX(-50%); color: #ffe36a; font-size: 16px; text-shadow: 0 0 6px #ff9a3c; }
+.cs-wheel-num { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; display: grid; place-items: center;
+  font-size: 36px; color: #fff; opacity: 0; transform: scale(.3); transition: all .3s cubic-bezier(.3, 1.6, .5, 1); border: 4px solid #ffe36a; }
+.cs-wheel-num.on { opacity: 1; transform: none; }
+.cs-wheel-num.r { background: #d8242f; } .cs-wheel-num.b { background: #1d1d26; } .cs-wheel-num.z { background: #1c9a4a; }
+
+/* the payout */
+.cs-banner { position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; z-index: 5; display: flex; flex-direction: column; align-items: center;
+  gap: 4px; padding: 16px 44px; border-radius: 26px; animation: pl-pop .4s cubic-bezier(.3, 1.6, .5, 1) both; pointer-events: none; white-space: nowrap; }
+.cs-banner b { font-weight: 400; font-size: 42px; letter-spacing: 2px; }
+.cs-banner span { font-size: 16px; }
+.cs-banner.win { background: linear-gradient(#fff3b0, #f2a81e); color: #6a2a00; border: 5px solid #fff; box-shadow: 0 0 40px rgba(255, 210, 80, .9), 0 10px 0 #9a5a00; }
+.cs-banner.win b { text-shadow: 0 3px 0 #fff; }
+.cs-banner.lose { background: linear-gradient(#8a8a96, #44444e); color: #fff; border: 5px solid #ddd; box-shadow: 0 10px 0 #22222a; }
+.cs-banner.push { background: linear-gradient(#cfe6ff, #6a9ad8); color: #fff; border: 5px solid #fff; box-shadow: 0 10px 0 #2a4a7a; }
+.cs-watch .cs-moves { display: none; }
+
+/* 莊家不在！ the gods' slot machine (slot-machine.css) */
+.cs-auto-text { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; font-size: 16px; line-height: 1.35;
+  color: #fff; text-shadow: 0 2px 0 #3a1460, 2px 2px 0 #3a1460, -1px -1px 0 #3a1460; }
+.cs-auto-h { font-size: 26px; color: #ffe36a; letter-spacing: 3px; }
+.cs-auto-zero { position: absolute; display: grid; place-items: center; font-size: 26px; color: #2a1608; background: #fff8e0; border-radius: 4px; border: 2px solid #8a5a10; margin: -18px 0 0 -15px; }

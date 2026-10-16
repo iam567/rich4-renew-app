@@ -3,6 +3,8 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type Board, type RawMap } from './board';
 import { pack } from './date';
+import { Game } from './game';
+import { cardName } from './modules/cards';
 import type { Flow } from './flow';
 import { loadWorld, saveWorld, type WorldSaveData } from './save';
 import type { Answer, Step } from './types';
@@ -201,7 +203,8 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     for (let r = flow.next(); !r.done && w.daysElapsed < 365; r = flow.next()) {
       const s = r.value;
       if ('ask' in s) throw new Error('computers never ask');
-      if (s.t === 'ticker' && s.kind === 'travel' && s.p !== undefined) trips.push({ p: s.p, day: s.day, to: w.players[s.p].trip?.to ?? -1 });
+      // Own trips only (遣返 / 召集 / 獨裁 send people away against their will, whenever).
+      if (s.t === 'ticker' && s.kind === 'travel' && s.p !== undefined && !/（被|獨裁卡/.test(s.text)) trips.push({ p: s.p, day: s.day, to: w.players[s.p].trip?.to ?? -1 });
       if (s.t === 'ticker' && s.kind === 'arrive') stops++;
       for (const i of w.cities.keys()) expect(w.population(i)).toBeLessThanOrEqual(12);
     }
@@ -361,6 +364,312 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     const m = lines.join('\n').match(/休息(\d+)天\s*費用(\d+)元/);
     expect(m).not.toBeNull();
     expect(Number(m![2])).toBe(Math.round(f.fees[f.level] * w.priceIndex * 1.5) * Number(m![1]));
+  });
+
+  it('飛行卡 / 電車卡: only in a tycoon pool, sold on the card shelf, never from a card square', () => {
+    const w = new World(settings(71), boards());
+    const g = w.cities[0];
+    expect(g.cards.remaining.length).toBeGreaterThanOrEqual(32);
+    expect(cardName(31)).toBe('飛行卡');
+    expect(cardName(32)).toBe('電車卡');
+    const normal = new Game({ mapId: 100, players: [0, 1].map(character => ({ character, human: false })), fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 16), seed: 1 }, parseBoard(raw(100)));
+    expect(normal.cards.remaining).toHaveLength(30);
+    const drawn = new Set<number>(), shelved = new Set<number>();
+    for (let k = 0; k < 400; k++) { drawn.add(g.cards.drawId()); for (const id of g.tools.cardShelf()) shelved.add(id); }
+    expect(drawn.has(31) || drawn.has(32)).toBe(false);
+    expect(shelved.has(31) && shelved.has(32)).toBe(true);
+  });
+
+  it('using 飛行卡 flies for free (one turn 在路上); 電車卡 only from a city with a station', () => {
+    const w = new World(settings(72, 0), boards());
+    const me = w.players[0];
+    me.map = 2; w.landed[0] = true; me.whoPlays = 1; me.trip = undefined;   // 札幌: no station
+    const g = w.cities[2];
+    me.node = g.board.nodes.find(n => n.event === 0 && n.ref === 0)!.id;
+    w.mask(2);
+    me.cards = [32, 31];
+    const play = (id: number, answer: number) => {
+      const f = (g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> }).play(me, id, true);
+      let r = f.next(), asked = false;
+      while (!r.done) { const s = r.value; if ('ask' in s) { asked = s.t === 'travel'; r = f.next(answer); } else r = f.next(); }
+      return { ok: r.value, asked };
+    };
+    const before = me.cash + me.bank;
+    expect(play(32, 0).ok).toBe(false);          // 札幌 has no 新幹線
+    expect(me.cards).toEqual([32, 31]);
+    const r = play(31, 0);                       // fly to 東京
+    expect(r).toEqual({ ok: true, asked: true });
+    expect(me.trip).toEqual({ to: 0, via: 'airport' });
+    expect(me.cards).toEqual([32]);
+    expect(me.cash + me.bank).toBe(before);      // the card is the ticket
+  });
+
+  it('遣返卡 sends a rival in the city to another city; 免罪卡 saves them', () => {
+    const w = new World(settings(81, 0), boards());
+    const me = w.players[0], q = w.players[1], g = w.cities[0];
+    for (const x of [me, q]) { x.map = 0; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; }
+    me.node = q.node = g.board.nodes.find(n => n.event === 0 && n.ref === 0)!.id;
+    w.mask(0);
+    w.drain(0, w.deport(g, q, me));
+    expect(q.trip?.via).toBe('airport');
+    expect(q.trip?.to).not.toBe(0);
+    expect(w.log.some(l => l.text.includes('遣返'))).toBe(true);
+    // With 免罪卡 the card's harm is cancelled (the same rule as 陷害卡).
+    const r = w.players[2];
+    r.map = 0; r.trip = undefined; r.whoPlays = 2; w.landed[2] = true; r.node = me.node; r.prison = r.hospital = r.hotel = r.vanish = 0; r.cards = [21];
+    w.mask(0);
+    me.cards = [33];
+    (g.cards as unknown as { aiArg0: number }).aiArg0 = r.id;
+    w.drain(0, (g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> }).play(me, 33, false));
+    expect(r.trip).toBeUndefined();
+    expect(r.cards).toEqual([]);
+  });
+
+  it('召集卡 brings a random rival from another city to this city\'s airport after one turn 在路上; never someone in hospital, prison, 消失 or 在路上', () => {
+    const w = new World(settings(82, 0), boards());
+    const me = w.players[0], g = w.cities[0], q = w.players[5];
+    const put = (x: typeof me, city: number) => { x.map = city; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = w.cities[city].board.nodes.find(n => n.event === 0 && n.ref === 0)!.id; };
+    for (const x of w.players) put(x, x.id === 0 ? 0 : 2);
+    for (const x of w.players.slice(1)) if (x !== q) x.hospital = 3;     // only q can be summoned
+    w.players[6].prison = 2; w.players[7].vanish = 2; w.players[8].trip = { to: 1, via: 'airport' }; w.players[8].map = -1;
+    w.mask(0);
+    expect(w.summonable(g, me).map(x => x.id)).toEqual([q.id]);
+    me.cards = [35];
+    const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
+    w.drain(0, cards.play(me, 35, true));
+    expect(me.cards).toEqual([]);
+    expect(q.trip).toEqual({ to: 0, via: 'airport' });
+    w.drain(0, (w as unknown as { arrive(p: unknown): Flow }).arrive(q));
+    expect(q.map).toBe(0);
+    expect(g.board.nodes.find(n => n.id === q.node)?.event).toBe(18);   // 東京's airport
+    // Nobody left to summon: the card is kept.
+    q.hospital = 2; me.cards = [35];
+    w.mask(0);
+    w.drain(0, cards.play(me, 35, true));
+    expect(me.cards).toEqual([35]);
+  });
+
+  it('通緝卡 jails any rival anywhere for 5 days in their city; 免罪卡 saves; one copy per city at a time', () => {
+    const w = new World(settings(84, 0), boards());
+    const me = w.players[0], q = w.players[4], r = w.players[5], g = w.cities[0];
+    const put = (x: typeof me, city: number) => { x.map = city; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = w.cities[city].board.nodes.find(n => n.event === 0 && n.ref === 0)!.id; };
+    for (const x of w.players) put(x, x.id === 0 ? 0 : 3);
+    w.players[6].hospital = 2; w.players[7].trip = { to: 1, via: 'airport' }; w.players[7].map = -1;
+    w.mask(0);
+    const opts = w.wantedOptions(me);
+    expect(opts).toHaveLength(11);
+    expect(opts.filter(o => o.disabled).map(o => o.value).sort()).toEqual([6, 7]);
+    const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
+    const use = (target: number) => { const f = cards.play(me, 36, true); let x = f.next(); while (!x.done) x = f.next('ask' in x.value ? target : undefined); return x.value; };
+    expect(use(6)).toBe(false);                      // in hospital: not a target
+    me.cards = [36];
+    expect(use(q.id)).toBe(true);
+    expect(q.prison).toBe(5);
+    expect(q.map).toBe(3);
+    expect(w.cities[3].board.nodes.find(n => n.id === q.node)).toBe(w.cities[3].prisonNode());
+    r.cards = [21]; me.cards = [36];
+    expect(use(r.id)).toBe(true);
+    expect(r.prison).toBe(0);
+    expect(r.cards).toEqual([]);
+    // One per city: bought in 大阪's shop, 大阪 cannot sell another until that copy is used (here by someone else).
+    w.syncWanted();
+    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 1, 1, 1, 1]);
+    const osaka = w.cities[1];
+    me.cards = []; osaka.cards.receive(me, 36); w.wantedTaken(osaka, me);
+    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 0, 1, 1, 1]);
+    for (let k = 0; k < 300; k++) expect(osaka.tools.cardShelf()).not.toContain(36);
+    const saved = loadWorld(JSON.parse(JSON.stringify(saveWorld(w))) as WorldSaveData);
+    expect(saved.wantedFrom[0]).toEqual([1]);
+    me.cards = []; q.cards = [36]; q.prison = 0;     // handed on (搶奪 / 生日), then used by q
+    w.wantedUsed(q);
+    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 1, 1, 1, 1]);
+  });
+
+  it('獨裁卡 sends everyone else on the city\'s squares away, spread with the city cap; hospital and prison stay', () => {
+    const w = new World(settings(83, 0), boards());
+    const me = w.players[0], g = w.cities[2];
+    const here = w.players.slice(0, 7);
+    for (const x of here) { x.map = 2; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = g.board.nodes[10].id; }
+    here[6].hospital = 3;
+    w.mask(2);
+    me.cards = [34];
+    const flow = (g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> }).play(me, 34, true);
+    let r = flow.next(); while (!r.done) r = flow.next();
+    expect(r.value).toBe(true);
+    expect(here.slice(1, 6).every(x => x.trip && x.trip.to !== 2)).toBe(true);
+    expect(here[6].trip).toBeUndefined();
+    for (let i = 0; i < 5; i++) if (i !== 2) expect(w.population(i)).toBeLessThanOrEqual(World.CROWD);
+    expect(me.cards).toEqual([]);
+    // They start from their destination's airport after the turn 在路上.
+    const v = here[1], to = v.trip!.to;
+    w.drain(to, (w as unknown as { arrive(p: unknown): Flow }).arrive(v));
+    expect(w.cities[to].board.nodes.find(n => n.id === v.node)?.event).toBe(18);
+  });
+
+  it('selling or dropping a whole hand (魔法屋, 命運 32, 死神) keeps the tycoon cards and tools; bankruptcy clears them', () => {
+    const w = new World(settings(91), boards());
+    const p = w.players[0], g = w.cities[p.map!];
+    const reset = () => { p.cards = [3, 31, 12, 33, 36]; p.tools = new Array(16).fill(0); p.tools[0] = 2; p.tools[8] = 1; p.tools[13] = 1; p.tools[14] = 1; p.tools[15] = 1; p.points = 0; p.luckFate = 0; p.traffic = 0; p.whoPlays = 2; };
+    const kept = () => { expect(p.cards).toEqual([31, 33, 36]); expect(p.tools.slice(0, 13).every(n => n === 0)).toBe(true); expect(p.tools.slice(13)).toEqual([1, 1, 1]); };
+    w.mask(p.map!);
+    // 命運 32: every original card and tool sold at full price for points; the travel cards and lab tools stay.
+    reset();
+    w.drain(p.map!, (g.events as unknown as { applyFate(p: unknown, t: number): Flow }).applyFate(p, 32));
+    kept();
+    expect(p.points).toBe(35 + 15 + 2 * 15 + 30);
+    // 魔法屋 變賣所有卡片 (spell 0) and 變賣所有道具 (spell 8).
+    reset();
+    const places = g.places as unknown as { castMagic(v: unknown, e: number, t: unknown[]): Flow };
+    w.drain(p.map!, places.castMagic(w.players[1], 0, [p]));
+    w.drain(p.map!, places.castMagic(w.players[1], 8, [p]));
+    kept();
+    // 死神: everything thrown away, but not the tycoon items.
+    reset();
+    w.drain(p.map!, g.tools.dropAll(p));
+    w.drain(p.map!, g.cards.dropAll(p));
+    kept();
+    // Bankruptcy liquidates everything.
+    reset();
+    w.drain(p.map!, g.tools.dropAll(p, true));
+    w.drain(p.map!, g.cards.dropAll(p, true));
+    expect(p.cards).toEqual([]);
+    expect(p.tools.every(n => n === 0)).toBe(true);
+  });
+
+  it('黑市 per city: unsold lots after 6 months at 50× the (indexed) land price; of the tycoon items only 飛行卡 / 電車卡', () => {
+    const w = new World(settings(92), boards());
+    const g = w.cities[0], bm = g.blackMarket;
+    for (const l of g.board.lands) l.owner = 0;
+    bm.unsold = g.board.lands.map(() => 4);
+    w.drain(0, bm.monthly());
+    expect(bm.listings.some(l => l.kind === 'land')).toBe(false); // 5 months: not yet (a normal game lists after 3)
+    w.drain(0, bm.monthly());
+    const lot = bm.listings.find(l => l.kind === 'land')!;
+    expect(lot).toBeDefined();
+    expect(lot.base).toBe(g.board.lands[lot.id - 1].price * 50);
+    // Many months of listings in all five cities: cards 1-32 only, tools 1-13 only.
+    const cards = new Set<number>(), tools = new Set<number>();
+    for (let m = 0; m < 400; m++) {
+      for (const [i, c] of w.cities.entries()) {
+        (c as unknown as { daysElapsed: number }).daysElapsed = m * 31 + i;
+        c.blackMarket.listings = [];
+        w.drain(i, c.blackMarket.monthly());
+        for (const l of c.blackMarket.listings) (l.kind === 'card' ? cards : l.kind === 'tool' ? tools : new Set()).add(l.id);
+      }
+    }
+    expect(Math.max(...cards)).toBe(32);
+    expect(cards.has(31) && cards.has(32)).toBe(true);
+    expect(Math.max(...tools)).toBeLessThanOrEqual(13);
+  });
+
+  it('city labs: 「限定」 tools replace slots (沖繩 all three, 九州 洲際飛彈, 大阪/札幌 超級工人); 東京 and normal games unchanged', () => {
+    const w = new World(settings(93), boards());
+    expect(w.cities.map(c => c.tools.labOptions())).toEqual([[9, 10, 11, 12, 13], [14, 10, 11, 12, 13], [14, 10, 11, 12, 13], [9, 10, 11, 12, 15], [14, 10, 16, 12, 15]]);
+    expect(w.cities[4].tools.labToolId(3)).toBe(16);
+    const normal = new Game({ mapId: 104, players: [0, 1].map(character => ({ character, human: false })), fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 16), seed: 1 }, parseBoard(raw(104)));
+    expect([1, 2, 3, 4, 5].map(i => normal.tools.labToolId(i))).toEqual([9, 10, 11, 12, 13]);
+    expect(normal.tools.receive(normal.players[0], 14)).toBe(false);
+  });
+
+  it('超級工人 builds two levels; 洲際飛彈 nukes a lot in another city; 時空機 crosses at once to another city\'s airport and ends the turn', () => {
+    const w = new World(settings(94, 0), boards());
+    const me = w.players[0], q = w.players[3], g = w.cities[0];
+    const put = (x: typeof me, city: number) => { x.map = city; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = w.cities[city].board.nodes.find(n => n.event === 0 && n.ref === 0)!.id; };
+    for (const x of w.players) put(x, x.id === 0 ? 0 : 2);
+    w.mask(0);
+    // 超級工人 on an own lot of level 1 → 3.
+    const lot = g.board.lands.find(l => !l.chain)!;
+    lot.owner = 1; lot.level = 1; me.tools[13] = 1;
+    w.drain(0, g.tools.use(me, 14, lot.id + 2000));
+    expect(lot.level).toBe(3);
+    expect(me.tools[13]).toBe(0);
+    // 洲際飛彈 on 大阪 from 東京: the rival's building there is destroyed (nuclear: the lot is lost), news in the log.
+    const far = w.cities[1].board.lands.find(l => !l.chain)!;
+    far.owner = q.id + 1; far.level = 4; me.tools[14] = 1;
+    w.drain(0, g.tools.use(me, 15, 1 * 10000 + far.id + 2000));
+    expect(far.level).toBe(0);
+    expect(far.owner).toBe(0);
+    expect(me.tools[14]).toBe(0);
+    expect(w.log.some(l => l.kind === 'icbm' && l.map === 1)).toBe(true);
+    expect(w.icbmTargets(me, 1).every(o => typeof o.value === 'number')).toBe(true);
+    // 時空機 from the turn menu: 九州's airport at once, no dice, no 在路上.
+    me.tools[15] = 1;
+    w.mask(0);
+    const f = g.playerTurn(me);
+    const asked: string[] = [];
+    let r = f.next();
+    while (!r.done) {
+      const s = r.value;
+      if ('ask' in s) {
+        asked.push(s.t);
+        if (s.t === 'turn') r = f.next(asked.length === 1 ? { action: 'tool' } : { dice: 1 });
+        else if (s.t === 'choose' && s.title === '道具') r = f.next(16);
+        else if (s.t === 'choose') r = f.next(3);
+        else r = f.next(undefined);
+      } else r = f.next();
+    }
+    expect(asked).toEqual(['turn', 'choose', 'choose']);
+    expect(me.map).toBe(3);
+    expect(me.trip).toBeUndefined();
+    expect(w.cities[3].board.nodes.find(n => n.id === me.node)?.event).toBe(18);
+    expect(me.tools[15]).toBe(0);
+  });
+
+  it('a bankruptcy auction is bid on by every living player of the world, after the turn', () => {
+    const w = new World(settings(95), boards());
+    const g = w.cities[1], loser = w.players[2];
+    for (const x of w.players) { x.map = x.id % 2 ? 1 : 3; x.trip = undefined; x.whoPlays = 2; x.bankrupt = false; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = x.sleep = x.sleepwalk = 0; x.cash = x.map === 1 ? 0 : 5e7; }
+    loser.map = 1;
+    for (const l of g.board.lands.slice(0, 6)) { l.owner = loser.id + 1; l.level = 1; }
+    w.mask(1);
+    w.drain(1, w.bankrupt(loser, g));
+    const pending = (w as unknown as { pendingAuctions: { refs: number[] }[] }).pendingAuctions;
+    expect(pending).toHaveLength(1);
+    expect(pending[0].refs).toHaveLength(3);
+    const steps: Step[] = [];
+    const flow = (w as unknown as { auctions(): Flow }).auctions();
+    for (let r = flow.next(); !r.done; r = flow.next()) steps.push(r.value);
+    const ends = steps.filter(s => s.t === 'fx' && s.kind === 'auction-end').map(s => (s as { p?: number }).p);
+    expect(ends).toHaveLength(3);
+    // Everyone in 大阪 is broke: the lots go to bidders in 九州.
+    for (const b of ends) expect(w.players[b!].map).toBe(3);
+    expect(steps.some(s => s.t === 'fx' && s.kind === 'auction' && (s.data as { worldwide?: boolean }).worldwide)).toBe(true);
+  });
+
+  it('城市霸主: more than half of a city\'s regular lots; out of its hospital / prison the same day, only there', () => {
+    const w = new World(settings(96), boards());
+    const p = w.players[3], g = w.cities[0], lands = g.board.lands;
+    for (const x of w.players) { x.trip = undefined; x.whoPlays = 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; }
+    // Large plots do not count: all of them plus exactly half the lots is not enough.
+    for (const f of g.board.facilities) f.owner = p.id + 1;
+    lands.forEach((l, i) => { l.owner = i < Math.floor(lands.length / 2) ? p.id + 1 : 0; });
+    expect(w.overlordOf(0)).toBe(-1);
+    lands[lands.length - 1].owner = p.id + 1;         // one more than half
+    expect(w.overlordOf(0)).toBe(p.id);
+    expect(w.overlordTitles(p)).toEqual(['東京霸主']);
+    // The ticker announces it.
+    const flow = (w as unknown as { checkOverlords(): Flow }).checkOverlords();
+    for (let r = flow.next(); !r.done; r = flow.next());
+    expect(w.log.some(l => l.kind === 'overlord' && l.text.includes('東京霸主'))).toBe(true);
+    // In 東京: prison and hospital are left the same day.
+    p.map = 0; p.node = g.board.nodes.find(n => n.event === 0 && n.ref === 0)!.id;
+    const at = p.node;
+    w.mask(0);
+    w.drain(0, g.sendTo(p, 'prison', 5));
+    w.drain(0, g.sendTo(p, 'hospital', 3));
+    expect([p.prison, p.hospital, p.node]).toEqual([0, 0, at]);
+    expect(w.log.some(l => l.text.includes('有檢察官罩著'))).toBe(true);
+    expect(w.log.some(l => l.text.includes('特護病房'))).toBe(true);
+    // Elsewhere, and when a full prison sends them on into 東京, the stay counts.
+    const osaka = w.cities[1];
+    p.map = 1; p.node = osaka.board.nodes.find(n => n.event === 0 && n.ref === 0)!.id;
+    w.mask(1);
+    w.drain(1, osaka.sendTo(p, 'prison', 2));
+    expect(p.prison).toBe(2);
+    p.prison = 0;
+    (w as unknown as { occupancy(i: number): number }).occupancy = (i: number) => (i === 0 ? 0 : 8);
+    w.drain(1, osaka.sendTo(p, 'prison', 4));
+    expect([p.map, p.prison]).toEqual([0, 4]);
   });
 
   it('gives the human a rising title for each rival that falls', () => {

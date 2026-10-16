@@ -42,7 +42,12 @@ function summary(w: World, i: number, bank: SpriteBank): string {
   }).filter(x => x.lots > 0).sort((a, z) => z.lots - a.lots);
   const who = (ps: typeof here) => ps.map(p => `<span class="cv-face" style="--c:${hex(CHARACTERS[p.character].color)}" title="${CHARACTERS[p.character].name}">${face(p.character)}</span>`).join('');
   const free = b.lands.filter(l => !l.owner).length + b.facilities.filter(f => !f.owner).length;
-  return `<div class="cv-sum">
+  // 城市霸主 (17 §3.8): more than half of the regular lots.
+  const lord = w.overlordOf(i), mine = (q: number) => b.lands.filter(l => l.owner === q + 1).length;
+  const lordLine = lord >= 0
+    ? `<div class="cv-lord"><b>${esc(w.cityName(i))}霸主</b>${face(w.players[lord].character)}${esc(CHARACTERS[w.players[lord].character].name)}（普通用地 ${mine(lord)}/${b.lands.length}）</div>`
+    : `<div class="cv-lord none"><b>霸主</b>從缺（需要超過一半的普通用地：${Math.floor(b.lands.length / 2) + 1}/${b.lands.length}）</div>`;
+  return `<div class="cv-sum">${lordLine}
     <div><b>在這裡</b>${who(here) || '<em>沒有人</em>'}${coming.length ? `<b class="cv-coming">在路上</b>${who(coming)}` : ''}</div>
     <div><b>地主</b>${owners.map(o => `<span class="cv-own" style="--c:${hex(CHARACTERS[o.p.character].color)}">${esc(CHARACTERS[o.p.character].name)} ${o.lots}塊${o.houses ? `・${o.houses}棟` : ''}</span>`).join('') || '<em>還沒有人買地</em>'}<span class="cv-own free">空地 ${free}</span></div>
     <div><b>醫院</b>${w.occupancy(i, 'hospital')}/${PLACES_PER_HOUSE}　<b>監獄</b>${w.occupancy(i, 'prison')}/${PLACES_PER_HOUSE}　<b>地價</b>×${(LAND_INDEX[w.mapId(i)] ?? 1).toFixed(1)}${RESORT[w.mapId(i)] ? `　<b>度假勝地</b>旅館收入×${RESORT[w.mapId(i)].base}（夏季×${RESORT[w.mapId(i)].summer}）` : ''}</div>
@@ -59,7 +64,7 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
   const renderTabs = () => {
     tabs.innerHTML = w.cities.map((_c, i) => {
       const id = w.mapId(i), n = w.population(i);
-      return `<button class="chip${i === shown ? ' on' : ''}" data-city="${i}" style="--cc:${CITY_COLORS[id]}">${i === w.view() ? '<i class="cv-here"></i>' : ''}${esc(w.cityName(i))} <small>${n}人 ×${(LAND_INDEX[id] ?? 1).toFixed(1)}</small></button>`;
+      return `<button class="chip${i === shown ? ' on' : ''}" data-city="${i}" style="--cc:${CITY_COLORS[id]}">${i === w.view() ? '<i class="cv-here"></i>' : ''}${esc(w.cityName(i))}${w.overlordOf(i) >= 0 ? '<i class="cv-crown"></i>' : ''} <small>${n}人 ×${(LAND_INDEX[id] ?? 1).toFixed(1)}</small></button>`;
     }).join('');
   };
   const show = async (i: number) => {

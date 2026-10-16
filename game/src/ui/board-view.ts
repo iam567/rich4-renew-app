@@ -16,6 +16,7 @@ import { describe, InfoBubble } from './map-info';
 import { drawForkArrows } from './fork-arrows';
 import type { TiledGround } from './ground';
 import { GroundCache } from './ground-cache';
+import { casinoSprite } from './casino-sprite'; // 大富翁城 (docs/rules/19)
 import { timeout, watch } from './watchdog';
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
 
@@ -398,6 +399,8 @@ export class BoardView {
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
     const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
     if (fa.level) {
+      const casino = casinoSprite(fa); // 大富翁城's casino (docs/rules/19)
+      if (casino) return { res: casino, frame: buildingFrame(0, this.rot) };
       const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
       return { res: stage === 0 ? 87 + i : 104 + inStage * 17 + i, frame: buildingFrame(0, this.rot) };
     }
@@ -1164,7 +1167,13 @@ export class BoardView {
     // 2. Event icons, flat on the ground (map#24, frame aux - 1, never rotated).
     for (const n of b.nodes) {
       // 大富豪模式 (docs/rules/17 §2): 車站 / 機場 have their own pads (map sprites 9017 / 9018, the size of map#24's).
-      if (n.event === 17 || n.event === 18) { const p = visible(n.x, n.y, 60); if (p) this.sprite('map', n.event === 17 ? 9017 : 9018, 0, p.x, p.y); continue; }
+      if (n.event === 17 || n.event === 18) {
+        const p = visible(n.x, n.y, 60);
+        if (p) {
+          this.sprite('map', n.event === 17 ? 9017 : 9018, 0, p.x, p.y);
+        }
+        continue;
+      }
       if (!n.aux) continue;
       const p = visible(n.x, n.y, 60);
       if (p) this.sprite('map', 24, n.aux - 1, p.x, p.y);
@@ -1204,7 +1213,7 @@ export class BoardView {
       if (fa.tmpState) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
-        const res = stage === 0 ? 87 + i : 104 + inStage * 17 + i;
+        const res = casinoSprite(fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i); // 大富翁城's casino (docs/rules/19)
         add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
       } else if (fa.owner) {
         const ch = g.players[fa.owner - 1]?.character ?? 0;

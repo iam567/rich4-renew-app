@@ -46,6 +46,29 @@ export const TOOLS: readonly ToolDef[] = [
   { id: 13, name: '核子飛彈', price: 250, supply: 0, tier: 2, aggression: 2, inShop: false },
 ];
 
+/**
+ * 大富豪模式's lab tools (docs/rules/17 §3.6), only from the 研究所 of some cities: 14 超級工人 (+2 levels),
+ * 15 洲際飛彈 (a nuclear missile on any lot of any city), 16 時空機 (a 傳送機 that also crosses to another city).
+ * Never in the shop nor in the black market (TOOLS stays the original 13).
+ */
+export const TYCOON_TOOLS: readonly ToolDef[] = [
+  { id: 14, name: '超級工人', price: 60, supply: 0, tier: 2, aggression: 1, inShop: false },
+  { id: 15, name: '洲際飛彈', price: 400, supply: 0, tier: 2, aggression: 2, inShop: false },
+  { id: 16, name: '時空機', price: 160, supply: 0, tier: 2, aggression: 1, inShop: false },
+];
+export const toolDef = (id: number): ToolDef | undefined => TOOLS[id - 1] ?? TYCOON_TOOLS[id - 14];
+export const isTycoonTool = (id: number) => id > TOOLS.length;
+/** A tool's icon: Panel#11.(id+1) for the original 13, Data#614..616 (maps/remake/tools/) for the lab tools. */
+export const toolIcon = (id: number): { archive: 'Panel' | 'Data'; id: number; frame: number } =>
+  id > TOOLS.length ? { archive: 'Data', id: 600 + id, frame: 0 } : { archive: 'Panel', id: 11, frame: id + 1 };
+/**
+ * 大富豪模式's city labs (17 §3.6) by map id: still five slots, some replaced by the advanced tools (「限定」). 東京
+ * keeps the original list.
+ */
+export const TYCOON_LABS: Record<number, number[]> = {
+  101: [14, 10, 11, 12, 13], 102: [14, 10, 11, 12, 13], 103: [9, 10, 11, 12, 15], 104: [14, 10, 16, 12, 15],
+};
+
 export const MAX_HELD = 9;
 /** Starting tools (01 §2.3, 05 §2.1). */
 export const STARTING_TOOLS = [1, 2, 3, 4, 8, 9];
@@ -58,7 +81,7 @@ const AI_SHOP_ORDER = [8, 2, 7, 1, 4, 3];
 const VIEW_HALF = 220;
 const MISSILE_HALF = 100;
 /** Facility level caps by type (ref_00474940). */
-const FACILITY_MAX = [1, 5, 5, 1, 5];
+const FACILITY_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19)
 /** Objects that hurt whoever stops on them (remote dice AI, 05 §10.1.3). */
 const HARMFUL = new Set([5, 6, 7, 8, 10, 11, 16, 17, 18]);
 /** Lab options 1..5 (05 §7). */
@@ -72,6 +95,7 @@ const CARD_INFO: readonly [name: string, price: number, f7: number][] = [
   ['夢遊卡', 25, 1], ['陷害卡', 20, 2], ['復仇卡', 20, 0], ['嫁禍卡', 40, 0], ['免費卡', 25, 0],
   ['免罪卡', 25, 0], ['送神符', 10, 0], ['請神符', 20, 0], ['紅卡', 50, 0], ['黑卡', 30, 1],
   ['查稅卡', 35, 1], ['漲價卡', 35, 0], ['查封卡', 35, 1], ['同盟卡', 40, 0], ['烏龜卡', 70, 0],
+  ['飛行卡', 20, 0], ['電車卡', 10, 0], ['遣返卡', 15, 1], ['獨裁卡', 300, 2], ['召集卡', 25, 1], ['通緝卡', 60, 2], // 大富豪模式 only (cards.ts TYCOON_CARDS)
 ];
 const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
 /** Hand limit for buying cards (05 §8.4, the card module's HAND_LIMIT). */
@@ -171,7 +195,7 @@ export class Tools {
 
   /** Give a tool if under the cap of 9 and in stock for tools 1-8 (05 §2.1, fcn_00445a4d). */
   receive(p: Player, tool: number): boolean {
-    if (tool < 1 || tool > 13 || p.tools[tool - 1] >= MAX_HELD) return false;
+    if (tool < 1 || tool > (this.g.world ? 16 : 13) || p.tools[tool - 1] >= MAX_HELD) return false;
     if (tool <= 8) {
       if (this.shopStock[tool - 1] <= 0) return false;
       this.shopStock[tool - 1] -= 1;
@@ -213,16 +237,17 @@ export class Tools {
    * 13 tools; tools 1-8 return to the stock. Returns Σ price × count at full price (fate and magic house add it
    * to the points; bankruptcy and Death do not).
    */
-  sellAll(p: Player): number {
+  sellAll(p: Player, all = false): number {
     const v = p.traffic & 3;
     if (v === 1 || v === 2) p.tools[v + 3] += 1;
     else if (v === 3) p.tools[11] += 1;
     if (v) { p.traffic = 0; p.dice = 1; }
     let sum = 0;
-    for (let i = 0; i < 13; i++) {
+    // 大富豪模式's lab tools (ids 14-16) stay, except on bankruptcy (`all`, 17 §3.7).
+    for (let i = 0; i < (all ? p.tools.length : 13); i++) {
       const n = p.tools[i];
       if (!n) continue;
-      sum += TOOLS[i].price * n;
+      sum += (TOOLS[i] ?? toolDef(i + 1))!.price * n;
       if (i < 8) this.shopStock[i] += n;
       p.tools[i] = 0;
     }
@@ -232,8 +257,8 @@ export class Tools {
   /** Fate / magic house "sell all tools": the same, the caller adds the value to the points. */
   sellAllForPoints(p: Player): number { return this.sellAll(p); }
 
-  /** Sell every tool of a player (bankruptcy). */
-  *dropAll(p: Player): Flow { this.sellAll(p); }
+  /** Sell every tool of a player (死神; bankruptcy with `all`). */
+  *dropAll(p: Player, all = false): Flow { this.sellAll(p, all); }
 
   /**
    * Vehicle destroyed fcn_0040cd07 (01 §5.2, 05 §5.4): on the road a scooter or car is scrapped (back to the shop
@@ -345,6 +370,11 @@ export class Tools {
 
   // ---------------------------------------------------------------- lab (02 §4.5, 05 §7)
 
+  /** The lab's five tools (05 §7; a tycoon city's own list, 17 §3.6). */
+  labOptions(): number[] { return (this.g.world && TYCOON_LABS[this.g.settings.mapId]) || LAB_OPTIONS; }
+  /** The tool a lab order (1..5) delivers: 9..13 in a normal game. */
+  labToolId(choice: number): number { return this.labOptions()[choice - 1] ?? choice + 8; }
+
   /** Owner stops on a built lab: start developing a tool, 5 turns (fcn_0044101d). */
   *labStop(p: Player, facility: number): Flow {
     const f = this.g.board.facilities.find(x => x.id === facility) ?? this.g.board.facilities[facility - 1];
@@ -354,22 +384,22 @@ export class Tools {
     if (this.g.isHuman(p)) {
       // All five with their icons Panel#11.10-14, those above the lab's level greyed (fcn_0044101d draws every
       // icon and darkens the boxes from the level on).
-      const options: Option[] = LAB_OPTIONS.map((t, i) => ({
-        label: TOOLS[t - 1].name, value: i + 1, disabled: i >= top, detail: i >= top ? `需 ${i + 1} 級` : '5 天完成',
-        icon: { archive: 'Panel', id: 11, frame: t + 1 },
+      const options: Option[] = this.labOptions().map((t, i) => ({
+        label: toolDef(t)!.name, value: i + 1, disabled: i >= top, detail: i >= top ? `需 ${i + 1} 級` : '5 天完成',
+        icon: toolIcon(t), ...(isTycoonTool(t) ? { badge: '限定' } : {}),
       }));
       choice = Number(yield ask({ t: 'choose', p: p.id, title: '請選擇欲開發道具', text: `研究所 ${top} 級：可開發前 ${top} 種道具`, options, cancellable: true, layout: 'lab' }));
       if (!(choice >= 1 && choice <= top)) return;
     }
     f.labTool = choice;
     f.labDays = 5;
-    yield { t: 'fx', kind: 'lab-order', p: p.id, data: { facility: f.id, tool: choice + 8 } };
+    yield { t: 'fx', kind: 'lab-order', p: p.id, data: { facility: f.id, tool: this.labToolId(choice) } };
   }
 
   /** Lab finished: the developed tool (02 §4.5, 05 §7); not delivered when 9 are already held. */
   *labDone(p: Player, tool: number): Flow {
     // Message box 「%s開發完成！」 1500 ms (core_actions:4590-4605).
-    yield* this.g.say(undefined, `${TOOLS[tool - 1]?.name ?? ''}開發完成！`);
+    yield* this.g.say(undefined, `${toolDef(tool)?.name ?? ''}開發完成！`);
     this.receive(p, tool);
   }
 
@@ -379,13 +409,13 @@ export class Tools {
   *humanUse(p: Player): Flow {
     for (;;) {
       // The held tools packed in tool order, each with its icon Panel#11.(id+1) and count (09 §7.3).
-      const options: Option[] = TOOLS.filter(t => p.tools[t.id - 1] > 0)
-        .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: { archive: 'Panel', id: 11, frame: t.id + 1 } }));
+      const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : [])].filter(t => p.tools[t.id - 1] > 0)
+        .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: toolIcon(t.id) }));
       const v = p.traffic;
       if (v === 1 || v === 2) options.push({ label: '下車', value: 99, icon: { archive: 'Panel', id: 11, frame: v === 1 ? 15 : 16 } });
       const a = Number(yield ask({ t: 'choose', p: p.id, title: '道具', options, cancellable: true, layout: 'tiles' }));
       if (a === 99 && (v === 1 || v === 2)) { this.getOff(p); yield { t: 'fx', kind: 'get-off', p: p.id }; return; }
-      if (!(a >= 1 && a <= 13) || p.tools[a - 1] <= 0) return;
+      if (!(a >= 1 && a <= (this.g.world ? 16 : 13)) || p.tools[a - 1] <= 0) return;
       if (yield* this.use(p, a)) return;
     }
   }
@@ -413,8 +443,70 @@ export class Tools {
       case 10: return yield* this.timeMachine(p);
       case 11: return yield* this.teleporter(p, param);
       case 12: return yield* this.constructionVehicle(p);
+      case 14: return !!this.g.world && (yield* this.robotWorker(p, param, 14));
+      case 15: return yield* this.icbm(p, param);
+      case 16: return yield* this.spaceTime(p, param);
     }
     return false;
+  }
+
+  /**
+   * 洲際飛彈 (大富豪模式, 17 §3.6): a nuclear missile on any lot of any city. Param: city × 10000 + lot ref. In the
+   * player's own city it is the nuclear missile without the screen limit; elsewhere that city's blast runs there.
+   */
+  private *icbm(p: Player, param?: number): Flow<boolean> {
+    const g = this.g, w = g.world;
+    if (!w) return false;
+    let city: number, target: number;
+    if (param !== undefined) { city = Math.floor(param / 10000); target = param % 10000; }
+    else {
+      city = Number(yield ask({ t: 'choose', p: p.id, title: '洲際飛彈：打哪一座城市？', options: w.hooks.icbmCities(p), cancellable: true }));
+      if (!(city >= 0)) return false;
+      target = city === w.index
+        ? Number(yield ask({ t: 'pick-node', p: p.id, title: '洲際飛彈', nodes: g.board.nodes.filter(n => n.adjacent.some(Boolean)).map(n => n.id), cancellable: true }))
+        : Number(yield ask({ t: 'choose', p: p.id, title: '洲際飛彈：打哪一塊地？', options: w.hooks.icbmTargets(p, city), cancellable: true, layout: 'faces' }));
+    }
+    if (!target || target < 0) return false;
+    if (city === w.index) {
+      const at = this.position(target);
+      if (!at) return false;
+      this.consume(p, 15);
+      yield { t: 'fx', kind: 'nuke', p: p.id, data: { x: at.x, y: at.y, icbm: true } };
+      yield* this.blast(p, at.x, at.y, VIEW_HALF, true);
+      return true;
+    }
+    this.consume(p, 15);
+    yield* w.hooks.icbm(g, p, city, target);
+    return true;
+  }
+
+  /** Another city's nuclear blast (洲際飛彈 from elsewhere): the nuke's damage around (x, y). */
+  *nukeAt(p: Player, x: number, y: number): Flow {
+    yield { t: 'fx', kind: 'nuke', p: p.id, data: { x, y, icbm: true } };
+    yield* this.blast(p, x, y, VIEW_HALF, true);
+  }
+
+  /**
+   * 時空機 (大富豪模式, 17 §3.6): either the 傳送機 in this city, or at once to another city's airport (no fare, no
+   * turn 在路上; the turn ends there). Param: a node for the teleporter, 100000 + city for the crossing.
+   */
+  private *spaceTime(p: Player, param?: number): Flow<boolean> {
+    const g = this.g, w = g.world;
+    if (!w) return false;
+    let a = param;
+    if (a === undefined) {
+      const options: Option[] = [{ label: '本城傳送', value: -2, detail: '和傳送機一樣' }, ...w.hooks.spaceTimeCities(p)];
+      a = Number(yield ask({ t: 'choose', p: p.id, title: '時空機', text: '在本城當傳送機用，或立刻穿越到另一座城市的機場', options, cancellable: true }));
+      if (a === -2) return yield* this.teleporter(p, undefined, 16);
+      if (!(a >= 0)) return false;
+      a += 100000;
+    }
+    if (a < 100000) return yield* this.teleporter(p, a, 16);
+    const city = a - 100000;
+    if (city === w.index || !w.hooks.spaceTimeCities(p).some(o => o.value === city && !o.disabled)) return false;
+    this.consume(p, 16);
+    yield* w.hooks.spaceTime(g, p, city);
+    return true;
   }
 
   /** Robot doll (05 §3.1): actor 8 walks 9 steps from the owner, removing every object it reaches. */
@@ -536,7 +628,7 @@ export class Tools {
   }
 
   /** Robot worker (05 §3.8): one free level on any lot on screen; used up even when the lot is topped out. */
-  private *robotWorker(p: Player, param?: number): Flow<boolean> {
+  private *robotWorker(p: Player, param?: number, tool = 9): Flow<boolean> {
     const g = this.g;
     let ref = param;
     if (ref === undefined) {
@@ -545,23 +637,27 @@ export class Tools {
         const r = g.node(n).ref;
         if (((r > 2000 && r < 4000) || (r > 4000 && r < 6000)) && !refs.has(r)) refs.set(r, n);
       }
-      const node = Number(yield ask({ t: 'pick-node', p: p.id, title: '使用機器工人', nodes: [...refs.values()], cancellable: true, onScreen: true, plot: true }));
+      const node = Number(yield ask({ t: 'pick-node', p: p.id, title: `使用${toolDef(tool)!.name}`, nodes: [...refs.values()], cancellable: true, onScreen: true, plot: true }));
       ref = node ? g.node(node)?.ref : 0;
     }
     if (!ref || !((ref > 2000 && ref < 4000) || (ref > 4000 && ref < 6000))) return false;
-    this.consume(p, 9);
+    this.consume(p, tool);
     let level = -1;
     if (ref > 4000) {
       const f = g.board.facilities[ref - 4001];
       if (f.level === 0) {
         // An empty large plot: choose the facility type first (human dialog; a computer's own plot rand() % 4 + 1).
-        f.type = g.isHuman(p)
+        // 大富翁城 (docs/rules/19): only casinos are built there, no type to choose.
+        const only = g.rules?.facilityType?.(f);
+        f.type = only !== undefined ? only : g.isHuman(p)
           ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
           : f.owner === p.id + 1 ? g.rng.rand() % 4 + 1 : 0;
         f.level = 1;
         level = 1 | (f.level >= FACILITY_MAX[f.type] ? 0x80 : 0);
       } else level = g.freeUpgrade(ref);
     } else level = g.freeUpgrade(ref);
+    // 超級工人 (17 §3.6): a second free level, when there is room.
+    if (tool === 14 && level >= 0 && !(level & 0x80)) { const l2 = g.freeUpgrade(ref); if (l2 >= 0) level = l2; }
     yield { t: 'fx', kind: 'robot-worker', p: p.id, data: { ref, level: level < 0 ? -1 : level & 0x7f, done: level >= 0 && (level & 0x80) !== 0 } };
     yield { t: 'board' };
     return true;
@@ -578,7 +674,7 @@ export class Tools {
   }
 
   /** Teleporter (05 §3.9). A computer always moves itself to its pre-chosen node. */
-  private *teleporter(p: Player, param?: number): Flow<boolean> {
+  private *teleporter(p: Player, param?: number, tool = 11): Flow<boolean> {
     const g = this.g;
     let src: Source;
     let dest = 0;
@@ -595,7 +691,7 @@ export class Tools {
       for (const o of g.objects.slots) if (o.type && o.node && !o.owner) { sources.push({ kind: 'object', node: o.node }); spots.push({ at: 'node', id: o.node, label: OBJECT_NAMES[o.type - 1] ?? '物品' }); }
       for (const l of g.board.lands) { sources.push({ kind: 'land', ref: l.id + 2000 }); spots.push({ at: 'plot', id: l.id + 2000, label: l.name }); }
       for (const f of g.board.facilities) { sources.push({ kind: 'facility', ref: f.id + 4000 }); spots.push({ at: 'plot', id: f.id + 4000, label: f.name }); }
-      const k = Number(yield ask({ t: 'pick-map', p: p.id, title: '使用傳送機', spots, cancellable: true, onScreen: true }));
+      const k = Number(yield ask({ t: 'pick-map', p: p.id, title: `使用${toolDef(tool)!.name}`, spots, cancellable: true, onScreen: true }));
       if (!(k >= 0 && k < sources.length)) return false;
       src = sources[k];
       const targets = src.kind === 'land'
@@ -632,7 +728,7 @@ export class Tools {
       yield { t: 'teleport', p: src.id, node: dest };
       if (self) this.pending = 'land';
     }
-    this.consume(p, 11);
+    this.consume(p, tool);
     yield { t: 'board' };
     return true;
   }
@@ -729,19 +825,19 @@ export class Tools {
     const g = this.g;
     if (!p.whoPlays || g.isHuman(p)) return;
     const list: number[] = [];
-    for (let t = 1; t <= 13; t++) if (t !== 10 && p.tools[t - 1] > 0) list.push(t);
+    for (let t = 1; t <= (g.world ? 16 : 13); t++) if (t !== 10 && p.tools[t - 1] > 0) list.push(t);
     const n = list.length;
     if (!n) return;
     const temper = this.temper(p);
     const start = n > 4 ? g.rng.below(n) : 0;
     for (let k = 0; k < 4; k++) {
       const t = list[(start + k) % n];
-      const d = TOOLS[t - 1].aggression - temper;
+      const d = toolDef(t)!.aggression - temper;
       if (d >= 2) continue;
       if (d === 1 && g.rng.below(3) !== 0) continue;
       const param = this.judge(p, t);
       if (param === null) continue;
-      yield* g.say(p.id, `使用${TOOLS[t - 1].name}`);
+      yield* g.say(p.id, `使用${toolDef(t)!.name}`);
       yield* this.use(p, t, param);
       return;
     }
@@ -767,6 +863,10 @@ export class Tools {
       case 11: return this.judgeTeleporter(p);
       case 12: return (p.traffic & 3) !== 3 && this.g.rng.below(15) <= this.temper(p) ? 0 : null;
       case 13: return this.judgeNuke(p);
+      // 大富豪模式's lab tools (17 §3.6).
+      case 14: return this.judgeWorker(p);
+      case 15: { const v = this.g.world?.hooks.aiIcbm(p) ?? -1; return v >= 0 ? v : null; }
+      case 16: { const c = this.g.world?.hooks.aiSpaceTime(this.g, p) ?? -1; return c >= 0 ? 100000 + c : this.judgeTeleporter(p); }
     }
     return null;
   }
@@ -958,6 +1058,7 @@ export class Tools {
       }
     }
     const turnover = { buy: 0, sell: 0 };
+    g.world?.hooks.syncWanted(); // 大富豪模式: one 通緝卡 per city (17 §3.5)
     if (g.isHuman(p)) yield* this.humanShop(p, turnover);
     else this.aiShop(p, turnover);
     // Turnover (05 §8.6): purchases count price × 10, sales full price × count, on the shop's company record.
@@ -1030,6 +1131,7 @@ export class Tools {
         if (!id || p.points < price || p.cards.length >= HAND_LIMIT) continue;
         p.points = (p.points - price) & 0xffff;
         g.cards.receive(p, id);
+        if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
         cards[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('buy' in a && a.buy === 'tool') {
@@ -1087,6 +1189,7 @@ export class Tools {
       if (price > bc || p.points < price || !(g.cards.remaining[id - 1] > 0)) continue;
       p.points = (p.points - price) & 0xffff;
       g.cards.receive(p, id);
+      if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
       bc -= price;
       turnover.buy += price * 10;
     }

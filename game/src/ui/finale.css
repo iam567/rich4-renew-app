@@ -1,0 +1,2 @@
+/* 大富翁城 (finale.ts): no stock market there. */
+.toolbar.finale .tb[data-key="stock"] { filter: grayscale(1); opacity: .45; }

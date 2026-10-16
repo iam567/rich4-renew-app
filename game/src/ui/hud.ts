@@ -214,7 +214,7 @@ export class Hud {
         row.className = `choices tiles ${a.layout}`;
         for (const o of a.options) {
           const pic = o.icon ? this.bank.art(o.icon.archive, o.icon.id, o.icon.frame ?? 0) : null;
-          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail)}</span>` : ''}`, o.value, 'tile', o.disabled);
+          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'faces' ? `<span class="tile-where">${esc(o.detail)}</span>` : ''}${o.badge ? `<span class="tile-badge">${esc(o.badge)}</span>` : ''}`, o.value, 'tile', o.disabled);
           if (o.detail) b.title = o.detail;
         }
         if (a.cancellable) {

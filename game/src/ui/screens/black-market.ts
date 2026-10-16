@@ -5,7 +5,7 @@
 import './black-market.css';
 import { CHARACTERS } from '../../core/characters';
 import { format } from '../../core/date';
-import { CARDS } from '../../core/modules/cards';
+import { cardDef } from '../../core/modules/cards';
 import { TOOLS } from '../../core/modules/tools';
 import type { Listing } from '../../core/modules/blackmarket';
 import { askScreens, fxScreens } from './registry';
@@ -17,6 +17,7 @@ const LAND_STAGES = ['空地', '平房', '店舖', '商場', '商業大樓', '�
 askScreens['black-market'] = (ctx, ask) => new Promise(resolve => {
   if (ask.t !== 'black-market') { resolve(-1); return; }
   const g = ctx.game, bm = g.blackMarket, p = g.players[ask.p];
+  const months = g.world ? '六' : '三'; // 大富豪模式: 6 months (17 §5.1), normal UNSOLD_MONTHS = 3
   const root = document.createElement('div');
   root.className = 'bm-overlay';
   const board = document.createElement('div');
@@ -36,9 +37,9 @@ askScreens['black-market'] = (ctx, ask) => new Promise(resolve => {
   };
   const detail = (l: Listing): string => {
     if (l.kind === 'tool') return `${TOOLS[l.id - 1]?.name ?? ''}　持有 ${p.tools[l.id - 1]}/9`;
-    if (l.kind === 'card') return CARDS[l.id - 1]?.text ?? '';
+    if (l.kind === 'card') return cardDef(l.id)?.text ?? '';
     const lot = g.board.lands[l.id - 1];
-    return `三個月沒人買的土地　原價 ${money((lot?.price ?? 0) * g.priceIndex)}`;
+    return `${months}個月沒人買的土地　原價 ${money((lot?.price ?? 0) * g.priceIndex)}`;
   };
   const render = () => {
     const face = ctx.bank.art('Data', 2, p.character)?.src ?? '';
@@ -58,7 +59,7 @@ askScreens['black-market'] = (ctx, ask) => new Promise(resolve => {
       <div class="bm-sign">黑市</div>
       <div class="bm-who"><img src="${face}" alt=""><span>${CHARACTERS[p.character].name}</span><b>現金 ${money(p.cash)}</b></div>
       <div class="bm-grid">${items}${empty}</div>
-      <div class="bm-foot"><span>只收現金 · 每月進一個道具、一張卡片；三個月沒人買的土地以五十倍地價出售</span>
+      <div class="bm-foot"><span>只收現金 · 每月進一個道具、一張卡片；${months}個月沒人買的土地以五十倍地價出售</span>
         <button class="candy ghost" data-leave="1">離開黑市</button></div>`;
   };
   board.addEventListener('click', e => {

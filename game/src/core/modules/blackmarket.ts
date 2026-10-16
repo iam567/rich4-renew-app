@@ -13,12 +13,15 @@ import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
 import { Rng, daySeed } from '../rng';
 import { LAND_LIMIT_MONTHS, type Player } from '../types';
-import { CARDS, HAND_LIMIT, cardName } from './cards';
+import { CARDS, HAND_LIMIT, TYCOON_CARDS, cardName } from './cards';
 import { MAX_HELD, TOOLS } from './tools';
 
 export const MAX_LISTINGS = 6;
 /** Months a lot must stay unowned before it is offered here. */
 export const UNSOLD_MONTHS = 3;
+/** 大富豪模式 (docs/rules/17 §5.2): six months, and of its own items only 飛行卡 / 電車卡 can turn up. */
+export const TYCOON_UNSOLD_MONTHS = 6;
+const TYCOON_DECK = [...CARDS, ...TYCOON_CARDS.filter(c => c.id === 31 || c.id === 32)];
 export const LAND_MULTIPLE = 50;
 /** Cash price of each tool before the price index (tool id - 1). */
 export const TOOL_PRICES = [8000, 6000, 8000, 12000, 20000, 40000, 100000, 10000, 30000, 80000, 60000, 50000, 300000];
@@ -78,12 +81,13 @@ export class BlackMarket {
     b.lands.forEach((l, i) => { this.unsold[i] = l.owner ? 0 : this.unsold[i] + 1; });
     this.listings = this.listings.filter(l => l.kind !== 'land' || !b.lands[l.id - 1]?.owner);
     const rng = this.rng(1), added: Listing[] = [];
-    const tool = TOOLS[rng.below(TOOLS.length)], card = CARDS[rng.below(CARDS.length)];
+    const deck = g.world ? TYCOON_DECK : CARDS, months = g.world ? TYCOON_UNSOLD_MONTHS : UNSOLD_MONTHS;
+    const tool = TOOLS[rng.below(TOOLS.length)], card = deck[rng.below(deck.length)];
     added.push({ kind: 'tool', id: tool.id, base: TOOL_PRICES[tool.id - 1], since: g.date });
     added.push({ kind: 'card', id: card.id, base: card.price * CARD_PRICE_FACTOR, since: g.date });
     // The longest-unsold lot not already on offer (ties drawn at random).
     const listed = new Set(this.listings.filter(l => l.kind === 'land').map(l => l.id));
-    const candidates = b.lands.filter((l, i) => !l.owner && this.unsold[i] >= UNSOLD_MONTHS && !listed.has(l.id));
+    const candidates = b.lands.filter((l, i) => !l.owner && this.unsold[i] >= months && !listed.has(l.id));
     if (candidates.length) {
       const top = Math.max(...candidates.map(l => this.unsold[l.id - 1]));
       const longest = candidates.filter(l => this.unsold[l.id - 1] === top);

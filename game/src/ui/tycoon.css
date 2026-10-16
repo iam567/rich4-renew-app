@@ -117,7 +117,7 @@
 .tw-tap { font-size: 12px; opacity: .7; }
 @media (max-width: 460px) { .tw-rows { grid-template-columns: 1fr; } }
 .ng-ty-who { font-size: 14px; color: #dfe8ff; align-self: center; }
-.stage:has(.ui-layer.show) .wb { visibility: hidden; }
+.stage:has(.ui-layer.show) .wb, .game:has(.pl-scene) .wb, .game:has(.fx-overlay) .wb, .game:has(.te-cover) .wb { visibility: hidden; }
 
 /* 各城市地圖 (17 §12) */
 .cv { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; flex: 1 1 auto; min-height: 0; }
@@ -146,3 +146,121 @@
 @media (max-height: 460px) { .cv-sum { font-size: 12px; gap: 1px; } .cv-tabs .chip { padding: 2px 8px; font-size: 13px; } .cv-face { width: 22px; height: 22px; } }
 .cv-info { flex: none; }
 .tv-resort { font-size: 11px; color: #0b7a8a; font-weight: 700; }
+
+/* chat box (17 §10): the other cities' news, MMO style */
+.chat { position: absolute; left: 8px; bottom: 8px; width: 38%; max-width: 480px; z-index: 3; padding: 4px 6px; border-radius: 12px; color: #fff; font-size: 13px;
+  background: rgba(10, 16, 40, .58); box-shadow: 0 2px 8px rgba(0,0,0,.3); transition: opacity .5s; pointer-events: auto; }
+.chat-list { max-height: calc(4 * 22px); overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: none; }
+.chat-list::-webkit-scrollbar { display: none; }
+.chat-row { display: flex; align-items: center; gap: 4px; height: 22px; white-space: nowrap; overflow: hidden; }
+.chat-row.in { animation: chat-in .25s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes chat-in { from { transform: translateX(-24px); opacity: 0; } }
+.chat-face { width: 18px; height: 18px; flex: none; border-radius: 50%; background: rgba(255,255,255,.3); }
+.chat-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chat-row.imp .chat-text { font-weight: 700; color: #ffe9a8; }
+.chat-row.hot .chat-text { color: #ffb0b0; }
+.chat-row.gold .chat-text { color: #ffe14a; }
+.chat.idle { opacity: .42; }
+.chat.idle .chat-list { max-height: 22px; overflow: hidden; }
+.chat.idle .chat-row:not(:last-child) { display: none; }
+.chat-new { position: absolute; right: 6px; top: -24px; padding: 2px 9px; border-radius: 999px; font-size: 12px; color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); border: 2px solid #fff; }
+.chat-new[hidden] { display: none; }
+.game.portrait .chat { left: 8px; right: 8px; width: auto; max-width: none; bottom: 6px; }
+.game.portrait .chat-list { max-height: calc(3 * 22px); }
+.stage:has(.ui-layer.show) .chat, .stage.picking .chat, .game:has(.pl-scene) .chat, .game:has(.fx-overlay) .chat, .game:has(.te-cover) .chat { visibility: hidden; }
+
+/* the full log with filters */
+.wlp { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.wlp-filters { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.wlp-filters .chip { padding: 2px 10px; font-size: 13px; }
+.wlp-who { display: flex; flex-wrap: wrap; gap: 3px; justify-content: center; }
+.wlp-face { width: 30px; height: 30px; padding: 0; border-radius: 50%; overflow: hidden; border: 2px solid transparent; background: rgba(255,255,255,.2); }
+.wlp-face img { width: 100%; height: 100%; display: block; }
+.wlp-face.on { border-color: #ffbf2e; }
+.wlp-face.out img { filter: grayscale(1); opacity: .6; }
+.wlp .wl { max-height: 46vh; }
+.wl-row.imp .wb-msg { font-weight: 700; color: #ffe9a8; }
+  border: 3px solid #fff; transform: rotate(-4deg); }
+.msg.tb.dictator { width: min(520px, 100%); background: radial-gradient(circle at 50% 30%, #7a3cff, #2a0a5a 70%); color: #fff; overflow: hidden; }
+.dc-me { width: 96px; height: 96px; margin: -50px auto 0; border-radius: 50%; overflow: hidden; border: 4px solid #ffe14a; box-shadow: 0 0 30px 8px rgba(255, 220, 80, .6); animation: te-medal .8s both; }
+.dc-me img { width: 100%; height: 100%; display: block; }
+.dc-word { font-size: 46px; font-weight: 900; letter-spacing: 6px; color: #ffe14a; text-shadow: 0 4px 0 #a04000, 0 0 20px rgba(255, 200, 60, .9); animation: te-letter .6s .3s both; }
+.dc-sub { font-size: 14px; opacity: .9; }
+.dc-sky { position: relative; height: 90px; width: 100%; }
+.dc-fly { position: absolute; left: 50%; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 2px;
+  animation: dc-fly 1.6s calc(.6s + var(--k) * .15s) cubic-bezier(.4, 0, .7, .4) both; --dx: calc((var(--k) - (var(--n) - 1) / 2) * 70px); }
+@keyframes dc-fly { from { transform: translate(-50%, 0) scale(.6); opacity: 0; } 20% { opacity: 1; transform: translate(calc(-50% + var(--dx) * .3), -10px) scale(1); }
+  to { transform: translate(calc(-50% + var(--dx) * 2.2), -160px) scale(.7) rotate(-12deg); opacity: 0; } }
+.dc-face { width: 38px; height: 38px; border-radius: 50%; overflow: hidden; border: 2px solid #fff; background: #bfe0ff; }
+.dc-face img { width: 100%; height: 100%; display: block; }
+.dc-to { font-size: 11px; padding: 0 6px; border-radius: 999px; background: rgba(255,255,255,.2); }
+
+/* 大富豪模式's 「限定」 lab tools (17 §3.6) and the 通緝卡 face list (17 §3.5) in the tile dialogs. */
+.choices.tiles .tile { position: relative; }
+.tile-badge { position: absolute; top: 2px; right: 2px; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 900; color: #fff;
+  background: linear-gradient(#ff5a7a, #d81b4a); box-shadow: 0 1px 3px rgba(0,0,0,.35); letter-spacing: 1px; }
+.choices.tiles.faces { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.choices.tiles.faces .tile-pic img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; }
+.choices.tiles.faces .tile[disabled] { filter: grayscale(1); opacity: .55; }
+.tile-where { display: block; font-size: 10px; line-height: 1.1; opacity: .8; }
+@media (max-aspect-ratio: 1/1) { .choices.tiles.faces { grid-template-columns: repeat(4, 1fr); } }
+
+/* 召集卡 / 通緝卡 / notices from other cities (17 §3.5). */
+.msg.tb.summon { width: min(520px, 100%); background: radial-gradient(circle at 50% 30%, #1fb5b0, #053c46 70%); color: #fff; overflow: hidden; }
+.sm-row { display: flex; align-items: center; justify-content: center; gap: 18px; margin-top: 2px; }
+.sm-row .dc-me { margin: 0; }
+.sm-bell { width: 34px; height: 30px; background: linear-gradient(#ffe98a, #e0a020); border-radius: 17px 17px 4px 4px; position: relative; animation: sm-ring .25s 6 alternate; }
+.sm-bell::after { content: ''; position: absolute; left: 12px; bottom: -6px; width: 10px; height: 8px; border-radius: 50%; background: #c08010; }
+@keyframes sm-ring { from { transform: rotate(-18deg); } to { transform: rotate(18deg); } }
+.sm-in { display: grid; justify-items: center; animation: sm-fly 1.2s ease-out both; }
+.sm-in img { width: 64px; height: 64px; border-radius: 50%; border: 3px solid #fff; }
+.sm-in em { font-style: normal; font-size: 11px; opacity: .85; }
+@keyframes sm-fly { from { transform: translate(140px, -60px) scale(.4); opacity: 0; } to { transform: none; opacity: 1; } }
+.msg.tb.wanted { width: min(480px, 100%); background: radial-gradient(circle at 50% 40%, #3a0a10, #12040a 75%); color: #fff; overflow: hidden;
+  animation: wt-siren .5s 4 alternate; }
+@keyframes wt-siren { from { box-shadow: -30px 0 40px -10px rgba(255, 40, 40, .8); } to { box-shadow: 30px 0 40px -10px rgba(60, 120, 255, .8); } }
+.wt-poster { width: 120px; margin: 0 auto 6px; padding: 8px 8px 10px; background: #f3e2b8; color: #4a2a10; border-radius: 4px; transform: rotate(-3deg);
+  box-shadow: 0 6px 18px rgba(0,0,0,.5); display: grid; justify-items: center; animation: te-medal .7s both; }
+.wt-poster b { font: 900 22px/1.1 Georgia, serif; letter-spacing: 2px; }
+.wt-poster img { width: 76px; height: 76px; object-fit: cover; border: 2px solid #6a4020; filter: sepia(.35); }
+.wt-poster span { font-weight: 900; margin-top: 2px; }
+.msg.tb.notice { width: min(460px, 100%); }
+.msg.tb.notice .dc-me { width: 56px; height: 56px; margin: 0 auto 4px; }
+
+/* 洲際飛彈 / 時空機 (17 §3.6). */
+.msg.tb.icbm { width: min(500px, 100%); background: radial-gradient(circle at 50% 35%, #ff8a3c, #4a0a06 72%); color: #fff; overflow: hidden; }
+.ic-rocket { width: 90px; margin: 0 auto; display: block; animation: ic-up 1.6s ease-in both; }
+@keyframes ic-up { 0% { transform: translate(-60px, 40px) rotate(-10deg) scale(.6); } 60% { transform: none; } 100% { transform: translate(160px, -120px) rotate(20deg) scale(.5); opacity: 0; } }
+.msg.tb.spacetime { width: min(480px, 100%); background: radial-gradient(circle at 50% 35%, #b07cff, #1a0640 72%); color: #fff; overflow: hidden; }
+.st-swirl { width: 96px; height: 96px; margin: 0 auto 4px; border-radius: 50%; display: grid; place-items: center;
+  background: conic-gradient(#ffd84a, #b07cff, #4ad8ff, #ffd84a); animation: st-spin 1s linear infinite; box-shadow: 0 0 40px 10px rgba(180, 120, 255, .7); }
+.st-swirl img { width: 68px; animation: st-spin 1s linear infinite reverse; }
+@keyframes st-spin { to { transform: rotate(360deg); } }
+.choices.tiles .tile-pic img[src*="remake/tools"] { object-fit: contain; }
+
+/* 本月全國富豪榜 (17 §6). */
+.tw-row.rich { font-size: 15px; }
+.tw-rank { width: 26px; height: 26px; border-radius: 50%; display: inline-grid; place-items: center; font-weight: 900; background: #e8e2d4; color: #5a4020; margin-left: auto; }
+.tw-rank.gold { background: linear-gradient(#ffe98a, #e0a020); color: #5a3000; }
+.tw-rank.silver { background: linear-gradient(#f4f4f4, #a8b0b8); }
+.tw-rank.bronze { background: linear-gradient(#f0c090, #b06a30); color: #3a1a00; }
+.tw-gap { text-align: center; opacity: .6; line-height: 1; }
+
+/* 城市霸主 (17 §3.8). */
+.pp-overlord { position: absolute; right: 28px; top: calc(54px + var(--i, 0) * 16px); padding: 0 5px 0 17px; border-radius: 8px; font-size: 10px; line-height: 15px; font-weight: 900;
+  color: #5a3000; background: linear-gradient(#ffe98a, #e0a020) no-repeat; box-shadow: 0 1px 3px rgba(0,0,0,.35); z-index: 2; }
+.pp-overlord::before, .cv-crown, .ol-crown { content: ''; display: inline-block; width: 13px; height: 9px; background: #ffd23a;
+  clip-path: polygon(0 100%, 0 20%, 25% 60%, 50% 0, 75% 60%, 100% 20%, 100% 100%); }
+.pp-overlord::before { position: absolute; left: 3px; top: 4px; background: #a05a00; }
+.info-where.overlord { color: #ffd23a; font-weight: 900; }
+.cv-crown { margin-left: 3px; vertical-align: 1px; }
+.cv-lord { color: #ffd23a; font-weight: 700; } .cv-lord img { width: 20px; height: 20px; border-radius: 50%; vertical-align: -5px; margin: 0 3px; }
+.cv-lord.none { color: #dfe8ff; font-weight: 400; opacity: .8; font-size: .9em; }
+.tv-lord { font-size: 11px; font-weight: 900; color: #a05a00; }
+.msg.tb.overlord { width: min(460px, 100%); background: radial-gradient(circle at 50% 30%, #fff1a8, #e0a020 75%); color: #4a2a00; }
+.msg.tb.overlord.lost { filter: grayscale(.7); }
+.msg.tb.overlord .dc-word { color: #fff; text-shadow: 0 3px 0 #a05a00, 0 0 18px rgba(255, 255, 255, .8); }
+.ol-crown { width: 56px; height: 38px; margin: 0 auto 2px; display: block; background: linear-gradient(#fff3a0, #e0a020); filter: drop-shadow(0 3px 2px rgba(0,0,0,.35)); }
+.msg.tb.overlord.small .ol-crown { width: 34px; height: 24px; }
+
+.msg.tb.overlord .dc-me, .msg.tb.summon .dc-me { width: 64px; height: 64px; margin: 0 auto; }

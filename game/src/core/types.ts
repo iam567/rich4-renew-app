@@ -90,7 +90,8 @@ export interface Player {
 /** One option of a choice question. */
 /** Picture for an option: a frame of an original resource (the screen uses the redrawn one when there is one). */
 export interface OptionIcon { archive: 'Data' | 'Panel' | 'map'; id: number; frame?: number }
-export interface Option { label: string; value: number; disabled?: boolean; detail?: string; icon?: OptionIcon }
+/** `badge`: a small corner tag (大富豪模式's 「限定」 lab tools). */
+export interface Option { label: string; value: number; disabled?: boolean; detail?: string; icon?: OptionIcon; badge?: string }
 
 /**
  * One choice of a map pick (`pick-map`): `node` a road node (id = node id, e.g. a roadblock on it), `plot` a lot or
@@ -111,7 +112,7 @@ export type Ask =
    */
   | { t: 'bank'; p: number; counter: boolean; maxLoan: number; canWithdraw: boolean; canBorrow: boolean; finance?: { total: number; used: number } }
   /** Pick one option; answer: the option value, or -1 to cancel when cancellable. */
-  | { t: 'choose'; p: number; title: string; text?: string; options: Option[]; cancellable: boolean; layout?: 'tiles' | 'cards' | 'lab'; screen?: string }
+  | { t: 'choose'; p: number; title: string; text?: string; options: Option[]; cancellable: boolean; layout?: 'tiles' | 'cards' | 'lab' | 'faces'; screen?: string }
   /**
    * The shop (05 §8, 09 §7.4): card shelf `cards` and tool shelf `tools` (ids, 0 = sold), the player's points.
    * Answer: { buy: 'card' | 'tool', index } (shelf position), { sell: 'card', index } (hand position),
@@ -158,7 +159,7 @@ export type Ask =
    * 大富豪模式 travel (docs/rules/17 §3): a station or airport square offers the trip. Answer: the destination's city
    * index, or -1 to stay.
    */
-  | { t: 'travel'; p: number; via: 'station' | 'airport'; from: string; options: TravelOption[] }
+  | { t: 'travel'; p: number; via: 'station' | 'airport'; from: string; options: TravelOption[]; card?: boolean }
   /** Enter an amount; answer: number, or -1 to cancel. */
   | { t: 'amount'; p: number; title: string; text?: string; min: number; max: number; step: number };
 
@@ -208,7 +209,7 @@ export type GameEvent =
    * 大富豪模式 (docs/rules/17 §10): a line of the live ticker. `map` the city (index) it happened in, `p` the player
    * concerned; `kind` groups lines (buy, build, pay, bankrupt, travel, arrive, title …) for icons and filters.
    */
-  | { t: 'ticker'; map: number; text: string; p?: number; kind: string; day: number }
+  | { t: 'ticker'; map: number; text: string; p?: number; kind: string; day: number; important?: boolean; from?: number; amount?: number; count?: number }
   /** 大富豪模式: the screen should show city `map` now (the human travelled); the engine's `game` there. */
   | { t: 'world-view'; map: number }
   /** 大富豪模式: players came or went on the shown city out of sight (arrivals, a full hospital); redraw them. */

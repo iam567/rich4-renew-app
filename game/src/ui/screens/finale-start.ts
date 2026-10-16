@@ -1,0 +1,50 @@
+/**
+ * 最終決戰 — the way into 大富翁城 (docs/rules/19 §2, fx 'finale-start'): the title, the four finalists with their
+ * holdings valued and paid out as cash, what the human had to sell (cards and tools that do not work there), then
+ * 「前往大富翁城」. One page in landscape and portrait; a tap (or the button) goes on.
+ */
+import { CHARACTERS } from '../../core/characters';
+import type { Valuation } from '../../core/finale';
+import { fxScreens } from './registry';
+import { esc, face, money, openScene } from './place-scene';
+import { audio, Sfx } from '../audio';
+import { ASSETS } from '../assets';
+import './finale-start.css';
+
+fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
+  const d = fx.data ?? {};
+  const vals = (d.valuations as Valuation[]) ?? [];
+  const human = ctx.game.players.find(p => p.human);
+  const mine = vals.find(v => v.p === human?.id);
+  const caps = (d.caps as number[]) ?? [];
+  audio.sfx(Sfx.fireworks);
+  const s = openScene(ctx, 'fs-scene', portrait => (portrait ? [500, 880] : [880, 500]), sc => {
+    const rows = vals.map((v, k) => {
+      const ch = CHARACTERS[ctx.game.players[v.p]?.character ?? 0];
+      const money0 = v.cash + v.bank - v.loan;
+      return `<div class="fs-card" style="animation-delay:${0.9 + k * 0.35}s">
+        ${face(ctx, ch?.id ?? 0, 'fs-face')}
+        <div class="fs-name">${esc(ch?.name ?? '')}${v.p === human?.id ? '<i>你</i>' : ''}</div>
+        <div class="fs-lines"><span>現金存款</span><b>${money(money0)}</b><span>股票</span><b>${money(v.stocks)}</b><span>地產</span><b>${money(v.property)}</b></div>
+        <div class="fs-total">結算現金<b>${money(Math.max(0, v.total))}</b></div>
+      </div>`;
+    }).join('');
+    const sold = mine?.sold.length
+      ? `<div class="fs-sold">以下卡片、道具在大富翁城無法使用，已自動賣出：<b>${mine.sold.map(x => `${esc(x.name)}×${x.n}`).join('、')}</b>，共得 <b>${money(mine.points)}</b> 點券</div>`
+      : '';
+    sc.box(`fs-root ${sc.portrait ? 'por' : 'land'}`, 0, 0, sc.w, sc.h, `
+      <div class="fs-bg" style="background-image:url('${ASSETS}/maps/remake/finale-thumb.jpg')"></div>
+      <div class="fs-rays"></div>
+      <div class="fs-title">最終決戰<small>只剩 ${vals.length} 人！全體前往 大富翁城</small></div>
+      <div class="fs-cards">${rows}</div>
+      <div class="fs-rule">所有地產、建築、股票照總資產估價後換成現金（原本的地產凍結保留到結局）・點券、卡片、道具保留<br>
+        大富翁城只有 8 塊賭場用地：停在別人的賭場必須賭一局・每次輸贏上限 Lv1 ${money(caps[1] ?? 10000)} … Lv5 ${money(caps[5] ?? 80000)}</div>
+      ${sold}
+      <button class="candy yes fs-go">前往大富翁城</button>`);
+    sc.stage.querySelector<HTMLButtonElement>('.fs-go')!.onclick = e => { e.stopPropagation(); finish(); };
+  });
+  let over = false;
+  const finish = () => { if (over) return; over = true; audio.ui('yes'); s.close(); done(); };
+  // Computers only (tests, a human who is out): it goes on alone; the human taps the button.
+  if (!human || human.bankrupt) void s.wait(5000).then(finish);
+});

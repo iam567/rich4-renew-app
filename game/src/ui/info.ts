@@ -5,7 +5,7 @@
 import { CHARACTERS } from '../core/characters';
 import { day, month, year } from '../core/date';
 import type { Game } from '../core/game';
-import { TOOLS } from '../core/modules/tools';
+import { TOOLS, TYCOON_TOOLS, toolIcon } from '../core/modules/tools';
 import { cardName } from '../core/modules/cards';
 import type { SpriteBank } from './sprites';
 import { tycoon } from './tycoon';
@@ -13,7 +13,7 @@ import { tycoon } from './tycoon';
 const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const LAND_STAGES = ['空　地', '平　房', '店　舖', '商　場', '商業大樓', '摩天大樓'];
-const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所'];
+const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館']; // 5..9 大富翁城's halls (docs/rules/19)
 const FILTERS = ['全部', '住宅區', '商業區', '房屋', '連鎖店'];
 const PAGES = ['資產', '地產', '股票'];
 
@@ -56,7 +56,7 @@ export class InfoScreen {
     }).join('');
     const side = `<div class="info-side">
       <div class="info-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-      ${w ? `<div class="info-where">${w.whereText(p)}</div>${p.human && w.fallen.some(x => x.title) ? `<div class="info-where gold">${w.fallen.filter(x => x.title).slice(-1)[0].title}</div>` : ''}` : ''}
+      ${w ? `<div class="info-where">${w.whereText(p)}</div>${w.overlordTitles(p).map(t => `<div class="info-where overlord">${t}</div>`).join('')}${p.human && w.fallen.some(x => x.title) ? `<div class="info-where gold">${w.fallen.filter(x => x.title).slice(-1)[0].title}</div>` : ''}` : ''}
       ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small></div>` : ''}
       ${PAGES.map((t, i) => `<button class="info-page${i === this.page ? ' on' : ''}" data-page="${i}">${t}</button>`).join('')}</div>`;
     const body = this.page === 0 ? this.assets() : this.page === 1 ? this.property() : this.stocks();
@@ -72,8 +72,8 @@ export class InfoScreen {
     const stockValue = g.markets().reduce((v, m) => m.holdingsValue(v, p), 0);
     const companies = boards.reduce((n, b) => n + b.companies.filter(c => c.controller === me).length, 0);
     const cell = (label: string, value: string) => `<div class="info-cell"><span>${label}</span><b>${value}</b></div>`;
-    const tools = TOOLS.filter(t => p.tools[t.id - 1] > 0).map(t => {
-      const a = this.bank.art('Panel', 11, t.id + 1);
+    const tools = [...TOOLS, ...(g.world ? TYCOON_TOOLS : [])].filter(t => p.tools[t.id - 1] > 0).map(t => {
+      const ic = toolIcon(t.id), a = this.bank.art(ic.archive, ic.id, ic.frame);
       return `<span class="info-tool" title="${t.name}">${a ? `<img src="${a.src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
     }).join('') || '<span class="info-none">沒有道具</span>';
     const cards = p.cards.map(id => `<span class="info-card">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';

@@ -39,9 +39,10 @@ export async function mapList(): Promise<MapInfo[]> {
   // The remake's own maps (ids 8..999) lead the 自製地圖 list; each may replace a workshop map in the list.
   const replaced = new Set<number>();
   try {
-    const r = await json<{ maps: { id: number; name: string; thumbnail: string; data: string; image: string; replaces?: number[] }[] }>(`${ASSETS}/maps/remake/index.json`);
+    const r = await json<{ maps: { id: number; name: string; thumbnail: string; data: string; image: string; replaces?: number[]; hidden?: boolean }[] }>(`${ASSETS}/maps/remake/index.json`);
     for (const x of r.maps) {
-      list.push({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: true, kind: 'custom', data: x.data, image: x.image });
+      // `hidden`: a map only 大富豪模式 uses (大富翁城, its finale, docs/rules/19) is known but not offered.
+      list.push({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: true, kind: 'custom', data: x.data, image: x.image, ...(x.hidden ? { hidden: true } : {}) });
       for (const id of x.replaces ?? []) replaced.add(id);
     }
   } catch { /* none installed */ }

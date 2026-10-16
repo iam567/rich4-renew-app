@@ -11,7 +11,7 @@
  * The engine asks one `shop` question per action; the scene stays up between them and is taken down on leaving.
  */
 import { CHARACTERS } from '../../core/characters';
-import { CARDS, HAND_LIMIT, cardName, cardPrice } from '../../core/modules/cards';
+import { cardDef, HAND_LIMIT, cardName, cardPrice } from '../../core/modules/cards';
 import { MAX_HELD, TOOLS, sellPrice, type ShopAnswer } from '../../core/modules/tools';
 import type { Ask } from '../../core/types';
 import type { Archive } from '../sprites';
@@ -307,7 +307,7 @@ class ShopScene {
           row.classList.toggle('poor', poor);
           row.classList.toggle('full', full);
           row.innerHTML = `<span class="nm">${esc(cardName(id))}</span><span class="pr">$${price}</span>`;
-          row.title = `${cardName(id)}　$${price}\n${CARDS[id - 1].text}`;
+          row.title = `${cardName(id)}　$${price}\n${(cardDef(id)?.text ?? "")}`;
           this.press(row, () => this.buy('card', i), () => this.cardInfo(id, price));
         }
         this.rows.append(row);
@@ -503,7 +503,7 @@ class ShopScene {
 
   private cardInfo(id: number, price: number, held = false) {
     const pic = this.art('Data', 570 + id);
-    this.info(`${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<div class="txt"><b>${esc(cardName(id))}</b><p>${esc(CARDS[id - 1].text)}</p>
+    this.info(`${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<div class="txt"><b>${esc(cardName(id))}</b><p>${esc((cardDef(id)?.text ?? ""))}</p>
       <em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}</em></div>`);
   }
 

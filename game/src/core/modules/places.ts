@@ -9,6 +9,7 @@ import { CHARACTERS } from '../characters';
 import { ask, type Flow } from '../flow';
 import { Game, tick } from '../game';
 import { LAND_LIMIT_MONTHS, type Option, type Player } from '../types';
+import { cardPrice, isTycoonCard } from './cards';
 
 export interface Npc {
   node: number;
@@ -45,7 +46,7 @@ export const MAGIC_NAMES = [
 ];
 export const MAGIC_GROUPS = ['資產最多', '土地最多', '房屋最多', '現金最多', '存款最多', '點券最多', '步行者', '騎機車者', '開汽車者', '有神附身者', '所有男性', '所有女性'];
 /** Facility level caps by type (ref_00474940). */
-const FACILITY_MAX = [1, 5, 5, 1, 5];
+const FACILITY_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19)
 
 interface Seat { p: Player; flag: number; permanent: boolean; max: number; out: boolean }
 
@@ -324,10 +325,11 @@ export class Places {
       case 0: { // all cards at full price into points; the cards go back to the pool
         let sum = 0;
         for (const id of q.cards) {
-          sum += CARD_PRICES[id - 1] ?? 0;
+          if (isTycoonCard(id)) continue; // 大富豪模式's own cards stay in the hand (17 §3.7)
+          sum += CARD_PRICES[id - 1] ?? cardPrice(id);
           if (g.cards.remaining.length >= id) g.cards.remaining[id - 1] += 1;
         }
-        q.cards = [];
+        q.cards = q.cards.filter(isTycoonCard);
         q.points = (q.points + sum) & 0xffff;
         yield { t: 'points', p: q.id, amount: sum };
         break;
@@ -386,7 +388,7 @@ export class Places {
           sum += n * (TOOL_PRICES[i] ?? 0);
           if (i < 8 && g.tools.shopStock.length > i) g.tools.shopStock[i] += n; // back to the shop (推测)
         });
-        q.tools = q.tools.map(() => 0);
+        q.tools = q.tools.map((n, i) => (i < 13 ? 0 : n)); // 大富豪模式's lab tools (14-16) stay (17 §3.7)
         q.traffic = 0; q.dice = 1;
         q.points = (q.points + sum) & 0xffff;
         yield { t: 'points', p: q.id, amount: sum };
@@ -448,18 +450,19 @@ export class Places {
    * (02 §10). Bug decision #16: the seller and absent players never bid, even after a raise clears the marks.
    * Returns the buyer's id, or -1 when nothing sold (the property is left as it was).
    */
-  *auction(seller: number, ref: number): Flow<number> {
+  *auction(seller: number, ref: number, worldwide = false): Flow<number> {
     const g = this.g;
     const isFacility = ref > 4000 && ref < 6000;
     if (!isFacility && !(ref > 2000 && ref < 4000)) return -1;
     const prop = isFacility ? g.board.facilities[ref - 4001] : g.board.lands[ref - 2001];
     if (!prop) return -1;
     const start = this.reservePrice(ref);
-    yield { t: 'fx', kind: 'auction', p: seller >= 0 ? seller : undefined, data: { ref, start } };
+    // 大富豪模式's bankruptcy auctions (17 §9): every living player of the world bids; the room shows the city's lot.
+    yield { t: 'fx', kind: 'auction', p: seller >= 0 ? seller : undefined, data: { ref, start, ...(g.world ? { city: g.world.index, worldwide } : {}) } };
     // Seats (02 §10.3): later marks overwrite earlier ones.
     const seats: Seat[] = [];
     for (const p of g.players) {
-      if (!p.whoPlays || !g.here(p)) continue; // 大富豪模式: only who is in this city bids (docs/rules/17 §9)
+      if (!p.whoPlays || (!worldwide && !g.here(p))) continue; // 大富豪模式: who is in this city bids, everyone at a bankruptcy (17 §9)
       let flag = 0;
       if (p.cash <= start) flag = 8;
       if (p.hotel) flag = 1;

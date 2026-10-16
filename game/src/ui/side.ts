@@ -71,6 +71,7 @@ export class PlayerPanel {
       <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
       ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
+      ${g.world ? g.world.hooks.overlordTitles(p).map((t, i) => `<div class="pp-overlord" style="--i:${i}">${t}</div>`).join('') : ''}
       ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
         <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}
       <div class="pp-price">物價指數 ${g.priceIndex}</div>

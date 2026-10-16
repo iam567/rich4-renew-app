@@ -19,7 +19,7 @@ import { Tools } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
-  type GameSettings, type Player, type TurnAnswer,
+  type GameSettings, type Option, type Player, type TurnAnswer,
 } from './types';
 
 export type { Flow } from './flow';
@@ -46,12 +46,69 @@ export interface WorldHooks {
   humanMarket(p: Player, g: Game): Flow;
   /** Every city's engine, in world order. */
   allCities(): Game[];
+  /**
+   * 飛行卡 / 電車卡 (17 §3.5): the travel dialog with a free ticket from where the player stands; `dest` is the
+   * computer's choice (undefined: ask the human). True when the player left.
+   */
+  travelCard(g: Game, p: Player, via: 'station' | 'airport', dest?: number): Flow<boolean>;
+  /** The computer's destination for a travel card, or -1 to keep it. */
+  aiCardTrip(g: Game, p: Player, via: 'station' | 'airport'): number;
+  /** 遣返卡: `victim` flies to a random other city (17 §3.5); `by` used the card. */
+  deport(g: Game, victim: Player, by: Player): Flow<boolean>;
+  /** 獨裁卡: who would be sent away, the sending, the computer's wish. */
+  dictateVictims(g: Game, p: Player): Player[];
+  dictate(g: Game, p: Player): Flow;
+  aiDictate(g: Game, p: Player): boolean;
+  /** 召集卡: the rivals elsewhere who can be summoned, the summoning, the computer's wish. */
+  summonable(g: Game, p: Player): Player[];
+  summon(g: Game, p: Player): Flow;
+  aiSummon(g: Game, p: Player): boolean;
+  /** 通緝卡: the twelve faces (who can be chosen), the arrest, the computer's target (-1 none). */
+  wantedOptions(p: Player): Option[];
+  wanted(g: Game, p: Player, q: Player): Flow;
+  aiWanted(g: Game, p: Player): number;
+  /** 通緝卡 is one per city (17 §3.5): a copy bought here / used by p; `syncWanted` sets each city's pool. */
+  wantedTaken(g: Game, p: Player): void;
+  wantedUsed(p: Player): void;
+  syncWanted(): void;
+  /** 洲際飛彈 (17 §3.6): the cities and another city's lots to choose from, the strike there, the computer's target. */
+  icbmCities(p: Player): Option[];
+  icbmTargets(p: Player, city: number): Option[];
+  icbm(g: Game, p: Player, city: number, ref: number): Flow;
+  aiIcbm(p: Player): number;
+  /** 時空機 (17 §3.6): the cities to cross to, the crossing, the computer's city (-1 none). */
+  spaceTimeCities(p: Player): Option[];
+  spaceTime(g: Game, p: Player, city: number): Flow;
+  aiSpaceTime(g: Game, p: Player): number;
+  /** 城市霸主 (17 §3.8): released the same day instead of a stay in this city's hospital / prison; true when so. */
+  overlordRelease(g: Game, p: Player, place: 'hospital' | 'prison'): Flow<boolean>;
+  /** The cities a player is 霸主 of (「東京霸主」…). */
+  overlordTitles(p: Player): string[];
   /** Hotel income multiplier of a city (沖繩's resort bonus, 17 §2.4; 1 elsewhere). */
   resort(g: Game): number;
   /** A computer aiming at a travel square with the remote dice; true when it used it. */
   aiAim(g: Game, p: Player): Flow<boolean>;
 }
 export interface WorldLink { index: number; hooks: WorldHooks; players: Player[] }
+
+/**
+ * A map's own rules in place of some of the original's (大富翁城, docs/rules/19, core/casino-rules.ts): its finale
+ * city in 大富豪模式 (the world link) or the map played in a normal game. Every other map has none.
+ */
+export interface MapRules {
+  /** A stop on a large plot handled by the map (the casinos: buy, build, visit); true when handled. */
+  landOnFacility?(g: Game, p: Player, f: Facility): Flow<boolean>;
+  /** The facility type an effect builds on an empty plot here (a card or tool: no choice), for 大富翁城's halls. */
+  facilityType?(f: Facility): number;
+  /** 改建卡 on a facility here: the new type (-1 cancelled), the level kept. */
+  rebuildFacility?(g: Game, p: Player, f: Facility, human: boolean): Flow<number>;
+  /** News / fate entries that do not happen here (skipped like a failed precondition). */
+  finaleDeny?(kind: 'news' | 'fate', id: number): boolean;
+  /** After the day's settlement of a normal game (the world calls its own). */
+  daily?(g: Game): void;
+}
+/** Map rules of normal games by map id, registered by the map's module (core/casino-rules.ts: 105 大富翁城). */
+export const MAP_RULES: Record<number, (g: Game) => MapRules> = {};
 
 /**
  * Data of the `month-report` fx (fcn_00439bfa, docs/rules/09 §7.12): one row per living player in id order with
@@ -76,7 +133,7 @@ export function tick(counter: number): number {
 }
 
 /** Facility level caps by type (ref_00474940). */
-export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5];
+export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
 
@@ -116,6 +173,8 @@ export class Game {
 
   /** 大富豪模式: this city's index and the world (docs/rules/17); undefined in a normal game. */
   readonly world?: { index: number; hooks: WorldHooks };
+  /** The map's own rules (大富翁城, docs/rules/19): the world link's, or a normal game's from MAP_RULES; else none. */
+  readonly rules?: MapRules;
 
   constructor(settings: GameSettings, board: Board, link?: WorldLink) {
     this.settings = settings;
@@ -158,6 +217,8 @@ export class Game {
     this.objects.init();
     this.blackMarket.init();
     this.forks.init();
+    // 大富翁城 (docs/rules/19): its finale city gets the world link's rules, a normal game on it the map's own.
+    this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this);
   }
 
   // ---------------------------------------------------------------- helpers for the modules
@@ -250,9 +311,11 @@ export class Game {
   randomFreeNode(near?: BoardNode): BoardNode {
     const taken = new Set([...this.players.filter(q => q.placed).map(q => q.node), ...this.objects.slots.filter(o => o.node).map(o => o.node)]);
     const free = this.board.nodes.filter(n => !n.noDrop && !taken.has(n.id) && n.adjacent.some(Boolean));
-    for (;;) {
+    // A small map can have no node 300 px away (大富翁城, docs/rules/19): after many misses the last draw is taken
+    // (never reached on the original maps, so their rand() sequence is unchanged).
+    for (let tries = 0; ; tries++) {
       const n = free[this.rng.below(free.length)];
-      if (!near || Math.abs(n.x - near.x) >= 300 || Math.abs(n.y - near.y) >= 300) return n;
+      if (!near || Math.abs(n.x - near.x) >= 300 || Math.abs(n.y - near.y) >= 300 || tries >= 2000) return n;
     }
   }
 
@@ -387,6 +450,7 @@ export class Game {
     if (!p.whoPlays) return;
     // 大富豪模式: someone in another city goes to that city's hospital / prison; nobody on the way (docs/rules/17 §8).
     if (this.world && !this.here(p)) { const c = this.world.hooks.cityOf(p); if (c && c !== this) yield* c.sendTo(p, place, days); return; }
+    if (this.world && (yield* this.world.hooks.overlordRelease(this, p, place))) return; // 城市霸主: out the same day
     // Presentation only (docs/rules/11 §6.1): the victim's line and the ambulance / police car before the move.
     yield { t: 'fx', kind: place === 'hospital' ? 'to-hospital' : 'to-prison', p: p.id, data: { days, fresh: !p[place] } };
     if (p[place]) p[place] = ((p[place] & 0x7f) + days) & 0x7f;
@@ -449,6 +513,7 @@ export class Game {
     yield { t: 'day', date, newMonth };
     yield* this.checkVictory();
     if (this.over) return;
+    this.rules?.daily?.(this); // 大富翁城 (docs/rules/19): no stock market, nothing denied on sale
     this.updatePriceIndex();
     // The original reseeds from the clock here; the remake derives the seed from the game seed and day.
     this.rng.reseed(daySeed(this.settings.seed, this.daysElapsed));
@@ -583,7 +648,7 @@ export class Game {
     for (const f of this.board.facilities) {
       if (f.type === 4 && f.owner === p.id + 1 && f.labDays) {
         f.labDays -= 1;
-        if (!f.labDays) yield* this.tools.labDone(p, f.labTool + 8);
+        if (!f.labDays) yield* this.tools.labDone(p, this.tools.labToolId(f.labTool));
       }
     }
   }
@@ -617,6 +682,7 @@ export class Game {
         else if (a.action === 'surrender') { yield* this.surrender(p); return; }
         else if (a.action === 'autopilot') { p.autopilot = true; break; } // 托管: the computer plays from here
         if (this.over || !p.whoPlays) return;
+        if (this.world && !this.here(p)) return; // 大富豪模式: gone to another city (時空機, 17 §3.6)
         const pending = this.tools.pending;
         this.tools.pending = 'none';
         if (pending === 'land') { yield* this.land(p); return; }
@@ -640,7 +706,7 @@ export class Game {
       // remote dice first (world only; a normal game draws its rand() here as before).
       if (this.world && (yield* this.world.hooks.aiAim(this, p))) { /* the remote dice is set */ }
       else if (this.rng.rand() & 1) yield* this.cards.aiUse(p); else yield* this.tools.aiUse(p);
-      if (this.over || !p.whoPlays || this.offRoad(p) || p.sleep || p.sleepwalk) return;
+      if (this.over || !p.whoPlays || this.offRoad(p) || p.sleep || p.sleepwalk || (this.world && !this.here(p))) return;
       const pending = this.tools.pending;
       this.tools.pending = 'none';
       if (pending === 'land') { yield* this.land(p); return; }
@@ -929,6 +995,8 @@ export class Game {
 
   /** Large plots (docs/rules/02 §4). */
   private *landOnFacility(p: Player, f: Facility): Flow {
+    // 大富翁城 (docs/rules/19): its plots are casinos, handled by core/finale.ts.
+    if (this.rules?.landOnFacility && (yield* this.rules.landOnFacility(this, p, f))) return;
     const me = p.id + 1, god = this.objects.godType(p);
     if (f.owner === 0) {
       if (p.sleepwalk || god === 12) return;

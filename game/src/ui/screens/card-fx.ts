@@ -6,8 +6,8 @@
  * message box, the remake shows the card as well.
  */
 import { CHARACTERS } from '../../core/characters';
-import { CARDS, cardName } from '../../core/modules/cards';
-import { TOOLS } from '../../core/modules/tools';
+import { cardDef, cardName } from '../../core/modules/cards';
+import { toolDef, toolIcon } from '../../core/modules/tools';
 import { TOOL_TEXT } from './shop';
 import { fitOverlay } from './bank';
 import { fxScreens, type ScreenContext } from './registry';
@@ -23,20 +23,20 @@ fxScreens['card'] = (ctx, fx) => cardScene(ctx, Number(fx.data?.card), fx.p, 'us
 
 /** The card flipping in: used (「使用%s」, with its sound), received (「得到%s！」) or the shop owner's gift. */
 export function cardScene(ctx: ScreenContext, id: number, who: number | undefined, mode: 'use' | 'get' | 'chairman'): Promise<void> {
-  if (!id || !CARDS[id - 1]) return Promise.resolve();
+  if (!id || !cardDef(id)) return Promise.resolve();
   const pic = ctx.bank.art('Data', 570 + id), name = cardName(id);
   return reveal(ctx, who, {
     front: `${pic ? `<img src="${pic.src}" alt="">` : ''}<span class="cfx-plate">${esc(name)}</span>`, broken: BROKEN_ART.has(id) && !pic?.hd,
     line: mode === 'use' ? `使用<b>${esc(name)}</b>` : mode === 'get' ? `得到<b>${esc(name)}！</b>` : `歡迎董事長光臨<br>送您<b>${esc(name)}！</b>`,
-    text: CARDS[id - 1].text, sound: mode === 'use',
+    text: (cardDef(id)?.text ?? ""), sound: mode === 'use',
   });
 }
 
 /** A tool flipping in on a glowing card: a gift box, the shop owner's gift (「歡迎董事長光臨　送您%s！」). */
 export function toolScene(ctx: ScreenContext, id: number, who: number | undefined, mode: 'get' | 'chairman'): Promise<void> {
-  const t = TOOLS[id - 1];
+  const t = toolDef(id), ic = toolIcon(id);
   if (!t) return Promise.resolve();
-  const pic = ctx.bank.art('Panel', 11, id + 1);
+  const pic = ctx.bank.art(ic.archive, ic.id, ic.frame);
   return reveal(ctx, who, {
     front: `<div class="cfx-tool">${pic ? `<img src="${pic.src}" alt="">` : ''}</div><span class="cfx-tool-name">${esc(t.name)}</span>`, tool: true,
     line: mode === 'get' ? `得到<b>${esc(t.name)}！</b>` : `歡迎董事長光臨<br>送您<b>${esc(t.name)}！</b>`,

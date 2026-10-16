@@ -9,6 +9,7 @@ import type { Board } from './board';
 import { Game } from './game';
 import { STOCK_TABLE } from './modules/stocks';
 import type { GameSettings, Player } from './types';
+import type { FinaleState } from './finale';
 import { World, type TickerLine, type TycoonSettings } from './world';
 
 export const SAVE_VERSION = 1;
@@ -108,7 +109,9 @@ export interface WorldSaveData {
   world: {
     date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number; rng: number;
     landed: boolean[]; log: TickerLine[]; fallen: World['fallen']; history: World['history']; visited: number[][];
-    lastTrip?: number[]; lastFrom?: number[];
+    lastTrip?: number[]; lastFrom?: number[]; wantedFrom?: number[][]; overlords?: number[];
+    /** 大富翁城, the finale (docs/rules/19): set once it has started (the sixth city is in `cities` then). */
+    finale?: FinaleState;
   };
 }
 
@@ -146,7 +149,8 @@ export function saveWorld(w: World): WorldSaveData {
     world: {
       date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex,
       current: w.current, rng: w.rng.seed, landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
-      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom],
+      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords],
+      ...(w.finale.active ? { finale: w.finale.save() } : {}),
     },
   };
 }
@@ -163,6 +167,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     const q = w.players[i];
     delete q.trip;
     Object.assign(q, plain(p));
+    while (q.tools.length < 16) q.tools.push(0); // saves from before the lab tools 14-16 (17 §3.6)
   });
   s.cities.forEach((c, i) => {
     const g = w.cities[i];
@@ -180,9 +185,10 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
   Object.assign(w, {
     date: x.date, daysElapsed: x.daysElapsed, monthsElapsed: x.monthsElapsed, priceIndex: x.priceIndex, current: x.current,
     landed: [...x.landed], log: plain(x.log), fallen: plain(x.fallen), history: plain(x.history), visited: plain(x.visited),
-    lastTrip: [...(x.lastTrip ?? [])], lastFrom: [...(x.lastFrom ?? [])],
+    lastTrip: [...(x.lastTrip ?? [])], lastFrom: [...(x.lastFrom ?? [])], wantedFrom: plain(x.wantedFrom ?? w.players.map(() => [])), overlords: [...(x.overlords ?? [])],
   });
   w.rng.reseed(x.rng);
+  w.finale.restore(x.finale);
   w.resumeAtTurn = true;
   w.mask(w.view());
   return w;

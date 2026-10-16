@@ -9,6 +9,8 @@
  */
 import type { Ask, GameEvent } from '../../core/types';
 import { AUCTION_STEPS } from '../../core/modules/places';
+import type { Game } from '../../core/game';
+import { CITY_NAMES } from '../../core/world';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { charName, el, esc, money, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
@@ -45,14 +47,20 @@ class Room {
   private spoken = '';
   /** Seat spacing: the original's 120 px for up to four bidders, closer for more (大富豪模式). */
   private step = 120;
+  /** The engine of the lot's city (大富豪模式: a bankruptcy auction elsewhere is bid on from every city, 17 §9). */
+  readonly lotGame: Game;
+  /** More than six bidders (大富豪模式): one compact row each instead of the standing figures. */
+  private compact = false;
+  private rows = new Map<number, HTMLElement>();
 
-  constructor(readonly ctx: ScreenContext, readonly ref: number, readonly start: number, readonly seller: number) {
+  constructor(readonly ctx: ScreenContext, readonly ref: number, readonly start: number, readonly seller: number, city?: number, worldwide = false) {
     const g = ctx.game;
+    this.lotGame = city !== undefined ? g.world?.hooks.allCities()[city] ?? g : g;
     this.price = start;
     // Seats as the rules set them (presentation copy of places.ts auction(): later marks win).
     let slot = 0;
     for (const p of g.players) {
-      if (!p.whoPlays || !g.here(p)) continue; // 大富豪模式: only who is in this city bids (docs/rules/17 §9)
+      if (!p.whoPlays || (!worldwide && !this.lotGame.here(p))) continue; // 大富豪模式: this city's, everyone at a bankruptcy (17 §9)
       let flag = 0;
       if (p.cash <= start) flag = 8;
       if (p.hotel) flag = 1;
@@ -64,20 +72,20 @@ class Room {
       if (p.id === seller) flag = 7;
       this.seats.push({ p: p.id, slot: slot++, flag, out: flag >= 1 && flag <= 8, bid: 0 });
     }
-    this.line = '公開拍賣土地一處。';
+    this.line = this.lotGame !== g ? `${CITY_NAMES[this.lotGame.settings.mapId] ?? ''}公開拍賣土地一處。` : '公開拍賣土地一處。';
     // The auction room plays MIDI06 (rich4_ui_auction.asm:3139) and gives the background track back after.
     audio.theme(Theme.auction);
     this.scene = openScene(ctx, 'au-scene', p => (p ? [640, 800] : [640, 480]), s => this.build(s), { parent: ctx.area });
   }
 
   get lot() {
-    const g = this.ctx.game;
+    const g = this.lotGame;
     return this.ref > 4000 ? g.board.facilities[this.ref - 4001] : g.board.lands[this.ref - 2001];
   }
 
   /** The lot's picture in Panel #26 (rich4_ui_auction.asm:2496-2676, map theme 0). */
   private picture(): number {
-    const g = this.ctx.game, owner = this.lot.owner;
+    const g = this.lotGame, owner = this.lot.owner;
     const ch = owner ? g.players[owner - 1]?.character ?? -1 : -1;
     if (this.ref > 4000) {
       const f = g.board.facilities[this.ref - 4001];
@@ -93,9 +101,11 @@ class Room {
   private build(s: Scene) {
     this.s = s;
     const P = s.portrait, ctx = this.ctx, g = ctx.game;
-    this.sprites.clear(); this.bubbles.clear();
-    this.step = this.seats.length > 4 ? Math.floor(((P ? 800 : 480) - 100) / this.seats.length) : 120;
+    this.sprites.clear(); this.bubbles.clear(); this.rows.clear();
+    this.compact = this.seats.length > 6;
+    this.step = this.compact ? Math.min(40, Math.floor(400 / this.seats.length)) : this.seats.length > 4 ? Math.floor(((P ? 800 : 480) - 100) / this.seats.length) : 120;
     s.stage.classList.toggle('au-many', this.seats.length > 4);
+    s.stage.classList.toggle('au-compact', this.compact);
     s.art('Panel', 26, 0, 0, 0, 'au-bg');
     // Auctioneer (#26.25 at (123,24)) and the assistant in front of him (#26.17 at (67,63)).
     this.auctioneer = s.art('Panel', 26, 25, 123, 24, 'au-man');
@@ -113,11 +123,23 @@ class Room {
     const pt = lotImg ? parseFloat(lotImg.style.top) : 160, pb = lotImg ? pt + parseFloat(lotImg.style.height) : 212;
     const card = s.box('au-lot-card', 180, pt - 30, 104, pb - pt + 58);
     card.style.zIndex = '0';
-    s.box('au-lot-name', 180, pt - 26, 104, 20, esc(this.lot.name));
+    s.box('au-lot-name', 180, pt - 26, 104, 20, esc(this.lotGame !== g ? `${CITY_NAMES[this.lotGame.settings.mapId] ?? ''}・${this.lot.name}` : this.lot.name));
     s.box('au-tag', 186, pb + 4, 30, 20, '標價');
     this.priceEl = s.box('au-price', 212, pb + 2, 68, 24, `${money(this.price)}元`);
-    // Bidders.
-    for (const seat of this.seats) {
+    // Bidders: a compact list for more than six (大富豪模式's world-wide auctions), the figures otherwise.
+    if (this.compact) {
+      const where = (p: number) => { const q = g.players[p], w = g.world?.hooks.cityOf(q); return q.trip ? '在路上' : w ? CITY_NAMES[w.settings.mapId] ?? '' : ''; };
+      for (const seat of this.seats) {
+        const q = g.players[seat.p], y = 70 + this.step * seat.slot, face = ctx.bank.art('Data', 2, q.character);
+        const status = seat.flag >= 1 && seat.flag <= 7 ? `<span class="au-status">${STATUS[seat.flag]}</span>` : '';
+        const row = s.box(`au-crow${q.human ? ' me' : ''}${seat.out ? ' out' : ''}`, 458, y, 178, this.step - 3,
+          `${face ? `<img src="${face.src}" alt="">` : ''}<b>${esc(charName(ctx, seat.p))}</b><i>${esc(where(seat.p))}</i><span class="au-ccash">${status}</span><span class="au-said"></span>`);
+        row.dataset.p = String(seat.p);
+        row.title = `${charName(ctx, seat.p)} 現金 ${money(q.cash)}元`;
+        this.rows.set(seat.p, row);
+      }
+    }
+    for (const seat of this.compact ? [] : this.seats) {
       const q = g.players[seat.p], y = 80 + this.step * seat.slot;
       const mark = s.art('Panel', 26, 78 + q.character, 590, y, 'au-mark');
       if (mark) mark.dataset.p = String(seat.p);
@@ -164,6 +186,7 @@ class Room {
 
   private mark() {
     for (const m of this.s.stage.querySelectorAll<HTMLElement>('.au-mark')) m.classList.toggle('on', Number(m.dataset.p) === this.turn);
+    for (const [p, r] of this.rows) r.classList.toggle('on', p === this.turn);
   }
 
   private pick(v: number) {
@@ -194,6 +217,15 @@ class Room {
    * and the figure and kept inside the room, so the top seat's is not cut off or under the speech box.
    */
   private bubble(seat: Seat, text: string, pop = false) {
+    const row = this.rows.get(seat.p);
+    if (row) {
+      const said = row.querySelector<HTMLElement>('.au-said')!;
+      said.textContent = text;
+      row.classList.toggle('top', seat.p === this.high);
+      row.classList.toggle('out', !!seat.out);
+      if (pop) { said.classList.remove('pl-pop'); void said.offsetWidth; said.classList.add('pl-pop'); }
+      return;
+    }
     const s = this.s, y = 80 + this.step * seat.slot;
     this.bubbles.get(seat.p)?.remove();
     const bub = s.box(`au-bubble${pop ? ' pl-pop' : ''}`, 458, Math.max(0, y - 84), 118, 80, esc(text));
@@ -227,6 +259,7 @@ class Room {
       this.high = p; seat.bid = price;
       // A raise clears everyone's PASS (02 §10.4).
       for (const [k, b] of this.bubbles) if (k !== p && b.textContent === 'ＰＡＳＳ') { b.remove(); this.bubbles.delete(k); const o = this.seats.find(x => x.p === k); if (o) o.said = undefined; }
+      for (const [k, r] of this.rows) { r.classList.toggle('top', k === p); const sd = r.querySelector('.au-said'); if (k !== p && sd?.textContent === 'ＰＡＳＳ') { sd.textContent = ''; const o = this.seats.find(x => x.p === k); if (o) o.said = undefined; } }
       this.showBids();
       this.setPrice(price);
       if (this.buttons && this.s.portrait) this.renderButtons();
@@ -234,6 +267,7 @@ class Room {
       s.swap(img, 'Panel', 27 + 3 * q.character, 0);
     } else if (kind === 'quit') {
       seat.out = true;
+      this.rows.get(p)?.classList.add('out');
       s.swap(img, 'Panel', 28 + 3 * q.character, 0);
     }
     await s.wait(kind === 'bid' ? 450 : 600);
@@ -282,7 +316,8 @@ function ensure(ctx: ScreenContext, a?: Choose): Room {
 
 fxScreens.auction = async (ctx, fx: Fx) => {
   if (room && !room.scene.closed) { room.scene.close(); audio.restore(); }
-  room = new Room(ctx, Number(fx.data?.ref), Number(fx.data?.start), fx.p ?? -1);
+  const city = fx.data?.city === undefined ? undefined : Number(fx.data.city);
+  room = new Room(ctx, Number(fx.data?.ref), Number(fx.data?.start), fx.p ?? -1, city, !!fx.data?.worldwide);
   await room.scene.wait(700);
 };
 fxScreens['auction-bid'] = (ctx, fx) => ensure(ctx).act(fx.p ?? -1, 'bid', Number(fx.data?.price));

@@ -67,13 +67,35 @@ export const CARDS: readonly CardDef[] = [
   def(30, '烏龜卡', 70, 3, 0, 0, '目標每回合只走一步，共三回合'),
 ];
 
+/**
+ * 大富豪模式's own cards (docs/rules/17 §3.5), only in a tycoon world's pool (sold on the shop's card shelf; never
+ * drawn on a card square): 31 飛行卡 = a free flight from wherever one stands, 32 電車卡 = a free 新幹線 ride from a
+ * city with a station (both cost the turn 在路上 like any trip), 33 遣返卡, 34 獨裁卡, 35 召集卡, 36 通緝卡 (one copy
+ * per city at a time, World.syncWanted).
+ */
+export const TYCOON_CARDS: readonly CardDef[] = [
+  def(31, '飛行卡', 20, 4, 0, 0, '大富豪模式：立刻搭飛機去另一座城市（免機票，在路上一回合）'),
+  def(32, '電車卡', 10, 4, 0, 0, '大富豪模式：在有車站的城市立刻搭新幹線（免車票，在路上一回合）'),
+  def(33, '遣返卡', 15, 4, 0, 1, '大富豪模式：把同城一位對手用飛機遣返到別的城市（在路上一回合）'),
+  def(34, '獨裁卡', 300, 1, 0, 2, '大富豪模式：同城所有對手都被送上飛機，分散到其他城市'),
+  def(35, '召集卡', 25, 3, 0, 1, '大富豪模式：別的城市隨機一位對手搭飛機來到你所在城市的機場（在路上一回合）'),
+  def(36, '通緝卡', 60, 1, 0, 2, '大富豪模式：任選一座城市的一位對手，在他所在城市坐牢五天（每座城市同時只有一張）'),
+];
+const ALL_CARDS: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
+export const cardDef = (id: number): CardDef | undefined => ALL_CARDS[id - 1];
+/**
+ * 大富豪模式's own cards (ids above the original 30): effects that sell or drop a whole hand (魔法屋 變賣所有卡片,
+ * 命運 32, 死神) leave them in the hand — only bankruptcy clears them (docs/rules/17 §3.7).
+ */
+export const isTycoonCard = (id: number) => id > CARDS.length;
+
 export const HAND_LIMIT = 15;
-export const cardName = (id: number) => CARDS[id - 1]?.name ?? '';
-export const cardPrice = (id: number) => CARDS[id - 1]?.price ?? 0;
+export const cardName = (id: number) => ALL_CARDS[id - 1]?.name ?? '';
+export const cardPrice = (id: number) => ALL_CARDS[id - 1]?.price ?? 0;
 
 /** Tool names and prices (docs/rules/05 §1), used when a card takes a tool (bug decision #3). */
-const TOOL_NAMES = ['機器娃娃', '路障', '地雷', '定時炸彈', '機車', '汽車', '飛彈', '遙控骰子', '機器工人', '時光機', '傳送機', '工程車', '核子飛彈'];
-const TOOL_PRICES = [15, 30, 25, 25, 80, 150, 100, 30, 30, 40, 95, 150, 250];
+const TOOL_NAMES = ['機器娃娃', '路障', '地雷', '定時炸彈', '機車', '汽車', '飛彈', '遙控骰子', '機器工人', '時光機', '傳送機', '工程車', '核子飛彈', '超級工人', '洲際飛彈', '時空機'];
+const TOOL_PRICES = [15, 30, 25, 25, 80, 150, 100, 30, 30, 40, 95, 150, 250, 60, 400, 160]; // 14-16: 大富豪模式 (tools.ts TYCOON_TOOLS)
 /** Facility cap by type (ref_00474940), same as the core's table. */
 /** Gods 送神符 sends away (04 §3.22) and gods the computer wants to invite (04 §6 #23). */
 const BAD_GODS = [5, 6, 7, 8, 10, 15];
@@ -107,7 +129,7 @@ export class Cards {
 
   /** New game: fill the pool from the card table (04 §1). */
   init(): void {
-    this.remaining = CARDS.map(c => c.supply);
+    this.remaining = (this.g.world ? ALL_CARDS : CARDS).map(c => c.supply);
     for (const p of this.g.players) p.cards = [];
   }
 
@@ -124,7 +146,7 @@ export class Cards {
 
   /** Add a card to a hand: a full hand of 15 first drops its cheapest card (04 §2.1). No pool check. */
   receive(p: Player, id: number): boolean {
-    if (id < 1 || id > CARDS.length) return false;
+    if (id < 1 || id > this.remaining.length) return false;
     if (p.cards.length >= HAND_LIMIT) this.dropSlot(p, this.cheapestSlot(p));
     p.cards.push(id);
     this.remaining[id - 1] = (this.remaining[id - 1] - 1) & 0xff;
@@ -159,13 +181,19 @@ export class Cards {
     return id;
   }
 
-  /** Sell or drop every card of a player (bankruptcy, 02 §9.3): no points. */
-  *dropAll(p: Player): Flow { this.sellAll(p); }
+  /** Sell or drop every card of a player (死神, bankruptcy 02 §9.3 with `all`): no points. */
+  *dropAll(p: Player, all = false): Flow { this.sellAll(p, all); }
 
-  /** _rich4_player_sell_all_the_card: empty the hand into the pool, return the summed prices (caller decides on points). */
-  sellAll(p: Player): number {
+  /**
+   * _rich4_player_sell_all_the_card: empty the hand into the pool, return the summed prices (caller decides on
+   * points). 大富豪模式's own cards stay unless `all` (bankruptcy, 17 §3.7).
+   */
+  sellAll(p: Player, all = false): number {
     let sum = 0;
-    while (p.cards.length) sum += cardPrice(this.dropSlot(p, 0));
+    for (let i = 0; i < p.cards.length;) {
+      if (!all && isTycoonCard(p.cards[i])) i++;
+      else sum += cardPrice(this.dropSlot(p, i));
+    }
     return sum;
   }
 
@@ -210,11 +238,11 @@ export class Cards {
         yield ask({ t: 'choose', p: p.id, title: '使用卡片', text: '沒有卡片', options: [], cancellable: true, layout: 'cards' });
         return;
       }
-      const options: Option[] = p.cards.map((id, i) => ({ label: cardName(id), value: i, detail: CARDS[id - 1].text, icon: { archive: 'Data', id: 570 + id } }));
+      const options: Option[] = p.cards.map((id, i) => ({ label: cardName(id), value: i, detail: cardDef(id)?.text, icon: { archive: 'Data', id: 570 + id } }));
       const a = yield ask({ t: 'choose', p: p.id, title: '使用卡片', options, cancellable: true, layout: 'cards' });
       if (typeof a !== 'number' || a < 0 || a >= p.cards.length) return;
       const id = p.cards[a];
-      if (CARDS[id - 1].passive) { yield* this.say(p, `${cardName(id)}會自動使用`); continue; }
+      if (cardDef(id)?.passive) { yield* this.say(p, `${cardName(id)}會自動使用`); continue; }
       yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
       yield* this.say(p, `使用${cardName(id)}`);
       if (yield* this.play(p, id, true)) return;
@@ -313,7 +341,8 @@ export class Cards {
           if (l.chain && l.level > 1) l.level = 1;
         } else {
           const f = plot as Facility;
-          const type = human ? yield* this.chooseFacilityType(p) : this.aiArg0;
+          // 大富翁城 (docs/rules/19): its halls switch among the four games, the level kept.
+          const type = g.rules?.rebuildFacility ? yield* g.rules.rebuildFacility(g, p, f, human) : human ? yield* this.chooseFacilityType(p) : this.aiArg0;
           if (type < 0) return false;
           f.type = type;
           if ((type === 0 || type === 3) && f.level > 1) f.level = 1;
@@ -349,7 +378,9 @@ export class Cards {
         } else {
           const f = g.board.facilities[ref - 4001];
           if (f.level === 0) {
-            const type = human ? yield* this.chooseFacilityType(p, false) : f.owner === me + 1 ? g.rng.rand() % 4 + 1 : 0;
+            // 大富翁城 (docs/rules/19): only casinos are built there, no type to choose.
+            const only = g.rules?.facilityType?.(f);
+            const type = only !== undefined ? only : human ? yield* this.chooseFacilityType(p, false) : f.owner === me + 1 ? g.rng.rand() % 4 + 1 : 0;
             f.type = Math.max(0, type);
             f.level = 1;
           } else g.freeUpgrade(ref);
@@ -597,6 +628,54 @@ export class Cards {
         yield { t: 'fx', kind: 'turtle', p: me, target: t };
         return true;
       }
+      case 33: { // 遣返卡 (大富豪模式, 17 §3.5): a rival on screen, 免罪卡 / 嫁禍卡 apply as for the harmful cards
+        if (!g.world) return false;
+        const t = yield* this.pickPlayer(p, human, '請選擇遣返對象', this.actors(p, false).filter(a => a < g.npcBase));
+        if (t < 0) return false;
+        this.consume(p, 33);
+        const q = g.players[t];
+        g.addHostility(t, me, 150 * pi);
+        const sufferer = yield* this.pardonOrFrame(q);
+        if (sufferer < 0) return true;
+        yield* g.world.hooks.deport(g, g.players[sufferer], p);
+        return true;
+      }
+      case 34: { // 獨裁卡 (17 §3.5): everyone else on this city's squares flies off, as 冬眠卡 with no 免罪卡
+        if (!g.world) return false;
+        if (!g.world.hooks.dictateVictims(g, p).length) { if (human) yield* this.say(p, '這裡沒有其他人'); return false; }
+        this.consume(p, 34);
+        yield* g.world.hooks.dictate(g, p);
+        return true;
+      }
+      case 35: { // 召集卡 (17 §3.5): a random rival from another city flies to this city's airport
+        if (!g.world) return false;
+        if (!g.world.hooks.summonable(g, p).length) { if (human) yield* this.say(p, '別的城市沒有可以召集的對手'); return false; }
+        this.consume(p, 35);
+        yield* g.world.hooks.summon(g, p);
+        return true;
+      }
+      case 36: { // 通緝卡 (17 §3.5): any rival anywhere, 5 days in prison in their city; 免罪卡 / 嫁禍卡 apply
+        if (!g.world) return false;
+        let t = human ? -1 : this.aiArg0;
+        if (human) {
+          const a = yield ask({ t: 'choose', p: me, title: '通緝卡：通緝哪一位？', text: '在他所在城市的監獄坐牢五天', options: g.world.hooks.wantedOptions(p), cancellable: true, layout: 'faces' });
+          t = typeof a === 'number' ? a : -1;
+        }
+        const q = g.players[t];
+        if (!q || !g.world.hooks.wantedOptions(p).some(o => o.value === t && !o.disabled)) return false;
+        this.consume(p, 36);
+        g.world.hooks.wantedUsed(p);
+        g.addHostility(t, me, 150 * pi);
+        yield* g.world.hooks.wanted(g, p, q);
+        return true;
+      }
+      case 31: case 32: { // 飛行卡 / 電車卡 (大富豪模式, 17 §3.5)
+        if (!g.world) return false;
+        const left = yield* g.world.hooks.travelCard(g, p, id === 31 ? 'airport' : 'station', human ? undefined : this.aiArg0);
+        if (!left) return false;
+        this.consume(p, id);
+        return true;
+      }
       default: return false; // passive cards 18-21 (fcn_004420d5)
     }
   }
@@ -689,7 +768,7 @@ export class Cards {
 
   /** fcn_0041e69e: personality threshold, then the card's own rule; sets aiArg0/aiArg1. */
   aiWants(p: Player, id: number): boolean {
-    const card = CARDS[id - 1];
+    const card = cardDef(id);
     if (!card || card.passive) return false;
     const d = card.f7 - CHARACTERS[p.character].personality;
     if (d >= 2) return false;
@@ -812,7 +891,7 @@ export class Cards {
         const v = view();
         const best = (q: Player, ok: (f7: number) => boolean) => {
           let id2 = 0;
-          for (const c of q.cards) if (ok(CARDS[c - 1].f7) && cardPrice(c) > cardPrice(id2)) id2 = c;
+          for (const c of q.cards) if (ok(cardDef(c)?.f7 ?? 0) && cardPrice(c) > cardPrice(id2)) id2 = c;
           return id2;
         };
         if (H >= 0 && seesPlayer(v, H)) { const c = best(g.players[H], f => f >= 1); if (c) return set(H, c); }
@@ -909,6 +988,20 @@ export class Cards {
         return P >= 0 && P !== H && p.ally !== P + 1 && seesPlayer(view(), P) && set(P);
       }
       case 30: return this.aiTurtle(p);
+      case 33: { // 遣返: the most resented rival on screen, else a richer one standing in view (17 §3.5)
+        if (!g.world) return false;
+        const v = view().filter(s => s.k === 'player' && s.q.id !== p.id && s.q.whoPlays && !g.offRoad(s.q)) as Extract<Seen, { k: 'player' }>[];
+        if (H >= 0 && v.some(s => s.q.id === H)) return set(H);
+        const rich = v.map(s => s.q).filter(q => g.wealth(q) > g.wealth(p) * 0.8).sort((a, b) => g.wealth(b) - g.wealth(a))[0];
+        return !!rich && set(rich.id);
+      }
+      case 34: return !!g.world && g.world.hooks.aiDictate(g, p);
+      case 35: return !!g.world && g.world.hooks.aiSummon(g, p);
+      case 36: { const t = g.world ? g.world.hooks.aiWanted(g, p) : -1; return t >= 0 && set(t); }
+      case 31: case 32: { // 大富豪模式: the computer's own travel evaluation with a free ticket (17 §3.5)
+        const d = g.world ? g.world.hooks.aiCardTrip(g, p, id === 31 ? 'airport' : 'station') : -1;
+        return d >= 0 && set(d);
+      }
       default: return false; // 5 換屋, 6 轉向: never (fcn_0041e6e3)
     }
   }

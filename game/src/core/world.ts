@@ -15,9 +15,14 @@ import { nodeById, type Board, type BoardNode, type Landscape } from './board';
 import { CHARACTERS } from './characters';
 import { daysBetween, day as dayOf, nextDay, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
+import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs/rules/19)
 import { Game, type WorldHooks } from './game';
+import { TYCOON_LABS } from './modules/tools';
 import { Rng, daySeed } from './rng';
-import { FUNDS, type Answer, type Ask, type GameEvent, type GameSettings, type Player, type Step, type TravelOption } from './types';
+import { FUNDS, type Answer, type Ask, type GameEvent, type GameSettings, type Option, type Player, type Step, type TravelOption } from './types';
+
+/** 通緝卡's id (cards.ts TYCOON_CARDS). */
+const WANTED = 36;
 
 // ------------------------------------------------------------------ the world's data
 
@@ -143,7 +148,35 @@ export interface TycoonSettings {
 export interface CityView { score: number; own: number; room: number; free: number; danger: number; chase: string | null }
 
 /** One line of the ticker (17 §10). */
-export interface TickerLine { day: number; map: number; text: string; p?: number; kind: string }
+export interface TickerLine {
+  day: number; map: number; text: string; p?: number; kind: string;
+  /** Shown in bold / colour, and kept by the 「只看重要」 setting (17 §10). */
+  important?: boolean;
+  /** Mergeable money lines (tolls and fees received): who paid and how much; `count` once merged. */
+  from?: number; amount?: number; count?: number;
+}
+
+/** Kinds that are always important (17 §10). */
+const IMPORTANT = new Set(['bankrupt', 'title', 'travel', 'arrive', 'overflow', 'confine', 'auction', 'lottery', 'stock', 'dictator', 'summon', 'wanted']);
+
+/**
+ * Merges a city's repeated small lines for the chat box (17 §10): consecutive fees received by the same player in the
+ * same city become one 「糖糖 收租 ×3 +2,400」.
+ */
+export function mergeLines(lines: TickerLine[], name: (p: number) => string): TickerLine[] {
+  const out: TickerLine[] = [];
+  for (const l of lines) {
+    const last = out[out.length - 1];
+    if (l.kind === 'toll' && last && last.kind === 'toll' && last.map === l.map && last.p === l.p && !last.important && !l.important) {
+      last.count = (last.count ?? 1) + 1;
+      last.amount = (last.amount ?? 0) + (l.amount ?? 0);
+      last.text = `${name(l.p!)}收租 ×${last.count} +${(last.amount ?? 0).toLocaleString('en-US')}`;
+      continue;
+    }
+    out.push({ ...l });
+  }
+  return out;
+}
 
 /** How a city's flow is played: shown (passed to the screen) or headless (drained into the ticker). */
 type Mode = 'shown' | 'headless';
@@ -219,7 +252,7 @@ export class World implements WorldHooks {
   watch = -1;
   /** Set by a load: the first turn resumes at the saved turn menu (its turn start already ran). */
   resumeAtTurn = false;
-  static readonly LOG_MAX = 200;
+  static readonly LOG_MAX = 3000;
   /** Computers do not travel to a city with this many players (17 §3.4); forced moves may exceed it. */
   static readonly CROWD = 6;
   /** Days a computer stays after a trip before it considers another (17 §3.4). */
@@ -227,6 +260,15 @@ export class World implements WorldHooks {
   /** Day of each player's last departure and the city it left (no ping-pong, 17 §3.4). */
   lastTrip: number[] = [];
   lastFrom: number[] = [];
+  /**
+   * 通緝卡 (17 §3.5): the cities whose copy each player took from a card shop (one copy per city at a time); a city's
+   * copy is back in its pool once it is used or has left play (syncWanted).
+   */
+  wantedFrom: number[][] = [];
+  /** The city whose players count as placed now (mask). */
+  private masked = -1;
+  /** 大富翁城, the finale with the last four (docs/rules/19, core/finale.ts): its start, its city's link, its state. */
+  readonly finale: Finale = new Finale(this);
   /** Lines ever written to the log (the log itself keeps the last LOG_MAX). */
   private logged = 0;
 
@@ -250,11 +292,12 @@ export class World implements WorldHooks {
         hostility: new Array(Math.max(4, n)).fill(0), monthLoss: 0, monthGain: 0, monthBadDays: 0,
         luckBad: 0, luckMoney: 0, luckFate: 0, facility: 0,
         savedTraffic: 0, savedDice: 0, sleepTraffic: 0, sleepDice: 0,
-        tools: new Array(15).fill(0), cards: [], map: 0,
+        tools: new Array(16).fill(0), cards: [], map: 0,
       };
     });
     this.landed = this.players.map(() => false);
     this.visited = this.players.map(() => []);
+    this.wantedFrom = this.players.map(() => []);
     // One engine per city; each deals the starting tools again, so the first city's deal is kept (17 §1).
     let tools: number[][] | null = null;
     this.cities = settings.maps.map((mapId, index) => {
@@ -263,7 +306,7 @@ export class World implements WorldHooks {
         landLimitIndex: settings.landLimitIndex, daysLimitIndex: 0, victoryIndex: 0, startDate: settings.startDate,
         seed: this.citySeed(index),
       };
-      const g = new Game(s, boards[index], { index, hooks: this, players: this.players });
+      const g = new Game(s, boards[index], { index, hooks: mapId === FINALE_MAP ? this.finale : this, players: this.players });
       if (!tools) tools = this.players.map(p => [...p.tools]);
       return g;
     });
@@ -322,6 +365,7 @@ export class World implements WorldHooks {
    * placed (17 §4). Whatever is shown on screen always has the shown city's view.
    */
   mask(index: number) {
+    this.masked = index;
     for (const p of this.players) if (p.placed) this.landed[p.id] = true;
     for (const p of this.players) p.placed = this.landed[p.id] && p.map === index && !p.trip;
   }
@@ -329,6 +373,7 @@ export class World implements WorldHooks {
   // ---------------------------------------------------------------- hooks for the cities (WorldHooks)
 
   wealth(p: Player): number {
+    if (this.finale.active) return this.finale.wealth(p); // 大富翁城: everything was paid out as cash (19 §2)
     // 02 §7.1 over the whole world: money, the shares of all five markets, then every city's properties.
     let w = p.cash + p.bank - p.loan;
     for (const c of this.cities) w = c.stocks.holdingsValue(w, p);
@@ -399,7 +444,13 @@ export class World implements WorldHooks {
     if (!g.isHuman(p)) { const t = this.aiTrip(p, from, options, left); dest = t?.map ?? -1; why = t ? `（${t.reason}）` : ''; }
     const o = options.find(x => x.map === dest);
     if (!o || !o.affordable) return false;
-    yield* g.transfer(p.id, -3, o.price, 0, via === 'station' ? '新幹線車票' : '機票');
+    return yield* this.leave(g, p, o, via, true, why, n.id);
+  }
+
+  /** The trip itself (17 §3.3): the fare unless a card is the ticket, god and bomb away, off the map, 在路上. */
+  private *leave(g: Game, p: Player, o: TravelOption, via: 'station' | 'airport', pay: boolean, why: string, node: number): Flow<boolean> {
+    const from = g.world!.index, dest = o.map;
+    if (pay) yield* g.transfer(p.id, -3, o.price, 0, via === 'station' ? '新幹線車票' : '機票');
     if (!p.whoPlays) return true;
     g.objects.detachAll(p);
     p.trip = { to: dest, via };
@@ -408,10 +459,41 @@ export class World implements WorldHooks {
     this.lastTrip[p.id] = this.daysElapsed;
     this.lastFrom[p.id] = from;
     const text = `${this.name(p.id)}搭${via === 'station' ? '新幹線' : '飛機'}前往${this.cityName(dest)}${why}`;
-    yield { t: 'fx', kind: 'travel-depart', p: p.id, node: n.id, data: { to: dest, via, text, city: this.cityName(dest) } };
+    yield { t: 'fx', kind: 'travel-depart', p: p.id, node, data: { to: dest, via, text, city: this.cityName(dest) } };
     this.ticker(from, text, 'travel', p.id);
     yield { t: 'board' };
     return true;
+  }
+
+  /** Destinations for a travel card: the same as from the square, no fare (17 §3.5). */
+  private cardOptions(from: number, via: 'station' | 'airport', p: Player): TravelOption[] {
+    if (via === 'station' && !STATION_MAPS.includes(this.mapId(from))) return [];
+    return this.destinations(from, via, p).map(o => ({ ...o, price: 0, affordable: true }));
+  }
+
+  *travelCard(g: Game, p: Player, via: 'station' | 'airport', dest?: number): Flow<boolean> {
+    if (!p.whoPlays || g.offRoad(p) || p.trip) return false;
+    const from = g.world!.index;
+    const options = this.cardOptions(from, via, p);
+    if (!options.length) {
+      if (g.isHuman(p)) yield* g.say(p.id, via === 'station' ? `${this.cityName(from)}沒有新幹線車站` : '現在不能搭飛機');
+      return false;
+    }
+    let why = '（使用卡片）';
+    if (dest === undefined) {
+      const a = yield ask({ t: 'travel', p: p.id, via, from: this.cityName(from), options, card: true });
+      dest = typeof a === 'number' ? a : -1;
+    }
+    const o = options.find(x => x.map === dest);
+    if (!o || !o.affordable) return false;
+    if (!g.isHuman(p)) why = `（用${via === 'station' ? '電車卡' : '飛行卡'}）`;
+    return yield* this.leave(g, p, o, via, false, why, p.node);
+  }
+
+  aiCardTrip(g: Game, p: Player, via: 'station' | 'airport'): number {
+    const from = g.world!.index, options = this.cardOptions(from, via, p);
+    if (!options.length) return -1;
+    return this.aiTrip(p, from, options, 0)?.map ?? -1;
   }
 
   /**
@@ -493,6 +575,316 @@ export class World implements WorldHooks {
     return yield* g.tools.use(p, 8, k);
   }
 
+  // ---------------------------------------------------------------- 遣返卡, 獨裁卡, 召集卡, 通緝卡 (17 §3.5)
+
+  /** A city to send someone to: under CROWD players (else the least crowded), not `from`; even spread. */
+  private sendTarget(from: number): number {
+    const open = this.cities.map((_, i) => i).filter(i => i !== from);
+    if (!open.length) return -1;
+    const low = Math.min(...open.map(i => this.population(i)));
+    const room = open.filter(i => this.population(i) < World.CROWD);
+    const pool = room.length ? room.filter(i => this.population(i) === Math.min(...room.map(j => this.population(j)))) : open.filter(i => this.population(i) === low);
+    return pool[this.rng.below(pool.length)];
+  }
+
+  private option(i: number, p: Player): TravelOption {
+    const mapId = this.mapId(i);
+    return { map: i, mapId, name: CITY_NAMES[mapId] ?? '', price: 0, affordable: true, owned: 0, rivals: 0, landIndex: LAND_INDEX[mapId] ?? 1 };
+    void p;
+  }
+
+  *deport(g: Game, victim: Player, by: Player): Flow<boolean> {
+    if (!victim.whoPlays || victim.trip || victim.map === undefined || victim.map < 0) return false;
+    const c = this.cities[victim.map];
+    if (c.offRoad(victim)) return false;
+    const to = this.sendTarget(victim.map);
+    if (to < 0) return false;
+    yield* g.say(undefined, `${this.name(victim.id)}被遣返到${this.cityName(to)}！`);
+    yield { t: 'fx', kind: 'card-line', p: victim.id, data: { card: 17, role: 2 } };
+    return yield* this.leave(c, victim, this.option(to, victim), 'airport', false, `（被${this.name(by.id)}遣返）`, victim.node);
+  }
+
+  dictateVictims(g: Game, p: Player): Player[] {
+    const here = g.world!.index;
+    return this.players.filter(q => q !== p && !q.bankrupt && q.whoPlays && q.map === here && !q.trip && !g.offRoad(q));
+  }
+
+  /** 獨裁卡: everyone else on this city's squares flies off, spread over the open cities with room. */
+  *dictate(g: Game, p: Player): Flow {
+    const victims = this.dictateVictims(g, p), here = g.world!.index;
+    const plan: [Player, number][] = [];
+    for (const q of victims) {
+      const to = this.sendTarget(here);
+      if (to < 0) break;
+      q.trip = { to, via: 'airport' };          // counted where it goes before the next one is placed
+      plan.push([q, to]);
+    }
+    for (const [q] of plan) q.trip = undefined;
+    yield { t: 'fx', kind: 'dictator', p: p.id, data: { victims: plan.map(([q, to]) => [q.id, to]), city: this.cityName(here) } };
+    this.ticker(here, `${this.name(p.id)}使用獨裁卡！同城${plan.length}人被送走`, 'dictator', p.id, { important: true });
+    for (const [q, to] of plan) {
+      g.addHostility(q.id, p.id, 100 * this.priceIndex);
+      yield* this.leave(g, q, this.option(to, q), 'airport', false, `（${this.name(p.id)}的獨裁卡）`, q.node);
+    }
+  }
+
+  /** A computer dictates when three rivals or more stand in its city and it owns more lots there than any of them. */
+  aiDictate(g: Game, p: Player): boolean {
+    const v = this.dictateVictims(g, p);
+    if (v.length < 3) return false;
+    const owns = (q: Player) => g.board.lands.filter(l => l.owner === q.id + 1).length + g.board.facilities.filter(f => f.owner === q.id + 1).length;
+    const mine = owns(p);
+    return mine > 0 && this.players.every(q => q === p || q.bankrupt || owns(q) < mine);
+  }
+
+  /** Rivals in another city who can be summoned (召集卡): on its squares, not in hospital, prison, 消失 or 在路上. */
+  summonable(g: Game, p: Player): Player[] {
+    const here = g.world!.index;
+    return this.players.filter(q => q !== p && !q.bankrupt && q.whoPlays && !q.trip && q.map !== undefined && q.map >= 0 && q.map !== here && !this.cities[q.map].offRoad(q));
+  }
+
+  /**
+   * 召集卡 (17 §3.5): a random rival from another city flies to this city — one turn 在路上, then they start from this
+   * city's airport, as after any flight. No fare; 免罪卡 does not apply (it is no punishment).
+   */
+  *summon(g: Game, p: Player): Flow {
+    const list = this.summonable(g, p);
+    if (!list.length) return;
+    const q = list[this.rng.below(list.length)], here = g.world!.index, from = q.map!;
+    const text = `${this.name(p.id)}使用召集卡，把${this.name(q.id)}從${this.cityName(from)}叫來${this.cityName(here)}！`;
+    yield { t: 'fx', kind: 'summon', p: p.id, target: q.id, data: { from: this.cityName(from), to: this.cityName(here), text } };
+    // The human summoned from another city's turn: a notice on their screen (the summoner's city is not shown).
+    if (q.human) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'summon' } };
+    this.ticker(here, text, 'summon', p.id);
+    g.addHostility(q.id, p.id, 50 * this.priceIndex);
+    yield* this.across(from, this.leave(this.cities[from], q, this.option(here, q), 'airport', false, `（被${this.name(p.id)}召集）`, q.node));
+  }
+
+  /** A computer summons when it has built up this city (4+ properties at level 2 or more) and the city has room. */
+  aiSummon(g: Game, p: Player): boolean {
+    const me = p.id + 1, b = g.board, here = g.world!.index;
+    const built = b.lands.filter(l => l.owner === me && (l.level >= 2 || l.chain)).length + b.facilities.filter(f => f.owner === me && f.level >= 2).length;
+    return built >= 4 && this.population(here) < World.CROWD && this.summonable(g, p).length > 0;
+  }
+
+  /** 通緝卡's list (17 §3.5): the other eleven with where they are; those in hospital, prison, 消失 or 在路上 greyed. */
+  wantedOptions(p: Player): Option[] {
+    return this.players.filter(q => q !== p).map(q => {
+      const away = q.bankrupt || !q.whoPlays || !!q.trip || q.map === undefined || q.map < 0 || this.cities[q.map].offRoad(q);
+      return { label: this.name(q.id), value: q.id, disabled: away, detail: this.whereText(q), icon: { archive: 'Data' as const, id: 2, frame: q.character } };
+    });
+  }
+
+  /**
+   * 通緝卡 (17 §3.5): the target goes to prison for 5 days in the city they are in (a full prison sends them on, §8);
+   * 免罪卡 cancels it, 嫁禍卡 passes it on (asked in the target's city; a human asked from another city's turn is
+   * answered "no", as every question there).
+   */
+  *wanted(g: Game, p: Player, q: Player): Flow {
+    const at = q.map!, c = this.cities[at];
+    const text = `${this.name(p.id)}發出通緝令：${this.name(q.id)}在${this.cityName(at)}被捕！`;
+    yield { t: 'fx', kind: 'wanted', p: p.id, target: q.id, data: { city: this.cityName(at), text } };
+    if (q.human && this.view() !== g.world!.index) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'wanted' } };
+    this.ticker(at, text, 'wanted', q.id);
+    let sufferer = q.id;
+    yield* this.across(at, (function* () { sufferer = yield* c.cards.pardonOrFrame(q); })());
+    const s = this.players[sufferer];
+    if (sufferer < 0 || !s?.whoPlays || s.trip || s.map === undefined || s.map < 0) return;
+    yield* this.across(s.map, this.cities[s.map].sendTo(s, 'prison', 5));
+  }
+
+  /** The computer's 通緝: the rival it resents most, else one clearly richer than itself; -1 for none. */
+  aiWanted(g: Game, p: Player): number {
+    const ok = new Set(this.wantedOptions(p).filter(o => !o.disabled).map(o => o.value));
+    let best = -1;
+    for (const q of this.players) if (ok.has(q.id) && p.hostility[q.id] > 0 && (best < 0 || p.hostility[q.id] > p.hostility[best])) best = q.id;
+    if (best >= 0) return best;
+    const rich = this.players.filter(q => ok.has(q.id) && this.wealth(q) > this.wealth(p) * 1.2).sort((a, b) => this.wealth(b) - this.wealth(a))[0];
+    void g;
+    return rich ? rich.id : -1;
+  }
+
+  /** A 通緝卡 bought in g's card shop: that city's copy is out until it is used (17 §3.5). */
+  wantedTaken(g: Game, p: Player): void {
+    (this.wantedFrom[p.id] ??= []).push(g.world!.index);
+    this.syncWanted();
+  }
+
+  /** A 通緝卡 used by p: the copy's city gets it back (p's own entry, else one of a copy p was handed). */
+  wantedUsed(p: Player): void {
+    const held = (q: Player) => q.cards.filter(c => c === WANTED).length;
+    const own = this.wantedFrom[p.id];
+    if (own?.length) own.shift();
+    else { const q = this.players.find(x => (this.wantedFrom[x.id]?.length ?? 0) > held(x)); q && this.wantedFrom[q.id].pop(); }
+    this.syncWanted();
+  }
+
+  /**
+   * One 通緝卡 per city (17 §3.5): copies that left play otherwise (sold, bankruptcy) give their city's back too; each
+   * city's card pool then has its copy exactly when none of its is out.
+   */
+  syncWanted(): void {
+    const held = (q: Player) => q.cards.filter(c => c === WANTED).length;
+    const total = this.players.reduce((a, q) => a + held(q), 0);
+    let out = this.wantedFrom.reduce((a, l) => a + (l?.length ?? 0), 0);
+    while (out > total) {
+      const q = this.players.find(x => (this.wantedFrom[x.id]?.length ?? 0) > held(x)) ?? this.players.find(x => this.wantedFrom[x.id]?.length);
+      if (!q) break;
+      this.wantedFrom[q.id].pop();
+      out -= 1;
+    }
+    this.cities.forEach((c, i) => { if (c.cards.remaining.length >= WANTED) c.cards.remaining[WANTED - 1] = this.wantedFrom.some(l => l?.includes(i)) ? 0 : 1; });
+  }
+
+  /**
+   * Another city's flow run from inside a city's (cross-city cards and tools, 17 §3.5-3.6): headless, its lines in the
+   * log (and on the chat box at once when the caller's city is the one on screen); the caller's view again after.
+   */
+  *across(index: number, flow: Flow<unknown>): Flow {
+    const was = this.masked;
+    if (index === was) { yield* flow; return; }
+    this.mask(index);
+    const surfaced: GameEvent[] = [];
+    let lines: TickerLine[] = [];
+    try { lines = this.drain(index, flow, surfaced); } finally { this.mask(was); }
+    if (was === this.view()) {
+      for (const l of mergeLines(lines, p => this.name(p))) yield { t: 'ticker', ...l };
+      yield { t: 'world-sync' };
+    }
+    for (const s of surfaced) yield s;
+  }
+
+  // ---------------------------------------------------------------- 城市霸主 (17 §3.8)
+
+  /** The player owning more than half of a city's regular lots (大型用地 and companies do not count), or -1. */
+  overlordOf(index: number): number {
+    const lands = this.cities[index].board.lands, count = new Map<number, number>();
+    for (const l of lands) if (l.owner) count.set(l.owner, (count.get(l.owner) ?? 0) + 1);
+    for (const [owner, n] of count) if (n * 2 > lands.length) return owner - 1;
+    return -1;
+  }
+
+  overlordTitles(p: Player): string[] {
+    return this.cities.map((_, i) => i).filter(i => this.overlordOf(i) === p.id).map(i => `${this.cityName(i)}霸主`);
+  }
+
+  /** 霸主 per city as last announced (ticker lines when it changes). */
+  overlords: number[] = [];
+
+  /** New and lost 霸主 titles since the last check: a line each, a banner when it is the human. */
+  private *checkOverlords(): Flow {
+    for (const [i] of this.cities.entries()) {
+      const now = this.overlordOf(i), was = this.overlords[i] ?? -1;
+      if (now === was) continue;
+      this.overlords[i] = now;
+      for (const [who, gained] of [[was, false], [now, true]] as const) {
+        if (who < 0 || this.players[who].bankrupt) continue;
+        const text = gained ? `${this.name(who)}成為${this.cityName(i)}霸主！` : `${this.name(who)}失去${this.cityName(i)}霸主`;
+        this.ticker(i, text, 'overlord', who, { important: true });
+        this.outbox.push(this.log[this.log.length - 1]);
+        if (this.players[who].human) yield { t: 'fx', kind: 'tycoon-overlord', p: who, data: { city: this.cityName(i), gained, text } };
+      }
+    }
+  }
+
+  /**
+   * 城市霸主's privilege (17 §3.8): sent to hospital or prison in the city they rule, they are out the same day (no days,
+   * no lost turn). Not when sent on to another city's (full house, §8): only where they rule.
+   */
+  *overlordRelease(g: Game, p: Player, place: 'hospital' | 'prison'): Flow<boolean> {
+    const at = g.world!.index;
+    if (this.overlordOf(at) !== p.id) return false;
+    const line = place === 'hospital' ? '特護病房，當天出院' : '有檢察官罩著，當天出獄';
+    p[place] = 0;
+    yield { t: 'fx', kind: 'overlord-release', p: p.id, data: { place, city: this.cityName(at), text: line } };
+    this.ticker(at, `${this.cityName(at)}霸主${this.name(p.id)}：${line}`, 'overlord', p.id);
+    yield* g.say(p.id, `${this.cityName(at)}霸主\n${line}！`);
+    return true;
+  }
+
+  // ---------------------------------------------------------------- 洲際飛彈, 時空機 (17 §3.6)
+
+  /** Built properties of a city (lands and facilities) as `[ref, x, y, owner, level, worth]`. */
+  private built(index: number): { ref: number; x: number; y: number; owner: number; level: number; name: string; worth: number }[] {
+    const b = this.cities[index].board;
+    return [
+      ...b.lands.filter(l => l.level > 0).map(l => ({ ref: l.id + 2000, x: l.x, y: l.y, owner: l.owner, level: l.level, name: l.name, worth: l.price + l.level * l.perLevel })),
+      ...b.facilities.filter(f => f.level > 0).map(f => ({ ref: f.id + 4000, x: f.x, y: f.y, owner: f.owner, level: f.level, name: f.name, worth: f.price + f.level * (f.fees[0] ?? 0) })),
+    ];
+  }
+
+  icbmCities(p: Player): Option[] {
+    return this.cities.map((_, i) => {
+      const rivals = this.built(i).filter(x => x.owner && x.owner !== p.id + 1).length;
+      return { label: this.cityName(i), value: i, detail: `對手建築 ${rivals} 處` };
+    });
+  }
+
+  /** Another city's buildings, dearest first (the list stands in for the far city's map). */
+  icbmTargets(p: Player, city: number): Option[] {
+    return this.built(city).sort((a, b) => b.worth - a.worth).slice(0, 40).map(x => ({
+      label: x.name, value: x.ref,
+      detail: `${x.owner ? (x.owner === p.id + 1 ? '自己的' : this.name(x.owner - 1)) : '無主'} ${x.level}級`,
+      icon: x.owner ? { archive: 'Data' as const, id: 2, frame: this.players[x.owner - 1].character } : undefined,
+    }));
+  }
+
+  /** 洲際飛彈 on another city: the launch here, the nuclear blast there (headless), news for everyone. */
+  *icbm(g: Game, p: Player, city: number, ref: number): Flow {
+    const c = this.cities[city];
+    const at = ref > 4000 ? c.board.facilities[ref - 4001] : c.board.lands[ref - 2001];
+    if (!at) return;
+    const text = `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}的${at.name}！`;
+    yield { t: 'fx', kind: 'icbm-launch', p: p.id, data: { city: this.cityName(city), target: at.name, text } };
+    this.ticker(city, text, 'icbm', p.id, { important: true });
+    const h = this.human();
+    if (h && this.view() === city && g.world!.index !== city) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, data: { text, icon: 'icbm' } };
+    yield* this.across(city, c.tools.nukeAt(p, at.x, at.y));
+  }
+
+  /** The computer's 洲際飛彈: the rivals' building cluster hurting it most, away from its own (-1 none). */
+  aiIcbm(p: Player): number {
+    const me = p.id + 1, ally = p.ally, half = 220;
+    let best = -1, top = 5;
+    this.cities.forEach((_, i) => {
+      const all = this.built(i);
+      for (const t of all) {
+        if (!t.owner || t.owner === me || t.owner === ally || t.level < 3) continue;
+        let score = 0;
+        for (const o of all) if (Math.abs(o.x - t.x) <= half && Math.abs(o.y - t.y) <= half) score += o.owner === me ? -2 * o.level : o.owner && o.owner !== ally ? o.level : 0;
+        if (score > top) { top = score; best = i * 10000 + t.ref; }
+      }
+    });
+    return best;
+  }
+
+  /** 時空機's other cities (no fare, no turn 在路上). */
+  spaceTimeCities(p: Player): Option[] {
+    const here = p.map ?? -1;
+    return this.cities.map((_, i) => ({ label: this.cityName(i), value: i, disabled: i === here, detail: i === here ? '現在所在' : `地價×${(LAND_INDEX[this.mapId(i)] ?? 1).toFixed(1)}・${this.population(i)}人` })).filter(o => o.value !== here);
+  }
+
+  /** 時空機 across the country: at once on the other city's airport; gods and a carried bomb stay behind (as a trip). */
+  *spaceTime(g: Game, p: Player, city: number): Flow {
+    const from = g.world!.index, node = this.travelNodes(city, 'airport')[0] ?? this.travelNodes(city)[0] ?? this.cities[city].board.nodes[0];
+    const text = `${this.name(p.id)}用時空機瞬間來到${this.cityName(city)}`;
+    yield { t: 'fx', kind: 'space-time', p: p.id, node: p.node, data: { city: this.cityName(city), text } };
+    g.objects.detachAll(p);
+    this.lastTrip[p.id] = this.daysElapsed;
+    this.lastFrom[p.id] = from;
+    this.relocate(p, city, node);
+    this.ticker(from, text, 'travel', p.id);
+    yield { t: 'board' };
+    yield { t: 'world-sync' };
+  }
+
+  /** The computer's crossing: its own travel judgement with a free ticket (-1 stays). */
+  aiSpaceTime(g: Game, p: Player): number {
+    const from = g.world!.index;
+    const options = this.cities.map((_, i) => i).filter(i => i !== from).map(i => ({ ...this.option(i, p), price: 0 }));
+    return this.aiTrip(p, from, options, 0)?.map ?? -1;
+  }
+
   /** How a computer sees a city (17 §3.4). */
   cityView(p: Player, index: number): CityView {
     const c = this.cities[index], b = c.board, me = p.id + 1, ally = p.ally;
@@ -521,6 +913,13 @@ export class World implements WorldHooks {
     if (RESORT[this.mapId(index)]) score += 1.5 * b.facilities.filter(f => !f.owner && f.price * PI <= budget * 0.3).length;
     score += rivals.length * [-1, 0, 0.5][style];
     if (hated) score += [-1, 1, 2.5][style];
+    // 城市霸主 (17 §3.8): ruling a city is worth staying for, being close to it worth going for.
+    const mineLots = b.lands.filter(l => l.owner === me).length, need = Math.floor(b.lands.length / 2) + 1;
+    if (mineLots >= need) score += 2;
+    else if (mineLots * 10 >= need * 6 && b.lands.some(l => !l.owner && l.price * PI <= budget * 0.3)) score += 3;
+    // A lab with 「限定」 tools (17 §3.6, 沖繩 most): worth more with an own lab there, a little otherwise.
+    const advanced = (TYCOON_LABS[this.mapId(index)] ?? []).filter(t => t > 13).length;
+    if (advanced) score += b.facilities.some(f => f.owner === me && f.type === 4 && f.level >= 1) ? advanced : 0.3 * advanced;
     return { score, own, room, free, danger, chase: style === 2 && hated ? this.name(hated.id) : null };
   }
 
@@ -615,12 +1014,37 @@ export class World implements WorldHooks {
     }
     yield { t: 'board' };
     for (const c of this.cities) yield* c.stocks.sellAll(p, true);
-    yield* g.tools.dropAll(p);
-    yield* g.cards.dropAll(p);
+    yield* g.tools.dropAll(p, true);
+    yield* g.cards.dropAll(p, true);
     if (released.length > 3) {
       const picked = new Set<number>();
       while (picked.size < 3) picked.add(released[g.rng.below(released.length)]);
-      for (const ref of picked) yield* g.places.auction(-1, ref);
+      // Bid on by everyone alive in the whole world, after the turn (17 §9): the human live, wherever they are.
+      this.pendingAuctions.push({ city: g.world!.index, refs: [...picked] });
+    }
+  }
+
+  /** Bankruptcy auctions waiting for the end of the turn (17 §9); empty between turns (not saved). */
+  private pendingAuctions: { city: number; refs: number[] }[] = [];
+
+  /**
+   * The waiting bankruptcy auctions: run by their city's engine but on screen wherever the human is (every living
+   * player bids; the human through the auction room), always after the turn so that headless = shown.
+   */
+  private *auctions(): Flow {
+    while (this.pendingAuctions.length && !this.over) {
+      const { city, refs } = this.pendingAuctions.shift()!;
+      const g = this.cities[city];
+      for (const ref of refs) {
+        if (this.over) return;
+        const flow = g.places.auction(-1, ref, true);
+        let r = flow.next();
+        while (!r.done) {
+          const s = r.value;
+          if (!('ask' in s)) this.toTicker(city, s);
+          r = flow.next((yield s) as Answer);
+        }
+      }
     }
   }
 
@@ -641,9 +1065,13 @@ export class World implements WorldHooks {
         const resumed = this.resumeAtTurn;
         this.resumeAtTurn = false;
         yield* this.playerTurn(this.players[this.current], resumed);
+        yield* this.auctions();
+        yield* this.checkOverlords();
+        yield* this.finale.check(); // four left: 大富翁城 (docs/rules/19)
       }
       if (this.over) break;
       for (const [i, c] of this.cities.entries()) {
+        if (!this.finale.runs(i)) continue; // the five cities are frozen during the finale
         for (let k = 0; k < 4 && !this.over; k++) {
           const actor = c.npcBase + k;
           if (!c.places.npcActive(actor)) continue;
@@ -651,8 +1079,16 @@ export class World implements WorldHooks {
           yield* this.onCity(i, c.places.npcTurn(actor));
         }
       }
+      yield* this.auctions();
       if (this.over) break;
+      // The other cities' news of the round, after the shown city's moves (17 §10).
+      yield* this.flushTicker();
       yield* this.daily();
+      yield* this.auctions();
+      yield* this.checkOverlords();
+      yield* this.finale.check();
+      this.finale.tidy();
+      yield* this.flushTicker();
       this.current = 0;
     }
   }
@@ -676,13 +1112,16 @@ export class World implements WorldHooks {
   }
 
   /** The skipped turn of a trip ends with the arrival on the destination's square (17 §3.3). */
-  private *arrive(p: Player) {
-    const trip = p.trip!, to = trip.to;
+  private *arrive(p: Player): Flow {
+    const trip = p.trip!;
+    const to = trip.to;
     const node = this.travelNodes(to, trip.via)[0] ?? this.travelNodes(to)[0] ?? this.cities[to].board.nodes[0];
     p.trip = undefined;
     this.relocate(p, to, node);
     const text = `${this.name(p.id)}抵達${this.cityName(to)}${trip.via === 'station' ? '車站' : '機場'}`;
     const c = this.cities[to], self = this;
+    // The human's skipped turn shows the trip (在路上); computers elsewhere only get their ticker line.
+    if (p.human) yield { t: 'fx', kind: 'travel-onway', p: p.id, data: { via: trip.via, to, city: this.cityName(to) } };
     yield* this.onCity(to, (function* () {
       self.ticker(to, text, 'arrive', p.id);
       c.current = p.id;
@@ -714,8 +1153,9 @@ export class World implements WorldHooks {
       const surfaced: GameEvent[] = [];
       const lines = this.drain(index, flow, surfaced);
       this.mask(this.view());
-      for (const l of lines) yield { t: 'ticker', ...l };
-      if (lines.some(l => l.kind === 'overflow' || l.kind === 'arrive' || l.kind === 'bankrupt' || l.kind === 'travel')) yield { t: 'world-sync' };
+      // The chat box gets these at the end of the round (flushTicker), merged and one by one.
+      this.outbox.push(...lines);
+      if (lines.some(l => ['overflow', 'arrive', 'bankrupt', 'travel', 'summon', 'wanted', 'icbm', 'dictator'].includes(l.kind))) yield { t: 'world-sync' };
       // What the human must see even from another city: a new title, the end of the game.
       for (const s of surfaced) yield s;
     } finally {
@@ -733,7 +1173,7 @@ export class World implements WorldHooks {
       if ('ask' in s) answer = autoAnswer(s);
       else {
         this.toTicker(index, s);
-        if (surfaced && (s.t === 'gameover' || (s.t === 'fx' && s.kind === 'tycoon-title'))) surfaced.push(s);
+        if (surfaced && (s.t === 'gameover' || (s.t === 'fx' && (s.kind === 'tycoon-title' || s.kind === 'tycoon-notice')))) surfaced.push(s);
       }
       r = flow.next(answer);
     }
@@ -741,10 +1181,21 @@ export class World implements WorldHooks {
     return n > 0 ? this.log.slice(-Math.min(n, this.log.length)) : [];
   }
 
-  ticker(map: number, text: string, kind: string, p?: number) {
+  ticker(map: number, text: string, kind: string, p?: number, extra: Partial<TickerLine> = {}) {
     this.logged += 1;
-    this.log.push({ day: this.daysElapsed, map, text, p, kind });
+    this.log.push({ day: this.daysElapsed, map, text, p, kind, ...(IMPORTANT.has(kind) ? { important: true } : {}), ...extra });
     if (this.log.length > World.LOG_MAX) this.log.splice(0, this.log.length - World.LOG_MAX);
+  }
+
+  /** Lines of headless cities waiting for the chat box (17 §10); not saved (the log has them). */
+  private outbox: TickerLine[] = [];
+
+  /** The round's remote lines, merged, to the screen (after the shown city's moves of the day). */
+  private *flushTicker(): Flow {
+    if (!this.outbox.length) return;
+    const lines = mergeLines(this.outbox, p => this.name(p));
+    this.outbox = [];
+    for (const l of lines) yield { t: 'ticker', ...l };
   }
 
   /** What of a headless city's events is worth a ticker line (17 §10). */
@@ -754,18 +1205,22 @@ export class World implements WorldHooks {
     switch (s.t) {
       case 'buy': {
         const what = s.kind === 'land' ? c.board.lands[s.id - 1]?.name : c.board.facilities[s.id - 1]?.name;
-        this.ticker(index, `${n(s.p)}在${what}買下土地`, 'buy', s.p);
+        const big = s.kind === 'facility' || s.price >= 5000 * this.priceIndex;
+        this.ticker(index, `${n(s.p)}買下${what} ${fmt(s.price)}`, 'buy', s.p, big ? { important: true } : {});
         break;
       }
       case 'build':
-        if (s.level >= 3) this.ticker(index, `${n(s.p)}把${s.kind === 'land' ? c.board.lands[s.id - 1]?.name : c.board.facilities[s.id - 1]?.name}蓋到${s.level}級`, 'build', s.p);
+        if (s.level >= 3) this.ticker(index, `${n(s.p)}把${s.kind === 'land' ? c.board.lands[s.id - 1]?.name : c.board.facilities[s.id - 1]?.name}蓋到${s.level}級`, 'build', s.p, s.level >= 5 ? { important: true } : {});
         break;
       case 'pay': {
-        const big = s.amount >= 5000 * this.priceIndex;
-        const toHuman = s.to >= 0 && s.to < this.players.length && this.players[s.to].human;
-        const fromHuman = s.from >= 0 && s.from < this.players.length && this.players[s.from].human;
-        if (s.from >= 0 && s.from < this.players.length && s.to >= 0 && s.to < this.players.length && (big || toHuman || fromHuman))
-          this.ticker(index, `${n(s.from)}付給${n(s.to)}${s.reason}${fmt(s.amount)}元`, 'pay', s.from);
+        const isP = (x: number) => x >= 0 && x < this.players.length;
+        if (!isP(s.from) || !isP(s.to)) break;
+        const human = this.players[s.to].human || this.players[s.from].human;
+        const big = s.amount >= 10000 * this.priceIndex;
+        // Fees received (tolls, hotel, shop …): one line each, merged per receiver in the chat; big ones or the
+        // human's stand out.
+        if (/費$/.test(s.reason)) this.ticker(index, `${n(s.to)}收${s.reason} +${fmt(s.amount)}（${n(s.from)}付）`, 'toll', s.to, { from: s.from, amount: s.amount, ...(big || human ? { important: true } : {}) });
+        else if (big || human) this.ticker(index, `${n(s.from)}付給${n(s.to)}${s.reason}${fmt(s.amount)}元`, 'pay', s.from, { important: true });
         break;
       }
       case 'fx': {
@@ -780,6 +1235,8 @@ export class World implements WorldHooks {
           const head = typeof d.head === 'string' ? d.head : '';
           const src = d.src === 'news' ? '新聞' : '命運';
           if (head && (d.src === 'news' || (s.p !== undefined && this.players[s.p]?.human))) this.ticker(index, `${src}：${head}`, d.src === 'news' ? 'news' : 'fate', s.p);
+        } else if ((s.kind === 'stock-up' || s.kind === 'stock-down') && s.p !== undefined) {
+          this.ticker(index, `${n(s.p)}讓${c.stocks.stocks[Number(d.slot)]?.name ?? '股票'}${s.kind === 'stock-up' ? '漲停' : '跌停'}`, 'stock', s.p);
         } else if (s.kind === 'auction-end' && typeof d.buyer === 'number' && d.buyer >= 0) {
           this.ticker(index, `${n(d.buyer)}標得拍賣地產（${fmt(Number(d.price))}元）`, 'auction', d.buyer);
         }
@@ -799,12 +1256,12 @@ export class World implements WorldHooks {
     yield { t: 'day', date, newMonth };
     this.updatePriceIndex();
     this.cities.forEach((c, i) => c.rng.reseed(daySeed(this.citySeed(i), this.daysElapsed)));
-    for (const [i, c] of this.cities.entries()) { this.mask(i); this.drain(i, c.stocks.daily()); }
+    for (const [i, c] of this.cities.entries()) { if (!this.finale.runs(i)) continue; this.mask(i); this.drain(i, c.stocks.daily()); }
     this.mask(this.view());
     yield { t: 'fx', kind: 'stocks-updated' };
     if (dayOf(this.date) === 15) {
-      yield* this.dividends();
-      for (const [i, c] of this.cities.entries()) yield* this.onCity(i, c.places.lotteryDraw());
+      if (!this.finale.active) yield* this.dividends(); // no stocks in 大富翁城
+      for (const [i, c] of this.cities.entries()) if (this.finale.runs(i)) yield* this.onCity(i, c.places.lotteryDraw());
       if (this.over) return;
     }
     if (newMonth) {
@@ -812,9 +1269,12 @@ export class World implements WorldHooks {
       const g0 = this.cities[0];
       const rows = this.players.filter(p => p.whoPlays).map(p => ({ p: p.id, character: p.character, bank: p.bank, loan: p.loan !== 0, interest: p.loan ? 0 : Math.trunc(p.bank * 0.1) }));
       for (const p of this.players) if (p.whoPlays && p.loan === 0) p.bank = Math.trunc(p.bank * 1.1);
-      yield { t: 'fx', kind: 'month-report', data: { ...g0.monthReport(rows), world: true } as unknown as Record<string, unknown> };
+      // One quick nationwide sheet, then 本月全國富豪榜 (top 5 and the human's place, 17 §6).
+      const ranking = this.players.filter(p => !p.bankrupt).map(p => ({ p: p.id, wealth: this.wealth(p) })).sort((a, b) => b.wealth - a.wealth || a.p - b.p);
+      yield { t: 'fx', kind: 'month-report', data: { ...g0.monthReport(rows), world: true, ranking } as unknown as Record<string, unknown> };
       for (const p of this.players) { p.monthLoss = 0; p.monthGain = 0; p.monthBadDays = 0; }
       for (const [i, c] of this.cities.entries()) {
+        if (!this.finale.runs(i)) continue;
         yield* this.onCity(i, c.objects.monthly());
         yield* this.onCity(i, c.blackMarket.monthly());
         c.monthsElapsed += 1;

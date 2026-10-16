@@ -1,0 +1,8 @@
+/* 大富豪模式 local news / fate (docs/rules/18): the city's name on the picture, and more faces in two columns. */
+.nw-city { position: absolute; left: 8px; top: 8px; z-index: 1; padding: 1px 10px; border-radius: 8px; font-size: 16px; letter-spacing: 1px;
+  color: #fff; background: rgba(20, 20, 40, .72); border: 2px solid #fff; box-shadow: 0 2px 0 rgba(0, 0, 0, .35); }
+.nw-faces.many { width: 150px; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 4px; }
+.nw-faces.many .nw-face { grid-template-columns: 22px 1fr; padding: 2px 4px 2px 2px; border-left-width: 3px; }
+.nw-faces.many .nw-face span { width: 22px; height: 22px; }
+.nw-faces.many .nw-face b, .nw-faces.many .nw-face em { font-size: 11px; line-height: 13px; }
+.nw-text.with-faces:has(+ .nw-faces.many) { right: 170px; }

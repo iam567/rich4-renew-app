@@ -1,0 +1,23 @@
+/* 大富翁城's results (finale-ending.ts). */
+.fe-cover { position: fixed; inset: 0; z-index: 70; display: grid; place-items: center; padding: 10px; font-family: "Huninn", sans-serif;
+  background: radial-gradient(circle at 50% 30%, rgba(122, 24, 48, .92), rgba(20, 4, 12, .97)); animation: pl-in .25s ease-out; }
+.fe-cover.out { animation: pl-out .25s ease-in forwards; }
+.fe-box { width: min(860px, 100%); max-height: 100%; display: flex; flex-direction: column; gap: 8px; padding: 14px; border-radius: 24px; color: #3a1a00;
+  background: linear-gradient(#fff8dc, #ffe39a); border: 4px solid #fff; box-shadow: 0 0 0 4px #b0182c, 0 0 40px rgba(255, 200, 80, .6); overflow: hidden; }
+.fe-head { display: flex; flex-direction: column; align-items: center; font-size: 30px; letter-spacing: 4px; color: #b0182c; text-shadow: 0 2px 0 #fff; }
+.fe-head small { font-size: 13px; letter-spacing: 0; color: #8a5a20; text-shadow: none; }
+.fe-rows { display: flex; flex-direction: column; gap: 6px; overflow: auto; min-height: 0; }
+.fe-row { display: grid; grid-template-columns: 34px 92px 1fr; gap: 8px; align-items: center; padding: 6px 10px; border-radius: 16px; background: rgba(255,255,255,.6); }
+.fe-row.win { background: linear-gradient(#fff3b0, #ffd04a); box-shadow: 0 0 14px rgba(255, 180, 40, .8); }
+.fe-rank { font-size: 28px; color: #b0182c; text-align: center; }
+.fe-who { display: flex; flex-direction: column; align-items: center; font-size: 15px; }
+.fe-who img { width: 46px; height: 46px; border-radius: 50%; background: #fff; border: 3px solid #b0182c; }
+.fe-who b { font-weight: 400; } .fe-who small { font-size: 11px; color: #a0302c; }
+.fe-body { display: flex; flex-direction: column; gap: 3px; font-size: 13px; min-width: 0; }
+.fe-val b { font-weight: 400; color: #b0182c; font-size: 16px; }
+.fe-cities { display: flex; flex-wrap: wrap; gap: 4px; }
+.fe-city { display: flex; gap: 4px; align-items: baseline; padding: 1px 8px; border-radius: 10px; background: #fff; border-left: 6px solid var(--cc); font-size: 12px; }
+.fe-city b { font-weight: 400; color: var(--cc); } .fe-city.none { border-left-color: #bbb; color: #888; }
+.fe-casino { color: #6a3a10; }
+.fe-box .fe-go { align-self: center; font-size: 20px; padding: 6px 40px; }
+@media (max-width: 560px) { .fe-row { grid-template-columns: 28px 70px 1fr; } .fe-head { font-size: 24px; } }

@@ -28,7 +28,11 @@ import { CITY_NAMES, TYCOON_MAPS, tycoonSettings, type World } from '../core/wor
 import { isWorldSave, saveWorld } from '../core/save';
 import { openCityViewer } from './city-viewer';
 import { tycoonEnding } from './tycoon-ending';
-import { CITY_COLORS, cityThumb, installWorldScreens, logHtml, newWorld, registerSprites, resumeWorld, tycoon, WorldBar } from './tycoon';
+import { finaleResults } from './finale-ending'; // 大富翁城 (docs/rules/19)
+import { finaleToolbar, noStocks, prepareFinale } from './finale';
+import { FINALE_MAP } from '../core/casino-rules';
+import './tycoon-onway';
+import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
 
@@ -428,6 +432,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     [art, bank] = await Promise.all([loadMap(mapId), bank ?? SpriteBank.create()]);
     bank.addMapSprites(art.sprites);
     if (ty) { await registerSprites(bank); installWorldScreens(); }
+    if (ty || mapId === FINALE_MAP) await prepareFinale(bank); // 大富翁城's halls (docs/rules/19)
     game = make(art.board);
   } catch (e) { app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
   if (me !== session) return;
@@ -451,6 +456,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   panelBox.append(panel.el); calBox.append(calendar.el);
   side.append(panelBox, mapBox, calBox);
   shell.append(toolbar.el, stage, side);
+  finaleToolbar(toolbar.el, game); // 大富翁城: no stock market
   app.append(shell);
   fitShell(shell);
   const view = new BoardView(stage, game, art, bank);
@@ -546,6 +552,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       }
       case 'card': case 'tool': case 'stock': case 'trade':
         if (!needTurn()) return;
+        if (key === 'stock' && noStocks(game)) { hud.flash(ty ? '大富翁城沒有股市\n（股票進城時已換成現金）' : '大富翁城沒有股市', 1400); return; }
         // The menu is about to open: the clips of what can be used from it start loading now.
         if (key === 'card' || key === 'tool') warmFor(game.players[game.current], key);
         go.cancel(); turn!({ action: key });
@@ -577,6 +584,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           } },
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
+          // 大富豪模式: the chat box's 播報 (docs/rules/17 §10).
+          ...(chat ? [{ label: '播報', opts: CHAT_MODES, cur: () => chatMode(), pick: (i: number) => { setChatMode(i); chat.refresh(); } }] : []),
           { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
             pick: i => void setLang(LANGS[i].id).then(() => { render(); hud.refresh(); }) },
         ];
@@ -709,7 +718,10 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const stopWatch = () => { wd.stop(); };
   // 大富豪模式 (docs/rules/17 §10): the world bar (city, rivals left, the other cities' ticker; tap for the log).
   const bar = ty ? new WorldBar(ty.world) : null;
-  if (bar) { stage.append(bar.el); bar.onOpen = () => void hud.panelScreen('各地動態', logHtml(ty!.world)); }
+  const chat = ty ? new ChatBox(ty.world, bank) : null;
+  const openLog = () => void hud.sheetNode('各地動態', logPanel(ty!.world, bank!));
+  if (bar) { stage.append(bar.el); bar.onOpen = openLog; }
+  if (chat) { stage.append(chat.el); chat.onOpen = openLog; }
   const flow = ty ? ty.flow : game.run();
   let answer: Answer = undefined;
   for (;;) {
@@ -948,7 +960,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         hud.refresh();
         break;
       case 'ticker':
-        bar?.push(s);
+        chat?.push(s);
         bar?.update();
         break;
       case 'world-sync':
@@ -968,7 +980,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         // The ending (fcn_004075c1, jump.mkf) plays MIDI07 (flag 0x8006).
         audio.theme(Theme.ending, true);
         // 大富豪模式: the results (winner) or the losing screen (docs/rules/17 §11).
-        if (ty) { stopWatch(); await tycoonEnding(hud.context(shell), ty.world, s.winner); return; }
+        if (ty) { stopWatch(); await finaleResults(hud.context(shell), ty.world, s.winner); await tycoonEnding(hud.context(shell), ty.world, s.winner); return; }
         hud.gameOver(s.winner >= 0 ? `${nameOf(s.winner)}獲勝！` : '你輸了！');
         stopWatch();
         return;

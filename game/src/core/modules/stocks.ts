@@ -128,7 +128,7 @@ export function trendOf(s: Stock): Trend {
 }
 
 /** Facility level caps by type (ref_00474940), copied from the core to avoid an import cycle. */
-const FACILITY_MAX = [1, 5, 5, 1, 5];
+const FACILITY_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19)
 /** Fee names by company category (ref_0047528e → ref_0047517c, 02 §6). */
 const FEE_NAME: Record<number, string> = { 1: '旅遊費', 3: '電腦費', 4: '保險費', 5: '修車費', 6: '加油費', 11: '工程費', 12: '過路費' };
 

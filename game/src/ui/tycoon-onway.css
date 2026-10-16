@@ -1,0 +1,28 @@
+/* 在路上 (docs/rules/17 §3.3) */
+.ow { position: relative; width: min(640px, 94%); display: flex; flex-direction: column; gap: 6px; align-items: center; margin-bottom: 10px; cursor: pointer;
+  animation: tb-pop .3s cubic-bezier(.3, 1.5, .5, 1) both; }
+.ow-scene { position: relative; width: 100%; aspect-ratio: 16 / 8; border-radius: 18px; overflow: hidden; border: 4px solid #fff;
+  box-shadow: 0 6px 0 rgba(0,0,0,.25), 0 10px 18px rgba(0,0,0,.35); container-type: size; }
+.ow-bg { position: absolute; inset: 0; background-image: var(--bg); background-repeat: repeat-x; background-size: auto 100%;
+  animation: ow-scroll 3.2s linear infinite; }
+.rail .ow-bg { animation-duration: 1.1s; }
+/* one tile = height × ratio; scroll exactly one tile per loop */
+@keyframes ow-scroll { from { background-position-x: 0; } to { background-position-x: calc(-100cqh * var(--ratio)); } }
+.ow-speed { position: absolute; inset: 0; pointer-events: none; opacity: .55;
+  background: repeating-linear-gradient(90deg, transparent 0 60px, rgba(255,255,255,.65) 60px 140px, transparent 140px 260px);
+  mask-image: linear-gradient(transparent 22%, #000 30%, #000 42%, transparent 48%); -webkit-mask-image: linear-gradient(transparent 22%, #000 30%, #000 42%, transparent 48%);
+  animation: ow-lines .25s linear infinite; }
+@keyframes ow-lines { to { background-position-x: -260px; } }
+.ow-veh { position: absolute; width: var(--vw); left: calc((100% - var(--vw)) / 2); }
+.air .ow-veh { top: 18%; animation: ow-bob 1.6s ease-in-out infinite; }
+.rail .ow-veh { bottom: 41%; animation: ow-rattle .18s steps(2) infinite; }
+@keyframes ow-bob { 50% { transform: translateY(-5%) rotate(-1.5deg); } }
+@keyframes ow-rattle { 50% { transform: translateY(1px); } }
+.ow-img { display: block; width: 100%; height: auto; filter: drop-shadow(0 6px 6px rgba(0,0,0,.25)); }
+.ow-win { position: absolute; overflow: hidden; border-radius: 50%; background: #bfe0ff; box-shadow: inset 0 0 0 2px rgba(255,255,255,.8); }
+.rail .ow-win { border-radius: 22%; }
+.ow-win img { width: 100%; height: 100%; object-fit: cover; object-position: 50% 20%; }
+.ow-cap { display: flex; align-items: center; gap: 8px; padding: 6px 16px; border-radius: 999px; background: rgba(20, 30, 70, .82); color: #fff; font-size: 17px;
+  border: 2px solid #fff; white-space: nowrap; max-width: 100%; overflow: hidden; text-overflow: ellipsis; }
+.ow-tag { padding: 1px 8px; border-radius: 999px; background: linear-gradient(#fff07a, #ffbf2e); color: #5a2d00; font-size: 13px; }
+.game.portrait .ow-cap { font-size: 15px; }

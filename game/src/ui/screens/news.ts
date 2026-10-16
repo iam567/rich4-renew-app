@@ -13,6 +13,7 @@ import type { GameEvent } from '../../core/types';
 import type { BoardFace } from '../../core/modules/events';
 import { audio, boardVoice } from '../audio';
 import './news.css';
+import { regionalPicture } from './regional';
 
 type Fx = Extract<GameEvent, { t: 'fx' }>;
 
@@ -42,7 +43,9 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
   const text = typeof fx.data?.text === 'string' ? fx.data.text : '';
   const bg = ctx.bank.art('Panel', 66, kind === 'news' ? 0 : 1);
   const picId = id < 0 ? 0 : kind === 'news' ? newsPicture(id) : fatePicture(id, ctx.game.mapSlot);
-  const pic = picId ? ctx.bank.art('Data', picId) : null;
+  // 大富豪模式 local events (docs/rules/18) bring their own picture and the city's name.
+  const local = regionalPicture(fx.data);
+  const pic = local ? { src: local.src } : picId ? ctx.bank.art('Data', picId) : null;
   const p = fx.p !== undefined ? ctx.game.players[fx.p] : undefined;
   const ch = p ? CHARACTERS[p.character] : undefined;
   const face = ch ? ctx.bank.art('Data', 2, ch.id) : null;
@@ -63,9 +66,9 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
       <div class="nw-title">${esc(title)}</div>
       ${kind === 'news' ? '<div class="nw-live"><i></i>NEWS</div>' : ''}
       ${ch ? `<div class="nw-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span>${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(ch.name)}</div>` : ''}
-      <div class="nw-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</div>
+      <div class="nw-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}${local?.city ? `<span class="nw-city">${esc(local.city)}</span>` : ''}</div>
       <div class="nw-text${faces.length ? ' with-faces' : ''}"><div>${body(text)}</div></div>
-      ${faces.length ? `<div class="nw-faces">${facesHtml}</div>` : ''}
+      ${faces.length ? `<div class="nw-faces${faces.length > 4 ? ' many' : ''}">${facesHtml}</div>` : ''}
       <div class="nw-tap">雙擊關閉</div>
     </div>`;
   // Long texts shrink to stay inside the board.

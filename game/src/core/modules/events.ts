@@ -11,6 +11,8 @@ import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
 import type { Rng } from '../rng';
 import type { Player } from '../types';
+import { cardName, cardPrice, isTycoonCard } from './cards';
+import { regionalDraw } from './regional-events'; // 大富豪模式 local news / fate (docs/rules/18)
 
 /** Card points and tools selling the fate entry 32 needs (04 §4.4, 05 §2.4); used when the modules provide them. */
 interface SellAllHook { sellAllForPoints(p: Player): number }
@@ -106,10 +108,19 @@ export class Events {
     this.fateNext = 0;
   }
 
+  /**
+   * The decks read (大富豪模式, docs/rules/18 §2 / 17 §4): one nationwide news deck and one fate deck, the first city's
+   * (saved with it); every city still shuffles its own at the start (same rand() use) but reads the world's. A normal
+   * game reads its own.
+   */
+  private deck(): Events { return this.g.world ? this.g.world.hooks.allCities()[0]?.events ?? this : this; }
+
   // ================================================================ fate (06 §3)
 
   /** Fate tile, t = 3 (06 §3): draw the next eligible entry, show it, then apply it. */
   *fate(p: Player): Flow {
+    // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own fate events instead; never in a normal game.
+    if (this.g.world && (yield* regionalDraw(this.g, p, 'fate'))) return;
     const t = this.drawFate(p);
     if (t < 0) return;
     yield* this.applyFate(p, t);
@@ -117,9 +128,10 @@ export class Events {
 
   /** Read the deck until an entry passes its check (fcn_0044db81); skipped entries are consumed. Returns the entry or -1. */
   drawFate(p: Player): number {
+    const d = this.deck();
     for (let i = 0; i < FATE_COUNT; i++) {
-      const raw = this.fateDeck[this.fateNext];
-      this.fateNext = (this.fateNext + 1) % FATE_COUNT;
+      const raw = d.fateDeck[d.fateNext];
+      d.fateNext = (d.fateNext + 1) % FATE_COUNT;
       const t = this.fateCheck(p, raw);
       if (t >= 0) return t;
     }
@@ -129,6 +141,7 @@ export class Events {
   /** Precondition fcn_0044bb4b (06 §3.1): the entry to run (possibly rewritten), or -1 to skip. */
   fateCheck(p: Player, t: number): number {
     const g = this.g, me = p.id + 1;
+    if (g.rules?.finaleDeny?.('fate', t)) return -1; // 大富翁城 (docs/rules/19 §3): not there
     switch (t) {
       case 0: return g.board.lands.some(l => l.owner === me && l.level !== 0) ? t : -1;
       case 1: return g.board.lands.some(l => l.owner === me && l.level === 0) ? t : -1;
@@ -224,7 +237,7 @@ export class Events {
       }
       case 5: {
         const got = yield* this.birthday(p);
-        yield* done('birthday', got.length ? got.map(([q, card]) => ({ p: q, text: `送給${g.name(p.id)}${CARD_NAMES[card - 1] ?? '卡片'}` })) : [{ p: p.id, text: '沒有收到卡片' }],
+        yield* done('birthday', got.length ? got.map(([q, card]) => ({ p: q, text: `送給${g.name(p.id)}${CARD_NAMES[card - 1] ?? (cardName(card) || '卡片')}` })) : [{ p: p.id, text: '沒有收到卡片' }],
           { focus: [p.id, ...got.map(([q]) => q)] });
         return;
       }
@@ -338,7 +351,7 @@ export class Events {
       if (g.isHuman(p)) {
         const a = yield ask({
           t: 'choose', p: p.id, title: `向${g.name(q.id)}收一張卡片`, cancellable: false, // fortune.asm ref_004659c9
-          options: q.cards.map((id, k) => ({ label: CARD_NAMES[id - 1] ?? `卡片${id}`, value: k })),
+          options: q.cards.map((id, k) => ({ label: CARD_NAMES[id - 1] ?? (cardName(id) || `卡片${id}`), value: k })),
         });
         i = typeof a === 'number' && a >= 0 && a < q.cards.length ? a : 0;
       } else i = g.rng.below(q.cards.length);
@@ -372,10 +385,11 @@ export class Events {
     if (cards.sellAllForPoints) sum += cards.sellAllForPoints(p);
     else {
       for (const id of p.cards) {
-        sum += CARD_PRICES[id - 1] ?? 0;
+        if (isTycoonCard(id)) continue; // 大富豪模式's own cards stay in the hand (17 §3.7)
+        sum += CARD_PRICES[id - 1] ?? cardPrice(id);
         if (g.cards.remaining.length >= id) g.cards.remaining[id - 1] += 1;
       }
-      p.cards = [];
+      p.cards = p.cards.filter(isTycoonCard);
     }
     return sum;
   }
@@ -384,6 +398,8 @@ export class Events {
 
   /** News tile, t = 2 (06 §4): draw the next eligible entry and run it. */
   *news(p: Player): Flow {
+    // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own news events instead; never in a normal game.
+    if (this.g.world && (yield* regionalDraw(this.g, p, 'news'))) return;
     const ev = this.drawNews();
     if (ev < 0) return;
     yield* this.applyNews(p, ev);
@@ -391,9 +407,10 @@ export class Events {
 
   /** Read the news deck until an entry passes its check (fcn_00448be2); skipped entries are consumed. */
   drawNews(): number {
+    const d = this.deck();
     for (let i = 0; i < NEWS_COUNT; i++) {
-      const ev = this.newsDeck[this.newsNext];
-      this.newsNext = (this.newsNext + 1) % NEWS_COUNT;
+      const ev = d.newsDeck[d.newsNext];
+      d.newsNext = (d.newsNext + 1) % NEWS_COUNT;
       if (this.newsCheck(ev)) return ev;
     }
     return -1;
@@ -402,6 +419,7 @@ export class Events {
   /** Preconditions (06 §4.2). */
   newsCheck(ev: number): boolean {
     const g = this.g, b = g.board;
+    if (g.rules?.finaleDeny?.('news', ev)) return false; // 大富翁城 (docs/rules/19 §3): not there
     switch (ev) {
       case 0: case 1: return g.players.some(q => q.prison !== 0 && g.here(q));
       case 2: case 3: return g.players.some(q => q.hospital !== 0 && g.here(q));

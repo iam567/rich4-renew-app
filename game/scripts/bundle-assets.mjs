@@ -1,6 +1,6 @@
 // Copies only the art and data the game loads into a build (default dist/assets), following the manifests,
 // so an app bundle carries ~700 MB instead of every extracted file. Run after `RICH4_NO_ASSETS=1 vite build`.
-import { copyFileSync, existsSync, mkdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { execFile } from 'node:child_process';
 import { availableParallelism } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
@@ -43,6 +43,25 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
     for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+  }
+  // The tycoon cards' art (Data#601..606), the lab tools' icons (Data#614..616) and the 在路上 animation layers.
+  const cards = [601, 602, 603, 604, 605, 606].map(n => `cards/0${n}.webp`), tools = [614, 615, 616].map(n => `tools/0${n}.webp`);
+  for (const f of [...cards, ...tools, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {
+    if (existsSync(join(src, `maps/remake/${f}`))) copy(`maps/remake/${f}`);
+  }
+  // 大富翁城 (docs/rules/19): the five halls' sprites (map/1601..1645, read at run time) and the casino screens' art.
+  for (let t = 0; t < 5; t++) for (let k = 1; k <= 5; k++) {
+    const fj = `maps/remake/sprites/${1600 + t * 10 + k}/frames.json`;
+    if (!existsSync(join(src, fj))) continue;
+    copy(fj);
+    for (const f of json(fj)) copy(`maps/remake/sprites/${1600 + t * 10 + k}/${f.file}`);
+  }
+  if (existsSync(join(src, 'maps/remake/casino'))) {
+    for (const f of readdirSync(join(src, 'maps/remake/casino'))) if (f.endsWith('.webp')) copy(`maps/remake/casino/${f}`);
+  }
+  // 大富豪模式 local news / fate pictures (docs/rules/18): maps/remake/events/<id>.webp.
+  if (existsSync(join(src, 'maps/remake/events'))) {
+    for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) copy(`maps/remake/events/${f}`);
   }
 }
 

@@ -45,3 +45,19 @@
 /* 大富豪模式: five or more bidders stand closer and smaller (docs/rules/17 §12). */
 .au-many .au-bidder, .au-many .au-mark { transform: scale(.72); transform-origin: 50% 0; }
 .au-many .au-info, .au-many .au-bid { font-size: 13px; }
+
+/* 大富豪模式 (17 §9): world-wide bankruptcy auctions with up to 11 bidders, one compact row each. */
+.au-compact .au-crow { position: absolute; z-index: 3; box-sizing: border-box; display: flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 10px; background: rgba(255, 250, 235, .9);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .3); font-size: 12px; white-space: nowrap; overflow: hidden; color: #3a2410; }
+.au-compact .au-crow img { height: 100%; aspect-ratio: 1; border-radius: 50%; object-fit: cover; }
+.au-compact .au-crow img, .au-compact .au-crow i, .au-compact .au-crow .au-ccash { flex: none; }
+.au-compact .au-crow b { flex: 0 1 auto; min-width: 3em; overflow: hidden; text-overflow: ellipsis; }
+.au-compact .au-crow i { font-style: normal; font-size: 10px; opacity: .7; }
+.au-compact .au-crow .au-ccash { margin-left: auto; font-size: 11px; color: #c0262e; }
+.au-compact .au-crow .au-ccash:empty { display: none; }
+.au-compact .au-crow .au-said { margin-left: auto; flex: none; text-align: right; font-weight: 900; color: #c0262e; }
+.au-compact .au-crow .au-ccash:not(:empty) + .au-said { margin-left: 4px; }
+.au-compact .au-crow.me { outline: 2px solid #ffb400; }
+.au-compact .au-crow.on { background: #fff3b8; }
+.au-compact .au-crow.top { background: #ffe0e0; }
+.au-compact .au-crow.out { opacity: .45; filter: grayscale(1); }

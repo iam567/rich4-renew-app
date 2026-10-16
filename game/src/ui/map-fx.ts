@@ -10,7 +10,7 @@ import { resultBox } from './screens/event-result';
 import { playEventFx } from './event-fx';
 import { preloadClips } from './effects';
 import type { EventResult } from '../core/modules/events';
-import { CARDS } from '../core/modules/cards';
+import { cardDef, cardName } from '../core/modules/cards';
 import { CHARACTERS } from '../core/characters';
 import { TOOLS } from '../core/modules/tools';
 import type { GameEvent, Player } from '../core/types';
@@ -473,7 +473,7 @@ export class MapDirector {
         // 「得到%s！」 / the shop owner's 「歡迎董事長光臨　送您%s！」 with the card itself flipping in (the original shows
         // the message box only).
         await cardScene(this.hud.context(this.hud.area), id, p.id, chairman ? 'chairman' : 'get');
-        await this.gotItem(p.id, CARDS[id - 1]?.price ?? 0);
+        await this.gotItem(p.id, cardDef(id)?.price ?? 0);
         return true;
       }
 
@@ -812,7 +812,7 @@ export class MapDirector {
         return true;
       case 'npc-rob-card':
         if (!p) return false;
-        await this.box(`奪取${this.game.name(p.id)}${CARDS[Number(s.data?.card) - 1]?.name ?? ''}！`, 1000);
+        await this.box(`奪取${this.game.name(p.id)}${cardName(Number(s.data?.card))}！`, 1000);
         return true;
       case 'npc-rob-bank': {
         const master = this.player(s.p);

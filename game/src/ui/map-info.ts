@@ -10,7 +10,7 @@
 import type { Game } from '../core/game';
 import { eventName } from '../core/game';
 import { OBJECT_NAMES } from '../core/modules/objects';
-import { TOOLS } from '../core/modules/tools';
+import { toolDef } from '../core/modules/tools';
 import { nodeById } from '../core/board';
 import type { SpriteBank } from './sprites';
 
@@ -18,7 +18,7 @@ type Pt = { x: number; y: number };
 
 const HOUSE = ['空  地', '平  房', '店  舖', '商  場', '商業大樓', '摩天大樓'];
 const LEVEL = ['０級', '一級', '二級', '三級', '四級', '五級'];
-const FACILITY = ['公  園', '旅  館', '購物中心', '加油站', '研究所'];
+const FACILITY = ['公  園', '旅  館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館']; // 5..9 大富翁城's halls (docs/rules/19)
 /** What an event square does (the remake's addition). */
 const EVENT_TEXT: Record<number, string> = {
   2: '停留時播報一則新聞', 3: '停留時抽一張命運', 4: '入獄的人在這裡服刑', 5: '住院的人在這裡休養',
@@ -60,7 +60,7 @@ export function describe(game: Game, at: Pt, actorPos: (id: number) => Pt | unde
       lines.push(f.name || FACILITY[f.type] || '');
       if (f.type === 3) lines.push('×1000');
       else if (f.type === 1 || f.type === 2) lines.push(LEVEL[f.level] ?? '', `×${(f.fees[f.level] ?? 0) * pi}`);
-      else if (f.type === 4) lines.push(LEVEL[f.level] ?? '', f.labTool ? TOOLS[f.labTool - 1]?.name ?? '' : '');
+      else if (f.type === 4) lines.push(LEVEL[f.level] ?? '', f.labTool ? toolDef(game.tools.labToolId(f.labTool))?.name ?? '' : '');
     }
     return { pos: f, lines: lines.filter(Boolean) };
   }

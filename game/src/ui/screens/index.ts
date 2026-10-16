@@ -15,3 +15,6 @@ import './wheel';
 import './dividends';
 import './remote-dice';
 import './month-report';
+import './casino';        // 大富翁城's casino (docs/rules/19)
+import './casino-hall';   // its hall picker
+import './finale-start';  // 最終決戰
