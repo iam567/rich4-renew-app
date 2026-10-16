@@ -11,7 +11,8 @@
     "test": "vitest run",
     "assets": "node scripts/link-assets.mjs",
     "build:app": "tsc --noEmit && RICH4_NO_ASSETS=1 vite build && RICH4_WEBP=1 node scripts/bundle-assets.mjs && cap sync ios",
-    "ios": "node scripts/install-ios.mjs"
+    "ios": "node scripts/install-ios.mjs",
+    "package": "node scripts/package.mjs"
   },
   "devDependencies": {
     "@capacitor/cli": "7.6.9",
@@ -21,6 +22,7 @@
     "vitest": "3.2.4"
   },
   "dependencies": {
+    "@capacitor/android": "7.6.9",
     "@capacitor/core": "7.6.9",
     "@capacitor/ios": "7.6.9",
     "@capacitor/screen-orientation": "7.0.4",

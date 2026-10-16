@@ -8,7 +8,7 @@
 ## 目錄
 - `game/src/core` 規則引擎（回合、地產、股票、卡片、道具、事件、大富豪模式）
 - `game/src/ui` 畫面與動畫
-- `game/ios` iOS 工程（Capacitor 7）
+- `game/ios` iOS 工程、`game/android` 安卓工程（Capacitor 7）
 - `game/scripts` 素材連結、打包、安裝到 iPhone
 - `docs/rules` 規則文件
 
@@ -23,6 +23,7 @@ mkdir -p public && tar -xf rich4-assets.tar -C public
 npm run dev
 npm test
 npm run ios      # 打包並安裝到已連接的 iPhone
+npm run package  # 出安裝包到 game/release/：安卓 APK（可直接安裝）＋ 未簽名 iOS IPA
 ```
 
 ## 授權
