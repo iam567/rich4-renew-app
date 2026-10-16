@@ -1,0 +1,18 @@
+/* The mini games (mini-games.ts): the original 640×480 screen as a canvas, a banner or a panel with the rules. */
+.mn-scene .pl-stage { background: #0c1424; }
+.mn-canvas { position: absolute; left: 0; top: 0; width: 640px; height: 480px; display: block; touch-action: none; cursor: default; }
+.mn-canvas.own-cursor { cursor: none; }
+.mn-8 .mn-canvas { cursor: ew-resize; }
+.mn-hint, .mn-panel { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  text-align: center; color: #fff; pointer-events: none; line-height: 1.3; }
+.mn-hint { padding: 4px 14px; border-radius: 14px; background: rgba(20, 10, 40, .72); box-shadow: 0 0 0 2px rgba(255, 191, 46, .85);
+  transition: opacity .35s, transform .35s; }
+.mn-hint.out { opacity: 0; transform: translateY(-10px); }
+.mn-hint b { font-size: 17px; color: #ffd84a; letter-spacing: 2px; }
+.mn-hint span { font-size: 12.5px; }
+.mn-hint em { display: none; }
+.mn-panel { padding: 10px 28px; gap: 6px; background: linear-gradient(#24124a, #120a24); border-top: 3px solid #ffbf2e; }
+.mn-panel b { font-size: 26px; color: #ffd84a; letter-spacing: 4px; }
+.mn-panel span { font-size: 18px; }
+.mn-panel em { font-style: normal; font-size: 16px; color: #c8b8ff; }
+.mn-loading { position: absolute; display: grid; place-items: center; font-size: 22px; color: #fff; background: #0c1424; }

@@ -1,0 +1,132 @@
+/* Lottery ticket bar (Panel #12) and the draw stage (Panel #15-17). */
+.lt-crop, .ld-crop { position: absolute; overflow: hidden; }
+.lt-crop-fade { position: absolute; background: linear-gradient(transparent, #120a1c 92%); }
+.lt-pool { position: absolute; justify-content: flex-end; padding-right: 2px; filter: drop-shadow(0 1px 0 #3a1a00); }
+.lt-pool-label { position: absolute; font-size: 13px; color: #ffe9a6; text-align: center; letter-spacing: 2px; text-shadow: 0 1px 2px #000; }
+.lt-girl { filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
+.lt-bubble { position: absolute; display: flex; align-items: center; justify-content: center; transform-origin: 0% 55%; }
+.lt-bubble::before { content: ''; position: absolute; inset: 0; background: var(--bub) center / 100% 100% no-repeat; }
+.lt-bubble.flip { transform-origin: 100% 55%; }
+.lt-bubble.flip::before { transform: scaleX(-1); }
+.lt-bubble-text { position: relative; margin-left: 12%; width: 78%; text-align: center; white-space: pre-line;
+  font-size: 19px; line-height: 1.4; color: #2a1608; }
+.lt-bubble.flip .lt-bubble-text { margin-left: 0; margin-right: 12%; }
+/* the 36-number board: the original's rose marble with gold numbers */
+.lt-board { position: absolute; border-radius: 6px; padding: 0;
+  background:
+    radial-gradient(60% 80% at 50% 50%, rgba(255, 210, 220, .18), transparent 70%),
+    radial-gradient(circle at 20% 30%, rgba(120, 30, 60, .35) 0 8%, transparent 30%),
+    radial-gradient(circle at 75% 70%, rgba(120, 30, 60, .3) 0 10%, transparent 35%),
+    linear-gradient(135deg, #c0607a, #a84866 45%, #c46d84);
+  box-shadow: inset 0 0 0 2px #f2cc6a, inset 0 0 0 4px #7a2235, inset 0 0 18px rgba(60, 0, 20, .6), 0 3px 8px rgba(0,0,0,.5); }
+.lt-cell { position: absolute; display: grid; place-items: center; border-radius: 6px; cursor: pointer;
+  background: linear-gradient(160deg, rgba(255, 220, 228, .26), rgba(120, 20, 50, .18));
+  box-shadow: inset 0 0 0 1.5px rgba(242, 204, 106, .85), inset 0 -3px 0 rgba(90, 10, 30, .25); transition: transform .1s, filter .1s; }
+.lt-cell b { font-size: 27px; font-weight: 700; letter-spacing: 1px; color: #ffe46a;
+  text-shadow: 0 2px 0 #7a1f12, 1.5px 1.5px 0 #7a1f12, -1px -1px 0 #7a1f12, 1px -1px 0 #7a1f12, -1px 1px 0 #7a1f12; }
+.lt-scene.portrait .lt-cell b { font-size: 30px; }
+.lt-cell:hover:not(.sold) { filter: brightness(1.15); }
+.lt-cell:active:not(.sold) { transform: scale(.95); }
+.lt-cell.on { background: linear-gradient(160deg, #fff6c8, #ffd36b); box-shadow: inset 0 0 0 2px #fff, 0 0 12px 3px rgba(255, 230, 120, .9); z-index: 1; }
+.lt-cell.on b { color: #d8202a; text-shadow: 0 2px 0 #fff; }
+.lt-cell.sold { cursor: default; background: linear-gradient(160deg, rgba(40, 0, 20, .55), rgba(30, 0, 10, .7)); box-shadow: inset 0 0 0 1.5px rgba(242, 204, 106, .35); }
+.lt-cell.sold b { color: rgba(255, 228, 106, .38); text-shadow: none; }
+.lt-owner { position: absolute; right: 2px; bottom: 2px; width: 24px; height: 24px; border-radius: 50%; padding: 1px; background: var(--c); box-shadow: 0 1px 2px rgba(0,0,0,.6); }
+.lt-scene.portrait .lt-owner { width: 28px; height: 28px; }
+.lt-owner img { width: 100%; height: 100%; }
+.lt-ring { z-index: 2; }
+.lt-ring.mine { opacity: .85; }
+.lt-ring-buy { animation: lt-stamp .4s ease-out both; }
+@keyframes lt-stamp { 0% { transform: scale(1.8); opacity: 0; } 60% { transform: scale(.92); opacity: 1; } 100% { transform: none; } }
+.lt-info { position: absolute; display: flex; flex-direction: column; justify-content: center; gap: 2px; padding: 6px 10px; border-radius: 12px;
+  font-size: 15px; color: #fff; background: rgba(20, 8, 30, .72); border: 2px solid rgba(255, 191, 46, .8); }
+.lt-scene.portrait .lt-info { flex-direction: row; justify-content: space-around; align-items: center; font-size: 16px; }
+.lt-info span { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.lt-info b { color: #ffd84a; }
+.lt-me { width: 22px; height: 22px; }
+
+/* ---------------------------------------------------------------- the draw */
+.ld-scene .pl-stage { background: #0b1450; }
+.ld-view { position: absolute; transform-origin: 0 0; overflow: hidden; }
+.ld-pool { position: absolute; z-index: 2; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  transition: left .3s, top .3s; }
+.ld-pool span { font-size: 16px; color: #4f35b1; white-space: nowrap; }
+.ld-pool b { font-size: 17px; color: #e0202a; white-space: nowrap; }
+.ld-host, .ld-girl { filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
+.ld-bubble { position: absolute; z-index: 9; display: flex; align-items: center; justify-content: center; padding: 0 30px 6px 10px; text-align: center;
+  white-space: pre-line; font-size: 18px; line-height: 1.35; color: #101010; background: center / 100% 100% no-repeat; }
+.ld-bubble[hidden] { display: none; }
+.ld-bubble.burst { padding: 0 20px; font-size: 20px; color: #5a1a00; }
+.ld-player { position: absolute; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-radius: 12px;
+  background: rgba(6, 10, 40, .66); border: 2px solid var(--c); color: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.4); }
+.ld-player.win { background: linear-gradient(90deg, rgba(255, 190, 40, .85), rgba(255, 110, 60, .8)); border-color: #fff; }
+.ld-head { width: 44px; height: 44px; flex: none; display: grid; place-items: center; border-radius: 50%; background: rgba(255,255,255,.18); }
+.ld-head img { max-width: 40px; max-height: 38px; }
+.ld-head .pl-face { width: 40px; height: 40px; }
+.ld-name { width: 76px; flex: none; font-size: 18px; text-shadow: 0 1px 0 #000; }
+.ld-nums { display: flex; flex-wrap: wrap; gap: 4px 6px; align-content: center; }
+.ld-nums.two { gap: 2px 6px; }
+.ld-nums i { display: flex; padding: 2px 3px; border-radius: 8px; }
+.ld-nums i.hit { background: radial-gradient(#fff6a0, rgba(255, 150, 40, .7)); box-shadow: 0 0 10px 3px #fff27a; animation: pl-pop .4s both; }
+.ld-nums em { font-style: normal; font-size: 13px; opacity: .6; }
+.ld-scene.portrait .ld-nums em { font-size: 16px; }
+.ld-ball { z-index: 4; animation: ld-drop .5s cubic-bezier(.3, 1.5, .6, 1) both; filter: drop-shadow(0 4px 4px rgba(0,0,0,.5)); }
+.ld-ball.b2 { animation-delay: .35s; }
+@keyframes ld-drop { from { transform: translateY(-90px) rotate(-200deg); opacity: 0; } to { transform: none; opacity: 1; } }
+.ld-glass { z-index: 2; animation: pl-pop .4s both; filter: drop-shadow(0 0 6px #fff); }
+.ld-glass.b2 { animation-delay: .35s; }
+.ld-confetti { z-index: 7; }
+.ld-boom { z-index: 5; }
+.ld-winner { position: absolute; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; }
+.ld-winner b { font-size: 28px; color: #ff0000; letter-spacing: 4px; text-shadow: 1px 1px 0 #400000, 0 0 6px #fff, 0 0 2px #fff; }
+.ld-winner span { font-size: 17px; color: #5a1a00; }
+.ld-wface { width: 46px; height: 46px; border-radius: 50%; overflow: hidden; border: 3px solid #fff; }
+.ld-wface img { width: 100%; height: 100%; }
+.ld-list { position: absolute; }
+.lt-pool { display: flex; align-items: center; font-size: 22px; font-weight: 700; letter-spacing: 1px; color: #ffe46a;
+  text-shadow: 0 2px 0 #7a3a00, 1px 1px 0 #7a3a00, -1px -1px 0 #3a1a00, 0 0 6px rgba(255, 220, 80, .6); }
+.ld-num { font-style: normal; display: grid; place-items: center; min-width: 30px; height: 22px; padding: 0 4px; border-radius: 11px;
+  font-size: 16px; font-weight: 700; color: #14183a; background: radial-gradient(circle at 35% 30%, #fff, #c8cee8 70%, #8f98c0);
+  box-shadow: inset 0 -2px 0 rgba(0,0,0,.2), 0 1px 2px rgba(0,0,0,.4); }
+.ld-scene.portrait .ld-num { min-width: 40px; height: 30px; font-size: 22px; border-radius: 15px; }
+.ld-num.hit { color: #8a1000; background: radial-gradient(circle at 35% 30%, #fffbe0, #ffd84a 60%, #ff9a2e); box-shadow: 0 0 10px 3px #fff27a; animation: pl-pop .4s both; }
+.ld-date { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: 12px; font-size: 14px; color: #fff; white-space: nowrap;
+  background: linear-gradient(#ff7ab0, #d8306a); border: 2px solid #fff; box-shadow: 0 3px 6px rgba(0,0,0,.4); }
+.ld-result { position: absolute; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 10px 24px 18px; text-align: center; white-space: pre-line; background: center / 100% 100% no-repeat; }
+.ld-result.f23 { font-size: 18px; line-height: 1.35; color: #5a1a00; padding: 0 30px 8px; }
+.ld-result b { font-size: 24px; color: #ff0000; letter-spacing: 3px; text-shadow: 1px 1px 0 #400000, 0 0 6px #fff, 0 0 2px #fff; }
+.ld-result .ld-sub { font-size: 14px; color: #5a1a00; }
+.ld-result .ld-wface { width: 38px; height: 38px; }
+/* a ticket bought */
+.lt-ticket-fx { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: auto; animation: lt-t-in .3s cubic-bezier(.3, 1.4, .5, 1); }
+.lt-ticket-fx.out { animation: pl-out .18s ease-in forwards; }
+@keyframes lt-t-in { from { transform: translateY(40px) rotate(-6deg) scale(.7); opacity: 0; } }
+.lt-ticket { width: min(300px, 86%); border-radius: 14px; overflow: hidden; color: #4a1020; transform: rotate(-3deg);
+  background: repeating-linear-gradient(135deg, #fff6f8 0 10px, #ffe8ee 10px 20px); border: 3px solid #ffbf2e;
+  box-shadow: 0 0 0 3px #d8306a, 0 14px 30px rgba(0,0,0,.45); }
+.lt-t-head { display: flex; justify-content: space-between; align-items: center; padding: 6px 12px; color: #fff; font-size: 18px;
+  background: linear-gradient(90deg, #d8306a, #ff7a3a); border-bottom: 2px dashed #fff; }
+.lt-t-head em { font-style: normal; font-size: 12px; opacity: .9; }
+.lt-t-body { display: flex; align-items: center; justify-content: center; gap: 22px; padding: 10px 12px 2px; }
+.lt-t-face { width: 58px; height: 58px; border-radius: 50%; overflow: hidden; border: 3px solid var(--c); background: #fff; }
+.lt-t-face img { width: 100%; height: 100%; display: block; }
+.lt-t-num { position: relative; display: grid; place-items: center; width: 84px; height: 64px; }
+.lt-t-num b { font-size: 40px; color: #d8202a; text-shadow: 0 2px 0 #fff; }
+.lt-t-num img { position: absolute; inset: -4px; width: calc(100% + 8px); height: calc(100% + 8px); animation: lt-stamp .45s .25s ease-out both; }
+.lt-t-foot { padding: 4px 10px 10px; text-align: center; font-size: 16px; line-height: 1.35; }
+.lt-t-foot small { font-size: 12px; color: #a0405a; }
+/* The redrawn stage background has a wider globe than the redrawn machine animation: widen the machine
+   (anchored at its base) so the background globe does not show on both sides. */
+.ld-machine { transform: scale(1.24, 1.06); transform-origin: 50% 100%;
+  /* its frames carry the old curtain baked in around the globe: keep the round globe, fade the corners into the
+     redrawn stage (Panel#15.0, 2026-10-16, no title) */
+  -webkit-mask-image: radial-gradient(ellipse closest-side at 50% 50%, #000 88%, transparent 100%);
+  mask-image: radial-gradient(ellipse closest-side at 50% 50%, #000 88%, transparent 100%); }
+/* 大富豪模式: more than four ticket holders in a tighter grid (docs/rules/17 §12). */
+.ld-player.tight { gap: 4px; padding: 0 6px 0 3px; }
+.ld-player.tight .ld-head { width: 24px; height: 24px; }
+.ld-player.tight .ld-head img { width: 24px; height: 24px; }
+.ld-player.tight .ld-nums i { font-size: 12px; padding: 0 2px; }
+.ld-player.tight .ld-head .pl-face { width: 22px; height: 22px; }
+.ld-player.tight .ld-name { font-size: 13px; }

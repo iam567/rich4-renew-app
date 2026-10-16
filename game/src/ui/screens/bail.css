@@ -1,0 +1,41 @@
+/* Hospital corridor (Panel #65) and prison wall (Panel #63) bail screens. */
+.bl-dark { position: absolute; background: #1a1210; }
+.bl-scene.prison .bl-dark { background: radial-gradient(circle at 50% 30%, #3a2a22, #120c0a); }
+.bl-who { transition: opacity .5s, transform .5s, filter .2s; }
+.bl-who.poor { filter: saturate(.75); }
+.bl-who.bl-on, .bl-bars.bl-on { filter: drop-shadow(0 0 6px #fff27a) drop-shadow(0 0 3px #ffbf2e); }
+.bl-gone { opacity: 0 !important; transform: translateY(-10px); transition: opacity .6s, transform .6s; }
+.bl-hit { position: absolute; cursor: pointer; border-radius: 8px; z-index: 3; }
+.bl-hit:hover { box-shadow: inset 0 0 0 2px rgba(255, 242, 122, .7); }
+.bl-hit.bl-on { box-shadow: inset 0 0 0 3px #ffe14a, 0 0 14px rgba(255, 225, 74, .7); }
+.bl-plate { position: absolute; z-index: 2; display: flex; align-items: center; justify-content: center; gap: 4px; padding: 0 6px;
+  border-radius: 999px; font-size: 13px; color: #fff; white-space: nowrap; pointer-events: none;
+  background: rgba(30, 40, 110, .82); border: 2px solid #fff; box-shadow: 0 2px 4px rgba(0,0,0,.35); }
+.bl-scene.prison .bl-plate { background: rgba(60, 30, 10, .85); border-color: #ffcf6a; }
+.bl-plate b { font-weight: 400; overflow: hidden; text-overflow: ellipsis; }
+.bl-plate i { font-style: normal; color: #ffe14a; }
+.bl-plate.bl-on { background: #ff7a2e; }
+.bl-nurse { z-index: 1; }
+.bl-say { position: absolute; z-index: 4; display: flex; align-items: center; justify-content: center; padding: 8px 18px 10px;
+  background: center / 100% 100% no-repeat; }
+.bl-say.prison, .bl-say.bl-cloud { padding: 6px 18px 26px; }
+.bl-say-text { text-align: center; white-space: pre-line; font-size: 19px; line-height: 1.4; color: #101010; }
+.bl-tip { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
+  padding: 6px 16px 8px 6px; background: center / 100% 100% no-repeat; color: #101010; font-size: 14px; pointer-events: none; }
+.bl-tip.prison { padding: 16px 6px 4px 10px; }
+.bl-tip b { font-size: 16px; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bl-points { position: absolute; z-index: 2; display: flex; align-items: center; justify-content: flex-end; font-size: 20px; font-weight: 700;
+  color: #fff; text-shadow: 1px 1px 0 #101010; }
+.bl-free { z-index: 6; filter: drop-shadow(0 6px 8px rgba(0,0,0,.5)); }
+.bl-ctl-l { position: absolute; z-index: 6; display: flex; align-items: center; }
+.bl-world { position: absolute; overflow: hidden; }
+.bl-panel { position: absolute; background: linear-gradient(#3a2558, #24163a); border-top: 4px solid #ffbf2e; }
+.bl-say.big { padding: 12px 28px 16px; }
+.bl-say.big .bl-say-text { font-size: 27px; }
+.bl-ctl { position: absolute; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
+.bl-help { font-size: 19px; color: #e8dcff; padding: 0 16px; text-align: center; }
+.bl-row { display: flex; gap: 10px; }
+.bl-ctl-l .candy, .bl-ctl .candy { position: static; }
+.bl-ctl .candy { font-size: 30px; padding: 12px 34px; border-radius: 22px; }
+.bl-ctl-l .candy { font-size: 17px; padding: 6px 16px; }
+.bl-say.bl-cloud { z-index: 7; }

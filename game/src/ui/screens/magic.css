@@ -1,0 +1,43 @@
+/* Magic house (Panel #18, spell FLC #20). */
+.mg-scene .pl-stage { background: #2a1a10; }
+.mg-banner { position: absolute; display: grid; place-items: center; font-family: Georgia, "Times New Roman", serif; font-style: italic;
+  font-size: 24px; letter-spacing: 3px; color: #3a1c08; border-radius: 6px;
+  background: radial-gradient(ellipse at 50% 50%, #ead39a 40%, #c9a25a 100%); box-shadow: 0 0 6px 2px rgba(201, 162, 90, .8); }
+.mg-banner.bottom { font-size: 26px; }
+.mg-banner.top { font-family: "Huninn", "PingFang TC", system-ui, sans-serif; font-style: normal; font-weight: 700; letter-spacing: 4px; }
+.mg-glow { position: absolute; border-radius: 50%; opacity: 0; transition: opacity .2s;
+  background: radial-gradient(circle, rgba(255, 240, 160, .85), rgba(255, 170, 60, .35) 55%, transparent 70%); }
+.mg-glow.on { opacity: 1; animation: mg-pulse 1.2s ease-in-out infinite; }
+@keyframes mg-pulse { 50% { transform: scale(1.12); } }
+.mg-sym { z-index: 1; filter: brightness(.82) saturate(.8) drop-shadow(0 0 3px rgba(0,0,0,.6)); transition: filter .2s, transform .2s; }
+.mg-sym.on { filter: brightness(1.15) drop-shadow(0 0 8px #fff3a0); transform: scale(1.15); }
+.mg-hit { position: absolute; z-index: 3; border-radius: 50%; cursor: pointer; }
+.mg-hit:hover + .mg-sym, .mg-hit:hover { box-shadow: 0 0 0 2px rgba(255, 240, 160, .35); }
+.mg-label { position: absolute; z-index: 4; display: grid; place-items: center; padding: 18px 22px; background: center / 100% 100% no-repeat; pointer-events: none; }
+.mg-label span { font-size: 16px; font-weight: 700; color: #e0e0e0; text-align: center; line-height: 1.3; text-shadow: 1px 1px 0 #202020, 0 0 3px #000; }
+.mg-teller { z-index: 2; filter: drop-shadow(0 6px 10px rgba(0,0,0,.55)); }
+.mg-ball { z-index: 3; filter: drop-shadow(0 0 10px #bff) brightness(1.1); }
+.mg-eyes { position: absolute; z-index: 3; border-radius: 50%; background: radial-gradient(ellipse, rgba(255, 60, 60, .9), rgba(255, 0, 80, 0) 70%);
+  box-shadow: 0 0 14px 6px rgba(255, 40, 80, .5); }
+.mg-say { position: absolute; z-index: 5; display: flex; align-items: center; justify-content: center; padding: 34px 40px; text-align: center;
+  white-space: pre-line; font-size: 20px; line-height: 1.4; color: #e0e0e0; text-shadow: 1px 1px 0 #202020; background: center / 100% 100% no-repeat; }
+.mg-who { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; padding: 6px 8px;
+  border-radius: 14px; background: rgba(40, 14, 50, .78); border: 2px solid #ffbf2e; color: #fff; }
+.mg-who[hidden] { display: none; }
+.mg-who b { font-size: 16px; font-weight: 400; color: #ffe14a; }
+.mg-faces { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
+.mg-face { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.mg-face .pl-face { width: 30px; height: 30px; border: 2px solid var(--c); }
+.mg-face i { font-style: normal; font-size: 18px; }
+.mg-scene.portrait .mg-who { flex-direction: row; gap: 26px; }
+.mg-scene.portrait .mg-who b { font-size: 26px; }
+.mg-scene.portrait .mg-face .pl-face { width: 56px; height: 56px; border-width: 3px; }
+.mg-cast[hidden] { display: none; }
+.mg-scene.portrait .mg-cast { font-size: 34px; padding: 12px 20px; border-radius: 22px; }
+/* the spell layer is the circle's 640×480 box (top of the taller portrait canvas): absolute, or its canvas would
+   stretch over the whole stage and draw the hexagram off-centre, down over the player row */
+.mg-spell { position: absolute; z-index: 8; pointer-events: none; overflow: hidden; }
+.mg-spell canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+.mg-banner.over { z-index: 9; }
+.mg-banner.fade { opacity: 0; transition: opacity .2s; }
+.mg-say[hidden] { display: none; }

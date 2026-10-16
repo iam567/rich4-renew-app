@@ -1,0 +1,49 @@
+/* ============================================================== news / fate boards (09 §6.6) */
+.nw-ov { background: rgba(10, 5, 30, .62); cursor: pointer; }
+.nw-scene { pointer-events: none; }
+.nw-board { position: absolute; inset: 0; border-radius: 18px; overflow: hidden; background: #1d5f9a;
+  box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffa21f, 0 16px 36px rgba(0, 0, 0, .55);
+  animation: nw-drop .5s cubic-bezier(.3, 1.35, .5, 1) both; }
+.nw-scene.fate .nw-board { background: #7a1648; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #c04bff, 0 16px 36px rgba(0, 0, 0, .55); }
+@keyframes nw-drop { from { transform: translateY(-70px) rotate(-3deg) scale(.9); opacity: 0; } }
+.nw-bg { left: 0; top: 0; width: 440px; height: 480px; }
+.nw-title { position: absolute; left: 24px; top: 6px; font-size: 28px; line-height: 34px; color: #fff; letter-spacing: 1px;
+  text-shadow: 2px 2px 0 #101010, 0 0 6px rgba(0, 0, 0, .5); animation: nw-slide .4s .25s ease-out both; }
+.nw-scene.fate .nw-title { font-size: 30px; color: #ffe14a; }
+@keyframes nw-slide { from { transform: translateX(-30px); opacity: 0; } }
+.nw-live { position: absolute; right: 22px; top: 10px; display: flex; align-items: center; gap: 5px; padding: 1px 10px; border-radius: 8px;
+  background: #e8243c; color: #fff; font-size: 16px; letter-spacing: 1px; border: 2px solid #fff; box-shadow: 0 2px 0 rgba(0, 0, 0, .35); }
+.nw-live i { width: 8px; height: 8px; border-radius: 50%; background: #fff; animation: nw-dot 1s steps(2) infinite; }
+@keyframes nw-dot { 50% { opacity: 0; } }
+.nw-who { position: absolute; right: 22px; top: 8px; display: flex; align-items: center; gap: 6px; padding: 2px 12px 2px 3px; border-radius: 999px;
+  background: linear-gradient(#fff07a, #ffbf2e); color: #5a2d00; font-size: 16px; white-space: nowrap; border: 2px solid #fff; box-shadow: 0 2px 0 #c97a00; }
+.nw-scene.news .nw-who { right: 120px; }
+.nw-who span { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; background: var(--c); border: 2px solid #fff; }
+.nw-who img { position: static; width: 100%; height: 100%; }
+/* the picture sits in the white frame (25,44)–(413,295); switched on like a TV */
+.nw-pic { position: absolute; left: 25px; top: 44px; width: 388px; height: 251px; overflow: hidden; background: #fff; border-radius: 3px;
+  animation: nw-tv .55s .2s cubic-bezier(.2, .9, .3, 1) both; }
+.nw-pic img { left: 0; top: 0; width: 388px; height: 251px; animation: nw-zoom 3.2s .3s ease-out both; }
+@keyframes nw-tv { 0% { transform: scale(1, .02); filter: brightness(3); } 45% { transform: scale(1, 1.04); filter: brightness(1.6); } 100% { transform: none; filter: none; } }
+@keyframes nw-zoom { from { transform: scale(1.08); } }
+.nw-text { position: absolute; left: 24px; right: 22px; top: 306px; bottom: 14px; display: flex; align-items: flex-start; }
+.nw-scene.fate .nw-text { top: 324px; }
+.nw-text > div { font-size: 27px; line-height: 1.38; text-wrap: pretty; color: #fff; text-shadow: 2px 2px 0 #101010, 0 0 4px rgba(0, 0, 0, .6);
+  animation: nw-type .5s .55s ease-out both; }
+.nw-text em { font-style: normal; color: #ffe14a; }
+@keyframes nw-type { from { opacity: 0; transform: translateY(10px); clip-path: inset(0 100% 0 0); } to { clip-path: inset(0 0 0 0); } }
+.nw-tap { position: absolute; right: 12px; bottom: 8px; font-size: 14px; color: #fff; text-shadow: 0 1px 0 #000; padding: 2px 8px; border-radius: 10px;
+  background: rgba(0, 0, 0, .35); animation: nw-bob 1s 1s ease-in-out infinite both; }
+@keyframes nw-bob { 0%, 100% { transform: translateX(0); opacity: .4; } 50% { transform: translateX(4px); opacity: 1; } }
+/* the players concerned, down the right side of the text (news.asm fcn_004562a5 at x 390) */
+.nw-text.with-faces { right: 146px; }
+.nw-faces { position: absolute; right: 14px; top: 306px; bottom: 34px; width: 126px; display: flex; flex-direction: column; justify-content: flex-start; gap: 5px; }
+.nw-face { display: grid; grid-template-columns: 30px 1fr; grid-template-rows: auto auto; column-gap: 6px; align-items: center; padding: 3px 8px 3px 3px;
+  border-radius: 12px; background: rgba(255, 255, 255, .92); border-left: 5px solid var(--c); color: #2a1a0a; animation: nw-face .35s ease-out both; }
+.nw-face span { grid-row: 1 / 3; width: 30px; height: 30px; border-radius: 50%; overflow: hidden; background: var(--c); }
+.nw-face img { position: static; width: 100%; height: 100%; display: block; }
+.nw-face b { font-size: 15px; line-height: 18px; white-space: nowrap; }
+.nw-face em { font-style: normal; font-size: 15px; line-height: 18px; font-weight: 900; color: #138a36; white-space: nowrap; }
+.nw-face em.minus { color: #d0202e; }
+.nw-face b:last-child { grid-row: 1 / 3; }
+@keyframes nw-face { from { transform: translateX(20px); opacity: 0; } }

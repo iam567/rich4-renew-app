@@ -1,0 +1,6 @@
+{
+  "appId": "pro.areu.rich4",
+  "appName": "大富翁4",
+  "webDir": "dist",
+  "ios": { "contentInset": "never", "backgroundColor": "#0b2427" }
+}

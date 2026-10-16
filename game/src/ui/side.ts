@@ -1,0 +1,157 @@
+/**
+ * The right-hand column of the original screen (docs/rules/09 §3-§4): the player panel with its four tabs and
+ * the calendar. Both are laid out in original pixels (200×280 and 200×200) and scaled as a whole.
+ */
+import { CHARACTERS } from '../core/characters';
+import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
+import type { Game } from '../core/game';
+import type { SpriteBank } from './sprites';
+import { todayWeather, WEATHER_NAME, weatherIcon, weatherMode } from './weather';
+
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
+/** NPCs by actor id − npcBase (actors 4..7 and the doll 8 with up to 4 players; 12..16 in 大富豪模式). */
+const NPC_NAMES = ['小偷', '強盜', '流氓', '間諜', '機器娃娃'];
+const TABS = ['資金', '地產', '股票', '其他'];
+/** Centre of each tab's coloured face in Panel#0 (y; x is 184), measured on the redraw: the faces are slanted and
+ * sit left of the 24 px column, so the labels are centred on them rather than on the 70 px bands. */
+const TAB_MID = [38, 106, 175, 243];
+const ROWS = [['現　金', '存　款', '總資產'], ['土　地', '連鎖店', '設　施'], ['總市值', '成　本', '經營權'], ['點　券', '貸　款', '保險期']];
+/** Month → season photo (0x475218): 0 spring, 1 summer, 2 autumn, 3 winter. */
+const SEASON = [3, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3];
+/** Top of the three value bands in the redrawn panel art (measured; the original's are at 96/160/224). */
+const BANDS = [97, 155, 213];
+const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+export class PlayerPanel {
+  readonly el: HTMLElement;
+  /** Each player remembers their own tab (0x48be24). */
+  private tabs: number[] = [0, 0, 0, 0];
+  private shown = -1;
+  /** 視窗組 2: the 200×80 panel with only cash and deposit (09 §4.4). */
+  compact = false;
+
+  constructor(readonly game: Game, readonly bank: SpriteBank) {
+    this.el = document.createElement('div');
+    this.el.className = 'pp';
+    this.el.addEventListener('click', e => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-tab]');
+      if (!t || !this.game.isPlayerId(this.shown)) return;
+      this.tabs[this.shown] = Number(t.dataset.tab);
+      this.update();
+    });
+  }
+
+  /** Shows the current actor (a robot doll shows its owner; NPCs get the plain panel). */
+  update() {
+    const g = this.game;
+    let who = g.current;
+    if (who === g.dollId) who = (g.places as unknown as { dollOwner?: number }).dollOwner ?? -1;
+    this.shown = who;
+    if (!g.isPlayerId(who) || !g.players[who]) { this.npc(g.current); return; }
+    const p = g.players[who], ch = CHARACTERS[p.character], tab = this.tabs[who] ?? 0;
+    this.el.classList.toggle('compact', this.compact);
+    if (this.compact) {
+      const bg = this.bank.art('Panel', 0, 4), face = this.bank.art('Data', 2, p.character);
+      this.el.innerHTML = `${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
+        <div class="pp-face small" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
+        <div class="pp-cname">${ch.name}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
+        <div class="pp-cl" style="top:36px">現金</div><div class="pp-cv" style="top:34px">${money(p.cash)}</div>
+        <div class="pp-cl" style="top:56px">存款</div><div class="pp-cv" style="top:54px">${money(p.bank)}</div>`;
+      return;
+    }
+    const bg = this.bank.art('Panel', 0, tab);
+    const values = this.values(who, tab);
+    const loanDays = tab === 3 && p.loan ? Math.max(0, Math.round((serial(p.loanDue) - serial(g.date)))) : 0;
+    const face = this.bank.art('Data', 2, p.character);
+    this.el.innerHTML = `
+      ${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
+      <div class="pp-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
+      <div class="pp-name">${ch.name}</div>
+      <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
+      ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
+      ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
+      ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
+        <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}
+      <div class="pp-price">物價指數 ${g.priceIndex}</div>
+      ${TABS.map((t, i) => `<button class="pp-tab${i === tab ? ' on' : ''}" data-tab="${i}" style="top:${TAB_MID[i] - 35}px">${t.split('').join('<br>')}</button>`).join('')}`;
+  }
+
+  private mini(character: number): string {
+    const f = this.bank.art('Data', 2, character);
+    return f ? `<img src="${f.src}" alt="">` : '';
+  }
+
+  private npc(actor: number) {
+    const bg = this.bank.art('Panel', 0, 5);
+    this.el.innerHTML = `${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}<div class="pp-name npc">${NPC_NAMES[actor - this.game.npcBase] ?? ''}</div>`;
+  }
+
+  /** The three numbers of a tab (09 §4.3). */
+  private values(who: number, tab: number): string[] {
+    const g = this.game, p = g.players[who], me = who + 1;
+    // 大富豪模式: every city's properties and the nationwide market (docs/rules/17 §12).
+    const boards = g.boards();
+    if (tab === 0) return [money(p.cash), money(p.bank), money(g.wealth(p))];
+    if (tab === 1) {
+      const lands = boards.flatMap(b => b.lands.filter(l => l.owner === me)), facs = boards.flatMap(b => b.facilities.filter(f => f.owner === me));
+      return [String(lands.length + facs.length), String(lands.filter(l => l.chain).length), String(facs.filter(f => f.level).length)];
+    }
+    if (tab === 2) {
+      let value = 0, cost = 0;
+      for (const m of g.markets()) {
+        const st = m as unknown as { holdings: { shares: number; avgCost: number }[][]; stocks: { price: number }[] };
+        const h = st.holdings[who] ?? [];
+        h.forEach((x, i) => { value = Math.trunc(value + x.shares * (st.stocks[i]?.price ?? 0)); cost = Math.trunc(cost + x.shares * x.avgCost); });
+      }
+      return [money(value), money(cost), String(boards.reduce((n, b) => n + b.companies.filter(c => c.controller === me).length, 0))];
+    }
+    return [String(p.points), money(p.loan), `${p.insurance & 0x7f}天`];
+  }
+}
+
+const serial = (d: number) => Date.UTC(year(d), month(d) - 1, day(d)) / 86400000;
+
+export class Calendar {
+  readonly el: HTMLElement;
+  /** RICH4.CFG +12: 0 day view, 1 month view. */
+  private monthView = false;
+
+  constructor(readonly game: Game, readonly bank: SpriteBank) {
+    this.el = document.createElement('div');
+    this.el.className = 'cal';
+    try { this.monthView = localStorage.getItem('rich4.calendar') === 'month'; } catch { /* default */ }
+    this.el.addEventListener('click', e => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-view]');
+      if (!t) return;
+      this.monthView = t.dataset.view === 'month';
+      try { localStorage.setItem('rich4.calendar', this.monthView ? 'month' : 'day'); } catch { /* not kept */ }
+      this.update();
+    });
+  }
+
+  update() {
+    const d = this.game.date, m = month(d), w = weekday(d), red = w === 0;
+    const photo = this.bank.art('Panel', 2, (this.monthView ? 4 : 0) + SEASON[m - 1]);
+    let body = '';
+    if (this.monthView) {
+      const first = weekday(pack(year(d), m, 1)), n = daysInMonth(year(d), m);
+      for (let i = 1; i <= n; i++) {
+        const cell = first + i - 1, x = 30 + 23 * (cell % 7), y = 98 + 14 * Math.floor(cell / 7);
+        body += `<span class="cal-d${cell % 7 === 0 ? ' red' : ''}${i === day(d) ? ' today' : ''}" style="left:${x}px;top:${y}px">${i}</span>`;
+      }
+    } else {
+      body = `<div class="cal-wd${red ? ' red' : ''}">${WEEKDAYS[w].split('').join('<br>')}</div>
+        <div class="cal-day${red ? ' red' : ''}">${day(d)}</div>`;
+    }
+    const sun = this.bank.art('Panel', 2, this.monthView ? 9 : 8), moon = this.bank.art('Panel', 2, this.monthView ? 10 : 11);
+    // Today's weather (the remake's addition, docs/rules/16): a small toy icon with its name; none on the theme maps.
+    const wx = weatherMode() === 2 ? null : todayWeather(this.game);
+    const wxBox = wx ? `<div class="cal-wx${this.monthView ? ' month' : ''}" data-wx="${wx.kind}" title="今日天氣：${WEATHER_NAME[wx.kind]}">${weatherIcon(wx.kind)}<span>${WEATHER_NAME[wx.kind]}</span></div>` : '';
+    this.el.innerHTML = `${photo ? `<img class="cal-bg" src="${photo.src}" alt="">` : ''}
+      ${this.monthView ? '' : `${sun ? `<img class="cal-icon" src="${sun.src}" style="left:22px;top:20px" alt="">` : ''}${moon ? `<img class="cal-icon" src="${moon.src}" style="left:52px;top:21px" alt="">` : ''}`}
+      <button class="cal-hit" data-view="day" style="left:8px" aria-label="日視圖"></button>
+      <button class="cal-hit" data-view="month" style="left:38px" aria-label="月視圖"></button>
+      <div class="cal-year">${year(d)}</div><div class="cal-month">${m}月</div>${body}${wxBox}`;
+  }
+}

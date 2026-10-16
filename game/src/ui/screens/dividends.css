@@ -1,0 +1,46 @@
+/* ============================================================== 上市公司分紅 (03 §6.2) */
+.dv-ov { background: radial-gradient(90% 90% at 50% 40%, rgba(30, 14, 70, .55), rgba(6, 3, 20, .8)); cursor: pointer; }
+.dv-scene { pointer-events: none; }
+.dv-board { position: absolute; left: 0; right: 0; top: 50%; translate: 0 -50%; display: flex; flex-direction: column; padding: 42px 14px 14px; border-radius: 22px;
+  background: linear-gradient(180deg, #1d2f7a, #14205a 55%, #101845); border: 4px solid #ffc94a;
+  box-shadow: 0 0 0 4px #7a3bd1, 0 8px 0 4px #3e1a78, 0 18px 40px rgba(0, 0, 0, .55), inset 0 0 40px rgba(120, 160, 255, .18);
+  animation: dv-in .4s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes dv-in { from { transform: translateY(-40px) scale(.92); opacity: 0; } }
+.dv-ribbon { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); padding: 6px 38px 8px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(#fff4a6, #ffc22e 55%, #e8901a); border: 3px solid #fff; box-shadow: 0 4px 0 #b06a00, 0 8px 14px rgba(0, 0, 0, .4); }
+.dv-ribbon span { font-size: 26px; font-weight: 900; letter-spacing: 4px; color: #6a2a00; text-shadow: 0 1px 0 #fff7c8; }
+.dv-board table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-variant-numeric: tabular-nums; color: #eef3ff; }
+.dv-board th, .dv-board td { padding: 8px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+.dv-board td { text-align: right; }
+.dv-board thead th { padding: 4px 4px 8px; border-bottom: 2px solid rgba(255, 201, 74, .7); }
+.dv-corner { position: relative; height: 54px; width: 22%; }
+.dv-corner span { position: absolute; font-size: 12px; color: #ffd86a; }
+.dv-corner span:first-child { right: 6px; top: 4px; }
+.dv-corner span:last-child { left: 6px; bottom: 8px; }
+.dv-corner::after { content: ''; position: absolute; inset: 6px 4px 10px; background: linear-gradient(to top right, transparent calc(50% - 1px), rgba(255, 216, 106, .6) 50%, transparent calc(50% + 1px)); }
+.dv-who { text-align: center; }
+.dv-who b { display: block; margin-top: 3px; font-size: 14px; color: var(--c); text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, .6); filter: brightness(1.35); }
+.dv-face { position: relative; display: inline-block; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; border: 2px solid var(--c); background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .5); }
+.dv-face img, .dv-face .pl-face { position: static !important; width: 100% !important; height: 100% !important; display: block; left: auto; top: auto; }
+.dv-profit-h { color: #9fe6a6; font-size: 14px !important; }
+.dv-board tbody tr:nth-child(odd) > * { background: rgba(255, 255, 255, .06); }
+.dv-board tbody tr > * { border-bottom: 1px solid rgba(255, 255, 255, .08); }
+.dv-co { text-align: left; color: #ffe39a; font-weight: 700; }
+.dv-zero { color: rgba(220, 230, 255, .28); }
+.dv-profit { color: #9fe6a6; }
+.dv-neg { color: #ff7a7a !important; }
+.dv-board tfoot > tr > * { padding-top: 10px; padding-bottom: 10px; border-top: 2px solid rgba(255, 201, 74, .7);
+  background: linear-gradient(rgba(255, 201, 74, .18), rgba(255, 201, 74, .05)); }
+.dv-sum { text-align: left; color: #fff; font-size: 18px !important; letter-spacing: 2px; }
+.dv-total { color: #ffe14a; font-weight: 900; font-size: 19px !important; text-shadow: 0 2px 0 #6a3a00, 0 0 8px rgba(255, 200, 60, .6); }
+.dv-coin::after { content: ''; display: inline-block; width: 22px; height: 22px; border-radius: 50%; vertical-align: middle;
+  background: radial-gradient(circle at 35% 35%, #fff7c0, #ffd23f 45%, #c98a00 100%); box-shadow: 0 0 0 1.5px #8a5a00; }
+.dv-tap { position: absolute; right: 22px; top: 14px; font-size: 12px; color: rgba(255, 255, 255, .8); animation: dv-blink 1.4s 1s ease-in-out infinite both; }
+@keyframes dv-blink { 50% { opacity: .35; } }
+/* portrait: narrower columns */
+.dv-scene.tall .dv-board th, .dv-scene.tall .dv-board td { font-size: 14px; padding: 6px 3px; }
+.dv-scene.tall .dv-corner { width: 21%; }
+.dv-scene.tall .dv-who b { font-size: 12px; }
+.dv-scene.tall .dv-face { width: 30px; height: 30px; }
+.dv-scene.tall .dv-total { font-size: 15px !important; }
+.dv-scene.tall .dv-tap { top: auto; bottom: 8%; }

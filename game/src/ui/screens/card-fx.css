@@ -1,0 +1,78 @@
+/* ============================================================== card-use announcement (09 §7.2) */
+.stage:has(> .fx-overlay) { position: relative; }
+.cfx-ov { background: radial-gradient(80% 80% at 50% 50%, rgba(40, 20, 90, .55), rgba(10, 5, 30, .78)); cursor: pointer; }
+.cfx-scene { pointer-events: none; }
+.cfx-rays { position: absolute; left: 129px; top: 165px; width: 520px; height: 520px; margin: -260px 0 0 -260px; border-radius: 50%;
+  background: repeating-conic-gradient(rgba(255, 232, 120, .5) 0 9deg, rgba(255, 232, 120, 0) 9deg 22.5deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, transparent 68%); mask: radial-gradient(circle, #000 18%, transparent 68%);
+  animation: cfx-spin 8s linear infinite, cfx-rays-in .5s ease-out; }
+@keyframes cfx-spin { to { transform: rotate(360deg); } }
+@keyframes cfx-rays-in { from { opacity: 0; transform: scale(.3); } }
+
+.cfx-card { position: absolute; left: 30px; top: 11px; width: 198px; height: 307px; perspective: 900px; }
+.cfx-flip { position: absolute; inset: 0; transform-style: preserve-3d; animation: cfx-flip .62s cubic-bezier(.25, 1.35, .45, 1) both; }
+@keyframes cfx-flip {
+  0% { transform: translateY(60px) scale(.35) rotateY(180deg); }
+  60% { transform: translateY(-6px) scale(1.06) rotateY(-12deg); }
+  100% { transform: none; } }
+.cfx-back, .cfx-front { position: absolute; inset: 0; border-radius: 14px; backface-visibility: hidden; -webkit-backface-visibility: hidden; overflow: hidden;
+  border: 5px solid #fff; box-shadow: 0 0 0 3px #ffb21f, 0 12px 26px rgba(0, 0, 0, .55), 0 0 30px rgba(255, 220, 90, .6); }
+.cfx-back { transform: rotateY(180deg); background:
+  radial-gradient(circle at 50% 50%, #ffd84a 0 16px, #c27a00 17px 20px, transparent 21px),
+  repeating-linear-gradient(45deg, rgba(255, 255, 255, .14) 0 8px, transparent 8px 16px),
+  linear-gradient(#7a3fd8, #3b1580); }
+.cfx-front { background: #222; }
+.cfx-front img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+.cfx-front::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 30%, rgba(255, 255, 255, .55) 45%, transparent 60%);
+  transform: translateX(-120%); animation: cfx-shine 1s .55s ease-out forwards; }
+@keyframes cfx-shine { to { transform: translateX(120%); } }
+.cfx-plate { display: none; }
+/* a tool on a glowing card */
+.cfx-card.tool .cfx-front { background: radial-gradient(circle at 50% 42%, #fff8d0 0, #ffd860 30%, #e8862a 62%, #7a2f8f 100%); }
+.cfx-tool { position: absolute; left: 10%; right: 10%; top: 9%; height: 64%; display: grid; place-items: center; }
+.cfx-tool img { position: static; max-width: 100%; max-height: 100%; width: auto; height: auto; filter: drop-shadow(0 6px 6px rgba(80, 20, 0, .45)); }
+.cfx-tool-name { position: absolute; left: 8px; right: 8px; bottom: 16px; padding: 6px 4px; border-radius: 12px; text-align: center; font-size: 26px;
+  color: #fff; background: rgba(60, 10, 90, .55); text-shadow: 0 2px 0 #3a0a50; letter-spacing: 2px; }
+.cfx-use br + b, .cfx-use b:only-child { margin-top: 2px; }
+/* Data#584 is broken below y≈115: keep the top, then a name plate */
+.cfx-card.broken .cfx-front img { height: auto; aspect-ratio: 165 / 256; clip-path: inset(0 0 55% 0); }
+.cfx-card.broken .cfx-plate { position: absolute; left: 0; right: 0; top: 44%; bottom: 0; display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(#1f6b4a, #0b2f22); color: #ffe68a; font-size: 30px; letter-spacing: 2px; text-shadow: 0 2px 0 #000;
+  border-top: 4px solid #c8a24a; }
+
+.cfx-star { position: absolute; width: 22px; height: 22px; background: #fff6a8;
+  clip-path: polygon(50% 0, 61% 38%, 100% 50%, 61% 62%, 50% 100%, 39% 62%, 0 50%, 39% 38%);
+  filter: drop-shadow(0 0 4px #ffd84a); opacity: 0; animation: cfx-twinkle 1.1s ease-out infinite; }
+.cfx-star:nth-of-type(1) { left: -18px; top: 30px; animation-delay: .35s; }
+.cfx-star:nth-of-type(2) { left: 190px; top: 10px; animation-delay: .5s; width: 28px; height: 28px; }
+.cfx-star:nth-of-type(3) { left: 200px; top: 200px; animation-delay: .65s; }
+.cfx-star:nth-of-type(4) { left: -24px; top: 230px; animation-delay: .8s; width: 30px; height: 30px; }
+.cfx-star:nth-of-type(5) { left: 80px; top: -22px; animation-delay: .95s; width: 16px; height: 16px; }
+.cfx-star:nth-of-type(6) { left: 120px; top: 300px; animation-delay: 1.1s; }
+@keyframes cfx-twinkle { 0% { opacity: 0; transform: scale(.2) rotate(0); } 40% { opacity: 1; transform: scale(1.1) rotate(40deg); } 100% { opacity: 0; transform: scale(.4) rotate(90deg); } }
+
+/* the message box, after the original's blue board with the orange frame */
+.cfx-msg { position: absolute; left: 254px; top: 64px; width: 300px; padding: 26px 18px 16px; border-radius: 26px; color: #fff; text-align: center;
+  background: radial-gradient(130% 110% at 50% 0%, #4b95f5 0%, #2160cf 55%, #17469e 100%);
+  border: 5px solid #ffa21f; box-shadow: 0 0 0 4px #8a3bd1, 0 7px 0 4px #4b1d78, 0 16px 30px rgba(0, 0, 0, .45);
+  animation: cfx-msg-in .4s .2s cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes cfx-msg-in { from { opacity: 0; transform: translateX(-30px) scale(.85); } }
+.cfx-msg::before { content: ''; position: absolute; inset: 7px; border: 2px dashed rgba(255, 255, 255, .5); border-radius: 18px; }
+.cfx-who { position: absolute; left: 50%; top: -22px; transform: translateX(-50%); display: flex; align-items: center; gap: 6px; padding: 2px 14px 2px 4px;
+  border-radius: 999px; background: linear-gradient(#fff07a, #ffbf2e); color: #5a2d00; font-size: 17px; white-space: nowrap;
+  border: 3px solid #fff; box-shadow: 0 3px 0 #c97a00; }
+.cfx-face { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: var(--c); border: 2px solid #fff; margin: -6px 0 -6px -6px; }
+.cfx-face img { position: static; width: 100%; height: 100%; display: block; }
+.cfx-use { position: relative; font-size: 24px; text-shadow: 0 2px 0 #0b2160; }
+.cfx-use b { display: block; font-weight: normal; font-size: 44px; line-height: 1.15; color: #ffe14a; letter-spacing: 3px;
+  text-shadow: 0 3px 0 #9a4a00, 0 0 12px rgba(255, 220, 80, .6); animation: cfx-pop .5s .45s cubic-bezier(.3, 1.8, .5, 1) both; }
+@keyframes cfx-pop { from { transform: scale(.3); opacity: 0; } }
+.cfx-text { position: relative; margin-top: 8px; font-size: 17px; line-height: 1.4; color: #e8f1ff; text-shadow: 0 1px 0 #0b2160; }
+.cfx-tap { position: absolute; right: 8px; bottom: 0; font-size: 13px; color: rgba(255, 255, 255, .7); animation: cfx-tap 1.2s .8s ease-in-out infinite both; }
+@keyframes cfx-tap { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+
+/* portrait: card on top, box below (340×540) */
+.cfx-scene.tall .cfx-rays { left: 170px; top: 165px; }
+.cfx-scene.tall .cfx-card { left: 71px; top: 12px; }
+.cfx-scene.tall .cfx-msg { left: 14px; top: 352px; width: 312px; animation-name: cfx-msg-up; }
+@keyframes cfx-msg-up { from { opacity: 0; transform: translateY(24px) scale(.85); } }

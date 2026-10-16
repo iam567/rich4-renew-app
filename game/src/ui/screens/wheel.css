@@ -1,0 +1,37 @@
+/* The wheel (wheel.ts): the original's message box, wheel and angel over the map, no frame. */
+.pl-scene.in-area.wh-scene { background: rgba(12, 6, 24, .32); cursor: pointer; }
+.wh-scene .pl-stage { background: none; box-shadow: none; border-radius: 0; overflow: visible; }
+.wh-group { position: absolute; overflow: visible; }
+.wh-box { filter: drop-shadow(0 8px 12px rgba(0, 0, 0, .45)); }
+/* a soft shadow under the wheel so it sits on the map like a toy */
+.wh-shadow { position: absolute; border-radius: 50%; transform: translate(4px, 9px); background: rgba(0, 0, 0, .38); filter: blur(5px); }
+.wh-wheel { z-index: 1; will-change: transform; }
+.wh-wheel.spin { filter: saturate(1.08); }
+/* hub: a small gold cap on the axle; the result pops out of it */
+.wh-hub { position: absolute; z-index: 2; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle at 38% 34%, #fff6c4, #ffd34a 42%, #c98b00 78%, #7a4f00);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, .5), inset 0 -2px 3px rgba(0, 0, 0, .25); transform: scale(.42); }
+.wh-badge { position: absolute; z-index: 3; display: grid; place-items: center; opacity: 0; pointer-events: none;
+  font-family: "Arial Black", "Huninn", sans-serif; font-weight: 900; font-size: 30px; color: #fff27a; letter-spacing: 1px;
+  text-shadow: 0 2px 0 #6a2a00, 2px 0 0 #6a2a00, -2px 0 0 #6a2a00, 0 -2px 0 #6a2a00, 0 0 10px rgba(255, 190, 60, .95); }
+.wh-badge.on { opacity: 1; animation: wh-pop .42s cubic-bezier(.3, 1.8, .5, 1) both; }
+@keyframes wh-pop { from { transform: scale(.2) rotate(-10deg); opacity: 0; } }
+.wh-scene.landed .wh-wheel { animation: wh-land .36s cubic-bezier(.3, 1.6, .5, 1); }
+@keyframes wh-land { 40% { filter: brightness(1.25); } }
+.wh-angel { z-index: 4; filter: drop-shadow(0 4px 5px rgba(0, 0, 0, .35)); animation: wh-float 1.6s ease-in-out infinite; }
+.wh-angel.wave { animation: wh-wave .4s cubic-bezier(.3, 1.6, .5, 1), wh-float 1.6s .4s ease-in-out infinite; }
+@keyframes wh-float { 50% { transform: translateY(-3px); } }
+@keyframes wh-wave { 0% { transform: rotate(-8deg) scale(1.06); } 100% { transform: none; } }
+/* The message: the game's toy message box (.msg in style.css) at scene scale, the name on a ribbon. */
+.wh-panel { position: absolute; z-index: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  border-radius: 18px; color: #fff; text-align: center; border: 3px solid #fff;
+  background: radial-gradient(130% 110% at 50% 0%, #4b95f5 0%, #2160cf 55%, #17469e 100%);
+  box-shadow: 0 0 0 4px #ffb02e, 0 0 0 7px #7a3dc8, 0 10px 18px rgba(0, 0, 0, .45); }
+.wh-panel::before { content: ''; position: absolute; inset: 5px; border: 1.5px dashed rgba(255, 255, 255, .5); border-radius: 13px; pointer-events: none; }
+.wh-ribbon { position: absolute; top: -15px; left: 50%; transform: translateX(-50%); padding: 2px 14px; border-radius: 999px; white-space: nowrap;
+  background: linear-gradient(#fff07a, #ffbf2e); color: #5a2d00; font-size: 15px; border: 2px solid #fff; box-shadow: 0 3px 0 #c97a00, 0 4px 8px rgba(0, 0, 0, .3); }
+.wh-text { position: relative; margin-top: 8px; font-size: 17px; line-height: 1.35; text-shadow: 0 2px 0 #0b2160, 1px 1px 0 #0b2160; }
+.wh-hint { position: absolute; z-index: 1; display: flex; align-items: center; justify-content: center; font-size: 13px; color: #ffe14a;
+  opacity: 0; transition: opacity .2s; text-shadow: 1px 1px 0 #101010; white-space: nowrap; }
+.wh-hint.on { opacity: 1; animation: wh-blink 1.1s ease-in-out infinite; }
+@keyframes wh-blink { 50% { opacity: .45; } }

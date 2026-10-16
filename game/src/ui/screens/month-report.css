@@ -1,0 +1,44 @@
+/* Monthly bank report (Panel #25, month-report.ts). */
+.mr-scene .pl-stage { background: #2d5fb8; }
+.mr-world { position: absolute; transform-origin: 0 0; overflow: hidden; }
+.mr-girl, .mr-stand { filter: drop-shadow(0 4px 5px rgba(0, 0, 0, .35)); }
+.mr-patch { z-index: 1; }
+.mr-flc { position: absolute; z-index: 2; pointer-events: none; }
+.mr-balloon { position: absolute; z-index: 5; background: center / 100% 100% no-repeat; transform-origin: 20% 80%; }
+.mr-say { position: absolute; transform: translate(-50%, -50%); width: max-content; max-width: 280px; text-align: center; white-space: pre-line;
+  font-size: 20px; line-height: 1.35; color: #101010; }
+.mr-scene.portrait .mr-say { font-size: 22px; max-width: 280px; }
+/* deposit plaques: 18 px #101010 at (4,6) / (4,46), figures right-aligned to x 154 */
+.mr-plaque { position: absolute; background: center / 100% 100% no-repeat; color: #101010; font-size: 18px; line-height: 20px; white-space: nowrap; }
+.mr-plaque .mr-l, .mr-plaque .mr-v { position: absolute; }
+.mr-plaque .mr-l { left: 4px; }
+.mr-plaque .mr-v { right: 6px; font-variant-numeric: tabular-nums; }
+.mr-plaque .l1 { top: 6px; }
+.mr-plaque .l2 { top: 46px; }
+.mr-plaque .loan { color: #ff0000; }
+.mr-plaque.big { font-size: 21px; line-height: 24px; }
+.mr-plaque.big .mr-l { left: 14px; }
+.mr-plaque.big .mr-v { right: 16px; }
+.mr-plaque.big .l1 { top: 4px; }
+.mr-plaque.big .l2 { top: 42px; }
+/* stats board #25.2: 16 px lines, figures right-aligned */
+.mr-stats { position: absolute; z-index: 3; background: center / 100% 100% no-repeat; color: #101010; font-size: calc(17px * var(--k, 1)); line-height: 1; white-space: nowrap; }
+.mr-sl, .mr-sv { position: absolute; }
+.mr-sl { left: calc(19px * var(--k, 1)); }
+.mr-sv { right: calc(19px * var(--k, 1)); font-variant-numeric: tabular-nums; }
+/* portrait: the title and the list under the scene */
+.mr-title { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; color: #fff;
+  text-shadow: 0 2px 0 #1a3a80, 2px 2px 0 #1a3a80, -1px -1px 0 #1a3a80; }
+.mr-title b { font-size: 30px; letter-spacing: 2px; }
+.mr-title span { font-size: 17px; color: #fff3b0; }
+.mr-row { position: absolute; border-radius: 14px; background: rgba(255, 255, 255, .16); box-shadow: inset 0 0 0 2px rgba(255, 255, 255, .35); transition: background .2s; }
+.mr-row.on { background: rgba(255, 246, 180, .5); box-shadow: inset 0 0 0 2px #fff6b4, 0 0 14px 3px rgba(255, 240, 150, .8); }
+.mr-icon { z-index: 1; }
+.mr-skip { z-index: 9; font-size: 15px !important; padding: 4px 12px !important; opacity: .85; }
+/* drawn light beam (month-report.ts BEAM) in place of a spotlight column with a baked background */
+.mr-beam { position: absolute; pointer-events: none; }
+.mr-beam.in { animation: mr-beam .35s ease-out both; }
+.mr-beam svg { position: absolute; inset: 0; display: block; width: 100%; height: 100%; overflow: visible; }
+@keyframes mr-beam { from { opacity: 0; } to { opacity: 1; } }
+.mr-scene.portrait .mr-balloon.f3 .mr-say { font-size: 20px; }
+.mr-girl.baked { filter: none; }

@@ -1,0 +1,148 @@
+/* ============================================================== 大富豪模式 (docs/rules/17): world bar, log, travel */
+.wb { position: absolute; left: 104px; right: 8px; top: 8px; z-index: 5; display: flex; align-items: stretch; justify-content: flex-start; gap: 6px;
+  pointer-events: none; font-size: 14px; }
+.wb .wb-line { flex: 0 1 auto; }
+.wb button { pointer-events: auto; border: 2px solid #fff; border-radius: 999px; padding: 3px 10px; box-shadow: 0 3px 0 rgba(0,0,0,.25), 0 4px 8px rgba(0,0,0,.25); }
+.wb-badge { flex: none; display: flex; align-items: center; gap: 6px; color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); white-space: nowrap; }
+.wb-badge i { width: 10px; height: 10px; border-radius: 50%; background: var(--cc); box-shadow: 0 0 0 2px #fff; }
+.wb-badge b { font-size: 15px; }
+.wb-badge span { font-size: 12px; opacity: .85; }
+.wb-line { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; color: #fff; background: rgba(20, 30, 70, .72); overflow: hidden; }
+.wb-line.quiet { opacity: .7; }
+.wb-line.in .wb-text { animation: wb-in .35s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes wb-in { from { transform: translateY(14px); opacity: 0; } }
+.wb-text { display: flex; align-items: center; gap: 6px; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wb-text em { font-style: normal; font-size: 12px; opacity: .8; }
+.wb-city { flex: none; padding: 0 7px; border-radius: 999px; font-size: 12px; color: #fff; background: var(--cc); box-shadow: inset 0 -2px 0 rgba(0,0,0,.2); }
+.wb-msg { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.wb-msg.hot { color: #ffb0b0; font-weight: 700; }
+.wb-msg.gold { color: #ffe14a; font-weight: 700; }
+.wb-msg b { color: #ffe9a8 !important; border-bottom: 2px solid var(--pc, #ffbf2e); }
+.game.portrait .wb { top: 6px; font-size: 13px; }
+.stage.picking .wb { display: none; }
+
+/* recent log (a sheet) */
+.wl { display: flex; flex-direction: column; gap: 4px; max-height: 58vh; overflow: auto; text-align: left; }
+.wl-day { margin-top: 6px; font-size: 12px; opacity: .7; }
+.wl-row { display: flex; align-items: center; gap: 6px; font-size: 14px; line-height: 1.35; }
+.wl-row .wb-msg { white-space: normal; }
+
+/* travel dialog: one page, a card per city */
+.msg.tv { width: min(640px, 100%); padding: 18px 12px 10px; gap: 6px; }
+.msg.tv::after, .msg.tb::after, .msg.tw::after { display: none; }
+.msg.tv .ribbon, .msg.tw .ribbon { z-index: 1; }
+.msg.tv .ribbon { gap: 8px; }
+.tv-pad { height: 30px; margin: -6px 0; filter: drop-shadow(0 2px 2px rgba(0,0,0,.4)); }
+.msg.tv.air .ribbon { background: linear-gradient(#b48cff, #6a3fd9); }
+.tv-note { font-size: 13px; opacity: .9; margin: 0 6px 4px; }
+.tv-cards { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; width: 100%; }
+.tv-cards.n3 { grid-template-columns: repeat(3, 1fr); }
+.tv-cards.n2 { grid-template-columns: repeat(2, 1fr); }
+.tv-cards.n1 { grid-template-columns: 1fr; max-width: 220px; margin: 0 auto; }
+.tv-card { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 6px 6px 8px; border-radius: 16px; border: 3px solid #fff;
+  background: linear-gradient(#ffffff, #e9f1ff); color: #1b1208; box-shadow: 0 5px 0 var(--cc), 0 8px 12px rgba(0,0,0,.25); }
+.tv-card:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 2px 0 var(--cc), 0 3px 6px rgba(0,0,0,.25); }
+.tv-pic { width: 100%; aspect-ratio: 1.5; border-radius: 10px; overflow: hidden; background: var(--cc); }
+.tv-pic img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tv-name { font-size: 20px; color: var(--cc); text-shadow: 0 1px 0 #fff; }
+.tv-fare { font-size: 16px; font-weight: 900; color: #d0202e; }
+.tv-meta { font-size: 12px; opacity: .8; }
+.tv-card:disabled { filter: grayscale(.9); opacity: .55; }
+.game.portrait .tv-cards { grid-template-columns: repeat(2, 1fr); }
+@media (max-height: 460px) {
+  .tv-pic { aspect-ratio: 2.2; }
+  .msg.tv { padding-top: 14px; }
+  .tv-name { font-size: 17px; }
+}
+
+/* departure / arrival / full house / title banners */
+.msg.tb { width: min(420px, 100%); padding: 16px 14px; align-items: center; text-align: center; animation: tb-pop .35s cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes tb-pop { from { transform: scale(.6); opacity: 0; } }
+.tb-pad { width: 150px; margin: -36px auto 4px; filter: drop-shadow(0 4px 4px rgba(0,0,0,.4)); animation: tb-fly 1.6s ease-in both; }
+@keyframes tb-fly { 70% { transform: none; } to { transform: translate(60px, -20px) scale(.8); opacity: .3; } }
+.msg.tb.title { background: radial-gradient(circle at 50% 30%, #fff6b0, #ffbf2e 60%, #c97a00); color: #5a2d00; }
+.tb-medal { width: 64px; height: 64px; margin: -44px auto 4px; border-radius: 50%; display: grid; place-items: center; font-size: 30px; font-weight: 900;
+  color: #fff; background: radial-gradient(circle at 35% 30%, #fff07a, #e09a00); border: 4px solid #fff; box-shadow: 0 4px 0 #a06000, 0 6px 12px rgba(0,0,0,.35);
+  animation: tb-spin 1s ease-out both; }
+@keyframes tb-spin { from { transform: rotateY(540deg) scale(.4); } }
+.tb-title { font-size: 30px; font-weight: 900; letter-spacing: 2px; text-shadow: 0 2px 0 #fff; }
+.tb-sub { font-size: 14px; opacity: .85; }
+
+/* new-game sheet: the tycoon mode page */
+.ng-tycoon { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; }
+.ng-tycoon figure { margin: 0; display: flex; flex-direction: column; align-items: center; gap: 2px; }
+.ng-tycoon img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 10px; border: 3px solid var(--cc); }
+.ng-tycoon figcaption { font-size: 15px; color: #fff; }
+.ng-tycoon-note { grid-column: 1 / -1; font-size: 13px; color: #dfe8ff; line-height: 1.4; margin: 2px 0 0; }
+.ng-sheet.portrait .ng-tycoon { grid-template-columns: repeat(5, 1fr); }
+.ng-lineup.tycoon { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.ng-lineup.tycoon img { width: 34px; height: 34px; border-radius: 50%; border: 2px solid var(--c); background: rgba(255,255,255,.2); }
+.ng-lineup.tycoon .me img { width: 58px; height: 58px; border-width: 3px; }
+
+/* 查詢 in 大富豪模式: twelve faces in one strip (two rows of six when narrow), where each one is */
+.info-faces { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; width: 100%; }
+.info-tabs:has(.info-faces) { display: block; }
+@media (max-width: 620px), (orientation: portrait) { .info-faces { grid-template-columns: repeat(6, minmax(0, 1fr)); } }
+.info-face-tab { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 3px 2px 2px; border-radius: 10px;
+  background: rgba(255,255,255,.12); border: 2px solid transparent; color: #fff; font-size: 11px; line-height: 1.1; min-width: 0; }
+.info-face-tab img { width: 100%; max-width: 44px; aspect-ratio: 1; border-radius: 50%; border: 2px solid var(--c); background: rgba(255,255,255,.25); }
+.info-face-tab span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.info-face-tab small { font-size: 9px; color: #ffb0b0; white-space: nowrap; }
+.info-face-tab.on { border-color: #fff; background: linear-gradient(#fff07a, #ffbf2e); color: #5a2d00; }
+.info-face-tab.me::after { content: '你'; position: absolute; top: -4px; right: -2px; font-size: 10px; padding: 0 4px; border-radius: 999px; background: #e0303c; color: #fff; }
+.info-face-tab.out img { filter: grayscale(1); opacity: .55; }
+.info-where { font-size: 12px; text-align: center; color: #dfe8ff; margin: 2px 0; }
+.info-where.gold { color: #ffe14a; font-weight: 700; }
+.info-table tr.city td { background: rgba(255, 191, 46, .25); font-weight: 700; text-align: left; }
+.info-city { display: inline-block; font-size: 11px; padding: 0 5px; margin-right: 4px; border-radius: 999px; background: rgba(255,255,255,.2); }
+.stk.world .stk-cities { display: flex; gap: 4px; flex-wrap: wrap; margin: 2px 0 4px; }
+.stk.world .stk-cities .chip { padding: 2px 10px; font-size: 13px; }
+
+/* twelve-row sheets: month report, dividends */
+.msg.tw { width: min(560px, 100%); padding: 18px 12px 8px; gap: 4px; cursor: pointer; }
+.tw-head { font-size: 14px; margin: -2px 0 4px; }
+.tw-head b { color: #ffe14a; }
+.tw-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; width: 100%; }
+.tw-row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; border-radius: 12px; background: rgba(255,255,255,.94); color: #2a1a0a;
+  border-left: 5px solid var(--c); font-size: 14px; min-width: 0; }
+.tw-row.champ { background: linear-gradient(#fff6b0, #ffd76a); }
+.tw-row.unlucky { background: #e6e6ef; }
+.tw-row.me { outline: 2px solid #e0303c; }
+.tw-face { width: 26px; height: 26px; flex: none; border-radius: 50%; overflow: hidden; background: var(--c); }
+.tw-face img { width: 100%; height: 100%; display: block; }
+.tw-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tw-num { flex: none; font-weight: 700; }
+.tw-num.plus { color: #138a36; }
+.tw-num.minus { color: #d0202e; }
+.tw-tap { font-size: 12px; opacity: .7; }
+@media (max-width: 460px) { .tw-rows { grid-template-columns: 1fr; } }
+.ng-ty-who { font-size: 14px; color: #dfe8ff; align-self: center; }
+.stage:has(.ui-layer.show) .wb { visibility: hidden; }
+
+/* 各城市地圖 (17 §12) */
+.cv { display: flex; flex-direction: column; gap: 6px; width: 100%; min-width: 0; flex: 1 1 auto; min-height: 0; }
+.msg.sheet:has(> .cv) { height: calc(100% - 26px); max-height: calc(100% - 26px); display: flex; flex-direction: column; padding-bottom: 8px; }
+.msg.sheet:has(> .cv) > .choices .candy { padding: 4px 22px; font-size: 16px; }
+.cv-tabs { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; flex: none; }
+.cv-tabs .chip { padding: 3px 9px; font-size: 14px; }
+.cv-tabs .chip { display: flex; align-items: center; gap: 4px; }
+.cv-tabs .chip small { font-size: 11px; opacity: .85; }
+.cv-tabs .chip.on { background: linear-gradient(#fff, #ffe9a8); border-color: var(--cc); color: #3a1a00; }
+.cv-here { width: 8px; height: 8px; border-radius: 50%; background: #e0303c; box-shadow: 0 0 0 2px #fff; }
+.cv-board { position: relative; flex: 1 1 auto; min-height: 110px; width: 100%; border-radius: 14px; overflow: hidden; background: #123; border: 3px solid rgba(255,255,255,.6); }
+.cv-board canvas { position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+.cv-load { position: absolute; inset: 0; display: grid; place-items: center; color: #fff; }
+.cv-load[hidden] { display: none; }
+.cv-sum { display: flex; flex-direction: column; gap: 3px; font-size: 13px; text-align: left; }
+.cv-sum > div { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cv-sum b { margin-right: 2px; color: #ffe14a; }
+.cv-sum em { font-style: normal; opacity: .7; }
+.cv-face { width: 26px; height: 26px; border-radius: 50%; overflow: hidden; border: 2px solid var(--c); background: rgba(255,255,255,.3); }
+.cv-face img { width: 100%; height: 100%; display: block; }
+.cv-coming { margin-left: 6px; }
+.cv-own { padding: 1px 7px; border-radius: 999px; background: rgba(255,255,255,.14); border-left: 4px solid var(--c); }
+.cv-own.free { border-left-color: #fff; }
+
+@media (max-height: 460px) { .cv-sum { font-size: 12px; gap: 1px; } .cv-tabs .chip { padding: 2px 8px; font-size: 13px; } .cv-face { width: 22px; height: 22px; } }
+.cv-info { flex: none; }
+.tv-resort { font-size: 11px; color: #0b7a8a; font-weight: 700; }

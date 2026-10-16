@@ -1,0 +1,83 @@
+/* ============================================================== 大富豪模式 titles and endings (docs/rules/17 §11) */
+.te-cover { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; overflow: hidden; cursor: pointer;
+  background: radial-gradient(circle at 50% 42%, rgba(60, 30, 120, .55), rgba(8, 6, 30, .82)); animation: te-in .3s ease-out both; }
+.te-cover.out { animation: te-out .3s ease-in both; }
+@keyframes te-in { from { opacity: 0; } }
+@keyframes te-out { to { opacity: 0; } }
+.te-rays { position: absolute; left: 50%; top: 42%; width: 160vmax; height: 160vmax; margin: -80vmax 0 0 -80vmax; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 230, 120, .22) 0 9deg, transparent 9deg 18deg); animation: te-spin 14s linear infinite;
+  mask-image: radial-gradient(circle, #000 10%, transparent 55%); -webkit-mask-image: radial-gradient(circle, #000 10%, transparent 55%); }
+@keyframes te-spin { to { transform: rotate(360deg); } }
+.te-confetti { position: absolute; inset: 0; pointer-events: none; }
+.te-confetti i { position: absolute; top: -20px; left: var(--x); width: 9px; height: 14px; border-radius: 2px; background: hsl(var(--h) 90% 60%);
+  animation: te-fall 2.6s var(--d) cubic-bezier(.3, .2, .6, 1) infinite; }
+@keyframes te-fall { to { transform: translateY(110vh) rotate(720deg); } }
+
+.te-award-box { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 14px 26px 12px; color: #fff; text-align: center; }
+.te-fallen { display: flex; align-items: center; gap: 8px; font-size: 15px; opacity: .9; animation: te-drop .8s .2s cubic-bezier(.5, -.4, .8, .6) both; }
+@keyframes te-drop { from { transform: translateY(-30px); opacity: 0; } }
+.te-face { display: inline-block; width: 56px; height: 56px; border-radius: 50%; overflow: hidden; border: 3px solid var(--c); background: rgba(255,255,255,.25); flex: none; }
+.te-face img { width: 100%; height: 100%; display: block; }
+.te-face.grey img { filter: grayscale(1) brightness(.85); }
+.te-medal { position: relative; width: 108px; height: 108px; border-radius: 50%; display: grid; place-items: center; margin: 6px 0 2px;
+  border: 5px solid #fff; box-shadow: 0 6px 0 rgba(0,0,0,.25), 0 0 40px 10px rgba(255, 220, 100, .5); animation: te-medal 1s cubic-bezier(.3, 1.4, .5, 1) both; }
+.te-medal b { font-size: 46px; font-weight: 900; color: #fff; text-shadow: 0 3px 0 rgba(0,0,0,.35); }
+.te-medal.bronze { background: radial-gradient(circle at 35% 30%, #ffd2a0, #b8682a 70%); }
+.te-medal.silver { background: radial-gradient(circle at 35% 30%, #ffffff, #9aa6b8 70%); }
+.te-medal.gold { background: radial-gradient(circle at 35% 30%, #fff6a0, #e0a000 70%); }
+.te-medal.platinum { background: radial-gradient(circle at 35% 30%, #ffffff, #8fd8ff 50%, #6a7dff 80%); }
+.te-medal.crown { background: radial-gradient(circle at 35% 30%, #fff6a0, #ff9a00 60%, #e0303c); }
+.te-medal.crown::before { content: ''; position: absolute; top: -34px; width: 70px; height: 40px; background: linear-gradient(#fff07a, #e0a000);
+  clip-path: polygon(0 100%, 0 30%, 22% 60%, 50% 0, 78% 60%, 100% 30%, 100% 100%); filter: drop-shadow(0 2px 0 #a06000); }
+@keyframes te-medal { from { transform: rotateY(720deg) scale(.2); opacity: 0; } }
+.te-sub { font-size: 15px; opacity: .9; }
+.te-title { font-size: 40px; font-weight: 900; letter-spacing: 3px; color: #ffe14a; text-shadow: 0 3px 0 #a04000, 0 0 18px rgba(255, 200, 60, .8); }
+.te-title span { display: inline-block; animation: te-letter .5s calc(.6s + var(--i) * .08s) cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes te-letter { from { transform: translateY(-40px) scale(1.6); opacity: 0; } }
+.te-me { display: flex; align-items: center; gap: 8px; margin-top: 4px; animation: te-in .4s 1.2s both; }
+.te-bubble { position: relative; padding: 6px 12px; border-radius: 14px; background: #fff; color: #2a1a0a; font-size: 16px; white-space: pre-line;
+  box-shadow: 0 3px 0 rgba(0,0,0,.2); }
+.te-left { font-size: 13px; opacity: .8; margin-top: 4px; }
+.te-award.gold .te-award-box, .te-award.platinum .te-award-box, .te-award.crown .te-award-box { transform: scale(1.06); }
+
+/* endings */
+.te-end { cursor: default; overflow: auto; place-items: start center; padding: 12px 8px 20px; }
+.te-end.won { background: radial-gradient(circle at 50% 22%, rgba(255, 200, 80, .45), rgba(40, 16, 70, .95) 60%); }
+.te-end.lost { background: linear-gradient(#3a4256, #12141c); }
+.te-end-box { position: relative; width: min(680px, 100%); display: flex; flex-direction: column; align-items: center; gap: 6px; color: #fff; text-align: center; }
+.te-crown { width: 90px; height: 54px; margin-top: 8px; background: linear-gradient(#fff07a, #e0a000); filter: drop-shadow(0 3px 0 #a06000);
+  clip-path: polygon(0 100%, 0 30%, 22% 60%, 50% 0, 78% 60%, 100% 30%, 100% 100%); animation: te-medal 1.2s cubic-bezier(.3, 1.4, .5, 1) both; }
+.te-big { font-size: 44px; font-weight: 900; letter-spacing: 4px; color: #ffe14a; text-shadow: 0 4px 0 #a04000, 0 0 24px rgba(255, 200, 60, .8); animation: te-letter .7s .3s both; }
+.te-end.lost .te-big { color: #c8d0e0; text-shadow: 0 3px 0 #000; }
+.te-podium { display: flex; align-items: flex-end; justify-content: center; gap: 10px; margin: 6px 0 2px; }
+.te-podium > div { position: relative; display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 6px 10px 0; border-radius: 12px 12px 0 0;
+  background: linear-gradient(#ffe07a, #c98a00); animation: te-rise .7s cubic-bezier(.3, 1.4, .5, 1) both; }
+.te-podium .p1 { height: 150px; animation-delay: .6s; }
+.te-podium .p2 { height: 110px; background: linear-gradient(#ffffff, #9aa6b8); animation-delay: .3s; }
+.te-podium .p3 { height: 86px; background: linear-gradient(#ffd2a0, #b8682a); animation-delay: .1s; }
+.te-podium b { font-size: 26px; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.3); }
+.te-podium .p1 .te-face { width: 74px; height: 74px; }
+.te-podium .te-bubble { position: absolute; top: 34px; left: calc(100% + 6px); white-space: nowrap; font-size: 14px; z-index: 1; }
+@keyframes te-rise { from { transform: translateY(80px); opacity: 0; } }
+.te-lost { display: flex; align-items: center; gap: 10px; }
+.te-lost .te-face { width: 80px; height: 80px; }
+.te-rain { position: absolute; inset: 0; pointer-events: none; background: repeating-linear-gradient(105deg, transparent 0 18px, rgba(200, 220, 255, .12) 18px 20px);
+  animation: te-rain .6s linear infinite; }
+@keyframes te-rain { to { background-position: -20px 60px; } }
+.te-stats { width: 100%; display: flex; flex-direction: column; gap: 4px; padding: 10px; border-radius: 18px; background: rgba(255,255,255,.1); text-align: left; }
+.te-stats h4 { margin: 4px 0 2px; font-size: 14px; color: #ffe14a; }
+.te-curve { width: 100%; height: 150px; background: rgba(0,0,0,.25); border-radius: 10px; }
+.te-curve path { fill: none; stroke-width: 1.5; vector-effect: non-scaling-stroke; }
+.te-curve path.riv { opacity: .35; }
+.te-curve path.me { stroke: #ffe14a; stroke-width: 3.5; }
+.te-curve text { fill: #fff; font-size: 11px; opacity: .7; }
+.te-fells { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
+.te-fell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px; border-radius: 10px; background: rgba(0,0,0,.25); font-size: 13px; }
+.te-fell .te-face { width: 40px; height: 40px; border-width: 2px; }
+.te-fell b { position: absolute; top: 2px; left: 6px; font-size: 13px; color: #ffe14a; }
+.te-fell small { font-size: 10px; opacity: .75; }
+.te-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.te-lots, .te-cities { display: flex; flex-wrap: wrap; gap: 4px; }
+.te-lots span, .te-city { padding: 2px 9px; border-radius: 999px; font-size: 13px; background: var(--cc); color: #fff; }
+.te-city:not(.on) { background: rgba(255,255,255,.12); color: rgba(255,255,255,.5); }
+@media (max-width: 520px) { .te-row { grid-template-columns: 1fr; } .te-title { font-size: 32px; } .te-big { font-size: 34px; } }

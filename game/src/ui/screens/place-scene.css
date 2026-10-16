@@ -1,0 +1,28 @@
+/* Shared frame for the special-place scenes (place-scene.ts). */
+.pl-scene { position: fixed; inset: 0; z-index: 60; overflow: hidden; font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif;
+  background: radial-gradient(circle at 50% 40%, rgba(60, 30, 90, .82), rgba(12, 6, 24, .94)); animation: pl-in .2s ease-out;
+  -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+.pl-scene.out { animation: pl-out .16s ease-in forwards; }
+@keyframes pl-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes pl-out { to { opacity: 0; } }
+.pl-stage { position: absolute; left: 0; top: 0; transform-origin: 0 0; overflow: hidden; border-radius: 10px;
+  box-shadow: 0 0 0 3px #ffbf2e, 0 0 0 7px #8a3bd1, 0 18px 40px rgba(0,0,0,.6); background: #120a1c; }
+.pl-stage * { box-sizing: border-box; }
+.pl-art { position: absolute; display: block; pointer-events: none; max-width: none; }
+.pl-face { display: block; border-radius: 50%; background: #fff; object-fit: cover; }
+.pl-gd { display: block; flex: none; }
+.pl-gd-t { font-size: 16px; color: #ffd84a; }
+.pl-digits { display: flex; align-items: flex-start; gap: 1px; }
+/* toy buttons sized for the canvas */
+.pl-stage .candy { position: absolute; font-size: 17px; padding: 6px 14px; border-radius: 14px; min-width: 0; white-space: nowrap; }
+.pl-stage .candy.yes, .pl-stage .candy.no { min-width: 0; }
+/* speech bubble with real text */
+.pl-say { position: absolute; display: flex; align-items: center; justify-content: center; text-align: center; padding: 18px 22px;
+  font-size: 19px; line-height: 1.45; color: #2a1608; white-space: pre-line; }
+.pl-say > img.pl-art { z-index: -1; }
+.pl-title { position: absolute; color: #fff; font-size: 22px; text-shadow: 0 2px 0 #3a1460, 2px 2px 0 #3a1460, -1px -1px 0 #3a1460; white-space: nowrap; }
+.pl-pop { animation: pl-pop .32s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes pl-pop { from { transform: scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
+.pl-bob { animation: pl-bob 2.6s ease-in-out infinite; transform-origin: 50% 100%; }
+@keyframes pl-bob { 50% { transform: translateY(-3px) scale(1.008, .995); } }
+.pl-scene.in-area { position: absolute; z-index: 4; background: radial-gradient(circle at 50% 40%, rgba(60, 30, 90, .7), rgba(12, 6, 24, .9)); }

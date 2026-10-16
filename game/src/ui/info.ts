@@ -1,0 +1,160 @@
+/**
+ * 查詢 — the player information screen (docs/rules/09 §7.10) with the original's three pages: assets, property
+ * (filters 全部 / 住宅區 / 商業區 / 房屋 / 連鎖店) and stocks, for any player picked by tab.
+ */
+import { CHARACTERS } from '../core/characters';
+import { day, month, year } from '../core/date';
+import type { Game } from '../core/game';
+import { TOOLS } from '../core/modules/tools';
+import { cardName } from '../core/modules/cards';
+import type { SpriteBank } from './sprites';
+import { tycoon } from './tycoon';
+
+const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
+const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+const LAND_STAGES = ['空　地', '平　房', '店　舖', '商　場', '商業大樓', '摩天大樓'];
+const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所'];
+const FILTERS = ['全部', '住宅區', '商業區', '房屋', '連鎖店'];
+const PAGES = ['資產', '地產', '股票'];
+
+export class InfoScreen {
+  readonly el: HTMLElement;
+  private who: number;
+  private page = 0;
+  private filter = 0;
+
+  constructor(readonly game: Game, readonly bank: SpriteBank) {
+    this.who = game.isPlayerId(game.current) ? game.current : Math.max(0, game.players.findIndex(q => q.human));
+    this.el = document.createElement('div');
+    this.el.className = 'info';
+    this.el.addEventListener('click', e => {
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-who],[data-page],[data-filter]');
+      if (!t) return;
+      if (t.dataset.who) this.who = Number(t.dataset.who);
+      if (t.dataset.page) this.page = Number(t.dataset.page);
+      if (t.dataset.filter) this.filter = Number(t.dataset.filter);
+      this.render();
+    });
+    this.render();
+  }
+
+  private render() {
+    const g = this.game, p = g.players[this.who], ch = CHARACTERS[p.character];
+    const face = this.bank.art('Data', 2, p.character);
+    const god = g.objects.godName(p), godSlot = p.god ? g.objects.slots[p.god - 1] : undefined;
+    const godArt = godSlot ? this.bank.art('Data', 395 + godSlot.type, 0) : null;
+    const w = tycoon.world;
+    // 大富豪模式 (docs/rules/17 §12): twelve players as one strip of faces; who fell shows the order and its title.
+    const tabs = w ? `<div class="info-faces">${g.players.map((q, i) => {
+      const c = CHARACTERS[q.character], f = this.bank.art('Data', 2, q.character), k = w.fallen.findIndex(x => x.p === q.id);
+      const fell = k >= 0 ? `<small>第${k + 1}位破產</small>` : '';
+      return `<button class="info-face-tab${i === this.who ? ' on' : ''}${q.bankrupt ? ' out' : ''}${q.human ? ' me' : ''}" data-who="${i}" style="--c:${hex(c.color)}" title="${c.name}">
+        ${f ? `<img src="${f.src}" alt="">` : ''}<span>${c.name}</span>${fell}</button>`;
+    }).join('')}</div>` : g.players.map((q, i) => {
+      const c = CHARACTERS[q.character];
+      return `<button class="info-tab${i === this.who ? ' on' : ''}" data-who="${i}" style="--c:${hex(c.color)}">${c.name}${q.bankrupt ? '<small>破產</small>' : ''}</button>`;
+    }).join('');
+    const side = `<div class="info-side">
+      <div class="info-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
+      ${w ? `<div class="info-where">${w.whereText(p)}</div>${p.human && w.fallen.some(x => x.title) ? `<div class="info-where gold">${w.fallen.filter(x => x.title).slice(-1)[0].title}</div>` : ''}` : ''}
+      ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small></div>` : ''}
+      ${PAGES.map((t, i) => `<button class="info-page${i === this.page ? ' on' : ''}" data-page="${i}">${t}</button>`).join('')}</div>`;
+    const body = this.page === 0 ? this.assets() : this.page === 1 ? this.property() : this.stocks();
+    this.el.innerHTML = `<div class="info-tabs">${tabs}</div><div class="info-main">${side}<div class="info-body">${body}</div></div>`;
+  }
+
+  /** 資產: cash, deposit, loan, total; stock value, points, insurance, companies; property counts; tools; cards. */
+  private assets(): string {
+    const g = this.game, p = g.players[this.who], me = this.who + 1;
+    // Every city's properties and the nationwide market in 大富豪模式 (one board and market otherwise).
+    const boards = g.boards();
+    const lands = boards.flatMap(b => b.lands.filter(l => l.owner === me)), facs = boards.flatMap(b => b.facilities.filter(f => f.owner === me));
+    const stockValue = g.markets().reduce((v, m) => m.holdingsValue(v, p), 0);
+    const companies = boards.reduce((n, b) => n + b.companies.filter(c => c.controller === me).length, 0);
+    const cell = (label: string, value: string) => `<div class="info-cell"><span>${label}</span><b>${value}</b></div>`;
+    const tools = TOOLS.filter(t => p.tools[t.id - 1] > 0).map(t => {
+      const a = this.bank.art('Panel', 11, t.id + 1);
+      return `<span class="info-tool" title="${t.name}">${a ? `<img src="${a.src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
+    }).join('') || '<span class="info-none">沒有道具</span>';
+    const cards = p.cards.map(id => `<span class="info-card">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
+    return `<div class="info-grid">
+        ${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}
+        ${cell('存款', money(p.bank))}${cell('點券', String(p.points))}
+        ${cell('貸款', money(p.loan))}${cell('保險', `${p.insurance & 0x7f}天`)}
+        ${cell('總資產', money(g.wealth(p)))}${cell('企業', `×${companies}`)}
+      </div>
+      <div class="info-grid four">
+        ${cell('土地', `×${lands.length + facs.length}`)}${cell('連鎖店', `×${lands.filter(l => l.chain).length}`)}
+        ${cell('房屋', `×${lands.filter(l => l.level && !l.chain).length}`)}${cell('設施', `×${facs.filter(f => f.level).length}`)}
+      </div>
+      <h4>道具</h4><div class="info-tools">${tools}</div>
+      <h4>卡片</h4><div class="info-cards">${cards}</div>`;
+  }
+
+  /** 地產: the owned lots and plots, filtered as in the original. */
+  private property(): string {
+    const g = this.game, me = this.who + 1, F = g.priceIndex;
+    const lease = (d: number) => (d ? `${String(year(d) % 100).padStart(2, '0')}/${month(d)}/${day(d)}` : '無限期');
+    type Row = { name: string; stage: string; price: number; fee: number; lease: string; facility: boolean };
+    const rows: Row[] = [];
+    const w = tycoon.world;
+    for (const [ci, board] of (w ? w.cities.map(c => c.board) : [g.board]).entries()) {
+    // 大富豪模式: grouped by city, a heading row before each city's.
+    const start = rows.length;
+    if (this.filter !== 2) {
+      for (const l of board.lands) {
+        if (l.owner !== me) continue;
+        if (this.filter === 3 && (!l.level || l.chain)) continue;
+        if (this.filter === 4 && !l.chain) continue;
+        rows.push({
+          name: l.name, stage: l.chain ? '連鎖店' : LAND_STAGES[l.level], price: (l.price + l.level * l.perLevel) * F,
+          fee: l.chain ? 2000 * F : l.tolls[l.level] * F, lease: lease(l.expire), facility: false,
+        });
+      }
+    }
+    if (this.filter === 0 || this.filter === 2) {
+      for (const f of board.facilities) {
+        if (f.owner !== me) continue;
+        rows.push({
+          name: f.name, stage: f.level ? `${FACILITY_TYPES[f.type]}${f.level > 1 ? ` ${f.level}級` : ''}` : '空　地',
+          price: f.price * F, fee: (f.fees[f.level] ?? 0) * F, lease: lease(f.expire), facility: true,
+        });
+      }
+    }
+    if (w && rows.length > start) rows.splice(start, 0, { name: w.cityName(ci), stage: '', price: -1, fee: 0, lease: '', facility: false });
+    }
+    const filters = FILTERS.map((t, i) => `<button class="info-filter${i === this.filter ? ' on' : ''}" data-filter="${i}">${t}</button>`).join('');
+    const list = rows.length ? rows.map(r => r.price < 0 ? `<tr class="city"><td colspan="5">${r.name}</td></tr>` : `<tr class="${r.facility ? 'fac' : ''}"><td>${r.name}</td><td>${r.stage}</td><td>${money(r.price)}</td><td>${money(r.fee)}</td><td>${r.lease}</td></tr>`).join('')
+      : '<tr><td colspan="5" class="info-none">沒有地產</td></tr>';
+    return `<div class="info-filters">${filters}</div>
+      <table class="info-table"><thead><tr><th>地名</th><th>開發狀況</th><th>價格</th><th>收費</th><th>租期</th></tr></thead><tbody>${list}</tbody></table>`;
+  }
+
+  /** 股票: the twelve stocks with shares held and their market value. */
+  private stocks(): string {
+    const w = tycoon.world;
+    if (w) {
+      // The nationwide market: the stocks this player holds, by city (all 60 would not fit one page).
+      let total = 0;
+      const rows = w.cities.flatMap((c, ci) => {
+        const st = c.stocks as unknown as { stocks: { name: string; price: number }[]; holdings: { shares: number }[][] };
+        const h = st.holdings[this.who] ?? [];
+        return st.stocks.flatMap((s, i) => {
+          const n = h[i]?.shares ?? 0;
+          if (!n) return [];
+          total += Math.trunc(n * s.price);
+          return [`<tr><td><span class="info-city">${w.cityName(ci)}</span>${s.name}</td><td>${n.toLocaleString('en-US')}</td><td>${money(Math.trunc(n * s.price))}</td></tr>`];
+        });
+      });
+      return `<table class="info-table stocks"><thead><tr><th>股票（全國股市）</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="3" class="info-none">沒有股票</td></tr>'}
+        ${rows.length ? `<tr class="city"><td>合計</td><td></td><td>${money(total)}</td></tr>` : ''}</tbody></table>`;
+    }
+    const st = this.game.stocks as unknown as { stocks: { name: string; price: number }[]; holdings: { shares: number }[][] };
+    const h = st.holdings[this.who] ?? [];
+    const rows = st.stocks.map((s, i) => {
+      const n = h[i]?.shares ?? 0;
+      return `<tr${n ? '' : ' class="dim"'}><td>${s.name}</td><td>${n.toLocaleString('en-US')}</td><td>${money(Math.trunc(n * s.price))}</td></tr>`;
+    }).join('');
+    return `<table class="info-table stocks"><thead><tr><th>股票</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows}</tbody></table>`;
+  }
+}

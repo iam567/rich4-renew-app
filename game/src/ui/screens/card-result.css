@@ -1,0 +1,26 @@
+/* ============================================================== card result: red / black card headline (remake) */
+.sc-hero { position: relative; display: grid; justify-items: center; gap: 2px; margin: 0 4px 10px; padding: 8px 12px 9px;
+  border-radius: 16px; border: 3px solid #fff; color: #fff; box-shadow: 0 4px 0 rgba(0, 0, 0, .25), inset 0 2px 0 rgba(255, 255, 255, .35);
+  animation: sc-pop .45s cubic-bezier(.3, 1.5, .5, 1) both; }
+/* East Asian market colours, as the stock screen: red up, green down. */
+.sc-hero.up { background: linear-gradient(#ff6b6b, #d7192b); }
+.sc-hero.down { background: linear-gradient(#43d37f, #12894a); }
+@keyframes sc-pop { from { transform: scale(.6); opacity: 0; } }
+.sc-name { display: flex; align-items: center; gap: 8px; font-size: 20px; letter-spacing: 1px; text-shadow: 0 2px 0 rgba(0, 0, 0, .3); }
+.sc-badge { padding: 1px 9px; border-radius: 999px; font-size: 14px; background: #fff; color: #222; }
+.sc-hero.up .sc-badge { color: #d7192b; }
+.sc-hero.down .sc-badge { color: #12894a; }
+.sc-px { display: flex; align-items: baseline; gap: 10px; font-variant-numeric: tabular-nums; }
+.sc-old { font-size: 20px; opacity: .8; text-decoration: line-through; text-decoration-thickness: 2px; }
+.sc-arr { font-size: 22px; animation: sc-bob .7s ease-in-out infinite; }
+.sc-hero.down .sc-arr { animation-name: sc-drop; }
+@keyframes sc-bob { 50% { transform: translateY(-4px); } }
+@keyframes sc-drop { 50% { transform: translateY(4px); } }
+.sc-new { font-size: 34px; font-weight: 900; line-height: 1.05; text-shadow: 0 3px 0 rgba(0, 0, 0, .3);
+  animation: sc-new .6s .25s cubic-bezier(.3, 1.6, .5, 1) both; }
+@keyframes sc-new { from { transform: scale(.3); opacity: 0; } }
+.sc-pct { font-size: 16px; padding: 1px 10px; border-radius: 999px; background: rgba(0, 0, 0, .22); }
+@media (max-width: 380px) {
+  .sc-new { font-size: 28px; }
+  .sc-name { font-size: 18px; }
+}

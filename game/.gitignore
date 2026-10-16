@@ -1,0 +1,4 @@
+node_modules/
+dist/
+# Original and redrawn game art is linked in locally by `npm run assets`; never commit it.
+public/assets/
