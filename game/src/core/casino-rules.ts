@@ -84,6 +84,9 @@ export abstract class CasinoRules implements MapRules {
   /** Games played (both modes); per-player results (shown by the finale). */
   visits = 0;
   stats: CasinoStats[] = [];
+  /** Where the money went, in 元, this session (not saved; the simulations' report): buy, build, fee, lost, won, slot, tax, coupon. */
+  flows: Record<string, number> = {};
+  protected flow(k: string, n: number): void { this.flows[k] = (this.flows[k] ?? 0) + n; }
 
   /** The city of the casinos. */
   abstract game(): Game | undefined;
@@ -97,6 +100,8 @@ export abstract class CasinoRules implements MapRules {
   /** What the visitor bets with: 現金 (籌碼 in the finale). */
   moneyWord(): string { return '現金'; }
 
+  /** The blinds' multiplier (the finale's 盲注遞增, 19 §5.5; 1 elsewhere). */
+  blind(): number { return 1; }
   cap(level: number): number { return CAPS[Math.max(0, Math.min(5, level))] * this.scale(); }
   minStake(_level: number): number { return MIN_STAKE * this.scale(); }
   plotPrice(g: Game): number { return PLOT_PRICE * g.priceIndex; }
@@ -155,7 +160,7 @@ export abstract class CasinoRules implements MapRules {
       f.owner = me;
       const months = LAND_LIMIT_MONTHS[g.settings.landLimitIndex];
       if (months) f.expire = addMonths(g.date, months);
-      p.cash -= price;
+      p.cash -= price; this.flow('buy', price);
       yield { t: 'buy', p: p.id, kind: 'facility', id: f.id, price };
       return true;
     }
@@ -177,7 +182,7 @@ export abstract class CasinoRules implements MapRules {
       if (yield* priv.investmentBlocked(p)) return true;
       f.type = type;
       f.level = next;
-      p.cash -= cost;
+      p.cash -= cost; this.flow('build', cost);
       yield { t: 'build', p: p.id, kind: 'facility', id: f.id, level: f.level, cost };
       yield* priv.blessing(p, f.id + 4000);
       return true;
@@ -232,8 +237,8 @@ export abstract class CasinoRules implements MapRules {
   /** What the visitor can put on the table (19 §5.1): all their money (cash + bank), in whole chips (100 元). */
   static holding(p: Player): number { return Math.max(0, Math.floor((p.cash + p.bank) / 100) * 100); }
 
-  /** 門票: 500..5,000 in hundreds (19 §5.0). */
-  entryFee(rng: Rng): number { return 100 * (5 + rng.below(46)); }
+  /** 門票: 500..5,000 in hundreds (19 §5.0); the finale's by level (19 §5.5). */
+  entryFee(rng: Rng, _level = 1): number { return 100 * (5 + rng.below(46)); }
 
   /** A computer's buy / build / upgrade (19 §6): when it keeps at least the level-1 cap in cash for the tables. */
   aiInvest(_g: Game, p: Player, cost: number): boolean {
@@ -272,17 +277,18 @@ export abstract class CasinoRules implements MapRules {
     const rng = this.visitRng(g, p);
     // 門票 (19 §5.0): 500..5,000 in hundreds to the owner first, also when the banker is away.
     // Never more than the visitor holds (19 §5.1).
-    const fee = Math.min(this.entryFee(rng), CasinoRules.holding(p));
+    const fee = Math.min(this.entryFee(rng, level), CasinoRules.holding(p));
     yield { t: 'fx', kind: 'casino-fee', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], level, cap, fee, text: `${where}門票 ${this.price(fee)}` } };
     yield* g.transfer(p.id, banker.id, fee, 1, '賭場門票', true);
     (this.stats[banker.id] ??= emptyStats()).bankerIn += fee;
-    st.lost += fee;
+    st.lost += fee; this.flow('fee', fee);
     if (!p.whoPlays || g.over || banker.bankrupt) return;
     const away = this.bankerAway(banker);
     if (away) {
       const digits = this.slotDigits(rng, level);
       const amount = (digits[0] * 1000 + digits[1] * 100 + digits[2] * 10 + digits[3]) * 10 * this.scale();
       yield { t: 'fx', kind: 'casino-auto', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, level, cap, digits, amount, away, scale: this.scale(), text: `莊家${g.name(banker.id)}${away}，${g.name(p.id)}自動獲勝 ${this.price(amount)}！` } };
+      this.flow('slot', amount);
       yield* this.payout(g, p, banker, amount);
       return;
     }
@@ -294,7 +300,7 @@ export abstract class CasinoRules implements MapRules {
     const hi = Math.min(cap, have), lo = Math.min(this.minStake(level), hi);
     let choice: CasinoChoice;
     if (human) {
-      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, max: hi, cash: p.cash + p.bank, fee } as never)) as unknown as CasinoChoice | undefined;
+      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, max: hi, mult: this.blind(), cash: p.cash + p.bank, fee } as never)) as unknown as CasinoChoice | undefined;
       choice = this.validChoice(game, a, lo, hi) ?? this.aiChoice(rng, game, p, lo, hi);
     } else choice = this.aiChoice(rng, game, p, lo, hi);
     const result = yield* this.play(rng, p, choice, human, have);
@@ -305,10 +311,10 @@ export abstract class CasinoRules implements MapRules {
       : net < 0 ? `${g.name(p.id)}在${where}輸了 ${this.price(-net)}${big.why ? `（${big.why}${big.all ? `，全部${this.moneyWord()}` : ` ×${big.mult}`}）` : ''}` : `${g.name(p.id)}在${where}打平`;
     yield { t: 'fx', kind: 'casino-result', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], fee, level, cap, stake: choice.stake, result: result as unknown as Record<string, unknown>, net, raw: result.net, clipped: result.net > cap, mult: big.mult, all: big.all, why: big.why, human, text } };
     if (Math.abs(net) >= cap / 2) this.note(text, p.id, Math.abs(net) >= cap);
-    if (net > 0) yield* this.payout(g, p, banker, net);
+    if (net > 0) { this.flow('won', net); yield* this.payout(g, p, banker, net); }
     else if (net < 0) {
       const bs = this.stats[banker.id] ??= emptyStats();
-      st.lost += -net; bs.bankerIn += -net;
+      st.lost += -net; bs.bankerIn += -net; this.flow('lost', -net);
       g.addHostility(p.id, banker.id, Math.trunc(-net / 100));
       yield* g.transfer(p.id, banker.id, -net, 1, '賭場輸款', true);
     }

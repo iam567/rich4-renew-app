@@ -10,9 +10,10 @@
  * cards and the stock market do not reach it, the decks and the shop are the original ones without what makes no
  * sense there (§3). Hooks into the world: World.finale (start check, frozen cities, wealth), save.ts (state).
  */
-import type { Board } from './board';
+import type { Board, BoardNode } from './board';
 import { CasinoRules, CAPS, DENY, emptyStats, FINALE_MAP, FINALE_NAME, type CasinoStats } from './casino-rules';
 import { type Flow } from './flow';
+import type { Rng } from './rng';
 import { Game, type WorldHooks } from './game';
 import { cardName, cardPrice } from './modules/cards';
 import { sellPrice, toolDef } from './modules/tools';
@@ -25,6 +26,14 @@ export { HALLS, HALL_GAME, HALL_NAMES, HALL_TYPE, isHall, CAPS, DENY, FINALE_MAP
 
 /** The finale starts when this many players (or fewer, at least two) are left. */
 export const FINALE_PLAYERS = 4;
+/** The finale's minimum bet by level, in chips, before the blinds (19 §5.5, the user's table). */
+export const FINALE_MIN_STAKE = [0, 50, 100, 150, 250, 400];
+/** The finale's 門票 by level, in chips: [lowest, highest], before the blinds (19 §5.5). */
+export const FINALE_FEE: [number, number][] = [[0, 0], [20, 50], [40, 100], [60, 150], [80, 200], [100, 300]];
+/** 過路稅 (19 §4.4): chips lost on stopping on a plain road square, before the blinds (to nobody). */
+export const FINALE_ROAD_TAX = 50;
+/** The coupon squares give chips there (19 §4.4): event 11 (+30 點券) 300, event 10 (+50 點券) 500, before the blinds. */
+export const FINALE_COUPON: Record<number, number> = { 11: 300, 10: 500 };
 /**
  * Scale of the caps in the finale (19 §5.1): 'flat' the user's table as it is (the default); 'index' × the price
  * index (02 §1); 'wealth' × the finalists' average cash on arrival in units of WEALTH_UNIT (fixed for the finale).
@@ -69,6 +78,10 @@ export class Finale extends CasinoRules implements WorldHooks {
   wealthScale = 1;
   /** Turned off by tests that want the world to run without a finale. */
   static enabled = true;
+  /** 盲注遞增 (19 §5.5): every this many finale days the caps, the minimum bets, 門票 and the slot double. */
+  static blindDays = 20;
+  /** The blinds last announced (the multiplier). */
+  private blindShown = 1;
 
   constructor(readonly w: World) {
     super();
@@ -81,7 +94,18 @@ export class Finale extends CasinoRules implements WorldHooks {
   /** Whether a city still plays: during the finale only 大富翁城 (the five are frozen). */
   runs(i: number): boolean { return !this.active || i === this.index; }
 
-  scale(): number { return this.scaleMode === 'index' ? Math.max(1, this.w.priceIndex) : this.scaleMode === 'wealth' ? this.wealthScale : 1; }
+  scale(): number { return (this.scaleMode === 'index' ? Math.max(1, this.w.priceIndex) : this.scaleMode === 'wealth' ? this.wealthScale : 1) * this.blind(); }
+  /** Days since the finale started (0 on the first day). */
+  day(): number { return this.active ? Math.max(0, this.w.daysElapsed - this.startDay) : 0; }
+  /** The blinds' multiplier (19 §5.5): ×2 from day 20, ×4 from day 40, ×8 from day 60 … */
+  blind(): number { return this.active ? 2 ** Math.floor(this.day() / Finale.blindDays) : 1; }
+  minStake(level: number): number { return this.active ? FINALE_MIN_STAKE[Math.max(1, Math.min(5, level))] * FINALE_CHIP * this.blind() : super.minStake(level); }
+  /** 門票 (19 §5.5): by level, a whole number of chips in the level's range, times the blinds. */
+  entryFee(rng: Rng, level = 1): number {
+    if (!this.active) return super.entryFee(rng, level);
+    const [lo, hi] = FINALE_FEE[Math.max(1, Math.min(5, level))];
+    return (lo + rng.below(hi - lo + 1)) * FINALE_CHIP * this.blind();
+  }
   /** The finale's texts in chips (1 chip = 100 元). */
   price(n: number): string { return this.active ? `${fmt(Math.trunc(n / FINALE_CHIP))}籌碼` : `${fmt(n)}元`; }
   moneyWord(): string { return this.active ? '籌碼' : '現金'; }
@@ -114,11 +138,86 @@ export class Finale extends CasinoRules implements WorldHooks {
     }
   }
 
+  /**
+   * The finale's squares (19 §4.4), on stopping: a plain road square (no event, no plot) takes 50 chips × the
+   * blinds to nobody (at most what the visitor holds: out below one chip at the next check); the coupon squares give
+   * 300 / 500 chips × the blinds in place of their points. The original's handling goes on for the road (objects).
+   */
+  *landSquare(g: Game, p: Player, n: BoardNode): Flow<boolean> {
+    if (!this.active || g !== this.game()) return false;
+    const mult = this.blind();
+    const coupon = FINALE_COUPON[n.event];
+    if (coupon) {
+      const amount = coupon * FINALE_CHIP * mult;
+      g.gain(p, amount, 1);
+      this.flow('coupon', amount);
+      const text = `${g.name(p.id)}拿到籌碼券 +${this.price(amount)}`;
+      yield { t: 'pay', from: -1, to: p.id, amount, reason: '籌碼券', quiet: true };
+      this.w.ticker(this.index, text, 'casino', p.id);
+      yield { t: 'fx', kind: 'finale-square', p: p.id, node: n.id, data: { kind: 'coupon', amount, mult, text } };
+      return true;
+    }
+    if (n.event !== 0 || n.ref) return false;
+    const amount = Math.min(FINALE_ROAD_TAX * FINALE_CHIP * mult, CasinoRules.holding(p));
+    if (amount <= 0) return false;
+    const a = Math.min(p.cash, amount);
+    p.cash -= a; p.bank -= amount - a; p.monthLoss += amount;
+    this.flow('tax', amount);
+    const text = `${g.name(p.id)}付過路稅 −${this.price(amount)}`;
+    yield { t: 'pay', from: p.id, to: -1, amount, reason: '過路稅', quiet: true };
+    this.w.ticker(this.index, text, 'casino', p.id);
+    yield { t: 'fx', kind: 'finale-square', p: p.id, node: n.id, data: { kind: 'tax', amount, mult, text } };
+    return false;
+  }
+
+  /**
+   * The computer's remote dice in the finale (19 §6): the stop worth most — a coupon, a plot to buy or raise, the
+   * hospital/prison/news/fate as nothing, a road square the tax, a rival's hall its 門票 and an eighth of the cap.
+   * Used when the best beats the plain roll's average.
+   */
+  aiRemoteDice(g: Game, p: Player, nodes: number[]): number | null | undefined {
+    if (!this.active || g !== this.game()) return undefined;
+    const mult = this.blind(), me = p.id + 1;
+    const worth = (id: number) => {
+      const n = g.node(id);
+      if (FINALE_COUPON[n.event]) return FINALE_COUPON[n.event] * FINALE_CHIP * mult;
+      if (n.event === 0 && !n.ref) return -FINALE_ROAD_TAX * FINALE_CHIP * mult;
+      const f = n.ref > 4000 && n.ref < 6000 ? g.board.facilities[n.ref - 4001] : undefined;
+      if (!f) return 0;
+      if (!f.owner) return p.cash > this.plotPrice(g) * 3 ? 1 : 0;
+      if (f.owner === me) return f.level < 5 && p.cash > this.buildCost(g) * 3 ? 1 : 0;
+      const [lo, hi] = FINALE_FEE[Math.max(1, Math.min(5, f.level))];
+      return -((lo + hi) / 2) * FINALE_CHIP * mult - this.cap(f.level) / 8;
+    };
+    const score = nodes.slice(0, 6).map(worth);
+    if (score.length < 6) return null;
+    const avg = score.reduce((a, b) => a + b, 0) / 6;
+    let best = 0;
+    score.forEach((s, i) => { if (s > score[best]) best = i; });
+    return score[best] > avg && score[best] >= 0 ? best + 1 : null;
+  }
+
+  /** 盲注遞增 (19 §5.5): announces each doubling once (the ticker and a banner). */
+  private *raiseBlinds(): Flow {
+    const mult = this.blind();
+    if (mult <= this.blindShown) return;
+    this.blindShown = mult;
+    const text = `加注時間！賭注上限翻倍 ×${mult}`;
+    this.w.ticker(this.index, text, 'casino', undefined, { important: true });
+    const lv = [1, 2, 3, 4, 5];
+    yield { t: 'fx', kind: 'finale-blinds', data: { mult, day: this.day() + 1, caps: lv.map(l => this.cap(l)), mins: lv.map(l => this.minStake(l)), fees: lv.map(l => FINALE_FEE[l].map(x => x * FINALE_CHIP * mult)), next: Finale.blindDays * (Math.log2(mult) + 1), text } };
+  }
+
   // ---------------------------------------------------------------- start
 
   /** After every turn and every day (World.run): starts the finale once four players (or fewer) are left. */
   *check(): Flow {
-    if (this.active) { yield* this.outOfChips(); return; }
+    if (this.active) {
+      yield* this.outOfChips();
+      if (this.w.over) return;
+      yield* this.raiseBlinds();
+      return;
+    }
     if (!Finale.enabled || this.w.over || !finaleBoard || this.index >= 0) return;
     const left = this.w.players.filter(p => !p.bankrupt);
     if (left.length > FINALE_PLAYERS || left.length < 2) return;
@@ -272,6 +371,7 @@ export class Finale extends CasinoRules implements WorldHooks {
   restore(s: FinaleState | undefined): void {
     if (!s?.active) return;
     Object.assign(this, { active: true, startDay: s.startDay, finalists: [...s.finalists], valuations: structuredClone(s.valuations), chips: structuredClone(s.chips ?? []), visits: s.visits, stats: structuredClone(s.stats), scaleMode: s.scaleMode ?? 'flat', wealthScale: s.wealthScale ?? 1 });
+    this.blindShown = this.blind();
     const g = this.game();
     if (g) this.setup(g, false);
   }

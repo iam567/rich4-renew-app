@@ -159,3 +159,12 @@
   color: #fff; text-shadow: 0 2px 0 #3a1460, 2px 2px 0 #3a1460, -1px -1px 0 #3a1460; }
 .cs-auto-h { font-size: 26px; color: #ffe36a; letter-spacing: 3px; }
 .cs-auto-zero { position: absolute; display: grid; place-items: center; font-size: 26px; color: #2a1608; background: #fff8e0; border-radius: 4px; border: 2px solid #8a5a10; margin: -18px 0 0 -15px; }
+
+/* 過路稅 / 籌碼券 (19 §4.4): a small banner at the top, gone by itself. */
+.cs-toast { position: fixed; left: 50%; top: 18%; z-index: 60; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center;
+  padding: 6px 22px 5px; border-radius: 16px; border: 3px solid #fff; color: #fff; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.35);
+  box-shadow: 0 5px 0 rgba(0,0,0,.25), 0 8px 18px rgba(0,0,0,.4); animation: pl-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; transition: opacity .35s, transform .35s; }
+.cs-toast.tax { background: linear-gradient(#ff7a6a, #c8202c); }
+.cs-toast.coupon { background: linear-gradient(#ffd860, #e09000); }
+.cs-toast b { font-weight: 400; font-size: 15px; } .cs-toast span { font-size: 26px; line-height: 1.1; } .cs-toast small { font-size: 12px; opacity: .9; }
+.cs-toast.out { opacity: 0; transform: translateX(-50%) translateY(-12px); }

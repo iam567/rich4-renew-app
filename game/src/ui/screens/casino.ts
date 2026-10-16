@@ -20,7 +20,7 @@ import { ASSETS } from '../assets';
 import './casino.css';
 
 type Fx = { t: 'fx'; kind: string; p?: number; target?: number; node?: number; data?: Record<string, unknown> };
-interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; cash: number; fee: number }
+interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; mult?: number; cash: number; fee: number }
 interface BjAsk { t: 'casino'; p: number; phase: 'blackjack'; player: number[]; up: number; canDouble: boolean; double?: number; stake: number }
 interface HeAsk { t: 'casino'; p: number; phase: 'holdem'; hole: number[]; board: number[]; stake: number; call?: number }
 type CasinoAsk = ChooseAsk | BjAsk | HeAsk;
@@ -138,7 +138,7 @@ class CasinoPage {
         <div class="cs-stake"><span class="cs-stk-l">下注${chipMode() ? '（籌碼）' : ''}</span><b class="cs-stk">${money(this.stake)}</b>
           <span class="cs-range">${money(a.min)} – ${money(this.max)}</span></div>
         <div class="cs-chips">
-          ${chipButtons()}
+          ${chipButtons(a.mult ?? 1)}
           <button class="cs-chip min" data-set="min">最低</button><button class="cs-chip max" data-set="max">${this.max < a.cap ? '全押' : '上限'}</button>
         </div>
         <button class="candy yes cs-go">開始！</button>
@@ -355,11 +355,12 @@ class CasinoPage {
   }
 }
 
-/** The stake chips: ±1,000 / ±5,000 元, shown as ±10 / ±50 in the finale's chips. */
-function chipButtons(): string {
-  const t = (n: number) => (chipMode() ? String(n / 100) : `${n / 1000}千`);
-  return `<button class="cs-chip c5" data-d="-5000">−${t(5000)}</button><button class="cs-chip c1" data-d="-1000">−${t(1000)}</button>
-    <button class="cs-chip c50" data-d="1000">+${t(1000)}</button><button class="cs-chip c10" data-d="5000">+${t(5000)}</button>`;
+/** The stake chips: ±1,000 / ±5,000 元, shown as ±10 / ±50 in the finale's chips; × the finale's blinds (19 §5.5). */
+function chipButtons(mult = 1): string {
+  const t = (n: number) => (chipMode() ? (n / 100).toLocaleString('en-US') : `${n / 1000}千`);
+  const a = 1000 * mult, b = 5000 * mult;
+  return `<button class="cs-chip c5" data-d="${-b}">−${t(b)}</button><button class="cs-chip c1" data-d="${-a}">−${t(a)}</button>
+    <button class="cs-chip c50" data-d="${a}">+${t(a)}</button><button class="cs-chip c10" data-d="${b}">+${t(b)}</button>`;
 }
 
 /** A die face (CSS pips). */
@@ -474,6 +475,29 @@ fxScreens['casino-auto'] = async (ctx, fx) => {
       }
     }, 60);
   });
+};
+
+// ------------------------------------------------------------------ 過路稅 / 籌碼券 (19 §4.4)
+
+fxScreens['finale-square'] = async (ctx, fx) => {
+  const d = fx.data ?? {}, amount = Number(d.amount), tax = d.kind === 'tax';
+  const el = document.createElement('div');
+  el.className = `cs-toast ${tax ? 'tax' : 'coupon'}`;
+  el.innerHTML = `<b>${tax ? '過路稅' : '籌碼券'}</b><span>${tax ? '−' : '+'}${esc(fmtMoney(amount))}</span><small>${esc(name(ctx, fx.p ?? 0))}${Number(d.mult) > 1 ? `・盲注 ×${Number(d.mult)}` : ''}</small>`;
+  document.body.append(el);
+  audio.sfx(tax ? Sfx.rent : Sfx.points);
+  await sleep(900 * Math.max(0.5, ctx.scale()));
+  el.classList.add('out');
+  setTimeout(() => el.remove(), 400);
+};
+
+// ------------------------------------------------------------------ 盲注遞增 (19 §5.5)
+
+fxScreens['finale-blinds'] = async (ctx, fx) => {
+  const d = fx.data ?? {};
+  const caps = (d.caps as number[]) ?? [], mins = (d.mins as number[]) ?? [];
+  audio.sfx(Sfx.fireworks);
+  await ctx.flash(`加注時間！\n賭注上限翻倍 ×${Number(d.mult)}\n\n贏錢上限 ${fmtMoney(caps[0] ?? 0, false)}–${fmtMoney(caps[4] ?? 0)}\n最低下注 ${fmtMoney(mins[0] ?? 0, false)}–${fmtMoney(mins[4] ?? 0)}\n門票也翻倍・下次加注：第 ${Number(d.next) + 1} 天`, 2200 * Math.max(0.5, ctx.scale()));
 };
 
 // ------------------------------------------------------------------ 門票 (19 §5.0)

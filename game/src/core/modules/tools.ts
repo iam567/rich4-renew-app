@@ -971,6 +971,8 @@ export class Tools {
     if (god === 7 || god === 8 || god === 15 || p.turtle || p.cash + p.bank < 10000 || p.luckMoney < 0) return null;
     const { nodes, fork } = this.ahead(p, 6);
     if (fork) return null;
+    const own = g.rules?.aiRemoteDice?.(g, p, nodes); // 大富翁城's squares (docs/rules/19 §6)
+    if (own !== undefined) return own;
     let cand: number | null = null, candLevel = -1;
     for (let v = 1; v <= 6; v++) {
       const id = nodes[v - 1], n = g.node(id);

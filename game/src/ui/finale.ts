@@ -57,6 +57,14 @@ export function chipMode(): boolean {
   return !!w?.finale.active && w.view() === w.finale.index;
 }
 
+/** The finale's blinds on the money panel (19 §5.5): 「・盲注 ×4」 from day 20 on; '' elsewhere. */
+export function blindsTag(): string {
+  const w = tycoon.world;
+  if (!chipMode() || !w) return '';
+  const m = w.finale.blind();
+  return m > 1 ? `<b class="pp-blinds">・盲注 ×${m}</b>` : '';
+}
+
 /** Money as the screen shows it now: "1,234 籌碼" in the finale, else "12,345 元". */
 export function fmtMoney(n: number, unit = true): string {
   return chipMode() ? `${Math.trunc(n / FINALE_CHIP).toLocaleString('en-US')}${unit ? ' 籌碼' : ''}` : `${Math.trunc(n).toLocaleString('en-US')}${unit ? ' 元' : ''}`;

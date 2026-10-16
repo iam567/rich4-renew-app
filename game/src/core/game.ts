@@ -109,6 +109,10 @@ export interface MapRules {
   daily?(g: Game): void;
   /** The bank counter is closed (no loans: 大富翁城's finale plays in chips); the ATM stays open. */
   readonly noLoans?: boolean;
+  /** A stop on any square, before the original's handling (大富翁城's finale: road tax, chip coupons); true when handled. */
+  landSquare?(g: Game, p: Player, n: BoardNode): Flow<boolean>;
+  /** The computer's remote dice here (the die value, null none); undefined: the original's judgement. */
+  aiRemoteDice?(g: Game, p: Player, nodes: number[]): number | null | undefined;
 }
 /** Map rules of normal games by map id, registered by the map's module (core/casino-rules.ts: 105 大富翁城). */
 export const MAP_RULES: Record<number, (g: Game) => MapRules> = {};
@@ -822,6 +826,7 @@ export class Game {
   private *land(p: Player): Flow {
     const n = this.node(p.node);
     if (p.sleepwalk && n.event !== 0) return;
+    if (this.rules?.landSquare && (yield* this.rules.landSquare(this, p, n))) return; // 大富翁城 (docs/rules/19 §4.4)
     switch (n.event) {
       case 0:
         yield* this.landOnProperty(p, n);

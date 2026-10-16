@@ -308,6 +308,84 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(null);
   });
 
+  it('盲注遞增: every 20 finale days the caps, minimum bets, 門票 and the slot double, announced once', () => {
+    setFinaleBoard(finaleBoard());
+    const w = nearFinale(23, [0, 3, 6, 9]);
+    drain(w.finale.check());
+    const f = w.finale, g = w.cities[5];
+    const announced = (steps: Step[]) => steps.filter(s => s.t === 'fx' && s.kind === 'finale-blinds') as unknown as { data: { mult: number } }[];
+    expect(f.blind()).toBe(1);
+    expect([1, 2, 3, 4, 5].map(l => f.minStake(l) / FINALE_CHIP)).toEqual([50, 100, 150, 250, 400]);
+    expect(f.cap(5)).toBe(CAPS[5]);
+    for (const [day, mult] of [[19, 1], [20, 2], [39, 2], [40, 4], [60, 8], [80, 16]] as const) {
+      w.daysElapsed = f.startDay + day;
+      const fx = announced(drain(f.check()));
+      expect(f.blind()).toBe(mult);
+      expect(fx.map(x => x.data.mult)).toEqual(day % 20 === 0 ? [mult] : []);
+      expect(announced(drain(f.check()))).toEqual([]);   // once
+      for (let level = 1; level <= 5; level++) {
+        expect(f.cap(level)).toBe(CAPS[level] * mult);
+        expect(f.minStake(level)).toBe([0, 50, 100, 150, 250, 400][level] * FINALE_CHIP * mult);
+        const [lo, hi] = [[0, 0], [20, 50], [40, 100], [60, 150], [80, 200], [100, 300]][level];
+        for (let seed = 1; seed < 60; seed++) {
+          const fee = f.entryFee(new Rng(seed * 7 + level), level);
+          expect(fee % (FINALE_CHIP * mult)).toBe(0);
+          expect(fee).toBeGreaterThanOrEqual(lo * FINALE_CHIP * mult);
+          expect(fee).toBeLessThanOrEqual(hi * FINALE_CHIP * mult);
+        }
+      }
+    }
+    // The banker away: the slot pays up to the doubled cap (×16 here).
+    const fac = g.board.facilities[0], v = w.players[0], b = w.players[3];
+    Object.assign(fac, { owner: b.id + 1, level: 5, type: HALLS[0], tmpState: 0 });
+    Object.assign(b, { hospital: 3, cash: 100_000_000 });
+    w.mask(5);
+    let top = 0;
+    for (let i = 0; i < 40; i++) {
+      v.node = g.board.nodes[i % g.board.nodes.length].id; v.cash = 5_000_000;
+      const auto = drain(f.visit(g, v, fac)).find(s => s.t === 'fx' && s.kind === 'casino-auto') as { data: { amount: number } } | undefined;
+      expect(auto!.data.amount).toBeLessThanOrEqual(CAPS[5] * 16);
+      expect(auto!.data.amount % 16).toBe(0);
+      top = Math.max(top, auto!.data.amount);
+    }
+    expect(top).toBeGreaterThan(CAPS[5]);
+    setFinaleBoard(null);
+  });
+
+  it('過路稅 and 籌碼券: a plain road square takes 50 chips × the blinds, the coupon squares give 300 / 500 × the blinds', () => {
+    setFinaleBoard(finaleBoard());
+    const w = nearFinale(23, [0, 3, 6, 9]);
+    drain(w.finale.check());
+    const f = w.finale, g = w.cities[5], v = w.players[0];
+    w.mask(5);
+    const road = g.board.nodes.find(n => n.event === 0 && !n.ref)!, c30 = g.board.nodes.find(n => n.event === 11)!, c50 = g.board.nodes.find(n => n.event === 10)!;
+    const run = (n: typeof road) => { let handled = false; const fl = f.landSquare(g, v, n); for (let r = fl.next(); ; r = fl.next(undefined)) if (r.done) { handled = r.value; break; } return handled; };
+    for (const [day, mult] of [[0, 1], [45, 4]] as const) {
+      w.daysElapsed = f.startDay + day;
+      Object.assign(v, { cash: 100_000, bank: 20_000 });
+      const points = v.points;
+      expect(run(road)).toBe(false);                              // the road's objects still apply
+      expect(v.cash + v.bank).toBe(120_000 - 50 * FINALE_CHIP * mult);
+      expect(run(c30)).toBe(true);
+      expect(run(c50)).toBe(true);
+      expect(v.cash + v.bank).toBe(120_000 - 50 * FINALE_CHIP * mult + 800 * FINALE_CHIP * mult);
+      expect(v.points).toBe(points);                              // chips in place of points
+    }
+    // At most what the visitor holds (out at the next check).
+    Object.assign(v, { cash: 3_050, bank: 0 });
+    run(road);
+    expect(v.cash).toBe(50);
+    drain(f.check());
+    expect(v.bankrupt).toBe(true);
+    // The computer's remote dice: a coupon within reach beats the road.
+    const p = w.players[3];
+    const ahead = [road.id, road.id, c50.id, road.id, road.id, road.id];
+    expect(f.aiRemoteDice(g, p, ahead)).toBe(3);
+    // Not on the classic map 105 (money; no road tax).
+    expect((new ClassicCasino(g) as unknown as { landSquare?: unknown }).landSquare).toBeUndefined();
+    setFinaleBoard(null);
+  });
+
   it('stakes, doubles and calls never pass what the visitor holds, in all five halls (human and computer)', () => {
     setFinaleBoard(finaleBoard());
     const w = nearFinale(29, [0, 3, 6, 9]);
@@ -319,7 +397,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     for (const type of HALLS) for (const human of [true, false]) for (let i = 0; i < 60; i++) {
       Object.assign(f, { owner: b.id + 1, level: 5, type, tmpState: 0 });
       Object.assign(b, { cash: 50_000_000, bank: 0, hospital: 0, prison: 0, sleep: 0, sleepwalk: 0 });
-      Object.assign(v, { cash: [21_100, 3_000, 800, 150, 64_000][i % 5] + i * 100, bank: 0, whoPlays: human ? 1 : 2, autopilot: false, ally: 0 });
+      Object.assign(v, { cash: [51_100, 35_000, 21_100, 3_000, 640_000][i % 5] + i * 100, bank: 0, whoPlays: human ? 1 : 2, autopilot: false, ally: 0 });
       v.node = g.board.nodes[i % g.board.nodes.length].id;
       const before = v.cash;
       let held = before, stake = 0;
@@ -344,7 +422,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
       expect(v.cash).toBeGreaterThanOrEqual(0);
       expect(fee?.data.fee ?? 0).toBeLessThanOrEqual(before);
     }
-    expect(visits).toBeGreaterThan(400);
+    expect(visits).toBeGreaterThan(250);
     expect(allIn).toBeGreaterThan(0);
     setFinaleBoard(null);
   });

@@ -2,7 +2,7 @@
  * The right-hand column of the original screen (docs/rules/09 §3-§4): the player panel with its four tabs and
  * the calendar. Both are laid out in original pixels (200×280 and 200×200) and scaled as a whole.
  */
-import { chipMode } from './finale';
+import { blindsTag, chipMode } from './finale';
 import { CHARACTERS } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
@@ -76,7 +76,7 @@ export class PlayerPanel {
       ${g.world ? g.world.hooks.overlordTitles(p).map((t, i) => `<div class="pp-overlord" style="--i:${i}">${t}</div>`).join('') : ''}
       ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
         <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}
-      <div class="pp-price">物價指數 ${g.priceIndex}</div>
+      <div class="pp-price">物價指數 ${g.priceIndex}${blindsTag()}</div>
       ${TABS.map((t, i) => `<button class="pp-tab${i === tab ? ' on' : ''}" data-tab="${i}" style="top:${TAB_MID[i] - 35}px">${t.split('').join('<br>')}</button>`).join('')}`;
   }
 
