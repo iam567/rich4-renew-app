@@ -135,9 +135,12 @@ export interface BlackjackResult {
   outcome: 'blackjack' | 'win' | 'push' | 'lose' | 'bust' | 'dealer-blackjack'; net: number;
 }
 
-/** The dealer draws to 17 (stands on soft 17), then the hand is settled: a natural pays 3:2, a double risks 2×. */
-export function bjSettle(t: BjTable, stake: number, moves: BjMove[]): BlackjackResult {
-  const pv = bjValue(t.player).total, bet = t.doubled ? stake * 2 : stake;
+/**
+ * The dealer draws to 17 (stands on soft 17), then the hand is settled: a natural pays 3:2, a double risks 2×.
+ * `extra` is what the double adds (the stake; less when the visitor cannot cover it: doubling for less, 19 §5.1).
+ */
+export function bjSettle(t: BjTable, stake: number, moves: BjMove[], extra = stake): BlackjackResult {
+  const pv = bjValue(t.player).total, bet = t.doubled ? stake + extra : stake;
   const res = (outcome: BlackjackResult['outcome'], net: number): BlackjackResult =>
     ({ game: 'blackjack', player: [...t.player], dealer: [...t.dealer], doubled: t.doubled, moves, outcome, net });
   const pBJ = isBlackjack(t.player), dBJ = isBlackjack(t.dealer);
@@ -274,14 +277,15 @@ export interface HoldemResult {
 /**
  * Settles the hand: a fold loses the ante; a call puts in a second stake, the turn and the river come, and the
  * better five of seven wins both stakes 1:1 (a tie pushes). No qualifying hand for the banker (simple rules).
+ * `extra` is the call (the stake; less when the visitor cannot cover it — all-in for the rest, 19 §5.1).
  */
-export function holdemSettle(t: HoldemTable, stake: number, called: boolean): HoldemResult {
+export function holdemSettle(t: HoldemTable, stake: number, called: boolean, extra = stake): HoldemResult {
   if (!called) return { game: 'holdem', hole: t.hole, dealer: t.dealer, board: t.board, called, outcome: 'fold', playerHand: '', dealerHand: '', net: -stake };
   t.board.push(t.deck.pop()!, t.deck.pop()!);
   const p = bestHand([...t.hole, ...t.board]), d = bestHand([...t.dealer, ...t.board]);
   const c = compare(p.score, d.score);
   const outcome = c > 0 ? 'win' : c < 0 ? 'lose' : 'push';
-  return { game: 'holdem', hole: t.hole, dealer: t.dealer, board: t.board, called, outcome, playerHand: p.name, dealerHand: d.name, net: outcome === 'win' ? 2 * stake : outcome === 'lose' ? -2 * stake : 0 };
+  return { game: 'holdem', hole: t.hole, dealer: t.dealer, board: t.board, called, outcome, playerHand: p.name, dealerHand: d.name, net: outcome === 'win' ? stake + extra : outcome === 'lose' ? -(stake + extra) : 0 };
 }
 
 // ================================================================== 骰寶 sic bo (比大小)

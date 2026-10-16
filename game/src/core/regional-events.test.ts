@@ -240,7 +240,8 @@ describe.skipIf(!have)('大富豪模式 local news and fate', () => {
         return out;
       } finally { regional.enabled = true; }
     };
-    const seeds = [77, 177, 277, 377, 477, 577];
+    // Twelve worlds (six were within noise of the bound once 大富豪模式 shops had no stock, 17 §3.10).
+    const seeds = [77, 177, 277, 377, 477, 577, 677, 777, 877, 977, 1077, 1177];
     const on = seeds.map(s => run(s, true)), off = seeds.map(s => run(s, false));
     expect(run(77, true).fp).toBe(on[0].fp); // deterministic with the events on
     const sum = (xs: { [k: string]: number | string }[], k: string) => xs.reduce((a, x) => a + Number(x[k]), 0);

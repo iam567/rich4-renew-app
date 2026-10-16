@@ -19,11 +19,14 @@ const FAC = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪�
 export function finaleResults(ctx: ScreenContext, w: World, winner: number): Promise<void> {
   const f = w.finale;
   if (!f.active || !f.valuations.length) return Promise.resolve();
-  // Final order: the winner, then the finalists by how late they fell.
+  // Final order: the winner, those still at the tables (by chips; the human out ends the game early), then the
+  // finalists by how late they fell (the human, out last, is not in w.fallen: the latest).
   const fellAt = (p: number) => { const i = w.fallen.findIndex(x => x.p === p); return i < 0 ? Infinity : i; };
-  const order = [...f.finalists].sort((a, b) => (a === winner ? -1 : b === winner ? 1 : fellAt(b) - fellAt(a)));
+  const key = (p: number) => (p === winner ? [0, 0] : !w.players[p].bankrupt ? [1, -(w.players[p].cash + w.players[p].bank)] : [2, -fellAt(p)]);
+  const order = [...f.finalists].sort((a, b) => { const x = key(a), y = key(b); return x[0] - y[0] || x[1] - y[1]; });
   const g = w.cities[f.index];
   const rows = order.map((p, k) => {
+    const chips = f.chips.find(x => x.p === p);
     const v = f.valuations.find(x => x.p === p)!, ch = CHARACTERS[w.players[p].character], st = f.stats[p];
     const a = ctx.bank.art('Data', 2, ch.id);
     const cities = v.cities.filter(c => c.lots || c.facilities.length || c.stocks).map(c => `<div class="fe-city" style="--cc:${CITY_COLORS[c.map] ?? '#888'}">
@@ -33,11 +36,11 @@ export function finaleResults(ctx: ScreenContext, w: World, winner: number): Pro
     const fell = w.fallen.find(x => x.p === p);
     return `<div class="fe-row${p === winner ? ' win' : ''}">
       <div class="fe-rank">${k + 1}</div>
-      <div class="fe-who">${a ? `<img src="${a.src}" alt="">` : ''}<b>${esc(ch.name)}</b><small>${p === winner ? '首富大富豪' : fell ? `第${fell.day - f.startDay + 1}天破產` : ''}</small></div>
+      <div class="fe-who">${a ? `<img src="${a.src}" alt="">` : ''}<b>${esc(ch.name)}</b><small>${p === winner ? '首富大富豪' : fell ? `第${fell.day - f.startDay + 1}天破產` : w.players[p].bankrupt ? '籌碼用完出局' : ''}</small></div>
       <div class="fe-body">
-        <div class="fe-val">進城結算 <b>${money(Math.max(0, v.total))}</b>（現金存款 ${money(v.cash + v.bank - v.loan)}・股票 ${money(v.stocks)}・地產 ${money(v.property)}）</div>
+        <div class="fe-val">進城籌碼 <b>${money(chips?.total ?? 0)}</b>${chips?.badges.length ? `（${chips.badges.map(b => esc(b.label)).join('、')}）` : ''}・五城總資產 ${money(Math.max(0, v.total))} 元（現金存款 ${money(v.cash + v.bank - v.loan)}・股票 ${money(v.stocks)}・地產 ${money(v.property)}）</div>
         <div class="fe-cities">${cities}</div>
-        <div class="fe-casino">賭場：去了 ${st?.visits ?? 0} 次・贏 ${money(st?.won ?? 0)}・輸 ${money(st?.lost ?? 0)}・當莊收 ${money(st?.bankerIn ?? 0)} 付 ${money(st?.bankerOut ?? 0)}${casinos ? `・持有 ${casinos}` : ''}</div>
+        <div class="fe-casino">賭場（籌碼）：去了 ${st?.visits ?? 0} 次・贏 ${money((st?.won ?? 0) / 100)}・輸 ${money((st?.lost ?? 0) / 100)}・當莊收 ${money((st?.bankerIn ?? 0) / 100)} 付 ${money((st?.bankerOut ?? 0) / 100)}${casinos ? `・持有 ${casinos}` : ''}</div>
       </div></div>`;
   }).join('');
   audio.sfx(Sfx.fireworks);

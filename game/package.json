@@ -24,8 +24,10 @@
   "dependencies": {
     "@capacitor/android": "7.6.9",
     "@capacitor/core": "7.6.9",
+    "@capacitor/filesystem": "7.1.9",
     "@capacitor/ios": "7.6.9",
     "@capacitor/screen-orientation": "7.0.4",
+    "@capacitor/share": "7.0.4",
     "@fontsource/huninn": "5.3.1",
     "opencc-js": "1.4.2"
   }

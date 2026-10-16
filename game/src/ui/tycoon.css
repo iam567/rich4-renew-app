@@ -199,11 +199,12 @@
 .choices.tiles .tile { position: relative; }
 .tile-badge { position: absolute; top: 2px; right: 2px; padding: 1px 6px; border-radius: 8px; font-size: 11px; font-weight: 900; color: #fff;
   background: linear-gradient(#ff5a7a, #d81b4a); box-shadow: 0 1px 3px rgba(0,0,0,.35); letter-spacing: 1px; }
-.choices.tiles.faces { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.choices.tiles.faces { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+.choices.tiles.faces .tile { min-width: 0; }
 .choices.tiles.faces .tile-pic img { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; }
 .choices.tiles.faces .tile[disabled] { filter: grayscale(1); opacity: .55; }
 .tile-where { display: block; font-size: 10px; line-height: 1.1; opacity: .8; }
-@media (max-aspect-ratio: 1/1) { .choices.tiles.faces { grid-template-columns: repeat(4, 1fr); } }
+@media (max-aspect-ratio: 1/1) { .choices.tiles.faces { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
 
 /* 召集卡 / 通緝卡 / notices from other cities (17 §3.5). */
 .msg.tb.summon { width: min(520px, 100%); background: radial-gradient(circle at 50% 30%, #1fb5b0, #053c46 70%); color: #fff; overflow: hidden; }

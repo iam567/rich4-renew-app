@@ -6,6 +6,8 @@ import { CAPS, CasinoRules, ClassicCasino, DENY, HALLS, isHall, SLOT_TOP } from 
 import { pack } from './date';
 import type { Flow } from './flow';
 import { FINALE_MAP, setFinaleBoard } from './finale';
+import { CHIP_BADGES, CHIP_LINES, chipScore, FINALE_CHIP } from './chips';
+import { attachLedger, Ledger } from './stats';
 import { Game } from './game';
 import * as C from './modules/casino';
 import { Rng } from './rng';
@@ -51,6 +53,7 @@ function drain(flow: Flow<unknown>): Step[] { const out: Step[] = []; for (let r
 /** A world where all but `keep` players have gone bankrupt (in their own cities), after some days of play. */
 function nearFinale(seed: number, keep: number[], days = 40): World {
   const w = new World(settings(seed), boards());
+  attachLedger(w.players);   // the whole game's statistics (the finale's chips come from them)
   play(w, w.run(), () => w.daysElapsed >= days);
   for (const p of w.players) if (!keep.includes(p.id) && !p.bankrupt) { w.mask(Math.max(0, p.map ?? 0)); drain(w.bankrupt(p, w.cities[Math.max(0, p.map ?? 0)])); }
   w.mask(w.view());
@@ -143,7 +146,9 @@ describe('大富翁城 table games (deterministic streams)', () => {
     const royal: C.HoldemResult = { game: 'holdem', hole: [], dealer: [c(12), c(11)], board: [c(10), c(9), c(8), c(1, 2), c(2, 3)], called: true, outcome: 'lose', playerHand: '', dealerHand: '', net: -20000 };
     expect(CasinoRules.settle(royal, CAPS[1], 345678).net).toBe(-345678);
     const sic: C.SicboResult = { game: 'sicbo', bet: 'big', dice: [3, 3, 3], total: 9, triple: true, win: false, net: -8000 };
-    expect(CasinoRules.settle(sic, CAPS[1], 1000).net).toBe(-80000);
+    // Never more than the visitor holds (19 §5.1): 1,000 left, the ×10 triple takes the 1,000.
+    expect(CasinoRules.settle(sic, CAPS[1], 1000).net).toBe(-1000);
+    expect(CasinoRules.settle(sic, CAPS[1], 500000).net).toBe(-80000);
   });
 
   it('the banker-away slot: first reel by level, the rest 0 when it tops out, never past the cap, at least 1,000', () => {
@@ -211,13 +216,39 @@ describe.skipIf(!haveFinale)('大富翁城 as a normal map (19 §9)', () => {
 });
 
 describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
-  it('starts when four players are left: valued, paid in cash, denied things sold, holdings frozen, all in 大富翁城', () => {
+  it('counts chips from the whole-game ledger: each line rounded down, the badges once', () => {
+    const l = new Ledger(12);
+    Object.assign(l.of(0), { finalCash: 125000, finalBank: 4999, landsBought: 52, levelsAdded: 7, facilitiesBuilt: { 1: 2, 4: 1 }, stockProfit: 1234567,
+      tollsReceived: 99999, cardsUsed: { 3: 50 }, toolsUsed: { 1: 4 }, lucky: 9, unlucky: 2, cities: [0, 1, 2, 3, 4, 5], rivalsBankrupted: 3,
+      overlordCities: [0, 2], maxLv5: 10, prisonDays: 31 });
+    Object.assign(l.of(1), { lucky: 9, unlucky: 5 });
+    const s = chipScore(l, 0, Array.from({ length: 12 }, (_, i) => i));
+    const line = (k: string) => s.lines.find(x => x.key === k)!.chips;
+    expect(line('money')).toBe(24);                 // 129,999 元 → 12 × 2
+    expect(line('lands')).toBe(520);
+    expect(line('levels')).toBe(28);
+    expect(line('facilities')).toBe(90);
+    expect(line('stock')).toBe(369);                // 123 × 3
+    expect(line('tolls')).toBe(9);
+    expect(line('cards') + line('tools')).toBe(162);
+    expect(line('lucky') + line('unlucky')).toBe(51);
+    expect(line('cities')).toBe(100);               // the five cities, not 大富翁城
+    expect(line('rivals') + line('overlord')).toBe(440);
+    expect(s.badges.map(b => b.key).sort()).toEqual(['builder', 'cards', 'japan', 'killer', 'lucky', 'prison', 'stocks', 'tycoon']);   // 天選之人 tied at 9: both
+    expect(s.total).toBe(s.lines.reduce((a, x) => a + x.chips, 0) + s.badges.reduce((a, b) => a + b.chips, 0));
+    expect(CHIP_LINES.length).toBe(13);
+    expect(CHIP_BADGES.length).toBe(10);
+  });
+
+  it('starts when four players are left: chips from the ledger, denied things sold, holdings frozen, all in 大富翁城', () => {
     setFinaleBoard(finaleBoard());
     const keep = [0, 3, 6, 9];
     const w = nearFinale(21, keep);
     w.players[3].cards.push(31, 24); w.players[3].tools[9] = 2;   // 飛行卡, 紅卡, two 時光機
     const before = keep.map(id => w.wealth(w.players[id]));
     const points = w.players[3].points;
+    const ledger = (w as unknown as { stats: Ledger }).stats;
+    const bought = ledger.of(3).landsBought;
     const frozen = JSON.stringify(w.cities.map(x => x.board));
     const steps = drain(w.finale.check());
     expect(steps.some(s => s.t === 'fx' && s.kind === 'finale-start')).toBe(true);
@@ -228,7 +259,10 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
       const p = w.players[id], v = w.finale.valuations.find(x => x.p === id)!;
       expect(v.total).toBe(before[k]);
       expect(v.cash + v.bank - v.loan + v.stocks + v.property).toBe(before[k]);
-      expect(p.cash).toBe(Math.max(0, before[k]));
+      const chips = w.finale.chips.find(x => x.p === id)!;
+      expect(chips.lines.find(x => x.key === 'money')!.figure).toBe(Math.max(0, v.cash + v.bank));
+      expect(chips.total).toBeGreaterThan(0);
+      expect(p.cash).toBe(chips.total * FINALE_CHIP);
       expect(p.bank + p.loan).toBe(0);
       expect(p.map).toBe(5);
       expect(w.wealth(p)).toBe(p.cash);
@@ -240,6 +274,17 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     expect(w.players[3].points - points).toBe(18 + 45 + 72);
     expect(JSON.stringify(w.cities.slice(0, 5).map(x => x.board))).toBe(frozen);
     expect(w.cities[5].stocks.open()).toBe(false);
+    expect(w.finale.chips.find(x => x.p === 3)!.lines.find(x => x.key === 'lands')!.chips).toBe(bought * 10);
+    expect(w.cities[5].rules?.noLoans).toBe(true);
+    // A finalist with no chips left is out at the next check, the halls back to the bank.
+    const out = w.players[6];
+    // Four halls (more than three: elsewhere a bankruptcy auction), and 99 元 — less than one chip.
+    for (const k of [2, 3, 4, 5]) Object.assign(w.cities[5].board.facilities[k], { owner: out.id + 1, level: 2, type: 6 });
+    out.cash = 99; out.bank = 0;
+    drain(w.finale.check());
+    expect(out.bankrupt).toBe(true);
+    for (const k of [2, 3, 4, 5]) expect(w.cities[5].board.facilities[k].owner).toBe(0);
+    expect((w as unknown as { pendingAuctions: { city: number }[] }).pendingAuctions.filter(a => a.city === 5)).toEqual([]);
     setFinaleBoard(null);
   });
 
@@ -250,7 +295,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     const g = w.cities[5], f = g.board.facilities[0];
     const v = w.players[0], b = w.players[3];
     Object.assign(f, { owner: b.id + 1, level: 4, type: HALLS[2] });
-    b.hospital = 3;
+    b.hospital = 3; b.cash = 10_000_000;
     const cash0 = v.cash + v.bank, bank0 = b.cash + b.bank;
     w.mask(5);
     const steps = drain(w.finale.visit(g, v, f));
@@ -260,6 +305,47 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     expect(auto!.data.amount).toBeLessThanOrEqual(CAPS[4]);
     expect(v.cash + v.bank).toBe(cash0 - fee!.data.fee + auto!.data.amount);
     expect(b.cash + b.bank).toBe(bank0 + fee!.data.fee - auto!.data.amount);
+    setFinaleBoard(null);
+  });
+
+  it('stakes, doubles and calls never pass what the visitor holds, in all five halls (human and computer)', () => {
+    setFinaleBoard(finaleBoard());
+    const w = nearFinale(29, [0, 3, 6, 9]);
+    drain(w.finale.check());
+    const g = w.cities[5], f = g.board.facilities[0];
+    const v = w.players[0], b = w.players[3];
+    w.mask(5);
+    let visits = 0, allIn = 0;
+    for (const type of HALLS) for (const human of [true, false]) for (let i = 0; i < 60; i++) {
+      Object.assign(f, { owner: b.id + 1, level: 5, type, tmpState: 0 });
+      Object.assign(b, { cash: 50_000_000, bank: 0, hospital: 0, prison: 0, sleep: 0, sleepwalk: 0 });
+      Object.assign(v, { cash: [21_100, 3_000, 800, 150, 64_000][i % 5] + i * 100, bank: 0, whoPlays: human ? 1 : 2, autopilot: false, ally: 0 });
+      v.node = g.board.nodes[i % g.board.nodes.length].id;
+      const before = v.cash;
+      let held = before, stake = 0;
+      const steps = play(w, w.finale.visit(g, v, f), () => false, s => {
+        const q = s as unknown as { t: string; phase?: string; stake?: number; call?: number; double?: number; canDouble?: boolean; max?: number };
+        if (q.t !== 'casino') return undefined;
+        if (q.phase === 'choose') { expect(q.max!).toBeLessThanOrEqual(held); return { game: 'roulette', stake: 99_999_999, bet: { kind: 'number', n: 0 } } as unknown as Answer; }
+        if (q.phase === 'blackjack') { if (q.canDouble) expect(q.stake! + q.double!).toBeLessThanOrEqual(held); return 'double' as Answer; }
+        if (q.phase === 'holdem') { expect(q.stake! + q.call!).toBeLessThanOrEqual(held); return 'call' as Answer; }
+        return undefined;
+      });
+      const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as { data: { fee: number } } | undefined;
+      held = before - (fee?.data.fee ?? 0);
+      const res = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as { data: { stake: number; net: number } } | undefined;
+      if (res) {
+        visits++;
+        stake = res.data.stake;
+        expect(stake).toBeLessThanOrEqual(Math.min(CAPS[5], held));
+        expect(-res.data.net).toBeLessThanOrEqual(held);
+        if (-res.data.net === held) allIn++;
+      }
+      expect(v.cash).toBeGreaterThanOrEqual(0);
+      expect(fee?.data.fee ?? 0).toBeLessThanOrEqual(before);
+    }
+    expect(visits).toBeGreaterThan(400);
+    expect(allIn).toBeGreaterThan(0);
     setFinaleBoard(null);
   });
 
@@ -276,9 +362,28 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(null);
   });
 
+  it('plays a whole computers\' 大富豪 game into the finale with the real chips (ledger from day one)', () => {
+    setFinaleBoard(finaleBoard());
+    const w = new World(settings(2), boards());
+    attachLedger(w.players);
+    let chips: { total: number; lines: { chips: number }[] }[] = [];
+    play(w, w.run(), s => {
+      if (s.t === 'fx' && s.kind === 'finale-start') chips = (s.data as { chips: typeof chips }).chips;
+      return w.daysElapsed > 3000;
+    });
+    expect(chips.length).toBe(4);
+    // A whole game's chips are well above a Lv5 hall's cap (800 籌碼), not the shortcut's few dozen.
+    for (const c of chips) expect(c.total).toBeGreaterThan(CAPS[5] / FINALE_CHIP);
+    expect(w.over).toBeTruthy();
+    expect(w.players.filter(p => !p.bankrupt).length).toBe(1);
+    expect(w.finale.visits).toBeGreaterThan(0);
+    setFinaleBoard(null);
+  });
+
   it('runs an all-computer finale to a single winner (halls only)', () => {
     setFinaleBoard(finaleBoard());
-    const w = nearFinale(5, [1, 4, 7, 10]);
+    // Seed 6: with 大富豪模式's stock-free shops (17 §3.10) seed 5's finale ended before any hall visit.
+    const w = nearFinale(6, [1, 4, 7, 10]);
     play(w, w.run(), () => w.daysElapsed > 3000);
     expect(w.over).toBeTruthy();
     expect(w.finale.active).toBe(true);

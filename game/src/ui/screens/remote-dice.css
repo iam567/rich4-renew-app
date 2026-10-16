@@ -1,10 +1,25 @@
 /* 遙控骰子 */
 .rd-ov { position: absolute; inset: 0; z-index: 40; display: grid; place-items: center; padding: 12px; background: rgba(10, 5, 30, .45);
-  animation: rd-fade .2s ease-out both; }
+  animation: rd-fade .2s ease-out both; container: rd / size;
+  /* The die size comes from the room the map area leaves (3×2 faces), so the tray always fits inside the card and the
+     card inside the area: a die is never sized by the art's own pixels (WebKit gives a % sized image in a 1fr column
+     its natural width as minimum, which pushed the right column out of the frame on iPhone). */
+  --d: clamp(44px, min((100cqw - 92px) / 3, (100cqh - 240px) / 2), 116px); --cols: 3; }
+/* Wide and short (a landscape phone): the six faces in one row are bigger than two rows of three. */
+@container rd (max-height: 520px) and (min-aspect-ratio: 3 / 2) {
+  .rd-tray { --cols: 6; --d: clamp(44px, min((100cqw - 132px) / 6, 100cqh - 220px), 116px); }
+}
+/* A short map area (a small portrait phone): tighter frame so the dice keep their size. */
+@container rd (max-height: 460px) and (max-aspect-ratio: 3 / 2) {
+  .rd-card { padding: 28px 12px 10px; }
+  .rd-text { font-size: 13px; margin-bottom: 6px; }
+  .rd-tray { gap: 8px; padding: 8px; --d: clamp(44px, min((100cqw - 68px) / 3, (100cqh - 196px) / 2), 116px); }
+  .rd-cancel { margin-top: 8px; padding: 6px 18px; }
+}
 .rd-ov.out { animation: rd-out .2s .2s ease-in both; }
 @keyframes rd-fade { from { opacity: 0; } }
 @keyframes rd-out { to { opacity: 0; } }
-.rd-card { position: relative; width: min(440px, 100%); padding: 34px 16px 16px; border-radius: 24px; text-align: center;
+.rd-card { position: relative; width: max-content; max-width: 100%; padding: 34px 16px 16px; border-radius: 24px; text-align: center;
   background: radial-gradient(120% 90% at 50% 0%, #2f9a5a, #17643a 60%, #0f4428); border: 4px solid #ffc94a;
   box-shadow: 0 0 0 4px #7a3bd1, 0 8px 0 4px #3e1a78, 0 18px 36px rgba(0, 0, 0, .5), inset 0 0 30px rgba(0, 0, 0, .35);
   animation: rd-in .35s cubic-bezier(.3, 1.5, .5, 1) both; }
@@ -15,12 +30,12 @@
 .rd-face { width: 34px; height: 34px; border-radius: 50%; overflow: hidden; background: #fff; border: 2px solid #fff; }
 .rd-face img { width: 100%; height: 100%; display: block; }
 .rd-text { color: #e9ffe9; font-size: 15px; margin-bottom: 12px; text-shadow: 0 1px 0 #0a3a1e; }
-.rd-tray { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; padding: 14px; border-radius: 16px;
+.rd-tray { display: grid; grid-template-columns: repeat(var(--cols), var(--d)); grid-auto-rows: var(--d); justify-content: center; gap: 12px; padding: 14px; border-radius: 16px;
   background: repeating-linear-gradient(45deg, rgba(255, 255, 255, .03) 0 6px, transparent 6px 12px), #0d3a22;
   box-shadow: inset 0 3px 10px rgba(0, 0, 0, .6), 0 0 0 2px #c9a23a; }
-.rd-die { aspect-ratio: 1; padding: 6px; border-radius: 18px; background: none; transition: transform .1s;
+.rd-die { width: var(--d); height: var(--d); min-width: 0; padding: 6px; border-radius: 18px; background: none; transition: transform .1s;
   animation: rd-pop .4s calc(var(--i) * 50ms + .15s) cubic-bezier(.3, 1.8, .5, 1) both; }
-.rd-die img { width: 100%; height: 100%; object-fit: contain; display: block; filter: drop-shadow(0 5px 3px rgba(0, 0, 0, .55)); }
+.rd-die img { width: 100%; height: 100%; min-width: 0; max-width: 100%; object-fit: contain; display: block; filter: drop-shadow(0 5px 3px rgba(0, 0, 0, .55)); }
 .rd-die b { display: grid; place-items: center; height: 100%; border-radius: 14px; background: #fff; font-size: 32px; color: #222; }
 .rd-die:active { transform: scale(.92); }
 .rd-die.pick { animation: rd-roll .42s cubic-bezier(.3, 1.6, .5, 1); filter: drop-shadow(0 0 14px #fff27a); }

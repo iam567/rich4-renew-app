@@ -92,6 +92,11 @@ export abstract class CasinoRules implements MapRules {
   /** A line for the record (the finale's ticker; nothing in a normal game). */
   protected note(_text: string, _p: number, _important: boolean): void { /* none */ }
 
+  /** Money in the texts: 元 (a normal game), 籌碼 in the finale (Finale overrides). */
+  price(n: number): string { return `${fmt(n)}元`; }
+  /** What the visitor bets with: 現金 (籌碼 in the finale). */
+  moneyWord(): string { return '現金'; }
+
   cap(level: number): number { return CAPS[Math.max(0, Math.min(5, level))] * this.scale(); }
   minStake(_level: number): number { return MIN_STAKE * this.scale(); }
   plotPrice(g: Game): number { return PLOT_PRICE * g.priceIndex; }
@@ -143,7 +148,7 @@ export abstract class CasinoRules implements MapRules {
       const price = this.plotPrice(g);
       if (price > p.cash) { if (human) yield* g.say(p.id, '您的現金不足！'); return true; }
       const yes = human
-        ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}賭場用地\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
+        ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}賭場用地\n\n費用:${this.price(price)}\n\n是否買下此地？`, price })) as boolean
         : this.aiInvest(g, p, price);
       if (!yes) return true;
       if (yield* priv.investmentBlocked(p)) return true;
@@ -159,14 +164,14 @@ export abstract class CasinoRules implements MapRules {
       const cost = this.buildCost(g), next = f.level + 1;
       if (cost > p.cash) { if (human) yield* g.say(p.id, '您的現金不足！'); return true; }
       const text = f.level === 0
-        ? `${f.name}\n\n建設賭場（1級）:${cost}元\n每次贏錢上限 ${fmt(this.cap(1))} 元\n\n是否建設？`
-        : `${f.name}${HALL_NAMES[f.type] ?? '賭場'}\n\n升到${next}級:${cost}元\n每次贏錢上限 ${fmt(this.cap(next))} 元\n\n是否升級？`;
+        ? `${f.name}\n\n建設賭場（1級）:${this.price(cost)}\n每次贏錢上限 ${this.price(this.cap(1))}\n\n是否建設？`
+        : `${f.name}${HALL_NAMES[f.type] ?? '賭場'}\n\n升到${next}級:${this.price(cost)}\n每次贏錢上限 ${this.price(this.cap(next))}\n\n是否升級？`;
       const yes = human ? (yield ask({ t: 'yesno', p: p.id, kind: f.level ? 'upgrade-facility' : 'build-casino', text, price: cost })) as boolean : this.aiInvest(g, p, cost);
       if (!yes) return true;
       let type = f.type;
       if (f.level === 0) {
         // The hall (19 §4): the human picks from the four plates, a computer by its own judgement.
-        type = human ? yield* this.askHall(p, f, `建設費用 ${fmt(cost)} 元`, false) : this.aiHall(g, p, f);
+        type = human ? yield* this.askHall(p, f, `建設費用 ${this.price(cost)}`, false) : this.aiHall(g, p, f);
         if (type < 0) return true;
       }
       if (yield* priv.investmentBlocked(p)) return true;
@@ -215,13 +220,17 @@ export abstract class CasinoRules implements MapRules {
 
   /**
    * What a game's result is worth to the visitor (19 §5.2): a win at most the cap; a loss the stake (×2 for a double
-   * or a call) times the banker's big hand, without a cap — all the visitor's money for the biggest ones.
+   * or a call) times the banker's big hand, without the level's cap — all the visitor's money for the biggest ones —
+   * but never more than the visitor holds (`money`, 19 §5.1: nobody loses more than they have at the table).
    */
   static settle(result: C.CasinoResult, cap: number, money: number): { net: number; big: { mult: number; all: boolean; why: string } } {
-    const big = C.bankerMultiplier(result);
-    const net = result.net > 0 ? Math.min(cap, result.net) : big.all ? -Math.max(-result.net, money) : result.net * big.mult;
+    const big = C.bankerMultiplier(result), have = Math.max(0, money);
+    const net = result.net > 0 ? Math.min(cap, result.net) : result.net === 0 ? 0 : -Math.min(have, big.all ? have : -result.net * big.mult);
     return { net, big };
   }
+
+  /** What the visitor can put on the table (19 §5.1): all their money (cash + bank), in whole chips (100 元). */
+  static holding(p: Player): number { return Math.max(0, Math.floor((p.cash + p.bank) / 100) * 100); }
 
   /** 門票: 500..5,000 in hundreds (19 §5.0). */
   entryFee(rng: Rng): number { return 100 * (5 + rng.below(46)); }
@@ -262,8 +271,9 @@ export abstract class CasinoRules implements MapRules {
     st.visits += 1;
     const rng = this.visitRng(g, p);
     // 門票 (19 §5.0): 500..5,000 in hundreds to the owner first, also when the banker is away.
-    const fee = this.entryFee(rng);
-    yield { t: 'fx', kind: 'casino-fee', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], level, cap, fee, text: `${where}門票 ${fmt(fee)} 元` } };
+    // Never more than the visitor holds (19 §5.1).
+    const fee = Math.min(this.entryFee(rng), CasinoRules.holding(p));
+    yield { t: 'fx', kind: 'casino-fee', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], level, cap, fee, text: `${where}門票 ${this.price(fee)}` } };
     yield* g.transfer(p.id, banker.id, fee, 1, '賭場門票', true);
     (this.stats[banker.id] ??= emptyStats()).bankerIn += fee;
     st.lost += fee;
@@ -272,23 +282,27 @@ export abstract class CasinoRules implements MapRules {
     if (away) {
       const digits = this.slotDigits(rng, level);
       const amount = (digits[0] * 1000 + digits[1] * 100 + digits[2] * 10 + digits[3]) * 10 * this.scale();
-      yield { t: 'fx', kind: 'casino-auto', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, level, cap, digits, amount, away, scale: this.scale(), text: `莊家${g.name(banker.id)}${away}，${g.name(p.id)}自動獲勝 ${fmt(amount)} 元！` } };
+      yield { t: 'fx', kind: 'casino-auto', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, level, cap, digits, amount, away, scale: this.scale(), text: `莊家${g.name(banker.id)}${away}，${g.name(p.id)}自動獲勝 ${this.price(amount)}！` } };
       yield* this.payout(g, p, banker, amount);
       return;
     }
     const human = g.isHuman(p);
-    const lo = this.minStake(level);
+    // The stake (19 §5.1): from the table's minimum up to the cap, never more than the visitor holds (all-in below
+    // the minimum); with nothing left the visitor only pays the 門票.
+    const have = CasinoRules.holding(p);
+    if (have <= 0) { if (human) yield* g.say(p.id, `${this.moneyWord()}不足，無法下注！`); return; }
+    const hi = Math.min(cap, have), lo = Math.min(this.minStake(level), hi);
     let choice: CasinoChoice;
     if (human) {
-      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, cash: p.cash + p.bank, fee } as never)) as unknown as CasinoChoice | undefined;
-      choice = this.validChoice(game, a, lo, cap) ?? this.aiChoice(rng, game, p, lo, cap);
-    } else choice = this.aiChoice(rng, game, p, lo, cap);
-    const result = yield* this.play(rng, p, choice, human);
+      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, max: hi, cash: p.cash + p.bank, fee } as never)) as unknown as CasinoChoice | undefined;
+      choice = this.validChoice(game, a, lo, hi) ?? this.aiChoice(rng, game, p, lo, hi);
+    } else choice = this.aiChoice(rng, game, p, lo, hi);
+    const result = yield* this.play(rng, p, choice, human, have);
     // The visitor's win is capped by the level; what the visitor loses is the stake (×2 for a double or a call)
     // times the banker's big hand (19 §5.2), not capped: all the visitor's money for a royal flush.
     const { net, big } = CasinoRules.settle(result, cap, p.cash + p.bank);
-    const text = net > 0 ? `${g.name(p.id)}在${where}贏了 ${fmt(net)} 元！`
-      : net < 0 ? `${g.name(p.id)}在${where}輸了 ${fmt(-net)} 元${big.why ? `（${big.why}${big.all ? '，全部現金' : ` ×${big.mult}`}）` : ''}` : `${g.name(p.id)}在${where}打平`;
+    const text = net > 0 ? `${g.name(p.id)}在${where}贏了 ${this.price(net)}！`
+      : net < 0 ? `${g.name(p.id)}在${where}輸了 ${this.price(-net)}${big.why ? `（${big.why}${big.all ? `，全部${this.moneyWord()}` : ` ×${big.mult}`}）` : ''}` : `${g.name(p.id)}在${where}打平`;
     yield { t: 'fx', kind: 'casino-result', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], fee, level, cap, stake: choice.stake, result: result as unknown as Record<string, unknown>, net, raw: result.net, clipped: result.net > cap, mult: big.mult, all: big.all, why: big.why, human, text } };
     if (Math.abs(net) >= cap / 2) this.note(text, p.id, Math.abs(net) >= cap);
     if (net > 0) yield* this.payout(g, p, banker, net);
@@ -307,10 +321,11 @@ export abstract class CasinoRules implements MapRules {
     yield* g.transfer(banker.id, p.id, amount, 1, '賭場彩金', true);
   }
 
-  validChoice(game: C.CasinoGame, a: CasinoChoice | undefined, lo: number, cap: number): CasinoChoice | null {
+  /** The human's choice made safe: the hall's game, a known bet, the stake within lo..hi (hi = min(cap, holding)). */
+  validChoice(game: C.CasinoGame, a: CasinoChoice | undefined, lo: number, hi: number): CasinoChoice | null {
     if (!a || typeof a !== 'object') return null;
     a = { ...a, game };
-    const stake = Math.max(lo, Math.min(cap, Math.round(Number(a.stake) || 0)));
+    const stake = Math.max(lo, Math.min(hi, Math.round(Number(a.stake) || 0)));
     if (a.game === 'roulette') {
       const b = a.bet as C.RouletteBet | undefined;
       const ok = b && ((['red', 'black', 'odd', 'even', 'low', 'high'] as string[]).includes(b.kind)
@@ -326,10 +341,10 @@ export abstract class CasinoRules implements MapRules {
    * The computer at the table (19 §6): the hall's game, about an eighth of its money (乖寶寶 half that, 大老奸 half again
    * more) within the table's limits; roulette on red or black (a dozen now and then), baccarat on the banker (the player now and then).
    */
-  aiChoice(rng: Rng, game: C.CasinoGame, p: Player, lo: number, cap: number): CasinoChoice {
+  aiChoice(rng: Rng, game: C.CasinoGame, p: Player, lo: number, hi: number): CasinoChoice {
     const style = CHARACTERS[p.character]?.personality ?? 1;
-    // About an eighth of its money (乖寶寶 half that, 大老奸 half again more), in thousands, within the table.
-    const stake = Math.min(cap, Math.max(lo, round(((p.cash + p.bank) / 8) * [0.5, 1, 1.5][style], 1000)));
+    // About an eighth of its money (乖寶寶 half that, 大老奸 half again more), in thousands, within lo..hi.
+    const stake = Math.min(hi, Math.max(lo, round(((p.cash + p.bank) / 8) * [0.5, 1, 1.5][style], 1000)));
     if (game === 'roulette') {
       const k = rng.below(10);
       return { game, stake, bet: k < 4 ? { kind: 'red' } : k < 8 ? { kind: 'black' } : { kind: 'dozen', n: 1 + rng.below(3) } };
@@ -339,8 +354,13 @@ export abstract class CasinoRules implements MapRules {
     return { game, stake };
   }
 
-  /** Plays the chosen game (19 §5.2): the human answers the blackjack and hold'em moves, a computer by its strategy. */
-  private *play(rng: Rng, p: Player, c: CasinoChoice, human: boolean): Flow<C.CasinoResult> {
+  /**
+   * Plays the chosen game (19 §5.2): the human answers the blackjack and hold'em moves, a computer by its strategy.
+   * `have` is what the visitor holds: a double or a call adds at most what is left after the stake (doubling for
+   * less / all-in); with nothing left there is no double, and hold'em goes to the showdown without a choice.
+   */
+  private *play(rng: Rng, p: Player, c: CasinoChoice, human: boolean, have = Infinity): Flow<C.CasinoResult> {
+    const extra = Math.max(0, Math.min(c.stake, have - c.stake));
     switch (c.game) {
       case 'roulette': return C.playRoulette(rng, c.stake, c.bet as C.RouletteBet);
       case 'baccarat': return C.playBaccarat(rng, c.stake, c.bet as C.BaccaratBet);
@@ -350,22 +370,24 @@ export abstract class CasinoRules implements MapRules {
         while (!t.done) {
           let m: C.BjMove;
           if (human) {
-            const a = (yield ask({ t: 'casino', p: p.id, phase: 'blackjack', player: [...t.player], up: t.dealer[0], canDouble: t.player.length === 2, stake: c.stake } as never)) as unknown;
+            const a = (yield ask({ t: 'casino', p: p.id, phase: 'blackjack', player: [...t.player], up: t.dealer[0], canDouble: t.player.length === 2 && extra > 0, double: extra, stake: c.stake } as never)) as unknown;
             m = a === 'hit' || a === 'stand' || a === 'double' ? a : C.bjBasic(t.player, t.dealer[0]);
           } else m = C.bjBasic(t.player, t.dealer[0]);
+          if (m === 'double' && (extra <= 0 || t.player.length !== 2)) m = 'hit';
           moves.push(m);
           C.bjMove(t, m);
         }
-        return C.bjSettle(t, c.stake, moves);
+        return C.bjSettle(t, c.stake, moves, extra);
       }
       case 'holdem': {
         const t = C.holdemDeal(rng);
         let call: boolean;
-        if (human) {
-          const a = (yield ask({ t: 'casino', p: p.id, phase: 'holdem', hole: [...t.hole], board: [...t.board], stake: c.stake } as never)) as unknown;
+        if (extra <= 0) call = true; // all-in on the ante: the showdown costs nothing more
+        else if (human) {
+          const a = (yield ask({ t: 'casino', p: p.id, phase: 'holdem', hole: [...t.hole], board: [...t.board], stake: c.stake, call: extra } as never)) as unknown;
           call = a === 'call' ? true : a === 'fold' ? false : C.holdemCall(t);
         } else call = C.holdemCall(t);
-        return C.holdemSettle(t, c.stake, call);
+        return C.holdemSettle(t, c.stake, call, extra);
       }
     }
   }

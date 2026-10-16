@@ -51,5 +51,7 @@
 	<true/>
 	<key>UIRequiresFullScreen</key>
 	<true/>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>把遊戲結算畫面儲存到相簿。</string>
 </dict>
 </plist>

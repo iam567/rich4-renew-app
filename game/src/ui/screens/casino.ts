@@ -11,15 +11,18 @@
 import { CHARACTERS } from '../../core/characters';
 import * as C from '../../core/modules/casino';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
-import { esc, face, money, openScene, type Scene } from './place-scene';
+import { esc, face, openScene, type Scene } from './place-scene';
+import { chipMode, fmtMoney } from '../finale';
+/** Money as shown here: chips in the finale (19 §2), else 元 (no unit). */
+const money = (n: number) => fmtMoney(n, false);
 import { audio, Sfx } from '../audio';
 import { ASSETS } from '../assets';
 import './casino.css';
 
 type Fx = { t: 'fx'; kind: string; p?: number; target?: number; node?: number; data?: Record<string, unknown> };
-interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; cash: number; fee: number }
-interface BjAsk { t: 'casino'; p: number; phase: 'blackjack'; player: number[]; up: number; canDouble: boolean; stake: number }
-interface HeAsk { t: 'casino'; p: number; phase: 'holdem'; hole: number[]; board: number[]; stake: number }
+interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; cash: number; fee: number }
+interface BjAsk { t: 'casino'; p: number; phase: 'blackjack'; player: number[]; up: number; canDouble: boolean; double?: number; stake: number }
+interface HeAsk { t: 'casino'; p: number; phase: 'holdem'; hole: number[]; board: number[]; stake: number; call?: number }
 type CasinoAsk = ChooseAsk | BjAsk | HeAsk;
 
 /** Table art (tools/tycoon-art/casino.py → maps/remake/casino/); the felt is drawn in CSS when it is missing. */
@@ -86,8 +89,11 @@ class CasinoPage {
   constructor(readonly ctx: ScreenContext, a: ChooseAsk, readonly watch = false) {
     this.choose = a;
     this.game = a.game;
-    this.stake = Math.min(a.cap, Math.max(a.min, Math.round(Math.min(a.cash, a.cap) / 2 / 1000) * 1000));
+    this.stake = Math.min(this.max, Math.max(a.min, Math.round(Math.min(a.cash, a.cap) / 2 / 1000) * 1000));
   }
+
+  /** The highest stake: the cap, or less when the visitor holds less (19 §5.1). */
+  get max(): number { return Math.max(this.choose.min, Math.min(this.choose.cap, this.choose.max ?? this.choose.cap)); }
 
   open() {
     this.scene = openScene(this.ctx, 'cs-scene', portrait => (portrait ? [500, 880] : [880, 500]), s => { this.scene = s; this.render(); });
@@ -125,22 +131,21 @@ class CasinoPage {
     const a = this.choose;
     main.innerHTML = `<div class="cs-hallcard">${hallPlate(TYPE_OF[this.game], this.game)}
         <b class="cs-hname">${esc(a.hall)}</b><span class="cs-hgame">${C.GAME_NAMES[this.game]}</span>
-        <div class="cs-big"><i>莊家大牌（不設上限）</i>${esc(C.BANKER_TABLE[this.game]).replace(/・/g, '<br>')}</div></div>
+        <div class="cs-big"><i>莊家大牌（不設上限）</i>${esc(C.BANKER_TABLE[this.game].replace(/現金/g, chipMode() ? '籌碼' : '現金')).replace(/・/g, '<br>')}</div></div>
       <div class="cs-bet">
         <div class="cs-rule">${esc(GAME_RULE[this.game])}</div>
         <div class="cs-pick">${this.pickHtml()}</div>
-        <div class="cs-stake"><span class="cs-stk-l">下注</span><b class="cs-stk">${money(this.stake)}</b>
-          <span class="cs-range">${money(a.min)} – ${money(a.cap)}</span></div>
+        <div class="cs-stake"><span class="cs-stk-l">下注${chipMode() ? '（籌碼）' : ''}</span><b class="cs-stk">${money(this.stake)}</b>
+          <span class="cs-range">${money(a.min)} – ${money(this.max)}</span></div>
         <div class="cs-chips">
-          <button class="cs-chip c5" data-d="-5000">−5千</button><button class="cs-chip c1" data-d="-1000">−1千</button>
-          <button class="cs-chip c50" data-d="1000">+1千</button><button class="cs-chip c10" data-d="5000">+5千</button>
-          <button class="cs-chip min" data-set="min">最低</button><button class="cs-chip max" data-set="max">上限</button>
+          ${chipButtons()}
+          <button class="cs-chip min" data-set="min">最低</button><button class="cs-chip max" data-set="max">${this.max < a.cap ? '全押' : '上限'}</button>
         </div>
         <button class="candy yes cs-go">開始！</button>
       </div>`;
     main.querySelectorAll<HTMLButtonElement>('.cs-chip').forEach(b => b.onclick = () => {
       const set = b.dataset.set;
-      this.stake = set === 'min' ? a.min : set === 'max' ? a.cap : Math.max(a.min, Math.min(a.cap, this.stake + Number(b.dataset.d)));
+      this.stake = set === 'min' ? a.min : set === 'max' ? this.max : Math.max(a.min, Math.min(this.max, this.stake + Number(b.dataset.d)));
       audio.sfx(Sfx.points);
       this.render();
     });
@@ -200,9 +205,10 @@ class CasinoPage {
     const moves = main.querySelector<HTMLElement>('.cs-moves')!;
     if (this.phase === 'blackjack' && this.ask?.phase === 'blackjack' && !this.watch) {
       const a = this.ask;
-      moves.innerHTML = `<button class="candy yes" data-m="hit">要牌</button><button class="candy no" data-m="stand">停牌</button>${a.canDouble ? '<button class="candy" data-m="double">加倍</button>' : ''}`;
+      moves.innerHTML = `<button class="candy yes" data-m="hit">要牌</button><button class="candy no" data-m="stand">停牌</button>${a.canDouble ? `<button class="candy" data-m="double">加倍 +${money(a.double ?? this.stake)}</button>` : ''}`;
     } else if (this.phase === 'holdem' && this.ask?.phase === 'holdem' && !this.watch) {
-      moves.innerHTML = `<button class="candy yes" data-m="call">跟注 +${money(this.stake)}</button><button class="candy no" data-m="fold">棄牌</button>`;
+      const call = this.ask.call ?? this.stake;
+      moves.innerHTML = `<button class="candy yes" data-m="call">${call < this.stake ? '全押' : '跟注'} +${money(call)}</button><button class="candy no" data-m="fold">棄牌</button>`;
     }
     moves.querySelectorAll<HTMLButtonElement>('[data-m]').forEach(b => b.onclick = () => { audio.ui(b.dataset.m === 'stand' || b.dataset.m === 'fold' ? 'no' : 'yes'); moves.innerHTML = ''; this.answer(b.dataset.m); });
     if (this.game === 'roulette') this.placeWheel(false);
@@ -306,7 +312,7 @@ class CasinoPage {
     }
     await step(500);
     const clipped = !!d.clipped, why = typeof d.why === 'string' ? d.why : '';
-    const big = why ? `${why}${d.all ? '：全部現金' : ` ×${Number(d.mult)}`}・` : '';
+    const big = why ? `${why}${d.all ? `：全部${chipMode() ? '籌碼' : '現金'}` : ` ×${Number(d.mult)}`}・` : '';
     this.banner = net > 0 ? { text: `贏 +${money(net)}`, cls: 'win', sub: clipped ? `超過上限，以 ${money(cap)} 計` : `莊家${name(this.ctx, this.choose.banker)}付出` }
       : net < 0 ? { text: `輸 −${money(-net)}`, cls: `lose${why ? ' big' : ''}`, sub: `${big}付給莊家${name(this.ctx, this.choose.banker)}` }
         : { text: '平手', cls: 'push', sub: '退回賭注' };
@@ -347,6 +353,13 @@ class CasinoPage {
     this.wheelAt = target;
     await sleep(Math.max(300, ms));
   }
+}
+
+/** The stake chips: ±1,000 / ±5,000 元, shown as ±10 / ±50 in the finale's chips. */
+function chipButtons(): string {
+  const t = (n: number) => (chipMode() ? String(n / 100) : `${n / 1000}千`);
+  return `<button class="cs-chip c5" data-d="-5000">−${t(5000)}</button><button class="cs-chip c1" data-d="-1000">−${t(1000)}</button>
+    <button class="cs-chip c50" data-d="1000">+${t(1000)}</button><button class="cs-chip c10" data-d="5000">+${t(5000)}</button>`;
 }
 
 /** A die face (CSS pips). */
@@ -427,7 +440,7 @@ fxScreens['casino-auto'] = async (ctx, fx) => {
         r.classList.toggle('fast', !stopped[i]);
       });
       if (text) text.innerHTML = stopped[3]
-        ? `<span class="cs-auto-h">莊家不在！</span><span class="sm-amount">自動獲勝 ${money(amount)}元</span>`
+        ? `<span class="cs-auto-h">莊家不在！</span><span class="sm-amount">自動獲勝 ${fmtMoney(amount)}</span>`
         : `<span class="cs-auto-h">莊家不在！</span><span>莊家${esc(String(d.away ?? ''))}<br>拉霸決定彩金（最高 ${money(Number(d.cap))}）</span>`;
     };
     const s = openScene(ctx, 'cs-auto sm-scene', portrait => (portrait ? [272, 384] : [505, 199]), sc => {
@@ -468,5 +481,5 @@ fxScreens['casino-auto'] = async (ctx, fx) => {
 fxScreens['casino-fee'] = async (ctx, fx) => {
   const d = fx.data ?? {};
   audio.sfx(Sfx.rent);
-  await ctx.flash(`${name(ctx, fx.p ?? 0)}進入${String(d.name ?? '')}${String(d.hall ?? '賭場')}\n\n門票 ${money(Number(d.fee))} 元\n（付給莊家${name(ctx, fx.target ?? 0)}）`, 1100 * Math.max(0.5, ctx.scale()));
+  await ctx.flash(`${name(ctx, fx.p ?? 0)}進入${String(d.name ?? '')}${String(d.hall ?? '賭場')}\n\n門票 ${fmtMoney(Number(d.fee))}\n（付給莊家${name(ctx, fx.target ?? 0)}）`, 1100 * Math.max(0.5, ctx.scale()));
 };

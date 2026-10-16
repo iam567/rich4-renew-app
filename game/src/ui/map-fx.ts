@@ -86,7 +86,11 @@ export class MapDirector {
   /** A news or fate board was shown and its result box has not come yet. */
   private eventOpen = false;
 
-  constructor(private game: Game, private view: BoardView, private hud: Hud) {}
+  constructor(private game: Game, private view: BoardView, private hud: Hud) {
+    // Idle time after the map is up: the fireworks (any lot reaching level 5, the robot worker's last floor, the
+    // angel) are decoded once and kept for the session, so they never load while the game waits (11 §0.3).
+    setTimeout(() => void preloadClips(view.bank, [523], true), 2500);
+  }
 
   private get pi() { return this.game.priceIndex; }
   private player(p?: number): Player | undefined { return p !== undefined && this.game.isPlayerId(p) ? this.game.players[p] : undefined; }

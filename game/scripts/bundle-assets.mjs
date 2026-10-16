@@ -59,17 +59,18 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   if (existsSync(join(src, 'maps/remake/casino'))) {
     for (const f of readdirSync(join(src, 'maps/remake/casino'))) if (f.endsWith('.webp')) copy(`maps/remake/casino/${f}`);
   }
+  // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.
+  if (existsSync(join(src, 'maps/remake/stats'))) {
+    for (const f of readdirSync(join(src, 'maps/remake/stats'))) if (f.endsWith('.webp')) copy(`maps/remake/stats/${f}`);
+  }
   // 大富豪模式 local news / fate pictures (docs/rules/18): maps/remake/events/<id>.webp.
   if (existsSync(join(src, 'maps/remake/events'))) {
     for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) copy(`maps/remake/events/${f}`);
   }
 }
 
-// Maps made in the workshop (editor/export_custom.py).
-if (existsSync(join(src, 'maps/custom/index.json'))) {
-  copy('maps/custom/index.json');
-  for (const m of json('maps/custom/index.json').maps) for (const f of [m.data, m.image, m.thumbnail]) copy(`maps/${f}`);
-}
+// The old workshop maps (editor/export_custom.py, maps/custom/) are no longer offered (the 自製地圖 are the remake's
+// six maps above), so the app does not carry them (2026-10-17).
 
 // Original sprites of the archives the game draws from.
 copy('orig/manifest.json');

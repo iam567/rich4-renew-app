@@ -7,6 +7,7 @@
 import type { Ask } from '../../core/types';
 import { MAGIC_GROUPS, MAGIC_NAMES } from '../../core/modules/places';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
+import { resultBox } from './event-result';
 import { charColor, el, esc, face, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
 import './magic.css';
@@ -252,11 +253,29 @@ const nameOf = (ctx: ScreenContext, p: number): string => ctx.game.name(p);
 askScreens['choose:magic'] = (ctx, a) => magicScreen(ctx, a as Choose);
 
 // A human chose on the screen above; a computer's choice plays the same scene by itself before the magic works.
+// Then, for everyone, a notice of which spell was cast on whom (the scene goes by fast), before it works.
 fxScreens['magic'] = async (ctx, fx) => {
   const g = ctx.game, p = g.players[fx.p ?? -1], d = fx.data as { group: number; magic: number; targets: number[] } | undefined;
-  if (!p || !d || g.isHuman(p)) return;
-  const names = d.targets.map(t => nameOf(ctx, t)).join('、');
-  const ask: Choose = { t: 'choose', p: p.id, title: '魔法屋', text: `對象：${MAGIC_GROUPS[d.group]}（${names}）`,
-    options: MAGIC_NAMES.map((label, value) => ({ label, value })), cancellable: false, screen: 'magic' };
-  await magicScreen(ctx, ask, d.magic);
+  if (!p || !d) return;
+  if (!g.isHuman(p)) {
+    const names = d.targets.map(t => nameOf(ctx, t)).join('、');
+    const ask: Choose = { t: 'choose', p: p.id, title: '魔法屋', text: `對象：${MAGIC_GROUPS[d.group]}（${names}）`,
+      options: MAGIC_NAMES.map((label, value) => ({ label, value })), cancellable: false, screen: 'magic' };
+    await magicScreen(ctx, ask, d.magic);
+  }
+  await spellNotice(ctx, p.id, d);
 };
+
+/** Bad for whoever it hits (the header colour); 存入所有現金, 就地加蓋房屋, 得一張卡片 are good. */
+const GOOD_SPELLS = new Set([4, 5, 6]);
+
+/** 「X 在魔法屋對 Y、Z 施展了「…」」: the result box, at least 2 s, a tap closes it after that. */
+function spellNotice(ctx: ScreenContext, caster: number, d: { group: number; magic: number; targets: number[] }): Promise<void> {
+  const spellName = MAGIC_NAMES[d.magic] ?? '';
+  const whom = d.targets.length ? d.targets.map(t => nameOf(ctx, t)).join('、') : '無人';
+  return resultBox(ctx, {
+    fx: GOOD_SPELLS.has(d.magic) ? 'card-good' : 'card-bad', title: '魔法屋', tag: spellName,
+    head: `${nameOf(ctx, caster)}對${MAGIC_GROUPS[d.group]}（${whom}）施展「${spellName}」`,
+    lines: d.targets.map(t => ({ p: t, text: `中了「${spellName}」` })),
+  });
+}

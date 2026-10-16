@@ -9,6 +9,7 @@ import com.getcapacitor.BridgeActivity;
 public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
+        registerPlugin(PhotoSaverPlugin.class); // 儲存到相簿 of the results screen
         super.onCreate(savedInstanceState);
         fullScreen();
     }

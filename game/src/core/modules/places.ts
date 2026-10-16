@@ -244,6 +244,7 @@ export class Places {
       yield { t: 'fx', kind: 'mini-game', p: p.id, data: { game: kind, points: amount } };
     }
     p.points = (p.points + amount) & 0xffff;
+    g.stats?.miniGame(p.id, amount); // statistics only (core/stats.ts)
     yield { t: 'points', p: p.id, amount };
   }
 

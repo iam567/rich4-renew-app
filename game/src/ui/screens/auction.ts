@@ -15,6 +15,11 @@ import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { charName, el, esc, money, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
 import './auction.css';
+import { chipMode } from '../finale';
+import { FINALE_CHIP } from '../../core/chips';
+
+/** A price on the screen: 元, or 籌碼 in 大富翁城's finale (docs/rules/19 §2). */
+const yen = (n: number) => (chipMode() ? `${money(Math.trunc(n / FINALE_CHIP))}籌碼` : `${money(n)}元`);
 
 type Choose = Extract<Ask, { t: 'choose' }>;
 type Fx = Extract<GameEvent, { t: 'fx' }>;
@@ -125,7 +130,7 @@ class Room {
     card.style.zIndex = '0';
     s.box('au-lot-name', 180, pt - 26, 104, 20, esc(this.lotGame !== g ? `${CITY_NAMES[this.lotGame.settings.mapId] ?? ''}・${this.lot.name}` : this.lot.name));
     s.box('au-tag', 186, pb + 4, 30, 20, '標價');
-    this.priceEl = s.box('au-price', 212, pb + 2, 68, 24, `${money(this.price)}元`);
+    this.priceEl = s.box('au-price', 212, pb + 2, 68, 24, `${yen(this.price)}`);
     // Bidders: a compact list for more than six (大富豪模式's world-wide auctions), the figures otherwise.
     if (this.compact) {
       const where = (p: number) => { const q = g.players[p], w = g.world?.hooks.cityOf(q); return q.trip ? '在路上' : w ? CITY_NAMES[w.settings.mapId] ?? '' : ''; };
@@ -135,7 +140,7 @@ class Room {
         const row = s.box(`au-crow${q.human ? ' me' : ''}${seat.out ? ' out' : ''}`, 458, y, 178, this.step - 3,
           `${face ? `<img src="${face.src}" alt="">` : ''}<b>${esc(charName(ctx, seat.p))}</b><i>${esc(where(seat.p))}</i><span class="au-ccash">${status}</span><span class="au-said"></span>`);
         row.dataset.p = String(seat.p);
-        row.title = `${charName(ctx, seat.p)} 現金 ${money(q.cash)}元`;
+        row.title = `${charName(ctx, seat.p)} 現金 ${yen(q.cash)}`;
         this.rows.set(seat.p, row);
       }
     }
@@ -146,7 +151,7 @@ class Room {
       const out = seat.flag >= 1 && seat.flag <= 8 && seat.flag !== 7;
       this.sprites.set(seat.p, s.art('Panel', out ? 28 + 3 * q.character : 27 + 3 * q.character, 0, 590, y, 'au-bidder'));
       const info = s.box('au-info', 520, y + 2, 116, 20, seat.flag >= 1 && seat.flag <= 7
-        ? `<span class="au-status">${STATUS[seat.flag]}</span>` : `${money(q.cash)}元`);
+        ? `<span class="au-status">${STATUS[seat.flag]}</span>` : `${yen(q.cash)}`);
       info.title = charName(ctx, seat.p);
       // The bid beside the figure's feet (the original's under the cash, y + 24, fell off the room for the last seat).
       const bid = s.box(`au-bid${q.human ? ' me' : ''}`, 446, y - 1, 120, 24, '');
@@ -167,15 +172,15 @@ class Room {
     b.replaceChildren();
     if (P) {
       const me = this.seats.find(x => x.p === (a?.p ?? -1)) ?? this.seats.find(x => this.ctx.game.players[x.p]?.human);
-      const mine = me?.bid ? `　我的出價 <b class="me">${money(me.bid)}</b>` : '';
-      b.insertAdjacentHTML('beforeend', `<div class="au-hint">${a ? `輪到${esc(charName(this.ctx, a.p))}出價　目前 <b>${money(this.price)}</b> 元${mine}` : `等待其他人出價…${mine}`}</div>`);
+      const mine = me?.bid ? `　我的出價 <b class="me">${money(chipMode() ? Math.trunc(me.bid / FINALE_CHIP) : me.bid)}</b>` : '';
+      b.insertAdjacentHTML('beforeend', `<div class="au-hint">${a ? `輪到${esc(charName(this.ctx, a.p))}出價　目前 <b>${yen(this.price)}</b>${mine}` : `等待其他人出價…${mine}`}</div>`);
     }
     const row = el('div', 'au-row');
     b.append(row);
     const values = [0, ...AUCTION_STEPS, -1];
     values.forEach((v, i) => {
       const o = a?.options.find(x => x.value === v);
-      const label = v === 0 ? 'PASS' : v < 0 ? '放棄' : `+${money(v)}`;
+      const label = v === 0 ? 'PASS' : v < 0 ? '放棄' : `+${money(chipMode() ? v / FINALE_CHIP : v)}`;
       const btn = el('button', `candy ${v === 0 ? 'ghost' : v < 0 ? 'no' : 'yes'} au-btn`, label);
       btn.disabled = !a || !o || !!o.disabled;
       if (!P) btn.style.top = `${BUTTON_Y[i] - 110 - 19}px`;
@@ -238,12 +243,12 @@ class Room {
   private showBids() {
     for (const b of this.s.stage.querySelectorAll<HTMLElement>('.au-bid')) {
       const seat = this.seats.find(x => String(x.p) === b.dataset.p);
-      b.innerHTML = seat?.bid ? `<span>${money(seat.bid)}元</span>` : '';
+      b.innerHTML = seat?.bid ? `<span>${yen(seat.bid)}</span>` : '';
       b.classList.toggle('top', !!seat?.bid && seat.p === this.high);
     }
   }
 
-  setPrice(n: number) { this.price = n; this.priceEl.textContent = `${money(n)}元`; this.priceEl.classList.remove('pl-pop'); void this.priceEl.offsetWidth; this.priceEl.classList.add('pl-pop'); }
+  setPrice(n: number) { this.price = n; this.priceEl.textContent = `${yen(n)}`; this.priceEl.classList.remove('pl-pop'); void this.priceEl.offsetWidth; this.priceEl.classList.add('pl-pop'); }
 
   /** Bidder's starburst with "%d元" / ＰＡＳＳ / 放棄, and the bidding animation (#27+3c frames 1..4). */
   async act(p: number, kind: 'bid' | 'pass' | 'quit', price = 0) {
@@ -251,7 +256,7 @@ class Room {
     if (!seat || s.closed) return;
     const q = this.ctx.game.players[p];
     this.turn = p; this.mark();
-    seat.said = kind === 'bid' ? `${money(price)}元` : kind === 'pass' ? 'ＰＡＳＳ' : '放棄';
+    seat.said = kind === 'bid' ? `${yen(price)}` : kind === 'pass' ? 'ＰＡＳＳ' : '放棄';
     this.bubble(seat, seat.said, true);
     const img = this.sprites.get(p) ?? null;
     if (kind === 'bid') {
@@ -281,7 +286,7 @@ class Room {
       const seat = this.seats.find(x => x.p === buyer), q = this.ctx.game.players[buyer];
       if (this.auctioneer) { this.auctioneer.dataset.x = '124'; this.auctioneer.dataset.y = '27'; s.swap(this.auctioneer, 'Panel', 26, 21); }
       audio.sfx(Sfx.auctionHammer); // the gavel #26.21 comes down with Effect#29 (ui_auction.asm:1777)
-      this.say(`${money(price)}元成交！`);
+      this.say(`${yen(price)}成交！`);
       void audio.voice(135); // '%d元成交'
       s.box('au-sold pl-pop', 170, 296, 124, 46, '成交');
       const img = seat ? this.sprites.get(buyer) ?? null : null;

@@ -55,11 +55,11 @@ export function lookOf(w: Weather | null, bright: boolean): Look {
   const i = w.intensity, L: Look = { ...ZERO };
   const slant = Math.cos(w.wind);
   switch (w.kind as WeatherKind) {
+    // 晴 and 多雲 look the same: warm light, no grey tint and no drifting cloud shadows (they dimmed the board and
+    // read as a veil over the dialogs on a phone, 16 §5). 多雲 keeps only its faint wind sound.
     case 'sunny':
-      Object.assign(L, { r: 255, g: 226, b: 160, a: 0.04, warm: 1 - 0.3 * i, cloud: 0.2, clouds: 2 + Math.round(2 * i), drift: 14 });
-      break;
     case 'cloudy':
-      Object.assign(L, { r: 72, g: 84, b: 100, a: 0.09 + 0.08 * i, cloud: 0.2 + 0.08 * i, clouds: 4 + Math.round(3 * i), drift: 18, gust: 0.05 });
+      Object.assign(L, { r: 255, g: 226, b: 160, a: 0.04, warm: 1 - 0.3 * i, drift: 14, gust: w.kind === 'cloudy' ? 0.05 : 0 });
       break;
     case 'rain':
       Object.assign(L, { r: 30, g: 46, b: 76, a: (bright ? 0.12 : 0.17) + 0.12 * i, sheen: 0.5 + 0.4 * i, cloud: 0.14, clouds: 5, drift: 22,

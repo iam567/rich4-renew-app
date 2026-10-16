@@ -17,6 +17,7 @@ import { Places } from './modules/places';
 import { Stocks } from './modules/stocks';
 import { Tools } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
+import { ledgerOf, observed, type Ledger } from './stats';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
   type GameSettings, type Option, type Player, type TurnAnswer,
@@ -106,6 +107,8 @@ export interface MapRules {
   finaleDeny?(kind: 'news' | 'fate', id: number): boolean;
   /** After the day's settlement of a normal game (the world calls its own). */
   daily?(g: Game): void;
+  /** The bank counter is closed (no loans: 大富翁城's finale plays in chips); the ATM stays open. */
+  readonly noLoans?: boolean;
 }
 /** Map rules of normal games by map id, registered by the map's module (core/casino-rules.ts: 105 大富翁城). */
 export const MAP_RULES: Record<number, (g: Game) => MapRules> = {};
@@ -479,8 +482,20 @@ export class Game {
 
   // ---------------------------------------------------------------- main loop
 
-  /** Runs the whole game. */
+  /**
+   * The statistics ledger (core/stats.ts) when the screen attached one: it only watches (events and a few explicit
+   * calls), so the game plays the same with or without it. The cities of a world share theirs.
+   */
+  get stats(): Ledger | undefined { return ledgerOf(this.players); }
+
+  /** Runs the whole game (watched by the ledger when there is one). */
   *run(): Flow {
+    const stats = this.stats;
+    if (stats) { yield* observed(this.loop(), s => stats.observe(s, this)); return; }
+    yield* this.loop();
+  }
+
+  private *loop(): Flow {
     while (!this.over) {
       if (this.current < this.npcBase) yield* this.playerTurn(this.players[this.current]);
       else yield* this.places.npcTurn(this.current);
@@ -510,6 +525,7 @@ export class Game {
     const { date, newMonth } = nextDay(this.date);
     this.date = date;
     this.daysElapsed += 1;
+    this.stats?.newDay(this.players, p => this.wealth(p), [this.board], this.daysElapsed);
     yield { t: 'day', date, newMonth };
     yield* this.checkVictory();
     if (this.over) return;
@@ -1144,7 +1160,7 @@ export class Game {
    * belongs to a company he controls gets the chairman's room; computers never use special financing.
    */
   *bankCounter(p: Player): Flow {
-    if (p.bankRefused) return;
+    if (p.bankRefused || this.rules?.noLoans) return; // 大富翁城's finale: chips, no loans (docs/rules/19 §2)
     const wealth = this.wealth(p);
     if (this.isHuman(p)) {
       const company = companyOf(this.board, this.node(p.node));

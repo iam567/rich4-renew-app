@@ -24,6 +24,7 @@ import { GROUND_STYLES, groundIndex, groundStyle, groundStylesFor, setGroundStyl
 import { Watchdog } from './watchdog';
 import { preloadClips } from './effects';
 import { WeatherFx } from './weather-fx';
+import { LossNotices } from './losses';
 import { CITY_NAMES, TYCOON_MAPS, tycoonSettings, type World } from '../core/world';
 import { isWorldSave, saveWorld } from '../core/save';
 import { openCityViewer } from './city-viewer';
@@ -35,6 +36,9 @@ import './tycoon-onway';
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
+import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
+import { pickNextMap, showResults } from './results';
+import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 
 const app = document.getElementById('app')!;
 // The orientation chosen in the settings is applied at start, before the title screen is laid out.
@@ -284,7 +288,7 @@ function newGame() {
           <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button></div>
           ${pages > 1 ? `<div class="ng-pager"><button class="chip" data-page="-1">‹</button><span>${page + 1}/${pages}</span><button class="chip" data-page="1">›</button></div>` : ''}</div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
-          <p class="ng-tycoon-note">你一人對上其他 11 位角色，大家隨機分散在五座城市。搭新幹線、飛機往來各地，讓所有對手破產就能成為「首富大富豪」。</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">還沒有自製地圖：在地圖工坊做好後執行 editor/export_custom.py</p>'}</div>`}</section>
+          <p class="ng-tycoon-note">你一人對上其他 11 位角色，大家隨機分散在五座城市。搭新幹線、飛機往來各地，讓所有對手破產就能成為「首富大富豪」。</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>`}</section>
       <section class="ng-players-sec"><div class="ng-head"><h3>選擇角色</h3><div class="chips">${ty ? '<span class="ng-ty-who">選你的角色，其他 11 位都是電腦</span>' : `${[2, 3, 4].map(n => `<button class="chip${state.count === n ? ' on' : ''}" data-count="${n}">${n} 人</button>`).join('')}
           <button class="chip" data-reroll="1">重新抽選</button>`}</div></div>
         <div class="ng-roster">${CHARACTERS.map(c => {
@@ -381,7 +385,23 @@ let currentView: BoardView | null = null;
 let currentWeather: WeatherFx | null = null;
 
 function start(settings: GameSettings) {
-  begin(settings.mapId, board => new Game(settings, board), false);
+  // Every game keeps the statistics ledger (core/stats.ts) for the results screen.
+  begin(settings.mapId, board => { const g = new Game(settings, board); attachLedger(g.players); return g; }, false);
+}
+
+/** Maps cleared and characters beaten in this run of games (docs/rules/20 §5; memory only, like the original's tables). */
+let run: RunRecord = { cleared: [], defeated: [] };
+
+/**
+ * 「下一局」 from the results (docs/rules/20 §5): the next map over the results, three random opponents, the same
+ * settings. True when the new game starts.
+ */
+async function nextGame(root: HTMLElement, carried: CarriedSettings, humans: number[], mapId: number): Promise<boolean> {
+  const pick = await pickNextMap(bank!, root, maps, mapId, run, humans);
+  if (!pick) return false;
+  const settings = nextSettings(carried, pick.mapId, humans, pick.opponents, today(), (Math.random() * 2 ** 32) >>> 0);
+  setTimeout(() => start(settings), 0);
+  return true;
 }
 
 /** 大富豪模式: build the world from the five cities' records, then show the human's city (docs/rules/17). */
@@ -389,6 +409,7 @@ async function startTycoon(settings: import('../core/world').TycoonSettings, wor
   app.innerHTML = '<div class="loading">建立大富豪世界中…</div>';
   let w: World;
   try { w = world ?? await newWorld(settings); } catch (e) { app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
+  if (!ledgerOf(w.players)) attachLedger(w.players); // statistics (core/stats.ts); an old save starts an empty one
   const flow = w.run();
   showCity(w, flow, !!world);
 }
@@ -411,7 +432,7 @@ async function resume(slot: number) {
   }
   const saved = data;
   // Names of stocks and companies from the map as it is now (a city that got its own local firms later).
-  begin(saved.settings.mapId, board => loadGame(saved, board), true);
+  begin(saved.settings.mapId, board => { const g = loadGame(saved, board); if (!ledgerOf(g.players)) attachLedger(g.players); return g; }, true);
 }
 
 async function begin(mapId: number, make: (board: import('../core/board').Board) => Game, loaded: boolean, ty?: { world: World; flow: ReturnType<World['run']> }) {
@@ -485,7 +506,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   for (const c of ty?.world.cities ?? [game]) c.animation = miniGameMode() === 0;
   // Debug handle for screenshots and tests: open any screen without playing up to it.
   (window as unknown as { __rich4: unknown }).__rich4 = { game, hud, view, weather, ctx: () => hud.context(shell), askScreens, fxScreens, world: ty?.world,
-    ending: ty ? (winner: number) => tycoonEnding(hud.context(shell), ty.world, winner) : undefined };
+    ending: ty ? (winner: number) => tycoonEnding(hud.context(shell), ty.world, winner) : undefined,
+    results: (winner: number) => (ty ? tycoonEnding(hud.context(shell), ty.world, winner, () => Promise.resolve(false))
+      : showResults(bank!, shell, gameResults(game, winner), { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, game.players.filter(p => p.human).map(p => p.character), game.settings.mapId) })) };
   const baseRefresh = hud.refresh.bind(hud);
   hud.refresh = () => { baseRefresh(); if (layout !== 0) minimap.update(); };
   // 視窗組 (RICH4.CFG +5): what the right column shows; kept between games.
@@ -722,6 +745,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const openLog = () => void hud.sheetNode('各地動態', logPanel(ty!.world, bank!));
   if (bar) { stage.append(bar.el); bar.onOpen = openLog; }
   if (chat) { stage.append(chat.el); chat.onOpen = openLog; }
+  // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
+  const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),
+    chat: chat ? l => chat.push(l) : undefined, mapIndex: () => ty?.world.view() ?? 0 });
   const flow = ty ? ty.flow : game.run();
   let answer: Answer = undefined;
   for (;;) {
@@ -730,6 +756,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     answer = undefined;
     if (r.done) break;
     const s = r.value;
+    await losses.before(s);
     wd.beat('ask' in s ? `ask:${s.t}` : s.t === 'fx' ? `fx:${s.kind}` : s.t);
     if (!('ask' in s) && (s.t === 'step' || s.t === 'actor-step')) {
       await director.idle();
@@ -979,10 +1006,25 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         await director.gameover(s.winner);
         // The ending (fcn_004075c1, jump.mkf) plays MIDI07 (flag 0x8006).
         audio.theme(Theme.ending, true);
-        // 大富豪模式: the results (winner) or the losing screen (docs/rules/17 §11).
-        if (ty) { stopWatch(); await finaleResults(hud.context(shell), ty.world, s.winner); await tycoonEnding(hud.context(shell), ty.world, s.winner); return; }
-        hud.gameOver(s.winner >= 0 ? `${nameOf(s.winner)}獲勝！` : '你輸了！');
         stopWatch();
+        // 大富豪模式: 大富翁城's results, then the podium or the losing scene in the results screen (docs/rules/17 §11).
+        if (ty) {
+          const w = ty.world, h = w.human();
+          run = recordResult(run, worldResults(w, s.winner));
+          await finaleResults(hud.context(shell), w, s.winner);
+          const carried: CarriedSettings = { fundIndex: w.settings.fundIndex, traffic: w.settings.traffic, landLimitIndex: w.settings.landLimitIndex, daysLimitIndex: 0, victoryIndex: 0 };
+          const act = await tycoonEnding(hud.context(shell), w, s.winner, () => nextGame(shell, carried, h ? [h.character] : [], -1));
+          if (act === 'home') location.reload();
+          return;
+        }
+        {
+          // The results screen (docs/rules/20 §4), then 「下一局」 (another map, the same settings) or the title.
+          const results = gameResults(game, s.winner);
+          run = recordResult(run, results);
+          const humans = game.players.filter(p => p.human).map(p => p.character);
+          const act = await showResults(bank!, shell, results, { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, humans, game.settings.mapId) });
+          if (act === 'home') location.reload();
+        }
         return;
     }
   }

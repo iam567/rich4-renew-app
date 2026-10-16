@@ -16,6 +16,8 @@ import { type Flow } from './flow';
 import { Game, type WorldHooks } from './game';
 import { cardName, cardPrice } from './modules/cards';
 import { sellPrice, toolDef } from './modules/tools';
+import { chipScore, FINALE_CHIP, type ChipScore } from './chips';
+import { attachLedger, ledgerOf } from './stats';
 import { CITY_NAMES, type World } from './world';
 import type { GameEvent, GameSettings, Option, Player, TravelOption } from './types';
 
@@ -40,8 +42,11 @@ export interface Valuation {
   points: number;
 }
 
+/** A finalist's chips on arrival (core/chips.ts, the whole game's score). */
+export type FinalistChips = ChipScore & { p: number };
+
 export interface FinaleState {
-  active: boolean; startDay: number; finalists: number[]; valuations: Valuation[]; visits: number;
+  active: boolean; startDay: number; finalists: number[]; valuations: Valuation[]; chips?: FinalistChips[]; visits: number;
   stats: CasinoStats[]; scaleMode?: ScaleMode; wealthScale?: number;
 }
 
@@ -58,6 +63,8 @@ export class Finale extends CasinoRules implements WorldHooks {
   startDay = 0;
   finalists: number[] = [];
   valuations: Valuation[] = [];
+  /** Each finalist's chips on arrival and how they were counted (the entry screen and the results show it). */
+  chips: FinalistChips[] = [];
   scaleMode: ScaleMode = 'flat';
   wealthScale = 1;
   /** Turned off by tests that want the world to run without a finale. */
@@ -75,19 +82,44 @@ export class Finale extends CasinoRules implements WorldHooks {
   runs(i: number): boolean { return !this.active || i === this.index; }
 
   scale(): number { return this.scaleMode === 'index' ? Math.max(1, this.w.priceIndex) : this.scaleMode === 'wealth' ? this.wealthScale : 1; }
+  /** The finale's texts in chips (1 chip = 100 元). */
+  price(n: number): string { return this.active ? `${fmt(Math.trunc(n / FINALE_CHIP))}籌碼` : `${fmt(n)}元`; }
+  moneyWord(): string { return this.active ? '籌碼' : '現金'; }
+
   protected note(text: string, p: number, important: boolean): void { this.w.ticker(this.index, text, 'casino', p, { important }); }
 
   /** Total assets in the finale: money and the casinos. */
   wealth(p: Player): number { return p.cash + p.bank - p.loan + this.casinoWorth(p); }
 
   /** Every day (World.run): the city's closed market and black market. */
-  tidy(): void { if (this.active) this.daily(this.game()); }
+  tidy(): void {
+    if (!this.active) return;
+    const g = this.game();
+    this.daily(g);
+    if (g) g.priceIndex = 1;   // fixed chip prices (World.updatePriceIndex sets every city's each day)
+  }
+
+  /** The bank counter is closed in the finale (chips: no loans); the ATM still takes and gives back chips. */
+  get noLoans(): boolean { return this.active; }
+
+  /** A finalist with no chips left is out (19 §2): the original bankruptcy (their halls back to the bank, unowned). */
+  private *outOfChips(): Flow {
+    const g = this.game();
+    if (!g || this.w.over) return;
+    for (const id of this.finalists) {
+      const p = this.w.players[id];
+      // Out below one chip (19 §2): what the screen shows as 0 籌碼.
+      if (p.whoPlays && !p.bankrupt && p.cash + p.bank < FINALE_CHIP && p.loan === 0) yield* this.bankrupt(p, g);
+      if (this.w.over) return;
+    }
+  }
 
   // ---------------------------------------------------------------- start
 
   /** After every turn and every day (World.run): starts the finale once four players (or fewer) are left. */
   *check(): Flow {
-    if (this.active || !Finale.enabled || this.w.over || !finaleBoard || this.index >= 0) return;
+    if (this.active) { yield* this.outOfChips(); return; }
+    if (!Finale.enabled || this.w.over || !finaleBoard || this.index >= 0) return;
     const left = this.w.players.filter(p => !p.bankrupt);
     if (left.length > FINALE_PLAYERS || left.length < 2) return;
     yield* this.start(left);
@@ -120,20 +152,27 @@ export class Finale extends CasinoRules implements WorldHooks {
   *start(left: Player[]): Flow {
     const w = this.w;
     this.valuations = left.map(p => this.value(p));
+    // The chips (19 §2): the whole game's score from the statistics ledger (the screen attaches it; without one, as in
+    // the tests, an empty ledger only counts the final money). Stamped before anything changes.
+    const ledger = ledgerOf(w.players) ?? attachLedger(w.players);
+    ledger.finish(w);
+    const everyone = w.players.map(p => p.id);
+    this.chips = left.map(p => ({ p: p.id, ...chipScore(ledger, p.id, everyone) }));
     this.finalists = left.map(p => p.id);
     const avg = this.valuations.reduce((a, v) => a + Math.max(0, v.total), 0) / Math.max(1, left.length);
     this.wealthScale = Math.max(1, Math.round(avg / WEALTH_UNIT));
     this.startDay = w.daysElapsed;
     this.stats = w.players.map(emptyStats);
     for (const [k, p] of left.entries()) {
-      const v = this.valuations[k];
+      const v = this.valuations[k], chips = this.chips[k].total;
       const from = w.cityOf(p) ?? w.cities[Math.max(0, p.map ?? 0)];
       from?.objects.detachAll(p);
       for (const c of w.cities) c.places.returnNpcsOf(p);
       v.sold = this.sellDenied(p, from);
       v.points = v.sold.reduce((s, x) => s + x.points, 0);
       Object.assign(p, {
-        cash: Math.max(0, v.total), bank: 0, loan: 0, specialFinance: 0, loanDue: 0,
+        // Chips are all they have (1 chip = 100 元, FINALE_CHIP): no money, deposit or loan from before.
+        cash: chips * FINALE_CHIP, bank: 0, loan: 0, specialFinance: 0, loanDue: 0,
         hotel: 0, vanish: 0, prison: 0, hospital: 0, sleep: 0, sleepwalk: 0, stay: 0, turtle: 0, facility: 0,
       });
       p.trip = undefined;
@@ -151,7 +190,8 @@ export class Finale extends CasinoRules implements WorldHooks {
     w.players.forEach((p, i) => Object.assign(p, keep[i]));
     w.settings.maps.push(FINALE_MAP);
     w.cities.push(g);
-    Object.assign(g, { date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex });
+    // Chips have fixed prices (19 §2.3): the city's price index stays 1 (the world's goes on for the frozen cities).
+    Object.assign(g, { date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: 1 });
     // The eight plots: the casino's plot price and level cost (× the price index where it is used, as every price),
     // fees[1..5] its caps (19 §4-§5).
     this.setup(g, true);
@@ -174,7 +214,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     w.ticker(this.index, text, 'finale', undefined, { important: true });
     const lines: GameEvent[] = [{ t: 'ticker', day: w.daysElapsed, map: this.index, text, kind: 'finale', important: true }];
     for (const v of this.valuations) {
-      const line = `${w.name(v.p)}的資產結算為現金 ${fmt(Math.max(0, v.total))} 元`;
+      const line = `${w.name(v.p)}帶著 ${fmt(this.chips.find(c => c.p === v.p)?.total ?? 0)} 籌碼進城`;
       w.ticker(this.index, line, 'finale', v.p, { important: true });
       lines.push({ t: 'ticker', day: w.daysElapsed, map: this.index, text: line, p: v.p, kind: 'finale', important: true });
       if (v.sold.length) {
@@ -185,7 +225,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     }
     yield {
       t: 'fx', kind: 'finale-start', p: w.human()?.id,
-      data: { city: FINALE_NAME, finalists: this.finalists, valuations: this.valuations, caps: CAPS.map((_, l) => this.cap(l)), text },
+      data: { city: FINALE_NAME, finalists: this.finalists, valuations: this.valuations, chips: this.chips, chip: FINALE_CHIP, caps: CAPS.map((_, l) => this.cap(l)), text },
     };
     for (const l of lines) yield l;
     yield { t: 'board' };
@@ -226,12 +266,12 @@ export class Finale extends CasinoRules implements WorldHooks {
 
   save(): FinaleState | undefined {
     if (!this.active) return undefined;
-    return { active: true, startDay: this.startDay, finalists: [...this.finalists], valuations: structuredClone(this.valuations), visits: this.visits, stats: structuredClone(this.stats), scaleMode: this.scaleMode, wealthScale: this.wealthScale };
+    return { active: true, startDay: this.startDay, finalists: [...this.finalists], valuations: structuredClone(this.valuations), chips: structuredClone(this.chips), visits: this.visits, stats: structuredClone(this.stats), scaleMode: this.scaleMode, wealthScale: this.wealthScale };
   }
 
   restore(s: FinaleState | undefined): void {
     if (!s?.active) return;
-    Object.assign(this, { active: true, startDay: s.startDay, finalists: [...s.finalists], valuations: structuredClone(s.valuations), visits: s.visits, stats: structuredClone(s.stats), scaleMode: s.scaleMode ?? 'flat', wealthScale: s.wealthScale ?? 1 });
+    Object.assign(this, { active: true, startDay: s.startDay, finalists: [...s.finalists], valuations: structuredClone(s.valuations), chips: structuredClone(s.chips ?? []), visits: s.visits, stats: structuredClone(s.stats), scaleMode: s.scaleMode ?? 'flat', wealthScale: s.wealthScale ?? 1 });
     const g = this.game();
     if (g) this.setup(g, false);
   }

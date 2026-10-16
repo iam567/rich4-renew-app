@@ -293,11 +293,15 @@ class ShopScene {
     const pg = this.page, a = this.ask, me = this.player;
     place(this.shelf, this.layout.shelf.x, this.layout.shelf.y, 222, 462);
     this.img(this.shelfImg, 'Panel', 10, 1 + pg * 16, 0, 0);
+    const scrolled = pg === 0 ? this.rows.querySelector<HTMLElement>('.shop-scroll')?.scrollTop ?? 0 : 0;
     this.rows.replaceChildren(pg === 0 ? place(el('div', 'shop-face card'), 10, 66, 202, 386) : place(el('div', 'shop-face tool'), 14, 80, 194, 367));
     if (pg === 0) {
       const full = me.cards.length >= HAND_LIMIT;
+      // 大富豪模式's shelf has every card (05 §8.3, 17 §3.10): more than the 15 rows that fit, so the list scrolls.
+      const many = a.cards.length > 15, list = many ? place(el('div', 'shop-scroll'), 10, 66, 202, 386) : this.rows;
+      if (many) { this.rows.append(list); list.append(place(el('i', 'shop-scroll-end'), 0, 4 + 25 * a.cards.length, 1, 4)); }
       a.cards.forEach((id, i) => {
-        const row = place(el('button', 'shop-row card'), 14, 70 + 25 * i, 194, 23);
+        const row = place(el('button', 'shop-row card'), many ? 4 : 14, many ? 4 + 25 * i : 70 + 25 * i, 194, 23);
         if (!id) {
           row.classList.add('sold');
           row.innerHTML = '<span class="nm">已售出</span><span class="pr">SOLD</span>';
@@ -310,8 +314,9 @@ class ShopScene {
           row.title = `${cardName(id)}　$${price}\n${(cardDef(id)?.text ?? "")}`;
           this.press(row, () => this.buy('card', i), () => this.cardInfo(id, price));
         }
-        this.rows.append(row);
+        list.append(row);
       });
+      if (many) list.scrollTop = scrolled;
       if (!a.cards.length) this.rows.append(place(el('div', 'shop-empty', '卡片賣完了'), 14, 70, 194, 48));
     } else {
       a.tools.forEach((id, i) => {

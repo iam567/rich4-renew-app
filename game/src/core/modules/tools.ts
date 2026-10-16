@@ -98,6 +98,8 @@ const CARD_INFO: readonly [name: string, price: number, f7: number][] = [
   ['飛行卡', 20, 0], ['電車卡', 10, 0], ['遣返卡', 15, 1], ['獨裁卡', 300, 2], ['召集卡', 25, 1], ['通緝卡', 60, 2], // 大富豪模式 only (cards.ts TYCOON_CARDS)
 ];
 const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
+/** 通緝卡: one per city even in 大富豪模式's unlimited shop (17 §3.5, §3.10). */
+const WANTED_CARD = 36;
 /** Hand limit for buying cards (05 §8.4, the card module's HAND_LIMIT). */
 const HAND_LIMIT = 15;
 
@@ -432,6 +434,12 @@ export class Tools {
    * human is asked. Returns false when nothing happened (cancelled or not applicable): the tool is kept.
    */
   *use(p: Player, tool: number, param?: number): Flow<boolean> {
+    const used = yield* this.apply(p, tool, param);
+    if (used) this.g.stats?.toolUsed(p.id, tool); // statistics only (core/stats.ts)
+    return used;
+  }
+
+  private *apply(p: Player, tool: number, param?: number): Flow<boolean> {
     if (p.tools[tool - 1] <= 0) return false;
     switch (tool) {
       case 1: return yield* this.robotDoll(p);
@@ -1065,9 +1073,14 @@ export class Tools {
     if (company) { const sum = turnover.buy + turnover.sell; company.fundA += sum; company.fundB += sum; }
   }
 
-  /** Card shelf of rand() % 10 + 6 cards drawn by the remaining copies, without replacement (05 §8.3). */
+  /**
+   * Card shelf of rand() % 10 + 6 cards drawn by the remaining copies, without replacement (05 §8.3). 大富豪模式
+   * (17 §3.10): no stock, every card on the shelf, except the 通緝卡 while its city's one copy is out.
+   */
   cardShelf(): number[] {
-    const g = this.g, copies = [...g.cards.remaining];
+    const g = this.g;
+    if (g.world) return g.cards.remaining.map((_, i) => i + 1).filter(id => id !== WANTED_CARD || g.cards.remaining[id - 1] > 0);
+    const copies = [...g.cards.remaining];
     const n = g.rng.below(10) + 6, shelf: number[] = [];
     for (let i = 0; i < n; i++) {
       const total = copies.reduce((a, b) => a + b, 0);
@@ -1081,15 +1094,30 @@ export class Tools {
     return shelf;
   }
 
-  /** Tool shelf: tools 1..8 still in stock, one cell each (05 §8.3). */
+  /** Tool shelf: tools 1..8 still in stock, one cell each (05 §8.3); 大富豪模式 all eight, never out (17 §3.10). */
   toolShelf(): number[] {
-    return [1, 2, 3, 4, 5, 6, 7, 8].filter(t => this.shopStock[t - 1] > 0);
+    return [1, 2, 3, 4, 5, 6, 7, 8].filter(t => this.g.world || this.shopStock[t - 1] > 0);
+  }
+
+  /** 大富豪模式 (17 §3.10): the shop is never out of a tool 1-8 — a bought one is not taken from the 10 copies. */
+  private unlimited(tool: number) { if (this.g.world && tool >= 1 && tool <= 8 && this.shopStock[tool - 1] <= 0) this.shopStock[tool - 1] = 1; }
+
+  /**
+   * A card bought at the shop goes from the pool to the hand (_rich4_receive_card). 大富豪模式 (17 §3.10): the shop
+   * has no stock, so a card whose copies are all out leaves the pool at 0 instead of wrapping round.
+   */
+  private shopCard(p: Player, id: number) {
+    const pool = this.g.cards.remaining, had = pool[id - 1];
+    this.g.cards.receive(p, id);
+    if (this.g.world && !(had > 0)) pool[id - 1] = had ?? 0;
   }
 
   /** _rich4_player_buy_tool: receive first, then pay (the UI already refused a full stack). */
   buyTool(p: Player, tool: number): boolean {
+    this.unlimited(tool);
     const ok = this.receive(p, tool);
     p.points = (p.points - TOOLS[tool - 1].price) & 0xffff;
+    this.g.stats?.toolBought(p.id, tool, TOOLS[tool - 1].price);
     return ok;
   }
 
@@ -1130,15 +1158,17 @@ export class Tools {
         const id = cards[a.index] ?? 0, price = cardPrice(id);
         if (!id || p.points < price || p.cards.length >= HAND_LIMIT) continue;
         p.points = (p.points - price) & 0xffff;
-        g.cards.receive(p, id);
+        this.shopCard(p, id);
+        g.stats?.cardBought(p.id, id, price);
         if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
-        cards[a.index] = 0;
+        // A bought cell is sold out for this visit; 大富豪模式's shelf never runs out (but the one 通緝卡 does).
+        if (!g.world || id === WANTED_CARD) cards[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('buy' in a && a.buy === 'tool') {
         const id = tools[a.index] ?? 0, price = id ? TOOLS[id - 1].price : 0;
         if (!id || p.points < price || p.tools[id - 1] >= MAX_HELD) continue;
         this.buyTool(p, id);
-        tools[a.index] = 0;
+        if (!g.world) tools[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('sell' in a && a.sell === 'card') {
         if (!p.cards[a.index]) continue;
@@ -1177,18 +1207,21 @@ export class Tools {
     if (P === 0) return;
     let bc = P >> 1, bt = P - (P >> 1);
     // 5. Cards: one candidate per remaining copy, most expensive first (stable sort; Watcom qsort order 推测).
+    // 大富豪模式 (17 §3.10): no stock — one candidate per card, the 通緝卡 only while its city's copy is in.
     const cands: number[] = [];
     g.cards.remaining.forEach((n, i) => {
       const [, price, f7] = CARD_INFO[i] ?? ['', 0, 0];
+      if (g.world) n = i + 1 === WANTED_CARD ? n : 1;
       if (price <= bc && !hated(f7)) for (let k = 0; k < n; k++) cands.push(i + 1);
     });
     cands.sort((a, b) => cardPrice(b) - cardPrice(a));
     for (const id of cands) {
       if (p.cards.length >= 15) break;
       const price = cardPrice(id);
-      if (price > bc || p.points < price || !(g.cards.remaining[id - 1] > 0)) continue;
+      if (price > bc || p.points < price || !(g.world && id !== WANTED_CARD || g.cards.remaining[id - 1] > 0)) continue;
       p.points = (p.points - price) & 0xffff;
-      g.cards.receive(p, id);
+      this.shopCard(p, id);
+      g.stats?.cardBought(p.id, id, price);
       if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
       bc -= price;
       turnover.buy += price * 10;
@@ -1196,14 +1229,14 @@ export class Tools {
     // 6. Vehicles (strictly cheaper than the budget).
     for (const [t, ride] of [[5, 1], [6, 2]] as const) {
       const price = TOOLS[t - 1].price;
-      if (p.traffic !== ride && p.tools[t - 1] === 0 && price < bt && this.shopStock[t - 1] > 0) {
+      if (p.traffic !== ride && p.tools[t - 1] === 0 && price < bt && (g.world || this.shopStock[t - 1] > 0)) {
         this.buyTool(p, t); bt -= price; turnover.buy += price * 10;
       }
     }
     // 7. One each of 8, 2, 7, 1, 4, 3.
     for (const t of AI_SHOP_ORDER) {
       const d = TOOLS[t - 1];
-      if (p.tools[t - 1] < MAX_HELD && !hated(d.aggression) && d.price <= bt && this.shopStock[t - 1] > 0) {
+      if (p.tools[t - 1] < MAX_HELD && !hated(d.aggression) && d.price <= bt && (g.world || this.shopStock[t - 1] > 0)) {
         this.buyTool(p, t); bt -= d.price; turnover.buy += d.price * 10;
       }
     }

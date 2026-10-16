@@ -11,6 +11,7 @@ import { STOCK_TABLE } from './modules/stocks';
 import type { GameSettings, Player } from './types';
 import type { FinaleState } from './finale';
 import { World, type TickerLine, type TycoonSettings } from './world';
+import { attachLedger, Ledger, ledgerOf, type LedgerData } from './stats';
 
 export const SAVE_VERSION = 1;
 
@@ -29,6 +30,8 @@ export interface SaveData {
     diceTotal: number; lotteryPool: number; rng: number;
   };
   modules: Record<string, Record<string, unknown>>;
+  /** The statistics ledger (core/stats.ts), when the game kept one; older saves have none. */
+  stats?: LedgerData;
 }
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -51,6 +54,7 @@ export function saveGame(g: Game): SaveData {
       current: g.current, diceTotal: g.diceTotal, lotteryPool: g.lotteryPool, rng: g.rng.seed,
     },
     modules,
+    ...(g.stats ? { stats: g.stats.save() } : {}),
   };
 }
 
@@ -89,6 +93,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
   g.forks.afterLoad();
   if (map) adoptMapNames(g, map);
+  if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
   return g;
 }
 
@@ -113,6 +118,8 @@ export interface WorldSaveData {
     /** 大富翁城, the finale (docs/rules/19): set once it has started (the sixth city is in `cities` then). */
     finale?: FinaleState;
   };
+  /** The statistics ledger (core/stats.ts), when the world kept one; older saves have none. */
+  stats?: LedgerData;
 }
 
 export const isWorldSave = (s: unknown): s is WorldSaveData => !!s && (s as { kind?: string }).kind === 'tycoon';
@@ -152,6 +159,7 @@ export function saveWorld(w: World): WorldSaveData {
       history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords],
       ...(w.finale.active ? { finale: w.finale.save() } : {}),
     },
+    ...(ledgerOf(w.players) ? { stats: ledgerOf(w.players)!.save() } : {}),
   };
 }
 
@@ -191,5 +199,6 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
   w.finale.restore(x.finale);
   w.resumeAtTurn = true;
   w.mask(w.view());
+  if (s.stats) attachLedger(w.players, Ledger.load(s.stats, w.players.length));
   return w;
 }

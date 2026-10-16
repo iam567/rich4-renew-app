@@ -124,8 +124,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 .cal-wx.month svg { width: 34px; height: 34px; padding: 2px; }
 .cal-wx.month span { margin: 0 0 0 -4px; padding: 0 5px; font-size: 11px; line-height: 14px; }
 /* The weather's soft layer (ui/weather-fx.ts): a quarter-resolution canvas stretched over the map. */
-.wx-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; pointer-events: none; }
-.wx-scene { position: absolute; left: 0; top: 0; z-index: 3; pointer-events: none; }
+/* Weather sits right over the board canvas at level 0: every dialog, notice and HUD piece (positioned, later in the
+   DOM or with its own z-index) paints above it (docs/rules/16 §5). */
+.wx-layer { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 0; pointer-events: none; }
+.wx-scene { position: absolute; left: 0; top: 0; z-index: 0; pointer-events: none; }
 
 /* GO button: the redrawn art, floating over the map (09 §5) */
 .go { position: absolute; z-index: 4; width: calc(72px * var(--gu)); height: calc(67px * var(--gu)); touch-action: none;

@@ -11,6 +11,8 @@ import { EVENT_VOICE } from './voices';
 import { audio, Sfx, Theme } from './audio';
 import { fxScreens, type ScreenContext } from './screens/registry';
 import { CITY_COLORS } from './tycoon';
+import { showResults, type ResultsAction } from './results';
+import { worldResults } from '../core/stats';
 import './tycoon-ending.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -96,35 +98,33 @@ function stats(ctx: ScreenContext, w: World): string {
     <div><h4>去過的城市</h4><div class="te-cities">${visited}</div></div></div></div>`;
 }
 
-/** The end of a world: the winner's results, or the losing screen; resolves when closed (then back to the title). */
-export function tycoonEnding(ctx: ScreenContext, w: World, winner: number): Promise<void> {
+/**
+ * The end of a world: the winner's podium or the losing scene, inside the results screen (results.ts) with the ranking
+ * of all twelve, everyone's statistics and this world's curve, rivals' fall, lots by city and cities visited. Resolves
+ * with the player's choice (「下一局」 when `next` started a new game, else 「回到主畫面」).
+ */
+export async function tycoonEnding(ctx: ScreenContext, w: World, winner: number, next?: () => Promise<boolean>): Promise<ResultsAction> {
   const h = w.human();
-  if (!h) return Promise.resolve();
+  if (!h) return 'home';
   const won = winner === h.id;
   audio.theme(won ? Theme.ending : Theme.bankrupt, true);
-  return new Promise(resolve => {
-    const root = document.createElement('div');
-    root.className = `te-cover te-end ${won ? 'won' : 'lost'}`;
-    const ch = h.character;
-    const line = say(ch, won ? 24 : 25);
-    const rank = w.players.filter(p => !p.bankrupt).length + 1;
-    const second = w.fallen[w.fallen.length - 1], third = w.fallen[w.fallen.length - 2];
-    const head = won
-      ? `<div class="te-rays"></div><div class="te-confetti">${confetti(48)}</div>
-        <div class="te-crown"></div><div class="te-big">${esc(TITLES[TITLES.length - 1])}</div>
+  const ch = h.character;
+  const line = say(ch, won ? 24 : 25);
+  const rank = w.players.filter(p => !p.bankrupt).length + 1;
+  const second = w.fallen[w.fallen.length - 1], third = w.fallen[w.fallen.length - 2];
+  const hero = won
+    ? `<div class="te-hero won"><div class="te-crown"></div><div class="te-big">${esc(TITLES[TITLES.length - 1])}</div>
         <div class="te-podium">
           ${second ? `<div class="p2">${face(ctx, w.players[second.p].character, 'grey')}<b>2</b></div>` : ''}
-          <div class="p1">${face(ctx, ch)}<b>1</b><span class="te-bubble">${esc(line)}</span></div>
+          <div class="p1">${face(ctx, ch)}<b>1</b></div>
           ${third ? `<div class="p3">${face(ctx, w.players[third.p].character, 'grey')}<b>3</b></div>` : ''}
         </div>
-        <div class="te-sub">${esc(CHARACTERS[ch].name)}讓 11 位對手全部破產！（${format(w.date)}，第 ${w.daysElapsed + 1} 天）</div>`
-      : `<div class="te-rain"></div><div class="te-big">破產了……</div>
+        ${line ? `<span class="te-bubble te-say">${esc(line)}</span>` : ''}
+        <div class="te-sub">${esc(CHARACTERS[ch].name)}讓 11 位對手全部破產！（${format(w.date)}，第 ${w.daysElapsed + 1} 天）</div></div>`
+    : `<div class="te-hero lost"><div class="te-big">破產了……</div>
         <div class="te-lost">${face(ctx, ch, 'grey')}<span class="te-bubble">${esc(line)}</span></div>
-        <div class="te-sub">${esc(CHARACTERS[ch].name)}是第 ${rank} 名・撐了 ${w.daysElapsed + 1} 天・${w.fallen.filter(f => f.p !== h.id).length} 位對手比你先倒下</div>`;
-    root.innerHTML = `<div class="te-end-box">${head}${stats(ctx, w)}
-      <div class="choices"><button class="candy yes" data-home="1">回到主畫面</button></div></div>`;
-    (ctx.shell ?? ctx.area).append(root);
-    if (won) audio.sfx(Sfx.fireworks);
-    root.querySelector('[data-home]')!.addEventListener('click', () => { audio.ui('yes'); resolve(); location.reload(); });
+        <div class="te-sub">${esc(CHARACTERS[ch].name)}是第 ${rank} 名・撐了 ${w.daysElapsed + 1} 天・${w.fallen.filter(f => f.p !== h.id).length} 位對手比你先倒下</div></div>`;
+  return showResults(ctx.bank, ctx.shell ?? ctx.area, worldResults(w, winner), {
+    mapName: w.finale.active ? '大富豪模式・大富翁城' : '大富豪模式', hero, extra: stats(ctx, w), cls: `te-end-rs ${won ? 'won' : 'lost'}`, next,
   });
 }

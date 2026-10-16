@@ -2,6 +2,7 @@
  * The right-hand column of the original screen (docs/rules/09 §3-§4): the player panel with its four tabs and
  * the calendar. Both are laid out in original pixels (200×280 and 200×200) and scaled as a whole.
  */
+import { chipMode } from './finale';
 import { CHARACTERS } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
@@ -9,7 +10,8 @@ import type { SpriteBank } from './sprites';
 import { todayWeather, WEATHER_NAME, weatherIcon, weatherMode } from './weather';
 
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
-const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
+// 大富翁城's finale shows chips (docs/rules/19 §2, ui/finale.ts).
+const money = (n: number) => (chipMode() ? `${Math.trunc(n / 100).toLocaleString('en-US')}籌碼` : `$${Math.trunc(n).toLocaleString('en-US')}`);
 /** NPCs by actor id − npcBase (actors 4..7 and the doll 8 with up to 4 players; 12..16 in 大富豪模式). */
 const NPC_NAMES = ['小偷', '強盜', '流氓', '間諜', '機器娃娃'];
 const TABS = ['資金', '地產', '股票', '其他'];

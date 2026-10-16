@@ -168,3 +168,8 @@
 @media (prefers-reduced-motion: reduce) {
   .shop-canvas.slide .shop-shelf, .shop-canvas.slide .shop-bag, .shop-keeper.talk, .shop-keeper.hop, .shop-keeper.cross { animation: none; }
 }
+/* 大富豪模式: every card on the shelf (17 §3.8), more than fit — the card list scrolls inside its face */
+.shop-scroll { overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin; }
+.shop-scroll > * { position: absolute; }
+.shop-scroll-end { visibility: hidden; }

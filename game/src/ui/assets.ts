@@ -5,9 +5,9 @@ export const ASSETS = `${import.meta.env.BASE_URL}assets`;
 
 /**
  * A map of the list. `kind`: 'orig' the eight original maps (map-N.json), 'custom' the 自製地圖: the remake's own maps
- * first (maps/remake/index.json, e.g. 東京 by editor/build_tokyo.py, with their own `data` / `image` paths), then the
- * workshop maps (editor/export_custom.py). `hidden`: not offered for a new game (a remake map took its place) but still
- * known, so saved games on it load and show its name.
+ * (maps/remake/index.json: 東京, 大阪, 札幌, 九州, 沖繩, 大富翁城, with their own `data` / `image` paths). The old
+ * workshop maps (editor/export_custom.py, maps/custom/index.json) are no longer offered (2026-10-17): they are listed
+ * `hidden`, known only so saved games on them still load and show their name. `hidden`: not offered for a new game.
  */
 export interface MapInfo { id: number; name: string; thumbnail: string; custom: boolean; kind: 'orig' | 'custom'; data?: string; image?: string; hidden?: boolean }
 
@@ -36,20 +36,19 @@ async function json<T>(url: string): Promise<T> {
 export async function mapList(): Promise<MapInfo[]> {
   const m = await json<{ maps: { id: number; name: string; thumbnail: string }[] }>(`${ASSETS}/maps/maps.json`);
   const list: MapInfo[] = m.maps.map(x => ({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: false, kind: 'orig' }));
-  // The remake's own maps (ids 8..999) lead the 自製地圖 list; each may replace a workshop map in the list.
-  const replaced = new Set<number>();
+  // The remake's own maps (ids 8..999) are the 自製地圖 list (their `replaces` named the workshop map whose slot they took).
   try {
     const r = await json<{ maps: { id: number; name: string; thumbnail: string; data: string; image: string; replaces?: number[]; hidden?: boolean }[] }>(`${ASSETS}/maps/remake/index.json`);
     for (const x of r.maps) {
       // `hidden`: a map only 大富豪模式 uses (大富翁城, its finale, docs/rules/19) is known but not offered.
       list.push({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: true, kind: 'custom', data: x.data, image: x.image, ...(x.hidden ? { hidden: true } : {}) });
-      for (const id of x.replaces ?? []) replaced.add(id);
     }
   } catch { /* none installed */ }
-  // Maps made in the workshop (editor/export_custom.py); ids from 1000 so saved games keep pointing at them.
+  // Maps made in the workshop (editor/export_custom.py, ids from 1000): never offered any more, the 自製地圖 are the
+  // remake's six; kept hidden so saved games on them still load (where their files are installed).
   try {
     const c = await json<{ maps: { id: number; name: string; thumbnail: string }[] }>(`${ASSETS}/maps/custom/index.json`);
-    for (const x of c.maps) list.push({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: true, kind: 'custom', hidden: replaced.has(x.id) });
+    for (const x of c.maps) list.push({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: true, kind: 'custom', hidden: true });
   } catch { /* no custom maps exported */ }
   known = list;
   return list;

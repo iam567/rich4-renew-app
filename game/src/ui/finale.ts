@@ -11,7 +11,8 @@ import type { Game } from '../core/game';
 import '../core/casino-rules'; // registers map 105's rules for a normal game
 import { ASSETS, loadMapData, type MapSprites } from './assets';
 import type { SpriteBank } from './sprites';
-import { CITY_COLORS } from './tycoon';
+import { CITY_COLORS, tycoon } from './tycoon';
+import { FINALE_CHIP } from '../core/chips';
 import './finale.css';
 
 CITY_COLORS[FINALE_MAP] ??= '#d4a017';
@@ -48,4 +49,15 @@ export function noStocks(game: Game | null | undefined): boolean {
 /** The toolbar on 大富翁城: the stock button greyed. */
 export function finaleToolbar(toolbar: HTMLElement | null | undefined, game: Game | null | undefined): void {
   toolbar?.classList.toggle('finale', noStocks(game));
+}
+
+/** 大富翁城's finale plays in chips (19 §2): the screen shows money as 元 / 100 籌碼 there. */
+export function chipMode(): boolean {
+  const w = tycoon.world;
+  return !!w?.finale.active && w.view() === w.finale.index;
+}
+
+/** Money as the screen shows it now: "1,234 籌碼" in the finale, else "12,345 元". */
+export function fmtMoney(n: number, unit = true): string {
+  return chipMode() ? `${Math.trunc(n / FINALE_CHIP).toLocaleString('en-US')}${unit ? ' 籌碼' : ''}` : `${Math.trunc(n).toLocaleString('en-US')}${unit ? ' 元' : ''}`;
 }

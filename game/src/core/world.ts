@@ -19,6 +19,7 @@ import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs
 import { Game, type WorldHooks } from './game';
 import { TYCOON_LABS } from './modules/tools';
 import { Rng, daySeed } from './rng';
+import { ledgerOf, type Ledger } from './stats';
 import { FUNDS, type Answer, type Ask, type GameEvent, type GameSettings, type Option, type Player, type Step, type TravelOption } from './types';
 
 /** 通緝卡's id (cards.ts TYCOON_CARDS). */
@@ -768,6 +769,9 @@ export class World implements WorldHooks {
     return this.cities.map((_, i) => i).filter(i => this.overlordOf(i) === p.id).map(i => `${this.cityName(i)}霸主`);
   }
 
+  /** The statistics ledger shared by the cities (core/stats.ts), when the screen attached one. */
+  get stats(): Ledger | undefined { return ledgerOf(this.players); }
+
   /** 霸主 per city as last announced (ticker lines when it changes). */
   overlords: number[] = [];
 
@@ -779,6 +783,7 @@ export class World implements WorldHooks {
       this.overlords[i] = now;
       for (const [who, gained] of [[was, false], [now, true]] as const) {
         if (who < 0 || this.players[who].bankrupt) continue;
+        if (gained) this.stats?.overlord(who, i);
         const text = gained ? `${this.name(who)}成為${this.cityName(i)}霸主！` : `${this.name(who)}失去${this.cityName(i)}霸主`;
         this.ticker(i, text, 'overlord', who, { important: true });
         this.outbox.push(this.log[this.log.length - 1]);
@@ -1016,7 +1021,8 @@ export class World implements WorldHooks {
     for (const c of this.cities) yield* c.stocks.sellAll(p, true);
     yield* g.tools.dropAll(p, true);
     yield* g.cards.dropAll(p, true);
-    if (released.length > 3) {
+    // 大富翁城 (docs/rules/19 §2): a finalist out of chips leaves the halls unowned, no auction.
+    if (released.length > 3 && !(this.finale.active && g === this.finale.game())) {
       const picked = new Set<number>();
       while (picked.size < 3) picked.add(released[g.rng.below(released.length)]);
       // Bid on by everyone alive in the whole world, after the turn (17 §9): the human live, wherever they are.
@@ -1201,6 +1207,7 @@ export class World implements WorldHooks {
   /** What of a headless city's events is worth a ticker line (17 §10). */
   private toTicker(index: number, s: GameEvent) {
     const c = this.cities[index], n = (p: number) => this.name(p);
+    this.stats?.observe(s, c); // the statistics ledger sees every city's events here (core/stats.ts)
     const fmt = (x: number) => x.toLocaleString('en-US');
     switch (s.t) {
       case 'buy': {
@@ -1252,6 +1259,7 @@ export class World implements WorldHooks {
     this.date = date;
     this.daysElapsed += 1;
     for (const c of this.cities) { c.date = date; c.daysElapsed = this.daysElapsed; }
+    this.stats?.newDay(this.players, p => this.wealth(p), this.cities.map(c => c.board), this.daysElapsed);
     this.mask(this.view());
     yield { t: 'day', date, newMonth };
     this.updatePriceIndex();

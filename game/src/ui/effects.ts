@@ -270,20 +270,33 @@ export class Effects {
     /** Drawn this much larger around the clip's bottom centre (small clips on a high-resolution screen). */
     grow?: number;
   } = {}): Promise<void> {
-    const clip = await withTimeout(loadClip(this.host.bank, res), 6000).catch(() => null);
+    // Starts as soon as the first frames are decoded; the rest decode while it plays (a frame not ready yet is
+    // held on the last one, the clock waiting for it).
+    const L = loading(this.host.bank, res), clip = L.clip, n = clip.frames.length;
     const fire = (upTo: number) => { for (const k of Object.keys(o.at ?? {})) if (Number(k) <= upTo) { o.at![Number(k)](); delete o.at![Number(k)]; } };
-    if (!clip?.frames.length) { fire(1e9); return; }
-    const host = this.host, delay = o.delay ?? flcDelay(res), n = clip.frames.length;
-    let start = -1, skip = false;
+    const lead = Math.min(n, CLIP_LEAD);
+    const ok = await withTimeout(Promise.race([L.done.then(() => true), until(() => L.head() >= lead)]), 6000).catch(() => false);
+    if (!ok || !n || !L.head()) { fire(1e9); return; }
+    const host = this.host, delay = o.delay ?? flcDelay(res);
+    let start = -1, skip = false, pos = 0, last = 0, stalled = 0;
     const e: Effect = {
       done: false,
       finish: () => fire(1e9),
       draw: (add, now) => {
-        if (start < 0) start = now;
-        const i = skip ? 1e9 : Math.floor((now - start) / delay);
+        if (start < 0) { start = now; last = now; }
+        const dt = now - last;
+        last = now;
+        // The clock runs only while the frame it moves into is decoded (at most STALL_MS of waiting in all).
+        const want = Math.floor((pos + dt) / delay);
+        if (want < n && want >= L.head() && stalled < STALL_MS) { stalled += dt; if (e.deadline !== undefined) e.deadline += dt; }
+        else pos += dt;
+        const i = skip ? 1e9 : Math.floor(pos / delay);
         fire(Math.min(i, n - 1));
         if (i >= n + Math.ceil((o.hold ?? 0) / delay)) { e.done = true; return; }
-        const k = Math.min(i, n - 1), img = clip.frames[k], r = clip.rects[k];
+        let k = Math.min(i, n - 1);
+        while (k > 0 && !clip.frames[k]) k--;
+        const img = clip.frames[k], r = clip.rects[k];
+        if (!img) return;
         const p = typeof spot === 'function' ? spot() : spot, q = host.project(p.x, p.y), z = host.scale;
         const [ox, oy] = o.origin ?? [clip.w / 2, clip.h / 2];
         const [dx, dy] = o.offset ?? [0, 0];
@@ -328,6 +341,14 @@ function caption(ctx: CanvasRenderingContext2D, text: string, x: number, bottom:
   });
 }
 
+/** Frames decoded before a clip starts; the longest wait a clip makes for its later frames while playing. */
+const CLIP_LEAD = 8, STALL_MS = 5000;
+/** Resolves true once `test()` holds (checked every frame), false after `ms`. */
+const until = (test: () => boolean, ms = 6500) => new Promise<boolean>(ok => {
+  const end = performance.now() + ms;
+  const f = () => (test() ? ok(true) : performance.now() > end ? ok(false) : requestAnimationFrame(f));
+  f();
+});
 const withTimeout = <T>(p: Promise<T>, ms: number) => Promise.race([p, new Promise<T>((_, no) => setTimeout(() => no(new Error('timeout')), ms))]);
 
 /** Frame counts of the FLC clips (rich4-assets manifest), for the originals that have no redrawn frames. */
@@ -345,64 +366,121 @@ const FLC_SIZE: Record<number, [number, number]> = { 524: [440, 74], 526: [110, 
  * sits in the clip's square (original px); null for a whole frame.
  */
 export interface Clip { frames: CanvasImageSource[]; rects: ({ x: number; y: number; w: number; h: number } | null)[]; w: number; h: number }
-const clips = new Map<number, Promise<Clip>>();
-/** Decoded size of the cached clips: a 440×440 clip at 2× is ~3 MB a frame, 100+ MB for a long one. */
-const clipBytes = new Map<number, number>();
-const CLIP_BUDGET = 160 * 1024 * 1024;
 
 /**
- * Loads a clip's frames: the 4× redraws (already transparent) scaled to at most 2× the original size, so a
- * 440×440 clip keeps a sharp look without holding hundreds of MB; else the originals with the key colour
- * (pixel 0,0) made transparent. The last few clips stay cached.
+ * A clip being decoded: its frames fill in (nearly) in order, so playing can start with the first ones while the
+ * rest decode behind it (a 66-frame clip of 1760² redraws takes 2–3 s to decode on a phone; waiting for all of it
+ * held the game that long, docs/rules/11 §0.3).
  */
-export function loadClip(bank: SpriteBank, res: number): Promise<Clip> {
+interface Loading {
+  clip: Clip;
+  /** Frames 0..head-1 are decoded. */
+  head(): number;
+  /** Every frame decoded (or failed). */
+  done: Promise<Clip>;
+  /** Decoded bytes once done. */
+  bytes: number;
+}
+const clips = new Map<number, Loading>();
+/** Clips kept whatever is played meanwhile (decoded in idle time at map load: they play on any lot, any turn). */
+const pinned = new Set<number>();
+/** A 440×440 clip at 2× is ~3 MB a frame before cropping, 100+ MB for a long one. Pinned clips do not count. */
+const CLIP_BUDGET = 128 * 1024 * 1024, CLIP_COUNT = 6;
+/** Scale cap per clip (×original px): the fireworks are soft glows, 1.5× looks the same and is half the memory. */
+const CLIP_CAP: Record<number, number> = { 523: 1.5 };
+/** Frames decoded at once (two decoding workers, each with a request in flight and one queued). */
+const CLIP_PARALLEL = 4;
+
+function startLoad(bank: SpriteBank, res: number): Loading {
+  const [w, h] = FLC_SIZE[res] ?? [440, 440], n = FLC_FRAMES[res] ?? 0;
+  const cap = Math.min(CLIP_CAP[res] ?? 4, Math.max(1, Math.floor(1024 / Math.max(w, h))));
+  const frames: CanvasImageSource[] = new Array(n), rects: Clip['rects'] = new Array(n).fill(null);
+  const got = new Uint8Array(n);
+  let head = 0;
+  const clip: Clip = { frames, rects, w, h };
+  const one = async (i: number) => {
+    const a = bank.art('Data', res, i);
+    if (a?.hd) {
+      // Decoded off the main thread (a clip is 40+ large frames) and cropped to what shows: a 440×440 clip
+      // frame is mostly transparent, and a whole one at 2× is 3 MB to hold and to hand to the GPU. Two workers
+      // take alternate frames.
+      const c = await decodeCropped(a.src, { w: Math.round(w * cap), h: Math.round(h * cap) }, i & 1 ? 'clip2' : 'clip');
+      const sx = w / c.fw, sy = h / c.fh;
+      rects[i] = c.w === c.fw && c.h === c.fh ? null : { x: c.x * sx, y: c.y * sy, w: c.w * sx, h: c.h * sy };
+      frames[i] = c.pic;
+      return;
+    }
+    const blob = await (await fetch(`${ASSETS}/orig/Data/${String(res).padStart(4, '0')}-FLC/frame-${String(i).padStart(3, '0')}.png`)).blob();
+    frames[i] = keyOut(await createImageBitmap(blob));
+  };
+  let failed: unknown = null;
+  // In frame order, a few at a time, so the first frames are ready first.
+  let next = 0;
+  const worker = async () => {
+    while (next < n) {
+      const i = next++;
+      try { await one(i); } catch (e) { failed ??= e; }
+      got[i] = 1;
+      while (head < n && got[head]) head++;
+    }
+  };
+  const L: Loading = {
+    clip, head: () => head, bytes: 0,
+    done: Promise.all(Array.from({ length: Math.min(CLIP_PARALLEL, n) }, worker)).then(() => {
+      // A clip with a frame missing is not kept (asked again next time); one that never decodes plays nothing.
+      if (failed && !frames.some(f => f)) throw failed;
+      if (failed) for (let i = 0; i < n; i++) frames[i] ??= frames[i - 1] ?? frames.find(f => f)!;
+      L.bytes = frames.reduce((s, f) => { const { w, h } = picSize(f); return s + w * h * 4; }, 0);
+      if (failed) clips.delete(res);
+      return clip;
+    }),
+  };
+  return L;
+}
+
+/** The clip's loading record, started when needed; the most recently used last (LRU order). */
+function loading(bank: SpriteBank, res: number): Loading {
   let c = clips.get(res);
   if (c) { clips.delete(res); clips.set(res, c); return c; }
-  c = (async () => {
-    const [w, h] = FLC_SIZE[res] ?? [440, 440], n = FLC_FRAMES[res] ?? 0;
-    const cap = Math.min(4, Math.max(1, Math.floor(1024 / Math.max(w, h))));
-    const rects: Clip['rects'] = [];
-    const frames = await Promise.all(Array.from({ length: n }, async (_, i) => {
-      const a = bank.art('Data', res, i);
-      if (a?.hd) {
-        // Decoded off the main thread (a clip is 40+ large frames) and cropped to what shows: a 440×440 clip
-        // frame is mostly transparent, and a whole one at 2× is 3 MB to hold and to hand to the GPU.
-        const c = await decodeCropped(a.src, { w: w * cap, h: h * cap });
-        const sx = w / c.fw, sy = h / c.fh;
-        rects[i] = c.w === c.fw && c.h === c.fh ? null : { x: c.x * sx, y: c.y * sy, w: c.w * sx, h: c.h * sy };
-        return c.pic;
-      }
-      rects[i] = null;
-      const blob = await (await fetch(`${ASSETS}/orig/Data/${String(res).padStart(4, '0')}-FLC/frame-${String(i).padStart(3, '0')}.png`)).blob();
-      return keyOut(await createImageBitmap(blob));
-    }));
-    return { frames, rects, w, h };
-  })();
+  c = startLoad(bank, res);
   clips.set(res, c);
-  c.then(clip => {
-    clipBytes.set(res, clip.frames.reduce((n, f) => { const { w, h } = picSize(f); return n + w * h * 4; }, 0));
-    // Least recently played first, while over the budget (the newest always stays).
-    for (const k of clips.keys()) {
-      if (k === res || [...clipBytes.values()].reduce((a, b) => a + b, 0) <= CLIP_BUDGET) break;
-      clips.delete(k); clipBytes.delete(k);
+  const me = c;
+  c.done.then(() => {
+    // Least recently played first, while over the budget (the newest and the pinned always stay).
+    const used = () => [...clips].reduce((s, [k, l]) => s + (pinned.has(k) ? 0 : l.bytes), 0);
+    for (const [k] of [...clips]) {
+      if (used() <= CLIP_BUDGET) break;
+      if (k !== res && !pinned.has(k)) clips.delete(k);
     }
-  }, () => { clips.delete(res); clipBytes.delete(res); });
-  while (clips.size > 4) { const k = clips.keys().next().value!; clips.delete(k); clipBytes.delete(k); }
+  }, () => { if (clips.get(res) === me) clips.delete(res); });
+  const loose = [...clips.keys()].filter(k => !pinned.has(k));
+  while (loose.length > CLIP_COUNT) clips.delete(loose.shift()!);
   return c;
 }
 
 /**
- * Starts loading clips ahead of their use (a tool chosen, a menu opened, an event about to play), one after the
- * other so they do not crowd out the pictures the board needs now. Already cached ones cost nothing.
+ * Loads a clip's frames: the 4× redraws (already transparent) scaled to at most 2× the original size, so a
+ * 440×440 clip keeps a sharp look without holding hundreds of MB; else the originals with the key colour
+ * (pixel 0,0) made transparent. The last few clips stay cached. Resolves when every frame is decoded.
  */
-export function preloadClips(bank: SpriteBank, ids: number[]): Promise<void> {
+export function loadClip(bank: SpriteBank, res: number): Promise<Clip> { return loading(bank, res).done; }
+
+/**
+ * Starts loading clips ahead of their use (a tool chosen, a menu opened, an event about to play), one after the
+ * other so they do not crowd out the pictures the board needs now. Already cached ones cost nothing. `pin` keeps
+ * them cached for the rest of the session.
+ */
+export function preloadClips(bank: SpriteBank, ids: number[], pin = false): Promise<void> {
   let chain = Promise.resolve();
-  for (const id of ids) chain = chain.then(() => loadClip(bank, id).then(() => undefined, () => undefined));
+  for (const id of ids) {
+    if (pin) pinned.add(id);
+    chain = chain.then(() => loadClip(bank, id).then(() => undefined, () => undefined));
+  }
   return chain;
 }
 
 /** Whether a clip is decoded and ready to play. */
-export function clipReady(res: number): boolean { return clipBytes.has(res); }
+export function clipReady(res: number): boolean { return !!clips.get(res)?.bytes; }
 
 /** Original FLC frames keep the palette's key colour as background: make it transparent. */
 function keyOut(im: ImageBitmap): HTMLCanvasElement {

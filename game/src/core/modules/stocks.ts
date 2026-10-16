@@ -363,15 +363,18 @@ export class Stocks {
     const old = Math.trunc(h.shares * h.avgCost);
     h.shares += n;
     h.avgCost = f32((old + cost) / h.shares);
+    this.g.stats?.stockBought(pid, n, cost);
     return this.rerank(pid, slot);
   }
 
   /** _rich4_sell_stock (03 §5.3): proceeds to the bank deposit, or to the lottery pool when toBank is false. */
   sell(p: Player, slot: number, n: number, toBank: boolean): number {
     const s = this.stocks[slot], h = this.holdings[p.id][slot];
+    const basis = Math.trunc(n * h.avgCost);
     h.shares -= n;
     if (h.shares === 0) h.avgCost = 0;
     const proceeds = Math.trunc(n * s.price);
+    this.g.stats?.stockSold(p.id, n, toBank ? proceeds : 0, basis);
     s.turnQuota += n; s.floatPool += n;
     if (toBank) p.bank += proceeds; else this.g.lotteryPool += proceeds;
     this.rerank(p.id, slot);
@@ -385,6 +388,7 @@ export class Stocks {
    */
   transferShares(seller: number, buyer: number, slot: number, n: number, price: number): boolean {
     const h = this.holdings[seller][slot];
+    this.g.stats?.stockSold(seller, n, Math.trunc(n * price), Math.trunc(n * h.avgCost));
     h.shares -= n;
     if (h.shares === 0) h.avgCost = 0;
     return this.addShares(buyer, slot, n, Math.trunc(n * price));
