@@ -24,7 +24,8 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 /** A colour per city for tags (東京 red, 大阪 orange, 札幌 sky, 九州 green, 沖繩 sea). */
 export const CITY_COLORS: Record<number, string> = { 100: '#e0303c', 101: '#f08a1c', 102: '#3a9be0', 103: '#2ea84a', 104: '#16b3c0' };
 const KEYS: Record<number, string> = { 100: 'tokyo', 101: 'osaka', 102: 'sapporo', 103: 'kyushu', 104: 'okinawa', 105: 'finale' }; // 105 大富翁城 (docs/rules/19)
-export const cityThumb = (mapId: number) => `${ASSETS}/maps/remake/${KEYS[mapId]}-thumb.jpg`;
+/** The city's illustrated postcard (tools/tycoon-art/map_thumbs.py; the same picture as its entry in maps/remake/index.json). */
+export const cityThumb = (mapId: number) => `${ASSETS}/maps/remake/${KEYS[mapId]}-postcard.webp`;
 
 /** The five cities' boards with the tycoon overlay (records only; no ground art is loaded here). */
 async function boards(maps: number[]) {

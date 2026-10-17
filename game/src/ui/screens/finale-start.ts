@@ -39,7 +39,7 @@ fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
       ? `<div class="fs-sold"><span class="ph">以下卡片、道具在大富翁城無法使用，</span><span class="ph">已自動賣出：<b>${mine.sold.map(x => `${esc(x.name)}×${x.n}`).join('、')}</b>，</span><span class="ph">共得 <b>${n(mine.points)}</b> 點券</span></div>`
       : '';
     sc.box(`fs-root ${sc.portrait ? 'por' : 'land'}`, 0, 0, sc.w, sc.h, `
-      <div class="fs-bg" style="background-image:url('${ASSETS}/maps/remake/finale-thumb.jpg')"></div>
+      <div class="fs-bg" style="background-image:url('${ASSETS}/maps/remake/finale-postcard.webp')"></div>
       <div class="fs-rays"></div>
       <div class="fs-title">最終決戰<small>只剩 ${vals.length} 人！全體前往 大富翁城</small></div>
       <div class="fs-cards">${rows}</div>

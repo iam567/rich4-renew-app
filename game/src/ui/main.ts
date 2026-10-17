@@ -93,7 +93,7 @@ async function setup() {
   app.innerHTML = '<div class="loading">載入中…</div>';
   try {
     [maps, bank] = await Promise.all([mapList(), bank ?? SpriteBank.create()]);
-    await initLang(); // 語言 (lang.ts): 简体 converts the page from here on
+    await Promise.all([initLang(), warmThumbs(maps)]); // 語言 (lang.ts): 简体 converts the page from here on
   } catch (e) {
     app.innerHTML = `<div class="loading error">${(e as Error).message}</div>`;
     return;
@@ -102,6 +102,24 @@ async function setup() {
 }
 
 const thumbOf = (id: number) => maps.find(m => m.id === id)?.thumbnail ?? '';
+
+/**
+ * The maps' pictures (the 自製地圖 postcards, tools/tycoon-art/map_thumbs.py) are fetched and decoded while the title
+ * loads, so the new-game / 下一局 pickers, the save slots and the loading screen never show them popping in. The
+ * decoded images are kept referenced for the session (7 small webps); a slow network holds the title at most 1.5 s.
+ */
+const warmed: HTMLImageElement[] = [];
+function warmThumbs(list: MapInfo[]): Promise<unknown> {
+  const urls = [...new Set(list.filter(m => !m.hidden && m.thumbnail).map(m => m.thumbnail))];
+  const all = urls.map(src => {
+    const img = new Image();
+    img.decoding = 'async';
+    img.src = src;
+    warmed.push(img);
+    return typeof img.decode === 'function' ? img.decode().catch(() => undefined) : undefined;
+  });
+  return Promise.race([Promise.all(all), new Promise(ok => setTimeout(ok, 1500))]);
+}
 
 function title() {
   const b = bank!;
