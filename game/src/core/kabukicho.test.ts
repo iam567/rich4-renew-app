@@ -139,4 +139,17 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     kb.daily(g);
     expect(GANG_SPAWNS).toContain(kb.s.gang.node);
   });
+
+  it('黑幫 possesses only a player who stops on its square, not one passing by (like the gods)', () => {
+    const g = new Game(settings(23), board()), kb = kbRules(g)!;
+    const p = g.players[0];
+    p.placed = true; p.whoPlays = 2; p.god = 0; p.node = GANG_SPAWNS[0];
+    kb.s.gang = { node: GANG_SPAWNS[0], holder: -1, days: 0, take: 0, back: 0 };
+    const drain = (f: Generator<unknown, unknown, unknown>) => { let r = f.next(); while (!r.done) r = f.next(); return r.value; };
+    expect(drain(kb.step(g, p, 3) as Generator<unknown, unknown, unknown>)).toBe(3);   // passing: steps left
+    expect(kb.s.gang.holder).toBe(-1);
+    drain(kb.step(g, p, 0) as Generator<unknown, unknown, unknown>);                  // stopping on it
+    expect(kb.s.gang.holder).toBe(0);
+    expect(kb.s.gang.days).toBe(7);
+  });
 });

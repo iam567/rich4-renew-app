@@ -38,10 +38,51 @@ export function kbShopSprite(game: Game, fa: { type: number; level: number }): n
   return first ? first + Math.max(1, Math.min(5, fa.level)) - 1 : null;
 }
 
-/** A small lot's house on 歌舞伎町 (chain stores keep the original's). */
-export function kbHouseSprite(game: Game, l: { level: number; chain: number | boolean }): number | null {
+/**
+ * The small lots' buildings v2 (§9.2, purely visual; owned land without a house keeps the original's character
+ * marker): Lv1 one of twelve street shops, Lv2 the 3–4 floor building grown from it, Lv3 / Lv4 / Lv5 one of six 雑居ビル
+ * of about 5 / 7 / 10 floors (mixed and themed). Which shop and which tall variant a lot has is fixed by the lot (a hash
+ * of the map and the lot), a lot differing from the one before it on its street where it can.
+ */
+/** Each street shop's Lv1 and Lv2 sprites: 便利店, 牛丼店, 理髮店, 麻將館, 拉麵店 (1811..), then 抓娃娃機店, 藥妝店, 咖啡廳,
+ * 烤雞串店, 章魚燒店, 占卜屋, 漫畫網咖 (1861..). */
+const LOT_SHOPS: [number, number][] = [
+  ...[0, 1, 2, 3, 4].map(s => [1811 + 3 * s, 1813 + 3 * s] as [number, number]),
+  ...[0, 1, 2, 3, 4, 5, 6].map(s => [1861 + 2 * s, 1862 + 2 * s] as [number, number]),
+];
+/** The six 雑居ビル at Lv3 (≈5 floors), Lv4 (≈7) and Lv5 (≈10). */
+const TALL_FIRST: Record<number, number> = { 3: 1851, 4: 1831, 5: 1841 };
+const LOT_STYLES = LOT_SHOPS.length, TALL_VARIANTS = 6;
+const looks = new WeakMap<object, { style: number[]; tall: number[] }>();
+function hash(a: number, b: number): number {
+  let h = Math.imul(a ^ 0x9e3779b9, 0x85ebca6b) ^ Math.imul(b + 0x632be5ab, 0xc2b2ae35);
+  h = Math.imul(h ^ (h >>> 15), 0x2c1b3c6d); h = Math.imul(h ^ (h >>> 12), 0x297a2d39);
+  return (h ^ (h >>> 15)) >>> 0;
+}
+function lotLooks(game: Game): { style: number[]; tall: number[] } {
+  const lands = game.board.lands;
+  let v = looks.get(lands);
+  if (!v) {
+    v = { style: [], tall: [] };
+    lands.forEach((l, i) => {
+      const h = hash(game.settings.mapId, l.id), same = i > 0 && lands[i - 1].name === l.name;
+      let st = h % LOT_STYLES, tv = (h >>> 8) % TALL_VARIANTS;
+      if (same && st === v!.style[i - 1]) st = (st + 1) % LOT_STYLES;
+      if (same && tv === v!.tall[i - 1]) tv = (tv + 1) % TALL_VARIANTS;
+      v!.style.push(st); v!.tall.push(tv);
+    });
+    looks.set(lands, v);
+  }
+  return v;
+}
+
+/** A small lot's building on 歌舞伎町 at its level (chain stores keep the original's). */
+export function kbHouseSprite(game: Game, l: { id?: number; level: number; chain: number | boolean }): number | null {
   if (!l.level || l.chain || !kbRules(game)) return null;
-  return HOUSE_SPRITE + Math.max(1, Math.min(5, l.level)) - 1;
+  const lv = Math.max(1, Math.min(5, l.level)), i = game.board.lands.findIndex(x => x.id === l.id);
+  if (i < 0) return HOUSE_SPRITE + lv - 1;
+  const { style, tall } = lotLooks(game);
+  return lv <= 2 ? LOT_SHOPS[style[i]][lv - 1] : TALL_FIRST[lv] + tall[i];
 }
 
 /** The 柏青哥店 / 拉霸店 pads (§7.1: map sprites 9019 / 9020, the size of 9017 / 9018); 0 for any other square. */
@@ -258,7 +299,7 @@ export class KbStreet {
 
   /** Whether a map sprite carries neon (the landmarks, the shops, the houses). */
   static glows(res: number): boolean {
-    return (res >= LANDMARK_FIRST && res <= LANDMARK_LAST) || (res >= 1771 && res <= HOUSE_SPRITE + 4);
+    return (res >= LANDMARK_FIRST && res <= LANDMARK_LAST) || (res >= 1771 && res <= HOUSE_SPRITE + 4) || (res >= 1811 && res <= 1874);
   }
 
   /**

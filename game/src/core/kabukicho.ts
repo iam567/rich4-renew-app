@@ -190,7 +190,9 @@ export class KabukichoRules implements MapRules {
 
   *step(g: Game, p: Player, left: number): Flow<number> {
     const s = this.s.gang;
-    if (s.holder < 0 && s.node && p.node === s.node && !this.minor(p) && p.whoPlays && !g.offRoad(p)) yield* this.possess(g, p);
+    // Only on the square the walk ends on, exactly as the gods (objects.ts step: the objects' table runs when no steps are
+    // left, rich4_player_core_actions.asm:2888); passing by does nothing.
+    if (left === 0 && s.holder < 0 && s.node && p.node === s.node && !this.minor(p) && p.whoPlays && !g.offRoad(p)) yield* this.possess(g, p);
     if (s.holder === p.id && p.god) {          // a god drives 黑幫 off (one possession at a time, as gods do)
       yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: false } };
       yield* g.say(p.id, '神明附身，黑幫走了！');
