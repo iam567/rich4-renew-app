@@ -142,7 +142,7 @@ function lightImage(w: number, h: number, warm: boolean): HTMLCanvasElement {
 // ------------------------------------------------------------------ sound
 
 /** Weather sound levels against the music: the rain/wind bed, and thunder on top of it (master × this). */
-const AMBIENCE = 0.35, THUNDER = 0.55;
+const AMBIENCE = 0.18, THUNDER = 0.5;
 
 /**
  * Rain, wind and thunder made with Web Audio from one buffer of noise (no files): rain = filtered noise, wind =
