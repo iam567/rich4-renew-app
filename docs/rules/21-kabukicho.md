@@ -6,10 +6,10 @@
 
 ## 0 现状与下一步
 
-**状态（2026-10-17）**：设计完成，版面检查全部通过，预览图在 `rich4-redraw-company/kabukicho/preview-layout.png`。接下来是美术（§9）。之后才是实现（§11）。
+**状态（2026-10-17）**：设计完成，版面检查全部通过，预览图在 `rich4-redraw-company/kabukicho/preview-layout.png`。**美术 v1 已完成（130 次请求，全部一次成功，没有重做）**，见 §9.1；接下来是实现（§11）。地图文件已用 `build`（不写 `index.json`，所以游戏的地图列表里还没有它）生成在 `site/assets/remake/kabukicho.*`。
 
 文件：
-- `editor/kabukicho_layout.py`：地图 id 106，事件代码（东京的加上 `pachi` 17 柏青哥店、`slot` 18 拉霸店；图标在美术完成前先借道具店的垫子 `AUX_EXTRA`），规模 `SCALE`，事件组合 `EVENT_MIX`，地价，地形，景观愿望位置，NPC 出现点 `NPC_SPAWN`。
+- `editor/kabukicho_layout.py`：地图 id 106，事件代码（东京的加上 `pachi` 19 柏青哥店、`slot` 20 拉霸店——17、18 是大富豪模式的车站、机场；图标在美术完成前先借道具店的垫子 `AUX_EXTRA`），规模 `SCALE`，事件组合 `EVENT_MIX`，地价，地形，景观愿望位置，NPC 出现点 `NPC_SPAWN`。
 - `editor/kabukicho_routes.py`：路网（§1）。`python3 editor/kabukicho_routes.py` 列出每段路的步距比例。
 - `editor/kabukicho_audit.py`：规则检查。`/usr/bin/python3 editor/kabukicho_audit.py --steps --list`（要 numpy）。
 - `editor/build_kabukicho.py`：check / preview / build（build 写进 `site/assets/remake/`，美术完成后再跑）。
@@ -374,9 +374,31 @@
 | 植物 | 霓虹街的盆栽、自动贩卖机、脚踏车（同沖繩的 plants 批次） | 3 |
 | **合计** | | **≈ 135**（加上少数失败重做，≈ 140–150） |
 
-批次（每批先出预览给用户看）：①地标 16＋垫子＋招牌；②五种店概念 → 25 张店；③小地房屋＋NPC＋路人；④地面 3 种；⑤48 张新闻命运＋22 张事件图；⑥柏青哥／拉霸画面与道具图标。
-
 美术原则：可爱的玩具风夜景、霓虹；**不写任何文字、商标、店名**（招牌只有形状和颜色，文字由游戏叠上）；怪兽头是原创；东横的人群只是可爱的小人偶；泡泡浴、陪酒店的图只画建筑外观、门口、招牌的灯，不画色情内容。
+
+### 9.1 美术 v1（已完成，2026-10-17）
+
+请求记录 `rich4-redraw-company/kabukicho/requests.log`（地面另记在 `map-ground/106/requests.log`），素材空间任务 `kabukicho/vault-job.txt`，备份在素材空间 `大富翁4重制/歌舞伎町/`（sprites、ui、work、106）。预览：`kabukicho/art-preview.jpg`（地标、店、房屋、NPC、路人、垫子、招牌、道具、机台、小物）、`ground-preview.jpg`（三种地面）、`events-preview.jpg`（75 张事件图）。
+
+| 项目 | 请求 | 结果（精灵号，`editor/site/assets/remake/…`） | 工具 |
+|---|---|---|---|
+| 地标 16 | 16 | `sprites/1751–1764、1766、1767`（8 视角） | `tools/tokyo-landmarks/landmarks.py`（`RICH4_CITY=kabukicho`） |
+| 柏青哥店、拉霸店垫子 | 1 | `sprites/9019`、`9020` | `tools/tycoon-art/pads.py`（`RICH4_PADS=kabukicho`） |
+| 五种店概念＋选店招牌 | 1 | `kabukicho/plate-10..13、4.webp` | `tools/tycoon-art/kb_shops.py` |
+| 五种店 × 5 级 | 25 | `sprites/1771–1795`（居酒屋 1771–1775、陪酒店 1776–1780、泡泡浴 1781–1785、地下賭場 1786–1790、研究所 1791–1795） | landmarks.py（`kabukicho_layout.SHOP_SPRITES`） |
+| 小地房屋 1–5 级 | 5 | `sprites/1796–1800` | landmarks.py（`HOUSE_SPRITES`） |
+| 黑幫、拉客仔 | 2 | `sprites/1768`、`1769`（8 视角） | landmarks.py（`NPC_SPRITES`） |
+| 路人 6 种 | 6 | `sprites/1801–1806`，各 16 帧（帧 = 方向 × 4 + 步伐，锚点在脚） | `tools/tycoon-art/kb_walkers.py` |
+| 地面 3 种画风 | 48 | `rich4-ground/106/{ghibli,monopoly,genshin}`（4×4 格，两波） | `tools/ground-redraw/ground.py --map 106`（`maps.MAPS[106]`） |
+| 新闻 24＋命运 24＋店内事件 27 | 19 | `rich4-redraw-company/kabukicho/events/pics/*.png`（1552×1004；`webp` 指令输出给游戏） | `tools/still-redraw/kabukicho-events/events.py` |
+| 柏青哥机台、拉霸机台、兑换所、转轮图案 | 4 | `kabukicho/machines/*.webp` | `tools/tycoon-art/kb_machines.py` |
+| 专属道具图标 4 | 1 | `tools/0617–0620.webp`（確變骰子、計程車券、保鑣、霓虹燈箱） | 同上 |
+| 街道小物＋绿化 32 | 2 | `sprites/2501–2532`，地图的装饰已改用它们（`kabukicho_layout.plants`） | `tools/tokyo-landmarks/kabukicho_plants.py` |
+| **合计** | **130** | | |
+
+店内事件图实际是 27 张（居酒屋 5、陪酒店 6 × 男女两版、泡泡浴 5、地下賭場 5）。共用工具的改动（`landmarks.py` 的 kabukicho 设定、人物与车辆的例外；`pads.py` 的 `RICH4_PADS`；`city_ground.py` 的可选 `PAVED` 铺面）都不改变其他地图的结果（大富翁城地面改前改后逐字节相同，其他城市的提示文字相同）。
+
+要注意的：东宝怪兽头和新闻「怪獸頭點燈」图是原创的卡通怪兽，但仍是有背鳍的恐龙型，若用户觉得太像可重画；新闻「地下賭場大舉報」和命运「酒後打架」的图里出现了穿制服的人（提示写的是官员），若要完全不出现警察可重画这两张。
 
 ## 10 模拟（`editor/kabukicho_sim.py`）
 
@@ -402,7 +424,7 @@
 ## 11 实现要点（之后）
 
 - 地图：`build_kabukicho.py build`（美术完成后），`index.json` 加入第 7 张自製地圖。
-- `MapRules[106]`（同 19 的钩子）：五种店（设施类型 10–13 + 原版 4）、事件表、访客流程、地主暂停（新的玩家状态「處理事務中」天数，存档要存）、住院转盘、黑幫（新的对象类型，附身槽位同神明）、拉客仔（对象）、事件格 17／18（`places.ts`）、专属道具 17–20（`tools.ts`）、新牌堆（`events.ts`，只在地图 106 换牌堆）。
+- `MapRules[106]`（同 19 的钩子）：五种店（设施类型 10–13 + 原版 4）、事件表、访客流程、地主暂停（新的玩家状态「處理事務中」天数，存档要存）、住院转盘、黑幫（新的对象类型，附身槽位同神明）、拉客仔（对象）、事件格 19／20（`places.ts`；垫子精灵 9019／9020）、专属道具 17–20（`tools.ts`）、新牌堆（`events.ts`，只在地图 106 换牌堆）。
 - 画面：事件卡（访客／地主两栏）、柏青哥、拉霸、景品兑换所、电脑的结果通知、头上牌子「處理事務中」「黑幫附身」、路人与霓虹（`board-view.ts` 只在地图有 `walkers` 时启用）。
 - 其他地图逐位不变（`regional-golden.test.ts` 的哈希）。
 - 测试：事件机率（固定随机流）、黑幫的各种情况（经过／停在／被传送到监狱、现金不够、现金 0 砸店）、未成年、女客、电脑的柏青哥结果与兑换。
