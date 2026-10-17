@@ -191,7 +191,7 @@ export type GameEvent =
   /** An actor other than a player (NPC 4-7, robot doll 8) stepped. */
   | { t: 'actor-step'; actor: number; from: number; to: number; dir: number }
   | { t: 'teleport'; p: number; node: number }
-  | { t: 'say'; p?: number; text: string }
+  | { t: 'say'; p?: number; text: string; log?: string }
   | { t: 'buy'; p: number; kind: 'land' | 'facility'; id: number; price: number }
   | { t: 'build'; p: number; kind: 'land' | 'facility'; id: number; level: number; cost: number }
   /** `quiet`: the original moves the money without a message box of its own (its notice came before). */

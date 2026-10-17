@@ -946,7 +946,7 @@ export class World implements WorldHooks {
     const text = `${this.cityName(at)}${house}客滿，${this.name(p.id)}被送到${this.cityName(to)}${house}`;
     this.ticker(at, text, 'overflow', p.id);
     yield { t: 'fx', kind: 'house-full', p: p.id, data: { place, from: at, to, text, days } };
-    yield* g.say(undefined, text);
+    yield* g.say(undefined, `${house}客滿！\n送到${this.cityName(to)}${house}`, text);
     yield* g.insurancePayout(p, days * 2000 * this.priceIndex);
     p.monthBadDays += days;
     yield { t: 'world-sync' };

@@ -402,7 +402,8 @@ export class Game {
     }
   }
 
-  *say(p: number | undefined, text: string): Flow { yield { t: 'say', p, text }; }
+  /** A line in a speech cloud / message box; `log`: the longer line for the log instead (歌舞伎町's short clouds). */
+  *say(p: number | undefined, text: string, log?: string): Flow { yield log ? { t: 'say', p, text, log } : { t: 'say', p, text }; }
 
   /** Hostility _rich4_update_hostility (docs/rules/07 §8). Raising it against one's ally ends the alliance. */
   addHostility(a: number, b: number, delta: number) {

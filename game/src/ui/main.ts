@@ -970,7 +970,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         break;
       case 'say':
         if (!s.text) break;
-        hud.note(s.text, s.p !== undefined && isPlayer(s.p) ? colorOf(s.p) : undefined);
+        hud.note(s.log ?? s.text, s.p !== undefined && isPlayer(s.p) ? colorOf(s.p) : undefined);
         if (await director.say(s)) break;
         // A player's line is their speech cloud (09 §6.3); anything else is the message box.
         if (s.p !== undefined && isPlayer(s.p)) await hud.say(s.p, s.text); else await hud.flash(s.text);

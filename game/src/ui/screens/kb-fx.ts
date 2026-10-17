@@ -99,20 +99,20 @@ fxScreens['kb-merch'] = (ctx, fx) => {
   const d = fx.data ?? {};
   const pic = typeof d.pic === 'string' && /^[a-z0-9-]+$/.test(d.pic) ? `${ASSETS}/maps/remake/kabukicho/merch-${d.pic}.webp` : '';
   return kidCard(ctx, 'merch', `<div class="kbk-card">
-      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(String(d.name ?? ''))}${esc(String(d.shop ?? ''))}</span><span class="kbk-tag">未成年謝絕入場</span></div>
+      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(String(d.name ?? ''))}${esc(String(d.shop ?? ''))}</span><span class="kbk-tag">未成年禁止入場</span></div>
       <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-merch')}" alt="">${pic ? `<img class="kbk-opt kbk-item" src="${pic}" alt="">` : ''}</div>
       <div class="kbk-title">${esc(String(d.item ?? ''))}</div>
-      <div class="kbk-line">${esc(String(d.line ?? ''))}・<em>${fmt(Number(d.amount) || 0)}元</em></div>
+      <div class="kbk-line">買了周邊 <em>−${fmt(Number(d.amount) || 0)}元</em></div>
     </div>`);
 };
 
 fxScreens['kb-park'] = (ctx, fx) => {
   const d = fx.data ?? {}, days = Number(d.days) || 1;
   return kidCard(ctx, 'park', `<div class="kbk-card">
-      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(who(ctx, fx.p))}</span><span class="kbk-tag">未成年謝絕入場</span></div>
+      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(who(ctx, fx.p))}</span><span class="kbk-tag">未成年禁止入場</span></div>
       <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-park')}" alt=""></div>
       <div class="kbk-title">去遊樂場玩 ${days} 天！</div>
-      <div class="kbk-line">被店員帶去附近的遊樂場玩了 ${days} 天・<em>${fmt(Number(d.amount) || 0)}元</em></div>
+      <div class="kbk-line">遊樂場 ${days} 天 <em>−${fmt(Number(d.amount) || 0)}元</em></div>
     </div>`);
 };
 
@@ -173,7 +173,7 @@ function toast(ctx: ScreenContext, fx: Fx, cls: string, title: string, sub = '',
 fxScreens['kb-smash'] = async () => { audio.sfx(Sfx.smallBlast); };
 fxScreens['kb-gang-arrest'] = (ctx, fx) => {
   audio.sfx(Sfx.police);
-  return toast(ctx, fx, 'bad big', '違反暴力團對策法！', '附身結束', `<span class="kbt-line">保護費 <em>${fmt(Number(fx.data?.take) || 0)}元</em> 沒收・坐牢 7 天</span>`, true);
+  return toast(ctx, fx, 'bad big', '違反暴力團對策法！', '附身結束', `<span class="kbt-line">沒收 <em>${fmt(Number(fx.data?.take) || 0)}</em>・坐牢7天</span>`, true);
 };
 // ------------------------------------------------------------------ the prize counter's goods in use (§7.5, §4.1)
 
@@ -225,15 +225,15 @@ function taxiScene(ctx: ScreenContext, fx: Fx, banner: string): Promise<void> {
       <div class="kba-banner">${esc(banner)}</div></div>`, 2300);
 }
 /** A rival's taxi comes for its rider: just before their forced five-dice throw. */
-fxScreens['kb-taxi-ride'] = (ctx, fx) => taxiScene(ctx, fx, `${who(ctx, fx.p)}：計程車來了，擲 5 顆骰子！`);
+fxScreens['kb-taxi-ride'] = (ctx, fx) => taxiScene(ctx, fx, '計程車來了！擲5顆');
 
 fxScreens['kb-tool'] = (ctx, fx) => {
   const id = Number(fx.data?.tool);
-  if (id === 18) return taxiScene(ctx, fx, fx.target !== undefined && fx.target !== fx.p ? `${who(ctx, fx.target)}被塞上了計程車！下回合擲 5 顆骰子` : '計程車券：這回合擲 5 顆骰子！');
+  if (id === 18) return taxiScene(ctx, fx, fx.target !== undefined && fx.target !== fx.p ? `${who(ctx, fx.target)}被塞上計程車！` : '計程車：擲5顆骰子！');
   if (id !== 17) return Promise.resolve();
   audio.sfx(Sfx.cardUse);
   const src = toolIconSrc(ctx, id);
-  return toast(ctx, fx, 'good', '確變骰子', '這回合多擲一顆，挑一顆不算', src ? `<img class="kbt-tool" src="${src}" alt="">` : '');
+  return toast(ctx, fx, 'good', '確變骰子', '多擲一顆，挑一顆不算', src ? `<img class="kbt-tool" src="${src}" alt="">` : '');
 };
 
 /** 保鑣卡: the bodyguard (the card's picture) steps in front of the owner, the 黑幫 backs off: 保護費免了！ */
@@ -265,4 +265,4 @@ export function warmKbFx(bank: { art: ScreenContext['bank']['art'] }) {
   }
 }
 // The owner made to wait (no line of its own); the turns it sits out are said by the rules.
-fxScreens['kb-busy'] = (ctx, fx) => (fx.data?.sitting ? Promise.resolve() : toast(ctx, fx, 'busy', '處理事務中', `${who(ctx, fx.p)}要停 ${Number(fx.data?.turns) || 0} 回合`));
+fxScreens['kb-busy'] = (ctx, fx) => (fx.data?.sitting ? Promise.resolve() : toast(ctx, fx, 'busy', '處理事務中', `停 ${Number(fx.data?.turns) || 0} 回合`));

@@ -117,7 +117,7 @@ export class KabukichoRules implements MapRules {
     if (id !== KB_RAMPAGE || !g.cards.consume(p, id)) return false;
     this.s.extra[p.id] = (this.s.extra[p.id] ?? 0) + 1;
     yield { t: 'fx', kind: 'kb-rampage', p: p.id, data: { turns: this.s.extra[p.id] } };
-    yield* g.say(p.id, '暴走模式！\n這回合走完，馬上再來一回合');
+    yield* g.say(p.id, '暴走！再來一回合', `${g.name(p.id)}使用暴走卡：這回合走完，馬上再來一整個回合`);
     return true;
   }
 
@@ -184,7 +184,7 @@ export class KabukichoRules implements MapRules {
     const d = rng.below(4);
     yield { t: 'fx', kind: 'kb-hospital-wheel', p: p.id, data: { days: d } };
     if (d) yield* this.g.sendTo(p, 'hospital', d);
-    else yield* this.g.say(p.id, '轉盤停在 0：沒事，休息一下就好！');
+    else yield* this.g.say(p.id, '0 天：沒事！', `${this.g.name(p.id)}的住院轉盤停在 0：沒事`);
     return d;
   }
 
@@ -196,7 +196,7 @@ export class KabukichoRules implements MapRules {
     if (n <= 0) return false;
     this.s.busy[p.id] = n - 1;
     yield { t: 'fx', kind: 'kb-busy', p: p.id, data: { turns: n - 1, sitting: true } };
-    yield* g.say(p.id, `${g.name(p.id)}處理事務中，這回合停下${n > 1 ? `（之後還要停${n - 1}回合）` : ''}！`);
+    yield* g.say(p.id, '處理事務中！', `${g.name(p.id)}處理事務中，這回合停下${n > 1 ? `（之後還要停${n - 1}回合）` : ''}`);
     return true;
   }
 
@@ -231,7 +231,7 @@ export class KabukichoRules implements MapRules {
     if (left === 0 && s.holder < 0 && s.node && p.node === s.node && p.whoPlays && !g.offRoad(p)) yield* this.possess(g, p);
     if (s.holder === p.id && p.god) {          // a god drives 黑幫 off (one possession at a time, as gods do)
       yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: false } };
-      yield* g.say(p.id, '神明附身，黑幫走了！');
+      yield* g.say(p.id, '神明來了，黑幫走了！');
       this.gangLeaves();
     }
     if (s.holder === p.id && g.node(p.node).event === 4) { yield* this.arrest(g, p, true); return 0; }
@@ -247,7 +247,7 @@ export class KabukichoRules implements MapRules {
     if (p.god) yield* g.objects.detachGod(p);
     Object.assign(this.s.gang, { holder: p.id, days: GANG_DAYS, take: 0, node: 0, back: 0 });
     yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: true } };
-    yield* g.say(p.id, `${g.name(p.id)}被黑幫附身！七天內停在對手的地上，地主要付你保護費`);
+    yield* g.say(p.id, '黑幫附身！', `${g.name(p.id)}被黑幫附身！七天內停在對手的地上，地主要付你保護費`);
     return true;
   }
 
@@ -258,7 +258,7 @@ export class KabukichoRules implements MapRules {
     if (this.s.gang.holder !== p.id) return false;
     this.gangLeaves();
     yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: false, sent: true } };
-    yield* g.say(p.id, '送神符：黑幫被送走了！');
+    yield* g.say(p.id, '送神符：黑幫走了！');
     return true;
   }
 
@@ -308,7 +308,7 @@ export class KabukichoRules implements MapRules {
     const take = Math.min(this.s.gang.take, Math.max(0, p.cash + p.bank));
     this.gangLeaves();
     yield { t: 'fx', kind: 'kb-gang-arrest', p: p.id, data: { take } };
-    yield* g.say(p.id, `違反暴力團對策法！\n\n${g.name(p.id)}的保護費 ${fmt(take)}元 全部沒收，坐牢${GANG_PRISON_DAYS}天`);
+    yield* g.say(p.id, `違反暴力團對策法！\n沒收${fmt(take)}・坐牢${GANG_PRISON_DAYS}天`, `違反暴力團對策法！${g.name(p.id)}的保護費 ${fmt(take)}元 全部沒收，坐牢${GANG_PRISON_DAYS}天`);
     if (take > 0) yield* g.transfer(p.id, -1, take, 0, '沒收保護費');
     if (!p.whoPlays || g.over) return;
     if (send) yield* g.sendTo(p, 'prison', GANG_PRISON_DAYS);
@@ -328,18 +328,18 @@ export class KabukichoRules implements MapRules {
     if (owner.cards.includes(KB_CARD)) {
       g.cards.consume(owner, KB_CARD);
       yield { t: 'fx', kind: 'kb-bodyguard', p: owner.id, target: p.id };
-      yield* g.say(owner.id, `${g.name(owner.id)}的保鑣卡：保鑣出面，保護費免了！`);
+      yield* g.say(owner.id, '保鑣出面！保護費免了', `${g.name(owner.id)}的保鑣卡：保鑣出面，保護費免了！`);
       return;
     }
     if (owner.cash <= 0) {
       const hit = this.lower(ref);
       yield { t: 'fx', kind: 'kb-smash', p: p.id, target: owner.id, data: { ref, hit } };
-      yield* g.say(p.id, `${g.name(owner.id)}沒有現金付保護費……店被砸了！${hit ? '（降一級）' : ''}`);
+      yield* g.say(p.id, `店被砸了！${hit ? '降一級' : ''}`, `${g.name(owner.id)}沒有現金付保護費……店被砸了！${hit ? '（降一級）' : ''}`);
       yield { t: 'board' };
       return;
     }
     const a = Math.min(owner.cash, Math.max(0, Math.trunc(amount)));
-    yield* g.say(p.id, `黑幫上門！\n\n${g.name(owner.id)}付${g.name(p.id)}保護費${fmt(a)}元`);
+    yield* g.say(p.id, `保護費 +${fmt(a)}`, `黑幫上門！${g.name(owner.id)}付${g.name(p.id)}保護費${fmt(a)}元`);
     yield* g.transfer(owner.id, p.id, a, 1, '保護費');
     this.s.gang.take += a;
   }
@@ -406,13 +406,13 @@ export class KabukichoRules implements MapRules {
     this.s.tout.node = TOUT_SPAWNS.find(x => x !== this.s.tout.node) ?? this.s.tout.node;
     if (!shops.length) {
       yield { t: 'fx', kind: 'kb-tout', p: p.id, data: { ok: false } };
-      yield* g.say(p.id, '拉客仔搭訕失敗，沒有店可以去！');
+      yield* g.say(p.id, '拉客失敗！', '拉客仔搭訕失敗，沒有店可以去');
       return;
     }
     const f = shops[this.stream(0x70a7, p.id).below(shops.length)], node = this.facilityNode(f);
     if (!node) return;
     yield { t: 'fx', kind: 'kb-tout', p: p.id, data: { ok: true, facility: f.id, name: f.name } };
-    yield* g.say(p.id, `${g.name(p.id)}被拉客仔拉進${f.name}的${shopNameFor(f.type, this.female(p))}！`);
+    yield* g.say(p.id, `被拉進${shopNameFor(f.type, this.female(p))}！`, `${g.name(p.id)}被拉客仔拉進${f.name}的${shopNameFor(f.type, this.female(p))}`);
     p.lastNode = p.node; p.node = node.id;
     yield { t: 'teleport', p: p.id, node: node.id };
     if (this.s.gang.holder === p.id && f.owner !== p.id + 1) {
@@ -505,7 +505,7 @@ export class KabukichoRules implements MapRules {
     const owner = g.players[f.owner - 1];
     if (!owner || owner.bankrupt || !owner.whoPlays) return;
     const female = this.female(p), shop = shopNameFor(f.type, female), where = `${g.name(owner.id)}的${f.name}${shop}`;
-    if (this.s.closed[f.id]) { yield* g.say(undefined, `${where}停業中，今天不營業！`); return; }
+    if (this.s.closed[f.id]) { yield* g.say(undefined, `${shop}停業中！`, `${where}停業中，今天不營業`); return; }
     if (this.s.gang.holder === p.id) {
       const mult = yield* g.spin(f.type === 13 ? WheelKind.hotel : WheelKind.shopping, this.wheelName(g, owner, f, p));
       yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
@@ -523,16 +523,16 @@ export class KabukichoRules implements MapRules {
     let mult: number;
     if ((f.type === 12 && female) || (f.type === 11 && female && this.mod('hostweek'))) {
       yield { t: 'fx', kind: 'kb-free', p: p.id, target: owner.id, data: { facility: f.id, shop } };
-      yield* g.say(undefined, `${where}\n\n女性顧客免費！`);
+      yield* g.say(undefined, '女性顧客免費！', `${where}：女性顧客免費`);
       return;
     }
-    if (vip) { mult = 1; yield* g.say(p.id, 'VIP會員：不轉盤，只付一倍'); }
+    if (vip) { mult = 1; yield* g.say(p.id, 'VIP：只付一倍', 'VIP會員：不轉盤，只付一倍'); }
     else mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
     let rate = this.rate(f);
     if (f.tmpState) rate *= 2;
     const k = (f.type === 10 && this.mod('matsuri') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1);
     const amount = Math.round(rate * mult * k);
-    yield* g.say(undefined, `${where}\n\n您的消費金額為\n${fmt(rate)}x${mult}倍${k !== 1 ? `x${k}` : ''}=${fmt(amount)}元`);
+    yield* g.say(undefined, `消費 −${fmt(amount)}元`, `${where}：消費 ${fmt(rate)}×${mult}倍${k !== 1 ? `×${k}` : ''}＝${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, '消費', true);
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, '消費');
   }
@@ -548,11 +548,11 @@ export class KabukichoRules implements MapRules {
     const shop = shopNameFor(f.type, this.female(p));
     yield { t: 'fx', kind: 'kb-refused', p: p.id, target: owner.id, data: { facility: f.id, shop } };
     if (f.type === 13) {
-      yield* g.say(p.id, `${where}：${MINOR_REFUSED}…\n但被店員帶去附近的遊樂場玩！`);
+      yield* g.say(p.id, '未成年禁止入場！\n去遊樂場玩囉', `${where}：${MINOR_REFUSED}…被店員帶去附近的遊樂場玩`);
       yield* this.hotelStay(g, p, owner, f, true);
       return;
     }
-    yield* g.say(p.id, `${where}：${MINOR_REFUSED}${MERCH_LINE}`);
+    yield* g.say(p.id, '未成年禁止入場！', `${where}：${MINOR_REFUSED}${MERCH_LINE}`);
     if (!(yield* g.ownerCollects(owner, f.tmpState, '消費'))) return;
     const goods = MERCH[f.type] ?? MERCH[11], item = goods[this.stream(0x3e7c + f.id, p.id).below(goods.length)];
     const vip = this.s.vip[p.id] > 0;
@@ -563,7 +563,7 @@ export class KabukichoRules implements MapRules {
     const k = this.mod('typhoon') ? 0.5 : 1;
     const amount = Math.round(rate * mult * k);
     yield { t: 'fx', kind: 'kb-merch', p: p.id, target: owner.id, data: { facility: f.id, shop, name: f.name, pic: item.pic, item: item.name, line: item.line, amount } };
-    yield* g.say(undefined, `${where}\n\n${item.name}\n${fmt(rate)}x${mult}倍${k !== 1 ? `x${k}` : ''}=${fmt(amount)}元`);
+    yield* g.say(undefined, `買了周邊 −${fmt(amount)}元`, `${where}：${item.name} ${fmt(rate)}×${mult}倍${k !== 1 ? `×${k}` : ''}＝${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, '消費', true);
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, '消費');
   }
@@ -589,7 +589,7 @@ export class KabukichoRules implements MapRules {
     const days = vip ? 1 : yield* g.spin(WheelKind.hotel, this.wheelName(g, owner, f, p));
     const amount = rate * days;
     if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, data: { facility: f.id, days, amount } };
-    yield* g.say(undefined, `${park ? `在遊樂場玩${days}天` : `休息${days}天`}\n\n費用${fmt(amount)}元！`);
+    yield* g.say(undefined, `${park ? `遊樂場${days}天` : `休息${days}天`}\n−${fmt(amount)}元`, `${g.name(p.id)}${park ? `在遊樂場玩${days}天` : `在${this.wheelName(g, owner, f, p)}休息${days}天`}，費用${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, fee, false);
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, fee);
     if (!days || !p.whoPlays || g.over) return;
@@ -651,7 +651,7 @@ export class KabukichoRules implements MapRules {
     const name = kind === 'pachinko' ? '柏青哥店' : '拉霸店', human = g.isHuman(p);
     if (p.points < M.BUY_POINTS) {
       yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, skipped: true, text: `${g.name(p.id)}　${name}：點券不足，只能路過看看` } };
-      if (human) yield* g.say(p.id, '點券不足，不能玩！');
+      if (human) yield* g.say(p.id, '點券不足！', '點券不足，不能玩');
       return;
     }
     const rng = this.stream(kind === 'pachinko' ? 0x9ac1 : 0x5107, p.id);
@@ -746,13 +746,13 @@ export class KabukichoRules implements MapRules {
     const taxiBound = (this.s.taxi?.[p.id] ?? 0) > 0;
     switch (tool) {
       case T_KAKUHEN:
-        if (this.s.roll[p.id] || taxiBound) { if (taxiBound) yield* g.say(p.id, '這回合已經被塞上計程車了！'); return false; }
+        if (this.s.roll[p.id] || taxiBound) { if (taxiBound) yield* g.say(p.id, '已被塞上計程車！'); return false; }
         this.s.roll[p.id] = tool; p.tools[tool - 1] -= 1;
         yield { t: 'fx', kind: 'kb-tool', p: p.id, data: { tool } };
         g.stats?.toolUsed(p.id, tool);
         return true;
       case T_TAXI: {
-        if (this.mod('taxistrike')) { yield* g.say(p.id, '計程車大罷工中，叫不到車！'); return false; }
+        if (this.mod('taxistrike')) { yield* g.say(p.id, '罷工中，叫不到車！', '計程車大罷工中，叫不到車'); return false; }
         // Yourself (this throw) or anyone else on the road (their next throw), §7.5.
         let who = param ?? -1;
         if (who < 0) {
@@ -768,12 +768,12 @@ export class KabukichoRules implements MapRules {
           this.s.roll[p.id] = tool;
         } else {
           if (g.offRoad(q) || !q.whoPlays) return false;
-          if ((this.s.taxi[q.id] ?? 0) > 0) { yield* g.say(p.id, `${g.name(q.id)}已經被塞上計程車了！`); return false; }
+          if ((this.s.taxi[q.id] ?? 0) > 0) { yield* g.say(p.id, '對方已有計程車！', `${g.name(q.id)}已經被塞上計程車了`); return false; }
           this.s.taxi[q.id] = 1;
         }
         p.tools[tool - 1] -= 1;
         yield { t: 'fx', kind: 'kb-tool', p: p.id, target: q.id, data: { tool } };
-        if (q.id !== p.id) yield* g.say(p.id, `${g.name(q.id)}被塞上了計程車！\n下回合擲 5 顆骰子`);
+        if (q.id !== p.id) yield* g.say(p.id, `${g.name(q.id)}被塞上計程車！\n下回合擲5顆`, `${g.name(q.id)}被塞上了計程車！下回合擲 5 顆骰子`);
         g.stats?.toolUsed(p.id, tool);
         return true;
       }
@@ -788,7 +788,7 @@ export class KabukichoRules implements MapRules {
       const q = g.players[h];
       if (q && q.whoPlays && !g.offRoad(q) && this.s.gang.take >= 10000 * g.priceIndex) {
         p.tools[T_TELEPORT - 1] -= 1;
-        yield* g.say(p.id, `使用傳送機：把${g.name(q.id)}送到監獄門口！`);
+        yield* g.say(p.id, `傳送機：${g.name(q.id)}送監獄！`, `使用傳送機：把${g.name(q.id)}送到監獄門口`);
         q.lastNode = q.node; q.node = prison.id;
         yield { t: 'teleport', p: q.id, node: prison.id };
         yield* this.arrest(g, q, true);
@@ -800,7 +800,7 @@ export class KabukichoRules implements MapRules {
     if (p.tools[T_TAXI - 1] > 0 && !this.mod('taxistrike')) {
       if (!(this.s.taxi[p.id] > 0) && this.taxiWorth(g, p)) { yield* g.say(p.id, '使用計程車券'); return yield* this.useTool(g, p, T_TAXI, p.id); }
       const q = this.taxiVictim(g, p);
-      if (q) { yield* g.say(p.id, `使用計程車券：送${g.name(q.id)}一程`); return yield* this.useTool(g, p, T_TAXI, q.id); }
+      if (q) { yield* g.say(p.id, '使用計程車券', `使用計程車券：送${g.name(q.id)}一程`); return yield* this.useTool(g, p, T_TAXI, q.id); }
     }
     if (p.tools[T_KAKUHEN - 1] > 0 && r.below(3) === 0) { yield* g.say(p.id, '使用確變骰子'); return yield* this.useTool(g, p, T_KAKUHEN); }
     return false;
@@ -961,7 +961,7 @@ export class KabukichoRules implements MapRules {
     const days = (k: string, d: number) => { s.mods[k] = Math.max(s.mods[k] ?? 0, d); };
     const show = (text = c.text) => this.board(g, p, c, this.fill(text, {}));
     switch (c.id) {
-      case 'kb-n-matsuri': yield* show(); days('matsuri', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內居酒屋收費加倍' }]); return true;
+      case 'kb-n-matsuri': yield* show(); days('matsuri', 3); yield* this.result(g, p, c, 'bonus', [{ text: '居酒屋3天收費×2' }]); return true;
       case 'kb-n-hygiene': {
         const list = shops(10); if (!list.length) return false;
         yield* this.board(g, p, c, this.fill(c.text, { amount: 2 * this.rate(list[0]) }));
@@ -975,13 +975,13 @@ export class KabukichoRules implements MapRules {
         yield* this.board(g, p, c, this.fill(c.text, { owner: g.name(o.id), shop: `${f.name}陪酒店`, amount }));
         g.gain(o, amount, 0); yield* this.result(g, p, c, 'award', [{ p: o.id, text: '獎金', amount }]); return true;
       }
-      case 'kb-n-newmachine': yield* show(); days('newmachine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內柏青哥大當たり 1/60 → 1/40' }]); return true;
-      case 'kb-n-setting6': yield* show(); days('setting6', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內拉霸 BIG 1/150 → 1/100' }]); return true;
+      case 'kb-n-newmachine': yield* show(); days('newmachine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '柏青哥3天易中獎' }]); return true;
+      case 'kb-n-setting6': yield* show(); days('setting6', 3); yield* this.result(g, p, c, 'bonus', [{ text: '拉霸3天易中BIG' }]); return true;
       case 'kb-n-gangwar': {
         if (s.gang.holder < 0 && !s.gang.node) return false;
         yield* show(); const h = s.gang.holder; this.gangLeaves();
         if (h >= 0) yield { t: 'fx', kind: 'kb-gang', p: h, data: { on: false } };
-        yield* this.result(g, p, c, 'release', [{ ...(h >= 0 ? { p: h } : {}), text: '黑幫離開，七天後再回來' }]); return true;
+        yield* this.result(g, p, c, 'release', [{ ...(h >= 0 ? { p: h } : {}), text: '黑幫離開了' }]); return true;
       }
       case 'kb-n-touts': yield* show(); s.tout.gone = 5; yield* this.result(g, p, c, 'none', [{ text: '拉客仔消失 5 天' }]); return true;
       case 'kb-n-kaiju': yield* this.board(g, p, c, this.fill(c.text, { amount: 20 })); for (const q of all) { q.points = (q.points + 20) & 0xffff; yield { t: 'points', p: q.id, amount: 20 }; } yield* this.result(g, p, c, 'gain', all.map(q => ({ p: q.id, text: '點券 +20' }))); return true;
@@ -992,19 +992,19 @@ export class KabukichoRules implements MapRules {
         const lines: ResultLine[] = []; for (const [q, a] of by) { g.gain(g.players[q], a, 0); lines.push({ p: q, text: '開幕紀念', amount: a }); }
         yield* this.result(g, p, c, 'gain', lines); return true;
       }
-      case 'kb-n-typhoon': yield* show(); days('typhoon', 2); yield* this.result(g, p, c, 'typhoon', [{ text: '兩天內所有店收費減半' }]); return true;
+      case 'kb-n-typhoon': yield* show(); days('typhoon', 2); yield* this.result(g, p, c, 'typhoon', [{ text: '2天店收費減半' }]); return true;
       case 'kb-n-tax': {
         yield* show(); const lines: ResultLine[] = [];
         for (const q of all) { const a = Math.min(Math.trunc(q.bank * 0.05), 20000 * F); if (a > 0) { yield* g.transfer(q.id, -1, a, 4, '消費稅'); lines.push({ p: q.id, text: '繳稅', amount: -a }); } }
         yield* this.result(g, p, c, 'tax', lines.length ? lines : [{ text: '沒有人有存款' }]); return true;
       }
-      case 'kb-n-tourists': yield* show(); days('tourists', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內小地過路費 ×1.5' }]); return true;
+      case 'kb-n-tourists': yield* show(); days('tourists', 3); yield* this.result(g, p, c, 'bonus', [{ text: '3天過路費×1.5' }]); return true;
       case 'kb-n-bathclose': {
         const list = shops(12); if (!list.length) return false;
         yield* show(); for (const f of list) s.closed[f.id] = Math.max(s.closed[f.id] ?? 0, 2);
         yield* this.result(g, p, c, 'fine', list.map(f => ({ p: f.owner - 1, text: `${f.name}泡泡浴停業兩天` }))); return true;
       }
-      case 'kb-n-valentine': yield* show(); days('valentine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內情人酒店住宿費加倍' }]); return true;
+      case 'kb-n-valentine': yield* show(); days('valentine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '情人酒店3天×2' }]); return true;
       case 'kb-n-subsidy': {
         const q = [...all].sort((a, b2) => g.wealth(a) - g.wealth(b2))[0]; if (!q) return false;
         const amount = 20000 * F; yield* this.board(g, p, c, this.fill(c.text, { name: g.name(q.id), amount }));
@@ -1026,17 +1026,17 @@ export class KabukichoRules implements MapRules {
         yield* show(); for (const l of lots) l.level -= 1; yield { t: 'board' };
         yield* this.result(g, p, c, 'explosion', lots.map(l => ({ p: l.owner - 1, text: '黃金街的房子降一級' })), { refs: lots.map(l => l.id + 2000) }); return true;
       }
-      case 'kb-n-taxistrike': yield* show(); days('taxistrike', 3); yield* this.result(g, p, c, 'jam', [{ text: '三天內所有人只擲一顆骰子' }]); return true;
-      case 'kb-n-blackout': yield* show(); days('blackout', 3); yield* this.result(g, p, c, 'none', [{ text: '三天內小地過路費減半' }]); return true;
-      case 'kb-n-exchange': yield* show(); days('exchange', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內景品打七折' }]); return true;
+      case 'kb-n-taxistrike': yield* show(); days('taxistrike', 3); yield* this.result(g, p, c, 'jam', [{ text: '3天只擲1顆骰子' }]); return true;
+      case 'kb-n-blackout': yield* show(); days('blackout', 3); yield* this.result(g, p, c, 'none', [{ text: '3天過路費減半' }]); return true;
+      case 'kb-n-exchange': yield* show(); days('exchange', 3); yield* this.result(g, p, c, 'bonus', [{ text: '景品3天七折' }]); return true;
       case 'kb-n-ordinance': {
         const h = s.gang.holder; if (h < 0) return false;
         const q = g.players[h], a = Math.min(Math.trunc(s.gang.take / 2), q.cash + q.bank);
         yield* show(); this.gangLeaves(); yield { t: 'fx', kind: 'kb-gang', p: h, data: { on: false } };
         if (a > 0) yield* g.transfer(h, -1, a, 0, '交出保護費');
-        yield* this.result(g, p, c, 'fine', [{ p: h, text: '交出一半保護費，黑幫離開', amount: -a }]); return true;
+        yield* this.result(g, p, c, 'fine', [{ p: h, text: '交出一半保護費', amount: -a }]); return true;
       }
-      case 'kb-n-hostweek': yield* show(); days('hostweek', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內女性顧客進陪酒店免費' }]); return true;
+      case 'kb-n-hostweek': yield* show(); days('hostweek', 3); yield* this.result(g, p, c, 'bonus', [{ text: '陪酒店3天女客免費' }]); return true;
       case 'kb-n-stocks': {
         // The game centre's stock (slot 4: ＴＡＩＴＯ on this map, editor/city_companies.py; the Japan table's ＳＥＧＡ).
         const slot = 4, name = g.stocks.stocks[slot]?.name;
@@ -1127,7 +1127,7 @@ export class KabukichoRules implements MapRules {
         yield* show(); const r = yield* misfortune(); if (!r) return true;
         if (kid) { p.stay = 2; yield* this.result(g, p, c, 'jam', [{ p: p.id, text: '禁足 2 回合' }]); return true; }
         const target = yield* g.cards.pardonOrFrame(p);
-        if (target < 0) { yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: '免罪卡生效，逃過此劫' }]); return true; }
+        if (target < 0) { yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: '免罪卡生效！' }]); return true; }
         const days = 2 * r;
         yield* g.sendTo(g.players[target], 'prison', days);
         yield* this.result(g, p, c, 'prison', [{ p: target, text: `坐牢${days}天` }], { focus: [target] }); return true;
@@ -1145,7 +1145,7 @@ export class KabukichoRules implements MapRules {
         const l = lots[this.stream(0x5197, p.id).below(lots.length)]; l.level -= 1; yield { t: 'board' };
         yield* this.result(g, p, c, 'demolish', [{ p: p.id, text: `${l.name}的房子降一級` }], { refs: [l.id + 2000] }); return true;
       }
-      case 'kb-f-vip': yield* show(); this.s.vip[p.id] = 1; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '下次進店：沒有事件，只付一倍' }]); return true;
+      case 'kb-f-vip': yield* show(); this.s.vip[p.id] = 1; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '下次進店只付一倍' }]); return true;
       case 'kb-f-omikuji': { yield* show(); const ok = g.cards.receive(p, 21); if (ok) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: 21 } }; yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: ok ? '得到免罪卡' : '卡片已滿' }]); return true; }
       case 'kb-f-flyers': yield* show(); p.points = (p.points + 10) & 0xffff; yield { t: 'points', p: p.id, amount: 10 }; g.gain(p, 1000 * F, 1); yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '點券 +10', amount: 1000 * F }]); return true;
       case 'kb-f-gift': { yield* show(); const id = yield* g.cards.receiveRandom(p); if (id) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id } }; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: id ? '得到一張卡片' : '卡片已經發完了' }]); return true; }
