@@ -1287,8 +1287,9 @@ export class BoardView {
       const p = visible(n.x, n.y, 60);
       if (p) this.sprite('map', 24, n.aux - 1, p.x, p.y);
     }
-    // 岔路箭頭 (docs/rules/14): a small arrow on the grass beside every fork, under buildings and players.
-    drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor);
+    // 岔路箭頭 (docs/rules/14): a small arrow on the grass beside every fork, under buildings and players
+    // (歌舞伎町: bigger and glowing, over its busy street, after the sprites below).
+    if (!this.street) drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor);
 
     // 3. Surcharge / seizure diamonds pressed into the ground, then the y-sorted sprites.
     const items: Item[] = [];
@@ -1414,6 +1415,7 @@ export class BoardView {
     items.sort((x, y) => x.key - y.key);
     // One picture that fails (released, not decodable) must not take the rest of the frame with it.
     for (const it of items) { try { it.draw(); } catch (err) { this.oops('sprite', err); } }
+    if (this.street) drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor, { scale: 1.6, glow: true });
     if (this.overWorld) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       try { this.overWorld(ctx, this.W, this.H, this.dpr, this.zoom); } catch (err) { this.oops('weather', err); }

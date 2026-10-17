@@ -130,10 +130,15 @@ export function forkSpot(b: Board, n: BoardNode, decor: Decor[] = []): { x: numb
   return spot;
 }
 
+/**
+ * `opts` (歌舞伎町, docs/rules/21 §8: a dark, busy neon ground): `scale` makes the arrow bigger, `glow` gives it a
+ * bright halo; the board view then draws them over the street's walkers and buildings.
+ */
 export function drawForkArrows(
   ctx: CanvasRenderingContext2D, game: Game, project: (x: number, y: number) => { x: number; y: number },
-  zoom: number, W: number, H: number, decor: Decor[] = [],
+  zoom: number, W: number, H: number, decor: Decor[] = [], opts: { scale?: number; glow?: boolean } = {},
 ) {
+  const k = opts.scale ?? 1;
   // The arrows of the player whose turn it is (that is also the one moving), in that player's colour.
   const who = game.current, player = game.isPlayerId(who) ? game.players[who] : undefined;
   if (!player || !player.placed || !game.forks) return;
@@ -167,9 +172,9 @@ export function drawForkArrows(
     s.angle += Math.abs(d) < 0.002 ? d : d * Math.min(1, dt * 10);
 
     const ux = Math.cos(s.angle), uy = Math.sin(s.angle), vx = -uy, vy = ux;
-    const bob = Math.sin(now / 260) * 1.2, tail = -HALF + bob, tip = HALF + bob, neck = tip - HEAD_LEN;
+    const bob = Math.sin(now / 260) * 1.2, tail = (-HALF + bob) * k, tip = (HALF + bob) * k, neck = tip - HEAD_LEN * k;
     const shape: [number, number][] = [
-      [tail, -SHAFT], [neck, -SHAFT], [neck, -HEAD], [tip, 0], [neck, HEAD], [neck, SHAFT], [tail, SHAFT],
+      [tail, -SHAFT * k], [neck, -SHAFT * k], [neck, -HEAD * k], [tip, 0], [neck, HEAD * k], [neck, SHAFT * k], [tail, SHAFT * k],
     ];
     const pts = shape.map(([u, v]) => project(at.x + ux * u + vx * v, at.y + uy * u + vy * v));
     const path = (dy: number) => {
@@ -182,10 +187,12 @@ export function drawForkArrows(
     path(float);                                        // shadow on the grass
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fill();
-    ctx.lineWidth = Math.max(2.5, 3.6 * unit);          // pale halo, so the outline reads on any ground
+    ctx.lineWidth = Math.max(2.5, 3.6 * unit) * (opts.glow ? 1.6 : 1);   // pale halo, so the outline reads on any ground
     ctx.strokeStyle = 'rgba(255, 250, 230, 0.9)';
+    if (opts.glow) { ctx.shadowColor = 'rgba(255, 255, 210, 0.95)'; ctx.shadowBlur = Math.max(6, 10 * unit); }
     path(lift); ctx.stroke();
     path(0); ctx.stroke();
+    ctx.shadowBlur = 0; ctx.shadowColor = 'transparent';
     path(lift);                                         // extruded edge
     ctx.fillStyle = dark;
     ctx.fill();
