@@ -739,7 +739,9 @@ export class MapDirector {
         await this.badDays(p.id, Number(s.data?.days) || 1);
         const f = this.game.board.facilities.find(x => x.id === Number(s.data?.facility));
         const n = this.game.node(p.node);
-        if (f && n) {
+        // 歌舞伎町: a child taken to the amusement park (docs/rules/21 §3) leaves the square, not into the 情人酒店.
+        if (s.data?.park) v.hide(p.id);
+        else if (f && n) {
           await this.walkOff(p, { x: n.x, y: n.y }, { x: f.x, y: f.y });
           v.hide(p.id);
         }
@@ -750,7 +752,8 @@ export class MapDirector {
         if (!p) return false;
         const f = this.game.board.facilities.find(x => x.id === p.facility);
         const n = this.game.node(p.node);
-        if (f && n) await this.walkOff(p, { x: f.x, y: f.y }, { x: n.x, y: n.y });
+        if (this.game.rules?.stayLabel?.(this.game, p)) v.show(p.id); // back from the amusement park (歌舞伎町 §3)
+        else if (f && n) await this.walkOff(p, { x: f.x, y: f.y }, { x: n.x, y: n.y });
         return true;
       }
 

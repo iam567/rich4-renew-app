@@ -4,8 +4,11 @@
  *   is missing), the shop and the incident, then what happens to the visitor and to the owner with their faces. At least
  *   2 s (shorter at the fast game speed), a tap closes it after that; the rules then show the 'event-result' box.
  * - 'kb-hospital-wheel' (§2.2): the 0 / 1 / 2 / 3 天 wheel turning to the drawn days.
+ * - 'kb-merch' / 'kb-park' (§3): a child turned away at a 陪酒店 / 泡泡浴 is sold the shop's goods (the goods' picture,
+ *   maps/remake/kabukicho/merch-<pic>.webp, over the counter scene), at a 情人酒店 is taken to the amusement park for N
+ *   days: a small cartoon card, gone by itself (a tap closes it sooner).
  * - small toasts (違反暴力團對策法, 確變骰子 / 計程車券, an owner made to wait 處理事務中): one at a time at the top, gone
- *   by themselves; 確變骰子 and 違反暴力團對策法 hold the game until read. The other notices (未成年謝絕入場, 女性顧客免費,
+ *   by themselves; 確變骰子 and 違反暴力團對策法 hold the game until read. The other notices (女性顧客免費,
  *   拉客仔, 店被砸了, 保鑣, 黑幫附身 / 離開) are the rules' own 'say' lines.
  */
 import { CHARACTERS } from '../../core/characters';
@@ -16,6 +19,7 @@ import { esc } from './place-scene';
 import { RESULT_MIN_MS } from './event-result';
 import { regionalPictureUrl } from './regional';
 import { KB_PLATE } from './kb-shop';
+import { ASSETS } from '../assets';
 import { toolIconSrc } from './kb-exchange';
 import { fmt } from './kb-machine';
 import { audio, Sfx } from '../audio';
@@ -65,6 +69,51 @@ fxScreens['kb-incident'] = (ctx, fx) => {
     const timer = setTimeout(end, total);
     setTimeout(() => { if (!done) { root.classList.add('can-close'); root.addEventListener('pointerup', end); } }, tapAfter);
   });
+};
+
+// ------------------------------------------------------------------ a child turned away (§3): the goods, the amusement park
+
+function kidCard(ctx: ScreenContext, cls: string, html: string): Promise<void> {
+  const ov = fitOverlay(ctx.area, `kbk-ov ${cls}`, () => [380, 360], undefined, 16);
+  const { scene, root } = ov;
+  scene.classList.add('kbk-scene');
+  scene.innerHTML = html;
+  for (const img of scene.querySelectorAll<HTMLImageElement>('img.kbk-opt')) img.onerror = () => img.remove();
+  audio.sfx(Sfx.points);
+  const total = Math.max(1300, 2800 * ctx.scale());
+  return new Promise<void>(resolve => {
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      root.classList.add('out');
+      setTimeout(() => { ov.close(); resolve(); }, 180);
+    };
+    const timer = setTimeout(end, total);
+    setTimeout(() => { if (!done) { root.classList.add('can-close'); root.addEventListener('pointerup', end); } }, Math.min(700, total * 0.5));
+  });
+}
+
+fxScreens['kb-merch'] = (ctx, fx) => {
+  const d = fx.data ?? {};
+  const pic = typeof d.pic === 'string' && /^[a-z0-9-]+$/.test(d.pic) ? `${ASSETS}/maps/remake/kabukicho/merch-${d.pic}.webp` : '';
+  return kidCard(ctx, 'merch', `<div class="kbk-card">
+      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(String(d.name ?? ''))}${esc(String(d.shop ?? ''))}</span><span class="kbk-tag">未成年謝絕入場</span></div>
+      <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-merch')}" alt="">${pic ? `<img class="kbk-opt kbk-item" src="${pic}" alt="">` : ''}</div>
+      <div class="kbk-title">${esc(String(d.item ?? ''))}</div>
+      <div class="kbk-line">${esc(String(d.line ?? ''))}・<em>${fmt(Number(d.amount) || 0)}元</em></div>
+    </div>`);
+};
+
+fxScreens['kb-park'] = (ctx, fx) => {
+  const d = fx.data ?? {}, days = Number(d.days) || 1;
+  return kidCard(ctx, 'park', `<div class="kbk-card">
+      <div class="kbk-head">${faceImg(ctx, fx.p, 'kbk-face')}<span class="kbk-shop">${esc(who(ctx, fx.p))}</span><span class="kbk-tag">未成年謝絕入場</span></div>
+      <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-park')}" alt=""></div>
+      <div class="kbk-title">去遊樂場玩 ${days} 天！</div>
+      <div class="kbk-line">被店員帶去附近的遊樂場玩了 ${days} 天・<em>${fmt(Number(d.amount) || 0)}元</em></div>
+    </div>`);
 };
 
 // ------------------------------------------------------------------ the hospital wheel (0–3 天)
@@ -119,7 +168,7 @@ function toast(ctx: ScreenContext, fx: Fx, cls: string, title: string, sub = '',
   return new Promise(r => setTimeout(r, hold ? ms : 250));
 }
 
-// 未成年謝絕入場, 女性顧客免費, 拉客仔, 店被砸了, 保鑣 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
+// 女性顧客免費, 拉客仔, 店被砸了, 保鑣 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
 // board) saying the same: no toast (one would cover the speech cloud of a player near the top of the map).
 fxScreens['kb-smash'] = async () => { audio.sfx(Sfx.smallBlast); };
 fxScreens['kb-gang-arrest'] = (ctx, fx) => {

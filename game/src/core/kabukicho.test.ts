@@ -87,21 +87,58 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(busyDays / playerDays).toBeLessThan(0.05);
   }, 120_000);
 
-  it('children are turned away at 陪酒店 / 泡泡浴 / 地下賭場 and never meet alcohol or 黑幫', () => {
-    const kids = [...MINORS];
+  it('children are turned away at 陪酒店 / 泡泡浴 / 情人酒店 and never meet alcohol', () => {
+    const kids = [...MINORS].slice(0, 4);
     let refused = 0;
+    expect(MINORS.has(11)).toBe(true);           // 金貝貝
     for (const seed of [4, 5]) {
       const g = new Game(settings(seed, kids), board());
       run(g, 300, s => {
         if (s.t !== 'fx') return;
         if (s.kind === 'kb-refused') refused++;
         if (s.kind === 'kb-incident') expect(INCIDENTS.find(i => i.id === (s.data as { id: string }).id)?.alcohol).toBeFalsy();
-        if (s.kind === 'kb-gang') expect((s.data as { on: boolean }).on).toBe(false);
       });
-      expect(kbRules(g)!.s.gang.holder).toBe(-1);
     }
     expect(refused).toBeGreaterThanOrEqual(0);
   }, 120_000);
+
+  it('a child at a rival 陪酒店 / 泡泡浴 buys goods, at a 情人酒店 plays at the amusement park N days; both pay as an adult', () => {
+    const g = new Game(settings(31, [0, 9, 4, 11]), board()), kb = kbRules(g)!;
+    for (const q of g.players) { q.placed = true; q.whoPlays = 2; q.cash = 500000; }
+    const [owner, kid, adult] = g.players;
+    const f = g.board.facilities[0];
+    f.owner = owner.id + 1; f.level = 3;
+    const visit = (p: typeof kid, type: number) => {
+      f.type = type; p.hotel = 0;
+      let got = 0;
+      const kinds: string[] = [];
+      const flow = kb.visitShop(g, p, f);
+      for (let r = flow.next(); !r.done; r = flow.next()) {
+        const s = r.value as Step;
+        if (s.t === 'fx') kinds.push(s.kind);
+        if (s.t === 'pay' && s.to === owner.id) got += s.amount;
+      }
+      return { got, kinds };
+    };
+    for (const type of [11, 12]) {
+      const v = visit(kid, type);
+      expect(v.kinds).toContain('kb-merch');
+      expect(v.kinds).not.toContain('kb-incident');
+      expect(v.got).toBeGreaterThanOrEqual(kb.rate(f));
+      expect(kid.hotel).toBe(0);
+    }
+    const park = visit(kid, 13);
+    expect(park.kinds).toEqual(expect.arrayContaining(['kb-refused', 'kb-park', 'enter-hotel']));
+    expect(kid.hotel).toBeGreaterThan(0);
+    expect(kb.stayLabel(g, kid)).toBe('在遊樂場玩');
+    const days = kid.hotel === 0x80 ? 1 : kid.hotel + 1;
+    expect(park.got).toBe(kb.rate(f) * days);
+    const stay = visit(adult, 13);
+    expect(stay.kinds).not.toContain('kb-incident');
+    expect(stay.kinds).not.toContain('kb-park');
+    expect(adult.hotel).toBeGreaterThan(0);
+    expect(kb.stayLabel(g, adult)).toBeUndefined();
+  });
 
   it('a saved game plays on the same as the unsaved one', () => {
     const g = new Game(settings(11), board());

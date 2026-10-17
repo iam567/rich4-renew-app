@@ -153,6 +153,10 @@ export interface MapRules {
   readonly extraTools?: readonly ToolDef[];
   useTool?(g: Game, p: Player, tool: number, param?: number): Flow<boolean>;
   aiTools?(g: Game, p: Player): Flow<boolean>;
+  /** A facility type of this map that is a hotel too (歌舞伎町's 情人酒店 13): guests stay as in the original's 旅館. */
+  readonly hotelType?: number;
+  /** What a staying player is said to be doing instead of 住宿中 (歌舞伎町: a child taken to the amusement park, §3). */
+  stayLabel?(g: Game, p: Player): string | undefined;
   /** A factor on a street toll (news of the day, a 霓虹燈箱 on the street). */
   tollFactor?(g: Game, land: Land): number;
   /** Someone was moved by a 傳送機 (no landing; the map may still react, the prison square). */
@@ -500,12 +504,12 @@ export class Game {
       if (mode === 1) { f.owner = 0; f.level = 0; f.type = 0; f.expire = 0; }
       else if (mode === 2) { f.level = 0; f.type = 0; }
       else if (f.level > 0 && --f.level === 0) f.type = 0;
-      if (f.level === 0 || f.type !== 1) for (const p of this.players) if (p.hotel && p.facility === ref - 4000 && this.here(p)) { p.hotel = 0x80; }
+      if (f.level === 0 || (f.type !== 1 && f.type !== this.rules?.hotelType)) for (const p of this.players) if (p.hotel && p.facility === ref - 4000 && this.here(p)) { p.hotel = 0x80; }
     }
   }
 
   /** Clear hotel/vanish/prison/hospital before a new stay fcn_0040d761. */
-  private clearStays(p: Player) { p.hotel = 0; p.vanish = 0; p.prison = 0; p.hospital = 0; }
+  clearStays(p: Player) { p.hotel = 0; p.vanish = 0; p.prison = 0; p.hospital = 0; }
 
   /**
    * Hospital / prison _rich4_add_player_days_in_hospital|prison (docs/rules/06 §2.4): already inside adds the days,
@@ -740,7 +744,7 @@ export class Game {
     yield { t: 'turn', p: p.id };
     if (!p.placed) yield* this.airdrop(p);
     if (this.offRoad(p) || p.sleep) {
-      const [what, n] = p.hotel ? ['住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : ['消失中', p.vanish & 0x3f];
+      const [what, n] = p.hotel ? [this.rules?.stayLabel?.(this, p) ?? '住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : ['消失中', p.vanish & 0x3f];
       this.tools.storeState(p);
       yield* this.say(p.id, `${this.name(p.id)}${what}……還剩${(n & 0x7f) + 1}天！`);
       return;

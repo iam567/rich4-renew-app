@@ -1,6 +1,6 @@
 /**
  * 歌舞伎町's shop picker (docs/rules/21 §2): the owner of an empty large plot (or 改建卡 on a shop) picks one of the five
- * shops — 居酒屋 / 陪酒店 / 泡泡浴 / 地下賭場 / 研究所 — in one row of plates like the original's facility picker
+ * shops — 居酒屋 / 陪酒店 / 泡泡浴 / 情人酒店 / 研究所 — in one row of plates like the original's facility picker
  * (Data#517.4) and 大富翁城's hall picker (casino-hall.ts). The option's rule line shows under the row while a plate is
  * pointed at or held down. The question is a `choose` with screen 'kb-shop' (core/kabukicho.ts askShop); the answer is
  * the facility type, or -1 (cancelled).

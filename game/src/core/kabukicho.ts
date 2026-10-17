@@ -3,15 +3,16 @@
  * MAP_RULES like 大富翁城's (core/casino-rules.ts). Every other map has none of this.
  *
  *  - The large plots are five shops the owner chooses (§2): 居酒屋 10, 陪酒店 11 (夜總會 / 牛郎店 by the visitor's sex),
- *    泡泡浴 12 (women pay nothing), 地下賭場 13 (a table of 大富翁城's casino) and the original 研究所 4. A visit first
- *    draws an incident from the shop's table (kb-data.ts); without one the shopping wheel (×1–6) or the table.
+ *    泡泡浴 12 (women pay nothing), 情人酒店 13 (a hotel: the original 旅館's stay, no incidents) and the original 研究所 4.
+ *    A visit to the first three first draws an incident from the shop's table (kb-data.ts); without one the shopping
+ *    wheel (×1–6).
  *    Owners are never jailed: an incident may pause them in place (「處理事務中」, 1–2 turns, `turnHold`).
  *  - 黑幫 (§4.1): met on the road like a god, 7 days; a rival's property the possessed player stops on pays HIM
  *    (保護費, from the owner's cash; nothing in cash: the property loses a level); passing or stopping on the prison
  *    square (or being put there) → 違反暴力團對策法: the takings are confiscated, 7 days in prison. Back 7 days later.
  *  - 拉客仔 (§4.2): stopping on its square drags the player into a random rival shop.
  *  - Its own 24 news and 24 fate (§6); the 柏青哥店 (19) / 拉霸店 (20) pads (§7) and their four exclusive tools (§7.5).
- *  - Minors (§3): the four children are turned away at 陪酒店 / 泡泡浴 / 地下賭場 and never meet alcohol or 黑幫.
+ *  - Minors (§3): the five children are turned away at 陪酒店 / 泡泡浴 / 情人酒店 and never meet alcohol or 黑幫.
  *
  * Every random choice of its own (incidents, the machines, the decks, the NPCs' squares) comes from streams made of the
  * game's seed, the day, the player and a counter, so watching or not, saving and loading do not change a game.
@@ -22,13 +23,11 @@ import { CHARACTERS } from './characters';
 import { ask, type Flow } from './flow';
 import { MAP_RULES, type Game, type MapRules } from './game';
 import { Rng, daySeed } from './rng';
-import { CasinoRules, HALL_GAME, HALL_NAMES, HALLS } from './casino-rules';
-import * as C from './modules/casino';
 import { MAP_TOOLS, type ToolDef } from './modules/tools';
 import { WheelKind } from './modules/wheel';
 import { shuffleDeck, type ResultLine } from './modules/events';
 import {
-  GANG_AWAY, GANG_DAYS, GANG_PRISON_DAYS, GANG_SPAWNS, INCIDENTS, KB_FATE, KB_ID_BASE, KB_NEWS, KB_TOOLS, MINOR_REFUSED, MINORS,
+  GANG_AWAY, GANG_DAYS, GANG_PRISON_DAYS, GANG_SPAWNS, INCIDENTS, KB_FATE, KB_ID_BASE, KB_NEWS, KB_TOOLS, MERCH, MERCH_LINE, MINOR_REFUSED, MINORS,
   SHOP_NAMES, SHOP_RULES, SHOP_TYPES, TOUT_SPAWNS, isKbShop, shopNameFor, type Incident, type KbCard,
 } from './modules/kb-data';
 import * as M from './modules/kb-machines';
@@ -72,19 +71,13 @@ export interface KbState {
 
 const fmt = (n: number) => Math.trunc(n).toLocaleString('en-US');
 
-/** A 地下賭場 table: 大富翁城's casino rules with this map's game (no setup of the plots). */
-class KbCasino extends CasinoRules {
-  constructor(readonly g: Game) { super(); }
-  game(): Game { return this.g; }
-}
-
 export class KabukichoRules implements MapRules {
   s: KbState;
-  readonly casino: KbCasino;
+  /** 情人酒店 is a hotel (Game.damageProperty sends its guests out like the original 旅館's). */
+  readonly hotelType = 13;
   readonly extraTools: readonly ToolDef[] = KB_TOOLS;
 
   constructor(readonly g: Game) {
-    this.casino = new KbCasino(g);
     const n = g.players.length;
     this.s = {
       busy: new Array(n).fill(0), gang: { node: 0, holder: -1, days: 0, take: 0, back: 0 }, tout: { node: 0, gone: 0 },
@@ -192,7 +185,7 @@ export class KabukichoRules implements MapRules {
     const s = this.s.gang;
     // Only on the square the walk ends on, exactly as the gods (objects.ts step: the objects' table runs when no steps are
     // left, rich4_player_core_actions.asm:2888); passing by does nothing.
-    if (left === 0 && s.holder < 0 && s.node && p.node === s.node && !this.minor(p) && p.whoPlays && !g.offRoad(p)) yield* this.possess(g, p);
+    if (left === 0 && s.holder < 0 && s.node && p.node === s.node && p.whoPlays && !g.offRoad(p)) yield* this.possess(g, p);
     if (s.holder === p.id && p.god) {          // a god drives 黑幫 off (one possession at a time, as gods do)
       yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: false } };
       yield* g.say(p.id, '神明附身，黑幫走了！');
@@ -204,10 +197,10 @@ export class KabukichoRules implements MapRules {
 
   /**
    * 黑幫 possesses p (§4.1), as a god attaches (06 §5.2): one possession at a time, so a god p holds leaves first.
-   * Not a child (§3).
+   * Everyone, children too (the user, 2026-10-17).
    */
   *possess(g: Game, p: Player): Flow<boolean> {
-    if (this.minor(p) || this.s.gang.holder >= 0) return false;
+    if (this.s.gang.holder >= 0) return false;
     if (p.god) yield* g.objects.detachGod(p);
     Object.assign(this.s.gang, { holder: p.id, days: GANG_DAYS, take: 0, node: 0, back: 0 });
     yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: true } };
@@ -240,11 +233,11 @@ export class KabukichoRules implements MapRules {
 
   /**
    * 請神符 (04 §3.23): calls 黑幫 onto p when it is on the map and nearer than any free god (a human), or when the
-   * computer chose its square (`node`). Not on cooldown (then it is not on the map), not a child.
+   * computer chose its square (`node`). Not on cooldown (then it is not on the map).
    */
   *invite(g: Game, p: Player, node?: number): Flow<boolean> {
     const s = this.s.gang;
-    if (!s.node || s.holder >= 0 || this.minor(p)) return false;
+    if (!s.node || s.holder >= 0) return false;
     if (node !== undefined) { if (node !== s.node) return false; }
     else {
       const c = g.node(p.node), n = g.node(s.node), d = Math.hypot(n.x - c.x, n.y - c.y);
@@ -256,7 +249,7 @@ export class KabukichoRules implements MapRules {
   /** The computer's 請神符 on 黑幫: when it has no good god, owns little and 黑幫 is about (half the time). */
   aiInvite(g: Game, p: Player): number | null {
     const s = this.s.gang;
-    if (!s.node || s.holder >= 0 || this.minor(p) || p.god) return null;
+    if (!s.node || s.holder >= 0 || p.god) return null;
     const mine = g.board.lands.filter(l => l.owner === p.id + 1).length + g.board.facilities.filter(f => f.owner === p.id + 1).length;
     const theirs = g.board.lands.filter(l => l.owner && l.owner !== p.id + 1).length + g.board.facilities.filter(f => f.owner && f.owner !== p.id + 1).length;
     return theirs > mine && this.stream(0x1a1, p.id).below(2) === 0 ? s.node : null;
@@ -348,7 +341,7 @@ export class KabukichoRules implements MapRules {
       }
       if (f && f.owner && f.owner !== p.id + 1 && f.level >= 1 && isKbShop(f.type)) {
         const owner = g.players[f.owner - 1];
-        const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
+        const mult = yield* g.spin(f.type === 13 ? WheelKind.hotel : WheelKind.shopping, this.wheelName(g, owner, f, p));
         yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
         return true;
       }
@@ -382,7 +375,7 @@ export class KabukichoRules implements MapRules {
     yield { t: 'teleport', p: p.id, node: node.id };
     if (this.s.gang.holder === p.id && f.owner !== p.id + 1) {
       const owner = g.players[f.owner - 1];
-      const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
+      const mult = yield* g.spin(f.type === 13 ? WheelKind.hotel : WheelKind.shopping, this.wheelName(g, owner, f, p));
       yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
       return;
     }
@@ -466,15 +459,12 @@ export class KabukichoRules implements MapRules {
     const female = this.female(p), shop = shopNameFor(f.type, female), where = `${g.name(owner.id)}的${f.name}${shop}`;
     if (this.s.closed[f.id]) { yield* g.say(undefined, `${where}停業中，今天不營業！`); return; }
     if (this.s.gang.holder === p.id) {
-      const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
+      const mult = yield* g.spin(f.type === 13 ? WheelKind.hotel : WheelKind.shopping, this.wheelName(g, owner, f, p));
       yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
       return;
     }
-    if (this.minor(p) && f.type !== 10) {
-      yield { t: 'fx', kind: 'kb-refused', p: p.id, target: owner.id, data: { facility: f.id, shop } };
-      yield* g.say(p.id, `${where}：${MINOR_REFUSED}`);
-      return;
-    }
+    if (this.minor(p) && f.type !== 10) { yield* this.kidVisit(g, p, owner, f, where); return; }
+    if (f.type === 13) { yield* this.hotelStay(g, p, owner, f); return; }
     if (!(yield* g.ownerCollects(owner, f.tmpState, '消費'))) return;
     const rng = this.stream(0x5b0b + f.id, p.id);
     const vip = this.s.vip[p.id] > 0;
@@ -488,7 +478,6 @@ export class KabukichoRules implements MapRules {
       inc = null;
     }
     if (inc) { yield* this.incident(g, p, owner, f, inc, rng); return; }
-    if (f.type === 13) { yield* this.table(g, p, f); return; }
     let mult: number;
     if ((f.type === 12 && female) || (f.type === 11 && female && this.mod('hostweek'))) {
       yield { t: 'fx', kind: 'kb-free', p: p.id, target: owner.id, data: { facility: f.id, shop } };
@@ -506,17 +495,69 @@ export class KabukichoRules implements MapRules {
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, '消費');
   }
 
-  /** 地下賭場 without an incident: one game at 大富翁城's tables; the visitor chooses the table (§2.6). */
-  *table(g: Game, p: Player, f: Facility): Flow {
-    let hall: number;
-    if (g.isHuman(p)) {
-      const options = HALLS.map(t => ({ label: HALL_NAMES[t], value: t, detail: C.GAME_NAMES[HALL_GAME[t]] }));
-      const a = yield ask({ t: 'choose', p: p.id, title: `${f.name}地下賭場：選一張賭桌`, options, cancellable: false, screen: 'casino-hall' });
-      hall = typeof a === 'number' && (HALLS as readonly number[]).includes(a) ? a : this.casino.aiHall(g, p, f);
-    } else hall = this.casino.aiHall(g, p, f);
-    const proxy = Object.create(f) as Facility;
-    proxy.type = hall;
-    yield* this.casino.visit(g, p, proxy);
+  /**
+   * A child at a rival's 陪酒店 / 泡泡浴 / 情人酒店 (§3, the user's balance rules): turned away, no incident, nothing adult,
+   * but the owner is paid as by an adult at that level. At the 陪酒店 / 泡泡浴 the front counter sells one of the shop's
+   * goods (MERCH): the shopping wheel × the rate (the adult's factors; no 女性顧客免費, that is the shop's service, not
+   * its goods). At the 情人酒店 the staff take the child to the amusement park nearby: the stay wheel's N days, rate × N
+   * as the adult stay, and N turns held there exactly as a stay (stayLabel: 在遊樂場玩).
+   */
+  *kidVisit(g: Game, p: Player, owner: Player, f: Facility, where: string): Flow {
+    const shop = shopNameFor(f.type, this.female(p));
+    yield { t: 'fx', kind: 'kb-refused', p: p.id, target: owner.id, data: { facility: f.id, shop } };
+    if (f.type === 13) {
+      yield* g.say(p.id, `${where}：${MINOR_REFUSED}…\n但被店員帶去附近的遊樂場玩！`);
+      yield* this.hotelStay(g, p, owner, f, true);
+      return;
+    }
+    yield* g.say(p.id, `${where}：${MINOR_REFUSED}${MERCH_LINE}`);
+    if (!(yield* g.ownerCollects(owner, f.tmpState, '消費'))) return;
+    const goods = MERCH[f.type] ?? MERCH[11], item = goods[this.stream(0x3e7c + f.id, p.id).below(goods.length)];
+    const vip = this.s.vip[p.id] > 0;
+    if (vip) this.s.vip[p.id] = 0;
+    const mult = vip ? 1 : yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
+    let rate = this.rate(f);
+    if (f.tmpState) rate *= 2;
+    const k = (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1);
+    const amount = Math.round(rate * mult * k);
+    yield { t: 'fx', kind: 'kb-merch', p: p.id, target: owner.id, data: { facility: f.id, shop, name: f.name, pic: item.pic, item: item.name, line: item.line, amount } };
+    yield* g.say(undefined, `${where}\n\n${item.name}\n${fmt(rate)}x${mult}倍${k !== 1 ? `x${k}` : ''}=${fmt(amount)}元`);
+    const paid = yield* g.collect(p, owner, amount, '消費', true);
+    if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, '消費');
+  }
+
+  /** A child held at a 情人酒店 is playing at the amusement park nearby (§3). */
+  stayLabel(g: Game, p: Player): string | undefined { return this.parked(g, p) ? '在遊樂場玩' : undefined; }
+  /** A child staying at a 情人酒店 (only ever the amusement park, §3): the board shows no walk into the building. */
+  parked(g: Game, p: Player): boolean { return this.minor(p) && g.board.facilities.find(x => x.id === p.facility)?.type === 13; }
+
+  /**
+   * 情人酒店 (§2.6): exactly the original 旅館's stay (02 §4.3): the owner's exemptions, the stay wheel (1–4 days), rate × days
+   * (×2 for 漲價卡 and the news 情人節), paid without the passive cards, then the guest stays that many turns there
+   * (hostility, insurance, bad days as the original). No incidents. A VIP card: one day.
+   */
+  *hotelStay(g: Game, p: Player, owner: Player, f: Facility, park = false): Flow {
+    const fee = park ? '遊樂場費用' : '住宿費';
+    if (!(yield* g.ownerCollects(owner, f.tmpState, fee))) return;
+    let rate = this.rate(f);
+    if (f.tmpState) rate *= 2;
+    rate = Math.round(rate * (this.mod('valentine') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1));
+    const vip = this.s.vip[p.id] > 0;
+    if (vip) this.s.vip[p.id] = 0;
+    const days = vip ? 1 : yield* g.spin(WheelKind.hotel, this.wheelName(g, owner, f, p));
+    const amount = rate * days;
+    if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, data: { facility: f.id, days, amount } };
+    yield* g.say(undefined, `${park ? `在遊樂場玩${days}天` : `休息${days}天`}\n\n費用${fmt(amount)}元！`);
+    const paid = yield* g.collect(p, owner, amount, fee, false);
+    if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, fee);
+    if (!days || !p.whoPlays || g.over) return;
+    g.addHostility(p.id, owner.id, 20 * days * g.priceIndex);
+    g.clearStays(p);
+    p.hotel = days - 1 || 0x80;
+    p.facility = f.id;
+    p.monthBadDays += days;
+    yield { t: 'fx', kind: 'enter-hotel', p: p.id, data: { days, facility: f.id, park } };
+    yield* g.insurancePayout(p, 2000 * days * g.priceIndex);
   }
 
   /** An incident (§2.2–2.6): the card first, then what it does to the visitor and to the owner. */
@@ -831,14 +872,7 @@ export class KabukichoRules implements MapRules {
         yield* show(); for (const f of list) s.closed[f.id] = Math.max(s.closed[f.id] ?? 0, 2);
         yield* this.result(g, p, c, 'fine', list.map(f => ({ p: f.owner - 1, text: `${f.name}泡泡浴停業兩天` }))); return true;
       }
-      case 'kb-n-raid': {
-        const f = shops(13).sort((a, b2) => b2.level - a.level)[0]; if (!f) return false;
-        const o = g.players[f.owner - 1], amount = 5 * this.rate(f);
-        yield* this.board(g, p, c, this.fill(c.text, { owner: g.name(o.id), amount }));
-        const lines: ResultLine[] = [{ p: o.id, text: '罰款', amount: -(yield* this.fine(o, amount, '經營賭場罰款')) }];
-        if (this.lower(f.id + 4000)) lines.push({ p: o.id, text: '地下賭場降一級' });
-        yield { t: 'board' }; yield* this.result(g, p, c, 'fine', lines); return true;
-      }
+      case 'kb-n-valentine': yield* show(); days('valentine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內情人酒店住宿費加倍' }]); return true;
       case 'kb-n-subsidy': {
         const q = [...all].sort((a, b2) => g.wealth(a) - g.wealth(b2))[0]; if (!q) return false;
         const amount = 20000 * F; yield* this.board(g, p, c, this.fill(c.text, { name: g.name(q.id), amount }));
@@ -872,10 +906,11 @@ export class KabukichoRules implements MapRules {
       }
       case 'kb-n-hostweek': yield* show(); days('hostweek', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內女性顧客進陪酒店免費' }]); return true;
       case 'kb-n-stocks': {
-        const co = b.companies.find(x => /SEGA|ＳＥＧＡ/i.test(x.name));
-        if (!co || co.stockSlot >= 12) return false;
-        yield* show(); g.stocks.forceLimit(co.stockSlot, true, 2);
-        yield* this.result(g, p, c, 'stock-up', [{ text: `${g.stocks.stocks[co.stockSlot]?.name ?? co.name}漲停兩天` }]); return true;
+        // The game centre's stock (slot 4: ＴＡＩＴＯ on this map, editor/city_companies.py; the Japan table's ＳＥＧＡ).
+        const slot = 4, name = g.stocks.stocks[slot]?.name;
+        if (!name) return false;
+        yield* this.board(g, p, c, this.fill(c.text, { stock: name })); g.stocks.forceLimit(slot, true, 2);
+        yield* this.result(g, p, c, 'stock-up', [{ text: `${name}漲停兩天` }]); return true;
       }
     }
     return false;
@@ -918,7 +953,6 @@ export class KabukichoRules implements MapRules {
       case 'kb-f-kaiju': yield* show({ amount: 2000 * F }); yield* lose(2000 * F); return true;
       case 'kb-f-parttime': yield* show({ amount: 4000 * F }); yield* gain(4000 * F); return true;
       case 'kb-f-gang': {
-        if (kid) { yield* show(); yield* this.result(g, p, c, 'none', [{ p: p.id, text: '什麼事都沒發生' }]); return true; }
         if (!this.s.gang.node || this.s.gang.holder >= 0) return false;
         yield* show(); yield* this.possess(g, p);
         yield* this.result(g, p, c, 'none', [{ p: p.id, text: '黑幫附身 7 天' }]); return true;
@@ -944,7 +978,7 @@ export class KabukichoRules implements MapRules {
         yield* show(); p.lastNode = p.node; p.node = n.id; yield { t: 'teleport', p: p.id, node: n.id };
         yield* this.machine(g, p, n.event === EV_PACHINKO ? 'pachinko' : 'pachislot'); return true;
       }
-      case 'kb-f-casino': {
+      case 'kb-f-lovehotel': {
         if (kid) { yield* show(); yield* this.result(g, p, c, 'none', [{ p: p.id, text: '繞了一圈又回到原地' }]); return true; }
         const list = g.board.facilities.filter(f => f.owner && f.owner !== me && f.level >= 1 && f.type === 13);
         if (!list.length) return false;

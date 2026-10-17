@@ -4,9 +4,9 @@
  * core/kabukicho.ts. Every text is shown as written (traditional Chinese, as the original game).
  */
 
-/** The five large-plot shops (§2): facility types 10–13 (after 大富翁城's 5–9) and the original 4 研究所. */
+/** The five large-plot shops (§2): facility types 10–13 (after 大富翁城's 5–9; 13 情人酒店, a hotel) and the original 4 研究所. */
 export const SHOP_TYPES = [10, 11, 12, 13, 4] as const;
-export const SHOP_NAMES: Record<number, string> = { 10: '居酒屋', 11: '陪酒店', 12: '泡泡浴', 13: '地下賭場', 4: '研究所' };
+export const SHOP_NAMES: Record<number, string> = { 10: '居酒屋', 11: '陪酒店', 12: '泡泡浴', 13: '情人酒店', 4: '研究所' };
 export const isKbShop = (t: number) => t >= 10 && t <= 13;
 /** The 陪酒店 as its visitor sees it: 夜總會 for a man, 牛郎店 for a woman (§2). */
 export const clubName = (female: boolean) => (female ? '牛郎店' : '夜總會');
@@ -17,7 +17,7 @@ export const SHOP_RULES: Record<number, string> = {
   10: '消費轉盤 ×1–6・事件 15%（食物中毒、急性酒精中毒…）',
   11: '男客「夜總會」、女客「牛郎店」・消費轉盤・事件 25%',
   12: '消費轉盤，女客免費・事件 35%',
-  13: '進門付門票、賭一局（賭場的賭桌）・事件 35%',
+  13: '同原版旅館：住宿轉盤 1–4 天、付費並住下・沒有事件',
   4: '原版研究所：自己停下時研發道具',
 };
 
@@ -48,19 +48,41 @@ export const INCIDENTS: Incident[] = [
   { id: 'vip', shop: 12, w: 60, title: '貴賓招待', visitor: '付帳（女客免費），送 30 點券', owner: '收', pic: 'kb-i-bath-vip' },
   { id: 'licence', shop: 12, w: 70, title: '無照營業', visitor: '不用付錢', owner: '罰款 4R，降一級，處理事務中 1 回合', pic: 'kb-i-bath-licence' },
   { id: 'extend', shop: 12, w: 70, title: '延長服務', visitor: '付 2 倍帳單（女客免費延長）', owner: '收', pic: 'kb-i-bath-extend', bad: true },
-  // 地下賭場 (§2.6): 35 %
-  { id: 'cheat', shop: 13, w: 70, title: '莊家出千被抓包', visitor: '得到賠償 3R', owner: '付 3R，處理事務中 1 回合', pic: 'kb-i-casino-cheat' },
-  { id: 'streak', shop: 13, w: 70, title: '手氣大旺', visitor: '直接贏 3R', owner: '付 3R', pic: 'kb-i-casino-streak' },
-  { id: 'bust', shop: 13, w: 70, title: '輸到脫褲', visitor: '付 3R', owner: '收', pic: 'kb-i-casino-bust', bad: true },
-  { id: 'report', shop: 13, w: 70, title: '被人舉報', visitor: '賭客也違法：罰款 1R', owner: '罰款 5R，降一級，處理事務中 2 回合', pic: 'kb-i-casino-report', bad: true },
-  { id: 'comp', shop: 13, w: 70, title: '籌碼換點券', visitor: '得 40 點券，不賭', owner: '—', pic: 'kb-i-casino-comp' },
 ];
 /** The incident chance of each shop (‰ of visits, §2). */
-export const INCIDENT_TOTAL: Record<number, number> = { 10: 150, 11: 250, 12: 350, 13: 350 };
+export const INCIDENT_TOTAL: Record<number, number> = { 10: 150, 11: 250, 12: 350 };
 
-/** The four children (§3, the coordinator's decision): turned away at 陪酒店 / 泡泡浴 / 地下賭場, no alcohol anywhere. */
-export const MINORS = new Set([7, 8, 9, 10]); // 糖糖、烏咪、孫小美、小丹尼 (core/characters.ts)
+/** The five children (§3, the user's decisions): turned away at 陪酒店 / 泡泡浴 / 情人酒店 (sold the shop's merchandise instead), no alcohol anywhere; 黑幫 does possess them. */
+export const MINORS = new Set([7, 8, 9, 10, 11]); // 糖糖、烏咪、孫小美、小丹尼、金貝貝 (core/characters.ts)
 export const MINOR_REFUSED = '未成年，謝絕入場';
+
+/**
+ * What the front counter sells a refused child instead (§3, the user's balance rule): the shop's merchandise, paid like an
+ * adult's visit at that level (the shopping wheel, the 情人酒店's stay wheel as days without staying), no incident. Each
+ * shop has four; `pic` is maps/remake/kabukicho/merch-<pic>.webp.
+ */
+export interface Merch { pic: string; name: string; line: string }
+export const MERCH: Record<number, Merch[]> = {
+  11: [
+    { pic: 'club-figure', name: '紅牌Q版公仔', line: '店員熱情推銷了紅牌的Q版公仔' },
+    { pic: 'club-towel', name: '應援毛巾', line: '店員塞了一條閃亮亮的應援毛巾給你' },
+    { pic: 'club-soda', name: '無酒精氣泡葡萄汁', line: '店員推銷了一瓶無酒精氣泡葡萄汁' },
+    { pic: 'club-gacha', name: '限定扭蛋', line: '門口的限定扭蛋機，一轉就停不下來' },
+  ],
+  12: [
+    { pic: 'bath-duck', name: '皇冠小黃鴨', line: '店員推銷了戴皇冠的洗澡小黃鴨' },
+    { pic: 'bath-bomb', name: '泡泡入浴球禮盒', line: '店員推銷了香香的泡泡入浴球禮盒' },
+    { pic: 'bath-plush', name: '泡泡吉祥物娃娃', line: '店員推銷了店裡的泡泡吉祥物娃娃' },
+    { pic: 'bath-milk', name: '咖啡牛奶', line: '店員推銷了一瓶冰涼的咖啡牛奶' },
+  ],
+  13: [
+    { pic: 'hotel-cushion', name: '愛心抱枕', line: '店員推銷了軟綿綿的愛心抱枕' },
+    { pic: 'hotel-gacha', name: '城堡扭蛋', line: '門口的城堡扭蛋機，一轉再轉' },
+    { pic: 'hotel-milk', name: '草莓牛奶', line: '店員推銷了粉紅色的草莓牛奶' },
+    { pic: 'hotel-keychain', name: '城堡吉祥物鑰匙圈', line: '店員推銷了城堡吉祥物鑰匙圈' },
+  ],
+};
+export const MERCH_LINE = '…但被門口的店員推銷了店裡的周邊商品';
 
 /** The road NPCs' squares (§4; editor/kabukicho_layout.NPC_SPAWN: 仲通り北口, ゴールデン街口 / 一番街拱門口, 花道通り×一番街). */
 export const GANG_SPAWNS = [14, 144];
@@ -100,7 +122,7 @@ export const KB_NEWS: KbCard[] = [
   N('kb-n-tax', 0, '政府公告', '消費稅調漲', '消費稅調漲／每人繳交存款的5％'),
   N('kb-n-tourists', 1, '社會新聞', '外國觀光客暴增', '外國觀光客暴增／三天內小地過路費1.5倍'),
   N('kb-n-bathclose', 0, '政府公告', '泡泡浴消防檢查', '泡泡浴全面消防檢查／所有泡泡浴停業兩天'),
-  N('kb-n-raid', 0, '社會新聞', '地下賭場大舉報', '地下賭場遭大規模舉報／{owner}的地下賭場罰款{amount}元並降一級'),
+  N('kb-n-valentine', 1, '社會新聞', '情人節情人酒店爆滿', '情人節到了／情人酒店三天內住宿費加倍'),
   N('kb-n-subsidy', 1, '政府公告', '區役所振興補助', '新宿區役所發放振興補助／{name}獲得{amount}元'),
   N('kb-n-viral', 1, '娛樂新聞', '網紅直播爆紅', '網紅直播爆紅／{owner}的{shop}升一級'),
   N('kb-n-torinoichi', 1, '社會新聞', '花園神社酉の市', '花園神社酉の市／每人獲得一張卡片'),
@@ -110,7 +132,7 @@ export const KB_NEWS: KbCard[] = [
   N('kb-n-exchange', 1, '娛樂新聞', '景品交換所改裝', '景品交換所改裝開幕／三天內兌換現金的匯率提高'),
   N('kb-n-ordinance', 0, '政府公告', '暴力團排除條例', '暴力團排除條例上路／被黑幫附身的人交出一半保護費'),
   N('kb-n-hostweek', 1, '娛樂新聞', '陪酒店週年慶', '陪酒店週年慶／三天內女性顧客免費'),
-  N('kb-n-stocks', 1, '財經新聞', '娛樂概念股大漲', '娛樂概念股大漲／遊戲公司的股價漲停兩天'),
+  N('kb-n-stocks', 1, '財經新聞', '娛樂概念股大漲', '娛樂概念股大漲／{stock}股價漲停兩天'),
 ];
 
 /** `kid`: the child-safe text (§3) where the adult one does not fit a child; the effect is the same unless noted. */
@@ -122,13 +144,13 @@ export const KB_FATE: KbCard[] = [
   F('kb-f-wallet', 1, '交還錢包', '撿到錢包交還失主，獲得謝禮{amount}元'),
   F('kb-f-kaiju', 0, '被怪獸頭嚇到', '被東寶大樓的怪獸頭嚇了一跳，手機摔壞了'),
   F('kb-f-parttime', 1, '打工領薪水', '到居酒屋打工，領到薪水{amount}元', '幫忙發傳單，領到零用錢{amount}元'),
-  F('kb-f-gang', 2, '黑幫收小弟', '黑幫大哥看上你，收你當小弟', '黑幫大哥看了你一眼，說「小朋友快回家」就走開了'),
+  F('kb-f-gang', 2, '黑幫收小弟', '黑幫大哥看上你，收你當小弟'),
   F('kb-f-trouble', 0, '店裡有人鬧事', '有人在你的店裡鬧事，砸壞了裝潢'),
   F('kb-f-fake', 0, '買到假名牌', '買到假名牌包，被騙了{amount}元', '買到假的限量玩具，被騙了{amount}元'),
   F('kb-f-photo', 1, '被街拍', '被街拍攝影師拍到，上了雜誌'),
   F('kb-f-lottery', 1, '抽中特獎', '柏青哥店週年抽獎抽中特獎', '商店街抽獎抽中特獎'),
   F('kb-f-taxi', 2, '被載到柏青哥店', '計程車司機把你載到柏青哥店門口', '公車坐過站，在柏青哥店門口下車'),
-  F('kb-f-casino', 0, '走進地下賭場', '迷迷糊糊走進地下賭場', '迷路了，在巷子裡繞了一圈'),
+  F('kb-f-lovehotel', 0, '主題房生日派對', '朋友在情人酒店的主題房辦生日派對，你也被拉去住下', '迷路了，在巷子裡繞了一圈'),
   F('kb-f-lasttrain', 0, '錯過末班車', '錯過末班電車，在網咖過夜', '補習班下課太晚，在車站等家人來接'),
   F('kb-f-slip', 0, '巷子裡滑倒', '在濕滑的巷子裡滑倒'),
   F('kb-f-fight', 0, '喝醉打架', '喝醉跟人打架，被拘留2天', '在遊樂場跟人吵架，被家人禁足2回合'),
