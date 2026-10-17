@@ -66,3 +66,27 @@ describe.skipIf(!have)('free building on an empty large plot asks a human for th
     expect([f.type, f.level]).toEqual([3, 1]);
   });
 });
+
+describe.skipIf(!have)('a facility reaching level 5 signals the top-out (fireworks, 02 §4.2), every type and path', () => {
+  const step = (asked: Step[]) => asked;
+  void step;
+  const all = (flow: Generator<Step, unknown, Answer>, answer: (s: Step) => Answer = () => true as Answer) => {
+    const out: Step[] = [];
+    let r = flow.next(undefined as unknown as Answer);
+    while (!r.done) { const s = r.value as Step & { ask?: boolean }; out.push(s); r = flow.next(s.ask ? answer(s) : undefined as unknown as Answer); }
+    return out;
+  };
+  const cases: [number, number][] = [[100, 4], [100, 1], [100, 2], [KB_MAP, 10], [KB_MAP, 13], [KB_MAP, 4]];
+  for (const [mapId, type] of cases) {
+    it(`map ${mapId} type ${type}: the paid upgrade 4 → 5 and 機器工人 4 → 5`, () => {
+      const { g, p, f } = game(mapId);
+      f.type = type; f.level = 4; p.cash = 10_000_000;
+      const paid = all(g.landOnFacility(p, f) as Generator<Step, unknown, Answer>);
+      expect(paid.some(s => s.t === 'build' && s.kind === 'facility' && s.level === 5)).toBe(true);
+      const b = game(mapId);
+      b.f.type = type; b.f.level = 4;
+      const robot = all(b.g.tools.use(b.p, 9, b.f.id + 4000) as Generator<Step, unknown, Answer>);
+      expect(robot.some(s => s.t === 'fx' && s.kind === 'robot-worker' && (s.data as { done?: boolean }).done)).toBe(true);
+    });
+  }
+});

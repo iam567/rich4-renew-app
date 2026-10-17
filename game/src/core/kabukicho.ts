@@ -246,7 +246,7 @@ export class KabukichoRules implements MapRules {
     if (this.s.gang.holder >= 0) return false;
     if (p.god) yield* g.objects.detachGod(p);
     Object.assign(this.s.gang, { holder: p.id, days: GANG_DAYS, take: 0, node: 0, back: 0 });
-    yield { t: 'fx', kind: 'kb-gang', p: p.id, data: { on: true } };
+    yield { t: 'fx', kind: 'kb-gang', p: p.id, node: p.node, data: { on: true } };
     yield* g.say(p.id, '黑幫附身！', `${g.name(p.id)}被黑幫附身！七天內停在對手的地上，地主要付你保護費`);
     return true;
   }
@@ -307,7 +307,7 @@ export class KabukichoRules implements MapRules {
   *arrest(g: Game, p: Player, send: boolean): Flow {
     const take = Math.min(this.s.gang.take, Math.max(0, p.cash + p.bank));
     this.gangLeaves();
-    yield { t: 'fx', kind: 'kb-gang-arrest', p: p.id, data: { take } };
+    yield { t: 'fx', kind: 'kb-gang-arrest', p: p.id, node: p.node, data: { take } };
     yield* g.say(p.id, `違反暴力團對策法！\n沒收${fmt(take)}・坐牢${GANG_PRISON_DAYS}天`, `違反暴力團對策法！${g.name(p.id)}的保護費 ${fmt(take)}元 全部沒收，坐牢${GANG_PRISON_DAYS}天`);
     if (take > 0) yield* g.transfer(p.id, -1, take, 0, '沒收保護費');
     if (!p.whoPlays || g.over) return;
@@ -327,18 +327,19 @@ export class KabukichoRules implements MapRules {
   *protection(g: Game, p: Player, owner: Player, ref: number, amount: number): Flow {
     if (owner.cards.includes(KB_CARD)) {
       g.cards.consume(owner, KB_CARD);
-      yield { t: 'fx', kind: 'kb-bodyguard', p: owner.id, target: p.id };
+      yield { t: 'fx', kind: 'kb-bodyguard', p: owner.id, target: p.id, node: p.node };
       yield* g.say(owner.id, '保鑣出面！保護費免了', `${g.name(owner.id)}的保鑣卡：保鑣出面，保護費免了！`);
       return;
     }
     if (owner.cash <= 0) {
       const hit = this.lower(ref);
-      yield { t: 'fx', kind: 'kb-smash', p: p.id, target: owner.id, data: { ref, hit } };
+      yield { t: 'fx', kind: 'kb-smash', p: p.id, target: owner.id, node: p.node, data: { ref, hit } };
       yield* g.say(p.id, `店被砸了！${hit ? '降一級' : ''}`, `${g.name(owner.id)}沒有現金付保護費……店被砸了！${hit ? '（降一級）' : ''}`);
       yield { t: 'board' };
       return;
     }
     const a = Math.min(owner.cash, Math.max(0, Math.trunc(amount)));
+    yield { t: 'fx', kind: 'kb-protection', p: p.id, target: owner.id, node: p.node, data: { amount: a } };
     yield* g.say(p.id, `保護費 +${fmt(a)}`, `黑幫上門！${g.name(owner.id)}付${g.name(p.id)}保護費${fmt(a)}元`);
     yield* g.transfer(owner.id, p.id, a, 1, '保護費');
     this.s.gang.take += a;
@@ -405,13 +406,13 @@ export class KabukichoRules implements MapRules {
     const shops = g.board.facilities.filter(f => f.owner && f.owner !== p.id + 1 && f.level >= 1 && isKbShop(f.type) && (!kid || f.type === 10));
     this.s.tout.node = TOUT_SPAWNS.find(x => x !== this.s.tout.node) ?? this.s.tout.node;
     if (!shops.length) {
-      yield { t: 'fx', kind: 'kb-tout', p: p.id, data: { ok: false } };
+      yield { t: 'fx', kind: 'kb-tout', p: p.id, node: p.node, data: { ok: false } };
       yield* g.say(p.id, '拉客失敗！', '拉客仔搭訕失敗，沒有店可以去');
       return;
     }
     const f = shops[this.stream(0x70a7, p.id).below(shops.length)], node = this.facilityNode(f);
     if (!node) return;
-    yield { t: 'fx', kind: 'kb-tout', p: p.id, data: { ok: true, facility: f.id, name: f.name } };
+    yield { t: 'fx', kind: 'kb-tout', p: p.id, node: node.id, data: { ok: true, facility: f.id, name: f.name, shop: shopNameFor(f.type, this.female(p)) } };
     yield* g.say(p.id, `被拉進${shopNameFor(f.type, this.female(p))}！`, `${g.name(p.id)}被拉客仔拉進${f.name}的${shopNameFor(f.type, this.female(p))}`);
     p.lastNode = p.node; p.node = node.id;
     yield { t: 'teleport', p: p.id, node: node.id };
@@ -559,7 +560,7 @@ export class KabukichoRules implements MapRules {
     if (f.tmpState) rate *= 2;
     const k = this.mod('typhoon') ? 0.5 : 1;
     const amount = Math.round(rate * mult * k);
-    yield { t: 'fx', kind: 'kb-merch', p: p.id, target: owner.id, data: { facility: f.id, shop, name: f.name, pic: item.pic, item: item.name, line: item.line, amount } };
+    yield { t: 'fx', kind: 'kb-merch', p: p.id, target: owner.id, node: p.node, data: { facility: f.id, shop, name: f.name, pic: item.pic, item: item.name, line: item.line, amount } };
     yield* g.say(undefined, `買了周邊 −${fmt(amount)}元`, `${where}：${item.name} ${fmt(rate)}×${mult}倍${k !== 1 ? `×${k}` : ''}＝${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, '消費', true);
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, '消費');
@@ -585,7 +586,7 @@ export class KabukichoRules implements MapRules {
     if (vip) this.s.vip[p.id] = 0;
     const days = vip ? 1 : yield* g.spin(WheelKind.hotel, this.wheelName(g, owner, f, p));
     const amount = rate * days;
-    if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, data: { facility: f.id, days, amount } };
+    if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, node: p.node, data: { facility: f.id, days, amount } };
     yield* g.say(undefined, `${park ? `遊樂場${days}天` : `休息${days}天`}\n−${fmt(amount)}元`, `${g.name(p.id)}${park ? `在遊樂場玩${days}天` : `在${this.wheelName(g, owner, f, p)}休息${days}天`}，費用${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, fee, false);
     if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, fee);
@@ -605,8 +606,31 @@ export class KabukichoRules implements MapRules {
     const bill = R * (rng.below(6) + 1);
     const pic = inc.gendered ? `${inc.pic}-${female ? 'f' : 'm'}` : inc.pic;
     const shop = shopNameFor(f.type, female);
+    // 喝霸王酒: caught or not, drawn before the card so it can say what happens.
+    const caught = inc.id === 'dash' ? rng.below(2) === 1 : false;
+    const lockerTake = Math.max(0, Math.min(5 * R, Math.max(1000 * g.priceIndex, Math.trunc(p.cash / 10)), p.cash));
+    // The card says what happens in plain words and real amounts (the user 2026-10-18; the R formulas only in the docs).
+    const y = (n: number) => `${fmt(n)} 元`;
+    const say: Record<string, [string, string]> = {
+      poison: ['免單・住院轉盤', `罰款 ${y(3 * R)}・停 1 回合`],
+      drunk: [`付 ${y(bill)}・住院轉盤`, `收 ${y(bill)}`], cdrunk: [`付 ${y(bill)}・住院轉盤`, `收 ${y(bill)}`],
+      dash: caught ? [`被抓到，付 ${y(2 * bill)}`, `收 ${y(2 * bill)}`] : ['跑掉了，一毛不付', '沒收到錢'],
+      tv: [`付 ${y(bill)}・上電視`, `收 ${y(bill)}＋宣傳費 ${y(4 * R)}`],
+      treat: ['免單（隔壁桌請客）', `收 ${y(bill)}`],
+      ripoff: [`付 ${y(bill)}`, `罰款 ${y(4 * R)}・停 1 回合`],
+      tower: [`付 ${y(bill + 5 * R)}`, `收 ${y(bill + 5 * R)}`],
+      love: ['免單＋1 張卡片', '—'],
+      minor: ['免單', `罰款 ${y(5 * R)}・降一級・停 2 回合`],
+      late: ['免單', `罰款 ${y(3 * R)}・停業 3 天`],
+      slip: [`住院轉盤・賠償 ${y(2 * R)}`, `賠 ${y(2 * R)}`],
+      locker: [`被偷 ${y(lockerTake)}`, '—'],
+      vip: female ? ['免單・點券 +30', '—'] : [`付 ${y(bill)}・點券 +30`, `收 ${y(bill)}`],
+      licence: ['免單', `罰款 ${y(4 * R)}・降一級・停 1 回合`],
+      extend: female ? ['免費延長', '—'] : [`付 ${y(2 * bill)}`, `收 ${y(2 * bill)}`],
+    };
+    const [visitorLine, ownerLine] = say[inc.id] ?? [inc.visitor, inc.owner];
     yield { t: 'fx', kind: 'kb-incident', p: p.id, target: owner.id, node: p.node, data: {
-      facility: f.id, shop, name: f.name, title: inc.title, pic, visitor: inc.visitor, owner: inc.owner, id: inc.id, R } };
+      facility: f.id, shop, name: f.name, title: inc.title, pic, visitor: visitorLine, owner: ownerLine, id: inc.id, R } };
     const lines: ResultLine[] = [];
     const pay = function* (this: KabukichoRules, from: Player, to: Player, amount: number, why: string) {
       const a = Math.min(Math.trunc(amount), Math.max(0, from.cash + from.bank));
@@ -617,7 +641,7 @@ export class KabukichoRules implements MapRules {
     switch (inc.id) {
       case 'poison': lines.push({ p: owner.id, text: '罰款', amount: -(yield* this.fine(owner, 3 * R, '食物中毒罰款')) }); yield* this.pause(owner, 1); wheel = true; break;
       case 'drunk': case 'cdrunk': lines.push({ p: p.id, text: '付帳', amount: -(yield* pay(p, owner, bill, '消費')) }); wheel = true; break;
-      case 'dash': if (rng.below(2)) lines.push({ p: p.id, text: '被抓到，付 2 倍', amount: -(yield* pay(p, owner, 2 * bill, '霸王酒')) }); else lines.push({ p: p.id, text: '跑掉了！一毛不付' }); break;
+      case 'dash': if (caught) lines.push({ p: p.id, text: '被抓到，付 2 倍', amount: -(yield* pay(p, owner, 2 * bill, '霸王酒')) }); else lines.push({ p: p.id, text: '跑掉了！一毛不付' }); break;
       case 'tv': lines.push({ p: p.id, text: '付帳', amount: -(yield* pay(p, owner, bill, '消費')) }); g.gain(owner, 4 * R, 0); lines.push({ p: owner.id, text: '宣傳費', amount: 4 * R }); break;
       case 'treat': g.gain(owner, bill, 0); lines.push({ p: owner.id, text: '隔壁桌付了帳單', amount: bill }); break;
       case 'ripoff': lines.push({ p: p.id, text: '只付正常帳單', amount: -(yield* pay(p, owner, bill, '消費')) }); lines.push({ p: owner.id, text: '罰款', amount: -(yield* this.fine(owner, 4 * R, '敲竹槓罰款')) }); yield* this.pause(owner, 1); break;
@@ -626,7 +650,7 @@ export class KabukichoRules implements MapRules {
       case 'minor': lines.push({ p: owner.id, text: '罰款', amount: -(yield* this.fine(owner, 5 * R, '僱用未成年罰款')) }); if (this.lower(ref)) lines.push({ p: owner.id, text: '店降一級' }); yield* this.pause(owner, 2); break;
       case 'late': lines.push({ p: owner.id, text: '罰款，停業 3 天', amount: -(yield* this.fine(owner, 3 * R, '超時營業罰款')) }); this.s.closed[f.id] = 3; break;
       case 'slip': lines.push({ p: owner.id, text: '賠償', amount: -(yield* pay(owner, p, 2 * R, '賠償')) }); wheel = true; break;
-      case 'locker': { const a = Math.min(5 * R, Math.max(1000 * g.priceIndex, Math.trunc(p.cash / 10)), p.cash); if (a > 0) yield* g.transfer(p.id, -1, a, 0, '置物櫃被撬'); lines.push({ p: p.id, text: '現金被偷了', amount: -a }); break; }
+      case 'locker': { const a = lockerTake; if (a > 0) yield* g.transfer(p.id, -1, a, 0, '置物櫃被撬'); lines.push({ p: p.id, text: '現金被偷了', amount: -a }); break; }
       case 'vip': if (!female) lines.push({ p: p.id, text: '付帳', amount: -(yield* pay(p, owner, bill, '消費')) }); p.points = (p.points + 30) & 0xffff; yield { t: 'points', p: p.id, amount: 30 }; lines.push({ p: p.id, text: '點券 +30' }); break;
       case 'licence': lines.push({ p: owner.id, text: '罰款', amount: -(yield* this.fine(owner, 4 * R, '無照營業罰款')) }); if (this.lower(ref)) lines.push({ p: owner.id, text: '店降一級' }); yield* this.pause(owner, 1); break;
       case 'extend': if (female) lines.push({ p: p.id, text: '免費延長' }); else lines.push({ p: p.id, text: '付 2 倍帳單', amount: -(yield* pay(p, owner, 2 * bill, '延長服務')) }); break;
@@ -647,7 +671,7 @@ export class KabukichoRules implements MapRules {
   *machine(g: Game, p: Player, kind: M.MachineKind): Flow {
     const name = kind === 'pachinko' ? '柏青哥店' : '拉霸店', human = g.isHuman(p);
     if (p.points < M.BUY_POINTS) {
-      yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, skipped: true, text: `${g.name(p.id)}　${name}：點券不足，只能路過看看` } };
+      yield { t: 'fx', kind: 'kb-machine-result', p: p.id, node: p.node, data: { kind, skipped: true, text: `${g.name(p.id)}　${name}：點券不足，只能路過看看` } };
       if (human) yield* g.say(p.id, '點券不足！', '點券不足，不能玩');
       return;
     }
@@ -666,7 +690,7 @@ export class KabukichoRules implements MapRules {
     } else {
       const need = [80, 50, 40][CHARACTERS[p.character]?.personality ?? 1];
       if (p.points < need) {
-        yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, skipped: true, text: `${g.name(p.id)}　${name}：路過看看（點券 ${p.points}）` } };
+        yield { t: 'fx', kind: 'kb-machine-result', p: p.id, node: p.node, data: { kind, skipped: true, text: `${g.name(p.id)}　${name}：路過看看（點券 ${p.points}）` } };
         return;
       }
       const units = Math.max(1, Math.min(3, Math.floor((p.points - 30) / 20)));
@@ -680,7 +704,7 @@ export class KabukichoRules implements MapRules {
     this.prizes = [];
     const got = yield* this.exchange(g, p, kind, left, rng);
     const text = `${g.name(p.id)}　${kind === 'pachinko' ? '柏青哥' : '拉霸'}　花 ${cost} 點券（${buys * per}${unit}）→ ${summary} → 剩 ${fmt(left)}${unit} → 換：${got}`;
-    yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, buys, cost, left, text, human, items: this.prizes } };
+    yield { t: 'fx', kind: 'kb-machine-result', p: p.id, node: p.node, data: { kind, buys, cost, left, text, human, items: this.prizes } };
   }
 
   /**

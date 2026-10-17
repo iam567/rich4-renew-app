@@ -397,7 +397,7 @@ export class Cards {
             const type = only !== undefined ? only : human ? yield* this.chooseFacilityType(p, false) : f.owner === me + 1 ? g.rng.rand() % 4 + 1 : 0;
             f.type = Math.max(0, type);
             f.level = 1;
-          } else g.freeUpgrade(ref);
+          } else { const l = g.freeUpgrade(ref); if (l >= 0 && (l & 0x7f) >= 5) yield { t: 'fx', kind: 'angel-top', p: me, data: { ref } }; } // a facility at 5: fireworks
         }
         yield { t: 'fx', kind: 'angel', p: me, data: { ref, lots, was } };
         yield { t: 'board' };

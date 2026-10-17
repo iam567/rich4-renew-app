@@ -136,7 +136,7 @@ fxScreens['kb-machine-result'] = async (ctx, fx) => {
       resolve();
     };
     // The human's own summary stays readable at the fast speed too (as the result boxes, RESULT_MIN_MS).
-    const timer = setTimeout(end, d.human ? Math.max(RESULT_MIN_MS, 3200 * ctx.scale()) : (d.skipped ? 1500 : 2500) * ctx.scale());
+    const timer = setTimeout(end, d.human ? Math.max(RESULT_MIN_MS, 3200 * ctx.scale()) : Math.max(1800, (d.skipped ? 2000 : 3500) * ctx.scale()));
     setTimeout(() => { if (!done) layer?.addEventListener('pointerup', end); }, 250);
   });
 };

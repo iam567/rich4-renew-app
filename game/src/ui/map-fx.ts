@@ -242,9 +242,17 @@ export class MapDirector {
     if (this.game.board.lands.filter(x => x.name === l.name && x.owner === s.p + 1).length >= 3) await this.ev(s.p, 16, Face.normal);
   }
 
-  /** Building on one's own land: level 5 → line 15 and fireworks; else 1 in 3 for a street of three. */
+  /**
+   * Building on one's own land: level 5 → line 15 and fireworks; else 1 in 3 for a street of three. A large plot's
+   * facility reaching level 5 tops out the same way (02 §4.2 「到 5 级播放封顶动画」: every facility, 研究所 too).
+   */
   async build(s: Extract<GameEvent, { t: 'build' }>) {
     await this.idle();
+    if (s.kind === 'facility') {
+      const f = this.game.board.facilities[s.id - 1];
+      if (f && s.level >= 5) { await this.ev(s.p, 15, Face.normal); await this.fireworks({ x: f.x, y: f.y }); }
+      return;
+    }
     if (s.kind !== 'land') return;
     const l = this.game.board.lands[s.id - 1];
     if (s.level >= 5) {
@@ -575,7 +583,7 @@ export class MapDirector {
         audio.sfx(Sfx.build);
         if (Number(s.data?.level) >= 5) {
           await this.ev(p.id, 15, Face.normal);
-          if (at && ref < 4000) await this.fireworks(at);
+          if (at) await this.fireworks(at);
         } else await this.ev(p.id, this.rand2() ? 0 : 1, Face.normal);
         return true;
       }
@@ -629,7 +637,7 @@ export class MapDirector {
         v.freezeLots();
         await this.tool(p.id, 8, Face.normal);
         await this.clipAt(553, at, { bake: 44, sound: Sfx.robot });
-        if (s.data?.done && ref < 4000) await this.fireworks(at);
+        if (s.data?.done) await this.fireworks(at);
         return true;
       }
       case 'construction': await this.tool(s.p, 11, Face.normal); return false;
@@ -788,7 +796,7 @@ export class MapDirector {
         await this.clipAt(553, at, { bake: 44, sound: Sfx.robot });
         if (s.data?.top) {
           if (s.data?.own) await this.ev(p.id, 15, Face.normal);
-          if (ref < 4000) await this.fireworks(at);
+          await this.fireworks(at);
         }
         return true;
       }

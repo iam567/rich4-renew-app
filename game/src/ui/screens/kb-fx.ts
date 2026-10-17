@@ -34,6 +34,9 @@ const faceImg = (ctx: ScreenContext, p: number | undefined, cls = '') => {
 };
 const who = (ctx: ScreenContext, p: number | undefined) => (p !== undefined ? CHARACTERS[ctx.game.players[p]?.character ?? -1]?.name ?? '' : '');
 
+/** Whether the human (a player not on autopilot) is the one this card is about, or the other side of it. */
+const humanIn = (ctx: ScreenContext, fx: Fx) => [fx.p, fx.target].some(i => { const q = i !== undefined ? ctx.game.players[i] : undefined; return !!q && ctx.game.isHuman(q); });
+
 // ------------------------------------------------------------------ the incident card
 
 fxScreens['kb-incident'] = (ctx, fx) => {
@@ -56,7 +59,8 @@ fxScreens['kb-incident'] = (ctx, fx) => {
   const img = scene.querySelector<HTMLImageElement>('.kbi-img');
   if (img) img.onerror = () => img.remove();
   audio.sfx(Sfx.special);
-  const total = Math.max(1600, 3600 * ctx.scale()), tapAfter = Math.min(RESULT_MIN_MS, total * 0.6);
+  // A human visitor or owner taps it away (it says 「點一下繼續」); otherwise it stays 3.5 s × game speed.
+  const mine = humanIn(ctx, fx), total = Math.max(1800, 3500 * ctx.scale()), tapAfter = Math.min(RESULT_MIN_MS, total * 0.6);
   return new Promise<void>(resolve => {
     let done = false;
     const end = () => {
@@ -66,21 +70,21 @@ fxScreens['kb-incident'] = (ctx, fx) => {
       root.classList.add('out');
       setTimeout(() => { ov.close(); resolve(); }, 180);
     };
-    const timer = setTimeout(end, total);
+    const timer = mine ? 0 : setTimeout(end, total);
     setTimeout(() => { if (!done) { root.classList.add('can-close'); root.addEventListener('pointerup', end); } }, tapAfter);
   });
 };
 
 // ------------------------------------------------------------------ a child turned away (§3): the goods, the amusement park
 
-function kidCard(ctx: ScreenContext, cls: string, html: string): Promise<void> {
+function kidCard(ctx: ScreenContext, cls: string, html: string, wait = false): Promise<void> {
   const ov = fitOverlay(ctx.area, `kbk-ov ${cls}`, () => [380, 360], undefined, 16);
   const { scene, root } = ov;
   scene.classList.add('kbk-scene');
   scene.innerHTML = html;
   for (const img of scene.querySelectorAll<HTMLImageElement>('img.kbk-opt')) img.onerror = () => img.remove();
   audio.sfx(Sfx.points);
-  const total = Math.max(1300, 2800 * ctx.scale());
+  const total = Math.max(1800, 3500 * ctx.scale());
   return new Promise<void>(resolve => {
     let done = false;
     const end = () => {
@@ -90,7 +94,7 @@ function kidCard(ctx: ScreenContext, cls: string, html: string): Promise<void> {
       root.classList.add('out');
       setTimeout(() => { ov.close(); resolve(); }, 180);
     };
-    const timer = setTimeout(end, total);
+    const timer = wait ? 0 : setTimeout(end, total);
     setTimeout(() => { if (!done) { root.classList.add('can-close'); root.addEventListener('pointerup', end); } }, Math.min(700, total * 0.5));
   });
 }
@@ -103,7 +107,7 @@ fxScreens['kb-merch'] = (ctx, fx) => {
       <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-merch')}" alt="">${pic ? `<img class="kbk-opt kbk-item" src="${pic}" alt="">` : ''}</div>
       <div class="kbk-title">${esc(String(d.item ?? ''))}</div>
       <div class="kbk-line">買了周邊 <em>−${fmt(Number(d.amount) || 0)}元</em></div>
-    </div>`);
+    </div>`, humanIn(ctx, fx));
 };
 
 fxScreens['kb-park'] = (ctx, fx) => {
@@ -113,7 +117,7 @@ fxScreens['kb-park'] = (ctx, fx) => {
       <div class="kbk-pic"><img class="kbk-opt kbk-bg" src="${regionalPictureUrl('kb-k-park')}" alt=""></div>
       <div class="kbk-title">去遊樂場玩 ${days} 天！</div>
       <div class="kbk-line">遊樂場 ${days} 天 <em>−${fmt(Number(d.amount) || 0)}元</em></div>
-    </div>`);
+    </div>`, humanIn(ctx, fx));
 };
 
 // ------------------------------------------------------------------ the hospital wheel (0–3 天)
@@ -170,11 +174,52 @@ function toast(ctx: ScreenContext, fx: Fx, cls: string, title: string, sub = '',
 
 // 女性顧客免費, 拉客仔, 店被砸了 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
 // board) saying the same: no toast (one would cover the speech cloud of a player near the top of the map).
-fxScreens['kb-smash'] = async () => { audio.sfx(Sfx.smallBlast); };
+// ------------------------------------------------------------------ notices: a big title, one line per player
+
+/**
+ * A small card over the map: a big title and one plain line per player concerned (face, name, the effect in numbers).
+ * Stays 3.5 s × game speed; when the human is one of them it waits for a tap (「點一下繼續」).
+ */
+function notice(ctx: ScreenContext, fx: Fx, cls: string, title: string, rows: { p?: number; text: string; bad?: boolean }[]): Promise<void> {
+  const mine = humanIn(ctx, fx);
+  const ov = fitOverlay(ctx.area, `kbn-ov ${cls}`, tall => [tall ? 400 : 580, (mine ? 118 : 104) + 70 * rows.length], undefined, tall0(ctx) ? 10 : 24);
+  const { scene, root } = ov;
+  scene.classList.add('kbn-scene');
+  scene.innerHTML = `<div class="kbn-card"><div class="kbn-title">${esc(title)}</div>
+      ${rows.map(r => `<div class="kbn-row${r.bad ? ' bad' : ''}"><span class="kbn-face">${faceImg(ctx, r.p)}</span><b>${esc(who(ctx, r.p))}</b><span class="kbn-text">${esc(r.text)}</span></div>`).join('')}
+      ${mine ? '<div class="kbn-tap">點一下繼續</div>' : ''}</div>`;
+  const total = Math.max(1800, 3500 * ctx.scale());
+  return new Promise<void>(resolve => {
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      root.classList.add('out');
+      setTimeout(() => { ov.close(); resolve(); }, 160);
+    };
+    const timer = mine ? 0 : setTimeout(end, total);
+    setTimeout(() => { if (!done) root.addEventListener('pointerup', end); }, 350);
+  });
+}
+/** The map area is upright (a phone held upright): the notices are narrower there, so they are scaled up less. */
+const tall0 = (ctx: ScreenContext) => ctx.area.clientHeight > ctx.area.clientWidth * 1.05;
+const yen = (n: unknown) => `${fmt(Math.abs(Number(n) || 0))} 元`;
+
+fxScreens['kb-smash'] = (ctx, fx) => {
+  audio.sfx(Sfx.smallBlast);
+  return notice(ctx, fx, 'bad', '店被砸了！', [{ p: fx.target, text: fx.data?.hit ? '沒錢付保護費・降 1 級' : '沒錢付保護費', bad: true }]);
+};
 fxScreens['kb-gang-arrest'] = (ctx, fx) => {
   audio.sfx(Sfx.police);
-  return toast(ctx, fx, 'bad big', '違反暴力團對策法！', '附身結束', `<span class="kbt-line">沒收 <em>${fmt(Number(fx.data?.take) || 0)}</em>・坐牢7天</span>`, true);
+  return notice(ctx, fx, 'bad', '違反暴力團對策法！', [{ p: fx.p, text: `沒收 ${yen(fx.data?.take)}・坐牢 7 天`, bad: true }]);
 };
+fxScreens['kb-protection'] = (ctx, fx) => {
+  audio.sfx(Sfx.special);
+  return notice(ctx, fx, 'gang', '黑幫收保護費', [{ p: fx.p, text: `+${yen(fx.data?.amount)}` }, { p: fx.target, text: `−${yen(fx.data?.amount)}`, bad: true }]);
+};
+fxScreens['kb-gang'] = (ctx, fx) => (fx.data?.on ? notice(ctx, fx, 'gang', '黑幫附身！', [{ p: fx.p, text: '7 天內收保護費' }]) : Promise.resolve());
+fxScreens['kb-tout'] = (ctx, fx) => notice(ctx, fx, 'tout', fx.data?.ok ? '被拉客仔拉走！' : '拉客失敗', [{ p: fx.p, text: fx.data?.ok ? `進了 ${String(fx.data?.name ?? '')}${String(fx.data?.shop ?? '')}` : '沒有店可以去' }]);
 // ------------------------------------------------------------------ the prize counter's goods in use (§7.5, §4.1)
 
 /** An animated stage over the map (w × h units, fitted): `play` runs it; a tap ends it at once. Times × game speed. */
