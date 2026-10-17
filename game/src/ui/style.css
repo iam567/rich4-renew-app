@@ -567,7 +567,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 @keyframes map-info-in { from { opacity: 0; transform: scale(.92); } }
 
 /* 系統: one compact window — a row per setting (label + chips on one line), three small buttons. */
-.msg.sheet.sys-sheet { width: min(470px, 100%); padding-left: 14px; padding-right: 14px; }
+/* Clear of the dashed inner frame (inset 7px + 2px): the buttons' 3D shadow needs room below too. */
+.msg.sheet.sys-sheet { width: min(470px, 100%); padding: 22px 20px 26px; }
 .sys-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 10px; align-items: center; width: 100%; margin: 2px 0 14px; }
 .sys-grid > b { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; text-align: right; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
 .sys-grid .chips { flex-wrap: nowrap; gap: 4px; min-width: 0; }
@@ -575,6 +576,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 .sys-buttons { flex-wrap: nowrap; gap: 8px; }
 .sys-buttons .candy, .sys-buttons .candy.no { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 16px; border-width: 2px; border-radius: 13px; }
 .sys-grid .chips.even .chip { flex: 1 1 0; padding: 3px 0; text-align: center; text-overflow: clip; }
+/* A short portrait map area (small phones): tighter rows before the window has to shrink as a whole. */
+@media (orientation: portrait) and (max-height: 760px) {
+  .sys-grid { gap: 4px 8px; margin-bottom: 10px; }
+  .sys-grid .chip { padding: 2px 8px; font-size: 13px; line-height: 1.3; }
+}
 /* A short landscape screen: the rows in two columns, so the window stays low enough for its buttons. */
 @media (orientation: landscape) and (max-height: 560px) {
   .msg.sheet.sys-sheet { width: min(780px, 100%); }

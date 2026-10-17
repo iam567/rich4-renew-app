@@ -347,6 +347,18 @@ export class Hud {
       }
       box.append(node, row);
       this.show(box);
+      // Small phones (the map area of an iPhone SE is ~400 px high): shrink the whole window to fit, never cut
+      // off its buttons, and do it again on rotation.
+      const fit = () => {
+        if (!box.isConnected) { ro.disconnect(); return; }
+        box.style.zoom = '';
+        const ls = getComputedStyle(this.layer);
+        const room = this.layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom);
+        const need = box.scrollHeight + parseFloat(getComputedStyle(box).marginTop) + 12;   // scrollHeight: max-height caps the box itself
+        if (need > room && room > 0) box.style.zoom = String(Math.max(0.6, room / need));
+      };
+      const ro = new ResizeObserver(fit);
+      ro.observe(this.layer);
     });
   }
 
