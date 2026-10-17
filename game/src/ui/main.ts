@@ -943,13 +943,16 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       case 'pay': {
         const to = isPlayer(s.to) ? nameOf(s.to) : s.to === -1 ? '樂透獎池' : s.to === -2 ? '黑市' : s.to === -3 ? '交通' : '企業';
         const from = isPlayer(s.from) ? nameOf(s.from) : '企業';
-        hud.note(`${from} → ${to}：${s.reason} ${s.amount.toLocaleString()} 元`, isPlayer(s.from) ? colorOf(s.from) : undefined);
+        // Money "paid to the system" (fines, cheats, the beggar …) goes into the lottery jackpot as in the original
+        // (06 §0.2), but the player paid a fine, not the lottery: say what it was, mention the jackpot only in the log.
+        const toPot = s.to === -1;
+        hud.note(toPot ? `${from}：${s.reason} ${s.amount.toLocaleString()} 元（進樂透獎池）` : `${from} → ${to}：${s.reason} ${s.amount.toLocaleString()} 元`, isPlayer(s.from) ? colorOf(s.from) : undefined);
         if (isPlayer(s.from) && !s.quiet) {
           // Paying for a lot or a facility's service (core_actions:492 / 1231) rings the till (slot 20).
           if (/費$/.test(s.reason) && s.reason !== '保護費') audio.sfx(Sfx.rent);
           const n = nodeById(game.board, game.players[s.from].node);
           view.highlight = n.ref > 2000 && n.ref < 4000 ? n.ref - 2001 : null;
-          await hud.flash(`${from}付給${to}\n\n${s.reason}\n${s.amount.toLocaleString()} 元`, 1300);
+          await hud.flash(toPot ? `${from}\n\n${s.reason}\n${s.amount.toLocaleString()} 元` : `${from}付給${to}\n\n${s.reason}\n${s.amount.toLocaleString()} 元`, 1300);
           view.highlight = null;
         }
         hud.refresh();
