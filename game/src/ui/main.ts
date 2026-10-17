@@ -35,7 +35,7 @@ import { finaleResults } from './finale-ending'; // 大富翁城 (docs/rules/19)
 import { finaleToolbar, noStocks, prepareFinale } from './finale';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
-import { neonMode, prepareKabukicho, setNeonMode, setWalkersMode, STREET_MODES, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
+import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import './tycoon-onway';
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
@@ -158,6 +158,7 @@ function options() {
       { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => write('rich4.weather', i) },
       // 歌舞伎町's living street (docs/rules/21 §8): kept for every game, used on that map only.
       { label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: i => setWalkersMode(i) },
+      { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: i => setVehiclesMode(i) },
       { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: i => setNeonMode(i) },
       { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
         pick: i => void setLang(LANGS[i].id).then(render) },
@@ -615,6 +616,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
           // 歌舞伎町's living street (docs/rules/21 §8).
           ...(mapId === KB_MAP ? [{ label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: (i: number) => setWalkersMode(i) },
+            { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
             { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: (i: number) => setNeonMode(i) }] : []),
           // 大富豪模式: the chat box's 播報 (docs/rules/17 §10).
           ...(chat ? [{ label: '播報', opts: CHAT_MODES, cur: () => chatMode(), pick: (i: number) => { setChatMode(i); chat.refresh(); } }] : []),

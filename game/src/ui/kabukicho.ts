@@ -12,6 +12,8 @@ import type { Game } from '../core/game';
 import type { Player } from '../core/types';
 import { picSize } from './decode';
 import { memTier } from './mem-tier';
+import { BIKE, buildTracks, Crowd, nearestView, walkerFacing } from './kb-crowd';
+import { AMB, Ambient, ambientSprites, phoneGlow, type AddItem, type StreetView } from './kb-ambient';
 import type { MapSprites } from './assets';
 import type { SpriteBank } from './sprites';
 import './kabukicho.css';
@@ -26,8 +28,6 @@ const HOUSE_SPRITE = 1796;
 const GANG_SPRITE = 1768, TOUT_SPRITE = 1769;
 /** The six passers-by, 16 frames each: row (direction) × 4 + walk phase. */
 const WALKER_SPRITE = 1801, WALKER_KINDS = 6;
-/** Kinds whose down-right row came out as a back view (the tourist, 1803): they walk down-right as row 0 mirrored. */
-const MIRROR_DOWN_RIGHT = new Set([2]);
 /** Landmarks (landscape sprites) that carry neon (the hospital and the prison are not the map's own). */
 const LANDMARK_FIRST = 1751, LANDMARK_LAST = 1767;
 
@@ -123,11 +123,12 @@ export function prepareKabukicho(bank: SpriteBank): void {
     out[`Data/0${id}`] = { dir: 'remake/tools', frames: [{ file: `0${id}.webp`, width: w, height: h, anchor_x: 0, anchor_y: 0 }] };
   }
   bank.addMapSprites(out);
+  bank.addMapSprites(ambientSprites()); // the street life's vehicles, train and street characters (§8.3)
 }
 
 // ------------------------------------------------------------------ settings (§8.1)
 
-const KEY_WALKERS = 'rich4.walkers', KEY_NEON = 'rich4.neon';
+const KEY_WALKERS = 'rich4.walkers', KEY_NEON = 'rich4.neon', KEY_VEHICLES = 'rich4.vehicles';
 /** Both rows of the settings: 0 開, 1 關. */
 export const STREET_MODES = ['開', '關'];
 const reducedMotion = () => { try { return matchMedia('(prefers-reduced-motion: reduce)').matches; } catch { return false; } };
@@ -136,6 +137,8 @@ const stored = (key: string, fallback: number) => {
 };
 /** 街頭行人: on by default, off on the low memory tier and when the system asks for less motion. */
 export const walkersMode = () => stored(KEY_WALKERS, memTier().name === 'low' || reducedMotion() ? 1 : 0);
+/** 街頭車輛 (the avenues' traffic, the train, the sirens): like 街頭行人. */
+export const vehiclesMode = () => stored(KEY_VEHICLES, memTier().name === 'low' || reducedMotion() ? 1 : 0);
 /** 霓虹閃爍: on by default, off when the system asks for less motion. */
 export const neonMode = () => stored(KEY_NEON, reducedMotion() ? 1 : 0);
 const listeners = new Set<() => void>();
@@ -145,23 +148,12 @@ const write = (key: string, v: number) => {
 };
 export const setWalkersMode = (v: number) => write(KEY_WALKERS, v);
 export const setNeonMode = (v: number) => write(KEY_NEON, v);
+export const setVehiclesMode = (v: number) => write(KEY_VEHICLES, v);
 
 // ------------------------------------------------------------------ the street (§8)
 
 /** Screens that cover the map or ask something: the passers-by stand still meanwhile (§8.1). */
-const COVERS = '.ui-layer.show, .pl-scene, .fx-overlay, .te-cover, .shop, .bk-atm-ov, .bk-counter-ov, .dv-ov, .bm-overlay, .slots-overlay, .rd-ov';
-
-/** mulberry32: the street's own numbers (never the rules' rand()). */
-function prng(seed: number): () => number {
-  let a = seed >>> 0;
-  return () => {
-    a = (a + 0x6d2b79f5) >>> 0;
-    let t = a;
-    t = Math.imul(t ^ (t >>> 15), t | 1);
-    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
+const COVERS = '.ui-layer.show, .pl-scene, .fx-overlay, .te-cover, .shop, .bk-atm-ov, .bk-counter-ov, .dv-ov, .bm-overlay, .slots-overlay, .rd-ov, .kbm-root';
 
 /** A small hash of a sign's id, 0..1 (its own rhythm). */
 const hash01 = (n: number, salt: number) => {
@@ -170,40 +162,29 @@ const hash01 = (n: number, salt: number) => {
   return ((h ^ (h >>> 13)) >>> 0) / 4294967296;
 };
 
-interface Path { pts: [number, number][]; cum: number[]; len: number; closed: boolean }
-
-interface Walker {
-  path: Path;
-  /** Distance along the path and the way it walks it (+1 / −1; a loop always +1). */
-  s: number;
-  dir: number;
-  /** Map px per second. */
-  speed: number;
-  kind: number;
-  /** Walk-cycle clock in frames (12 a second). */
-  anim: number;
-  /** Seconds still standing (looking at the phone), and until the next stop. */
-  stop: number;
-  nextStop: number;
-  x: number;
-  y: number;
-  /** The way it faces, in map px (kept while standing). */
-  vx: number;
-  vy: number;
-}
+/** Street props that glow (ui/kb-ambient.ts): vending machines (they flicker now and then), lanterns, lamps, signs. */
+const GLOW_PROPS = new Set([2501, 2502, 2506, 2507, 2508, 2510]);
+/** The ramen shops among the small lots' looks (拉麵店, levels 1–3) and how high their roofs are (original px). */
+const RAMEN_FIRST = 1811 + 3 * 4, ROOF = [0, 16, 26, 36, 50, 66];
+/** How far the walkers' sidewalks lie beyond the map's walker lines (map px, away from the road). */
+const SIDEWALK = 9;
 
 /**
- * The living street of 歌舞伎町 (§8): the passers-by and the neon. Its clock is its own (the screen's frames, not
- * the game's tick): it stops while a dialog or a screen is open, while the page is hidden, and runs at the same
- * pace whatever the game speed.
+ * The living street of 歌舞伎町 (§8): the passers-by (ui/kb-crowd.ts), the traffic, the train, the street characters,
+ * the kaiju and the steam (ui/kb-ambient.ts), and the neon. Its clock is its own (the screen's frames, not the
+ * game's tick): it stops while a dialog or a screen is open, while the page is hidden, and runs at the same pace
+ * whatever the game speed.
  */
 export class KbStreet {
-  private walkers: Walker[] = [];
-  private paths: Path[];
+  readonly crowd: Crowd;
+  readonly ambient: Ambient;
   private last = 0;
   private frame = 0;
   private covered = false;
+  private hidden = false;
+  private clock = 0;
   private walkOn = walkersMode() === 0;
+  private carsOn = vehiclesMode() === 0;
   private neonAnim = neonMode() === 0;
   /** The low tier glows the whole picture faintly instead of keeping a neon mask per frame (no extra memory). */
   private readonly cheap = memTier().name === 'low';
@@ -212,45 +193,69 @@ export class KbStreet {
   private readonly unlisten: () => void;
 
   constructor(readonly game: Game, paths: [number, number][][]) {
-    this.paths = paths.filter(p => p.length >= 2).map(pts => {
-      const cum = [0];
-      for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
-      const a = pts[0], b = pts[pts.length - 1];
-      return { pts, cum, len: cum[cum.length - 1], closed: Math.hypot(a[0] - b[0], a[1] - b[1]) < 1 };
-    }).filter(p => p.len > 0);
-    this.populate();
-    const update = () => { this.walkOn = walkersMode() === 0; this.neonAnim = neonMode() === 0; };
+    const tier = memTier(), seed = (game.settings.seed ^ 0x6b61626b) >>> 0, nodes = game.board.nodes;
+    // Only the landmarks with a life of their own (the kaiju, the big screen, the stalls; they never move).
+    const marks = game.board.landscapes.map(l => ({ x: l.x, y: l.y, res: l.resource + 38, facing: l.facing })).filter(l => l.res === 1753 || l.res === 1763 || l.res === 1764);
+    // The way from a point to the nearest road square (for turning to a shop window, away from the road).
+    const roadDir = (x: number, y: number): [number, number] | null => {
+      let best: [number, number] | null = null, bd = 90 * 90;
+      for (const n of nodes) { const d = (n.x - x) ** 2 + (n.y - y) ** 2; if (d < bd) { bd = d; best = [n.x - x, n.y - y]; } }
+      return best;
+    };
+    // The sidewalks a few px further from the road than the map's lines (the road's edge): walkers keeping left in
+    // either direction then both stay off the road.
+    // The road is between a sidewalk and its partner across the street (the parallel line about 46 px away; the
+    // map writes both sides of every street), so each moves away from its partner.
+    const mid = (p: [number, number][]) => [(p[0][0] + p[1][0]) / 2, (p[0][1] + p[1][1]) / 2];
+    const side = paths.map(p => {
+      if (p.length !== 2) return p;
+      const [a, b] = p, l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1, nx = -(b[1] - a[1]) / l, ny = (b[0] - a[0]) / l, m = mid(p);
+      let best: number[] | null = null, bd = Infinity;
+      for (const q of paths) {
+        if (q === p || q.length !== 2) continue;
+        const n = mid(q), off = (n[0] - m[0]) * nx + (n[1] - m[1]) * ny, along = Math.abs((n[0] - m[0]) * ny - (n[1] - m[1]) * nx);
+        if (Math.abs(Math.abs(off) - 46) < 8 && along < 30 && along < bd) { bd = along; best = n; }
+      }
+      const d = best ? [best[0] - m[0], best[1] - m[1]] : roadDir(m[0], m[1]);
+      const s = d && d[0] * nx + d[1] * ny > 0 ? -SIDEWALK : SIDEWALK;
+      return p.map(([x, y]) => [x + nx * s, y + ny * s] as [number, number]);
+    });
+    // Busiest round the cinema plaza and 一番街, quieter towards the edges of the district.
+    const busy = (x: number, y: number) => 0.35 + 2.2 * Math.exp(-(((x - 1100) ** 2 + (y - 1400) ** 2) / (650 * 650)));
+    this.crowd = new Crowd(buildTracks(side), tier.walkers, seed, roadDir, tier.bikes, busy);
+    this.ambient = new Ambient(seed, { vehicles: tier.vehicles, crows: tier.crows }, {
+      landmarks: () => marks,
+      steamers: () => this.steamers(),
+      sirenOk: () => this.walkOn && this.carsOn && !this.covered && !this.hidden,
+    }, this.carsOn);
+    const update = () => {
+      this.walkOn = walkersMode() === 0; this.carsOn = vehiclesMode() === 0; this.neonAnim = neonMode() === 0;
+      this.ambient.vehiclesOn = this.carsOn;
+      if (!this.carsOn || !this.walkOn) this.ambient.silence();
+    };
     listeners.add(update);
-    this.unlisten = () => listeners.delete(update);
+    const vis = () => { this.hidden = document.hidden; if (this.hidden) this.ambient.silence(); };
+    try { document.addEventListener('visibilitychange', vis); } catch { /* no document (tests) */ }
+    this.unlisten = () => { listeners.delete(update); try { document.removeEventListener('visibilitychange', vis); } catch { /* none */ } this.ambient.silence(); };
   }
 
   destroy() { this.unlisten(); }
 
-  /** The same crowd for the same game: start points from the game's seed, spread by path length. */
-  private populate() {
-    const total = this.paths.reduce((s, p) => s + p.len, 0);
-    if (!total) return;
-    const r = prng((this.game.settings.seed ^ 0x6b61626b) >>> 0);
-    for (let i = 0; i < memTier().walkers; i++) {
-      let u = r() * total, path = this.paths[0];
-      for (const p of this.paths) { if (u < p.len) { path = p; break; } u -= p.len; }
-      const w: Walker = {
-        path, s: r() * path.len, dir: path.closed || r() < 0.5 ? 1 : -1, speed: 18 + r() * 12, kind: Math.floor(r() * WALKER_KINDS),
-        anim: r() * 4, stop: 0, nextStop: 5 + r() * 35, x: 0, y: 0, vx: 0, vy: 1,
-      };
-      this.place(w);
-      this.walkers.push(w);
-    }
-  }
+  private steam: { x: number; y: number; z: number }[] = [];
+  private steamAt = -1;
 
-  /** Position and heading at the walker's distance along its path. */
-  private place(w: Walker) {
-    const { pts, cum } = w.path;
-    let i = 1;
-    while (i < pts.length - 1 && cum[i] < w.s) i++;
-    const a = pts[i - 1], b = pts[i], seg = cum[i] - cum[i - 1] || 1, k = Math.max(0, Math.min(1, (w.s - cum[i - 1]) / seg));
-    w.x = a[0] + (b[0] - a[0]) * k; w.y = a[1] + (b[1] - a[1]) * k;
-    w.vx = (b[0] - a[0]) * w.dir; w.vy = (b[1] - a[1]) * w.dir;
+  /** The izakaya shops' and ramen shops' roofs (steam; the stalls are landmarks), looked up twice a second. */
+  private steamers(): { x: number; y: number; z: number }[] {
+    if (this.steamAt >= 0 && this.frame - this.steamAt < 30) return this.steam;
+    this.steamAt = this.frame;
+    const b = this.game.board, out: { x: number; y: number; z: number }[] = (this.steam = []);
+    for (const f of b.facilities) if (f.type === 10 && f.level > 0) out.push({ x: f.x, y: f.y, z: ROOF[Math.min(5, f.level)] + 6 });
+    for (const l of b.lands) {
+      if (!l.level) continue;
+      const res = kbHouseSprite(this.game, l);
+      if (res !== null && res >= RAMEN_FIRST && res < RAMEN_FIRST + 3) out.push({ x: l.x, y: l.y, z: ROOF[l.level] });
+    }
+    return out;
   }
 
   /** One screen frame: the street's clock moves on unless something covers the map. */
@@ -258,48 +263,53 @@ export class KbStreet {
     const now = performance.now(), dt = this.last ? Math.min(0.1, (now - this.last) / 1000) : 0;
     this.last = now;
     if (this.frame++ % 12 === 0) this.covered = (typeof document !== 'undefined' && (document.hidden || !!document.querySelector(COVERS)));
-    if (!this.walkOn || this.covered || !dt) return;
-    for (const w of this.walkers) {
-      if (w.stop > 0) { w.stop -= dt; if (w.stop <= 0) w.anim = 0; continue; }
-      if ((w.nextStop -= dt) <= 0) {
-        // About once in 20–40 s a passer-by stops for 2 s (to look at the phone, §8.1).
-        const h = hash01(Math.floor(w.s * 7) + w.kind, 0x51);
-        w.stop = 2; w.nextStop = 20 + h * 20; w.anim = 0;
-        continue;
-      }
-      const L = w.path.len;
-      w.s += w.dir * w.speed * dt;
-      if (w.path.closed) w.s = ((w.s % L) + L) % L;
-      else if (w.s > L) { w.s = 2 * L - w.s; w.dir = -1; }
-      else if (w.s < 0) { w.s = -w.s; w.dir = 1; }
-      w.anim += dt * 12;
-      this.place(w);
-    }
+    if (this.covered || !dt) return;
+    this.clock += dt;
+    if (this.walkOn) this.crowd.step(dt, this.clock);
+    if (this.walkOn || this.carsOn) this.ambient.step(dt);
   }
 
   /**
-   * The passers-by to draw: map point, sprite and frame. `toScreen` turns a map vector into a screen one, so the
-   * row facing closest to the walk on screen is chosen: rows 0..3 of the sheets face down-left, up-right, up-left
-   * and down-right on screen (blockout views 1, 3, 5, 7 as the redraws came out). `flip`: drawn mirrored.
+   * The street's drawings for the board's y-sorted list: the passers-by facing the way they walk on screen (rows
+   * and mirroring from ui/kb-crowd.ts walkerFacing), the cyclists, then the ambient life (ui/kb-ambient.ts).
    */
-  walkersToDraw(toScreen: (dx: number, dy: number) => { x: number; y: number }): { x: number; y: number; res: number; frame: number; flip: boolean }[] {
-    if (!this.walkOn) return [];
-    return this.walkers.map(w => {
-      const v = toScreen(w.vx, w.vy), phase = w.stop > 0 ? 0 : Math.floor(w.anim) % 4;
-      let row = v.y >= 0 ? (v.x < 0 ? 0 : 3) : (v.x >= 0 ? 1 : 2), flip = false;
-      if (row === 3 && MIRROR_DOWN_RIGHT.has(w.kind)) { row = 0; flip = true; }
-      return { x: w.x, y: w.y, res: WALKER_SPRITE + w.kind, frame: row * 4 + phase, flip };
-    });
+  collect(v: StreetView, add: AddItem) {
+    if (this.walkOn) {
+      for (const w of this.crowd.walkers) {
+        const p = v.visible(w.x, w.y, 60);
+        if (!p) continue;
+        const h = this.crowd.facing(w), s = v.toScreen(Math.cos(h), Math.sin(h)), deg = Math.atan2(s.y, s.x) * 180 / Math.PI;
+        if (w.kind === BIKE) {
+          const k = nearestView(deg);
+          add(p.y, () => v.sprite(AMB.bicycle, k, p.x, p.y));
+          continue;
+        }
+        const f = walkerFacing(w.kind, deg), phase = w.stop > 0 ? 0 : Math.floor(w.anim) % 4;
+        const phone = w.stop > 0 && w.why === 'phone';
+        add(p.y, () => {
+          v.sprite(WALKER_SPRITE + w.kind, f.row * 4 + phase, p.x, p.y, f.flip);
+          if (phone) phoneGlow(v.ctx, p.x, p.y, v.zoom, deg);
+        });
+      }
+    }
+    if (this.walkOn || this.carsOn) this.ambient.collect(v, add, this.walkOn);
   }
 
-  /** The walkers' sprites (for the loading screen; none while they are off). */
+  /** Whether a street prop at map (x, y) stands where the avenues or the rails are drawn now (it is left out). */
+  covers(x: number, y: number): boolean { return this.carsOn && Ambient.onRoad(x, y); }
+
+  /** The avenues and the rails on the ground (only while the traffic is on). */
+  drawGround(ctx: CanvasRenderingContext2D) { if (this.carsOn) this.ambient.drawGround(ctx); }
+
+  /** The walkers' and the ambient sprites (for the loading screen; none while they are off). */
   walkerSprites(): number[] {
-    return this.walkOn && this.walkers.length ? Array.from({ length: WALKER_KINDS }, (_, i) => WALKER_SPRITE + i) : [];
+    const out = this.walkOn && this.crowd.walkers.length ? Array.from({ length: WALKER_KINDS }, (_, i) => WALKER_SPRITE + i) : [];
+    return this.walkOn || this.carsOn ? [...out, ...this.ambient.sprites()] : out;
   }
 
   /** Whether a map sprite carries neon (the landmarks, the shops, the houses). */
   static glows(res: number): boolean {
-    return (res >= LANDMARK_FIRST && res <= LANDMARK_LAST) || (res >= 1771 && res <= HOUSE_SPRITE + 4) || (res >= 1811 && res <= 1874);
+    return (res >= LANDMARK_FIRST && res <= LANDMARK_LAST) || (res >= 1771 && res <= HOUSE_SPRITE + 4) || (res >= 1811 && res <= 1874) || GLOW_PROPS.has(res);
   }
 
   /**
@@ -313,7 +323,14 @@ export class KbStreet {
       const t = Math.floor(performance.now() / 83) * 0.083;
       const period = 2 + 2 * hash01(id, 0x1e), phase = hash01(id, 0x2f);
       v = 0.75 + 0.25 * (0.5 + 0.5 * Math.sin((t / period + phase) * Math.PI * 2));
-      if (hash01(id, 0x3a) < 0.2) {
+      if (id >= 9000) {
+        // Street props: steady; one in three (the vending machines' tubes) stutters three times every 10–25 s.
+        v = 0.95;
+        if (hash01(id, 0x5c) < 0.34) {
+          const every = 10 + 15 * hash01(id, 0x6d), u = (t + phase * every) % every;
+          if (u < 0.6 && Math.floor(u / 0.083) % 3 !== 1) v = 0.15;
+        }
+      } else if (hash01(id, 0x3a) < 0.2) {
         const every = 8 + 7 * hash01(id, 0x4b), u = (t + phase * every) % every;
         if (u < 0.1 || (u >= 0.2 && u < 0.3)) v = 0;
       }

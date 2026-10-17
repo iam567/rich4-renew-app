@@ -18,6 +18,7 @@ import type { TiledGround } from './ground';
 import { GroundCache } from './ground-cache';
 import { casinoSprite } from './casino-sprite'; // 大富翁城 (docs/rules/19)
 import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite, KbStreet } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
+import type { StreetView } from './kb-ambient';
 import { timeout, watch } from './watchdog';
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
 
@@ -115,6 +116,7 @@ export class BoardView {
     parent.append(this.canvas);
     this.info = new InfoBubble(parent, bank);
     this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : null;
+    if (this.street) this.street.ambient.frameInfo = (res, fr) => { const f = this.bank.board('map', res)?.[fr]; return f ? { img: f.img, ax: f.ax, ay: f.ay, w: f.w, h: f.h, scale: f.scale } : null; };
     // Opaque: every frame covers the whole canvas, so the page need not blend it with what is behind.
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
     const view = this;
@@ -1250,6 +1252,7 @@ export class BoardView {
     ctx.imageSmoothingQuality = 'high';
     if (this.art.stepMarks) this.stepMarks(ctx);
     this.ownerPlates(ctx);
+    this.street?.drawGround(ctx); // 歌舞伎町's avenues and rails round the board (docs/rules/21 §8.3)
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
     const visible = (x: number, y: number, m = 200) => {
@@ -1340,12 +1343,12 @@ export class BoardView {
     // Decorations (plants; the remake's own maps): sorted with the buildings, the season from the calendar.
     if (this.art.decor?.length) {
       const m = month(g.date), season = m >= 3 && m <= 5 ? 0 : m >= 6 && m <= 8 ? 1 : m >= 9 && m <= 11 ? 2 : 3;
-      for (const d of this.art.decor) {
+      for (const [di, d] of this.art.decor.entries()) {
         const p = visible(d.x, d.y, 90);
-        if (!p) continue;
+        if (!p || this.street?.covers(d.x, d.y)) continue;
         add(p.y, Layer.building, () => {
           const n = this.bank.board('map', d.res)?.length ?? 0;
-          if (n) this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y);
+          if (n) { this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y); this.neon(d.res, Math.min(season, n - 1), p.x, p.y, 9000 + di); }
         });
       }
     }
@@ -1360,15 +1363,7 @@ export class BoardView {
       }
       this.street.advance();
       this.street.beginFrame();
-      for (const w of this.street.walkersToDraw((dx, dy) => ({ x: a * dx + c * dy, y: bb * dx + d * dy }))) {
-        const p = visible(w.x, w.y, 60);
-        if (!p) continue;
-        add(p.y, Layer.building, w.flip ? () => {
-          this.ctx.save(); this.ctx.translate(p.x, 0); this.ctx.scale(-1, 1);
-          this.sprite('map', w.res, w.frame, 0, p.y);
-          this.ctx.restore();
-        } : () => this.sprite('map', w.res, w.frame, p.x, p.y));
-      }
+      this.street.collect(this.streetView(a, bb, c, d, visible), (y, draw) => add(y, Layer.building, draw));
     }
 
     // Map objects: on a node, or following a player (08 §3.5).
@@ -1473,6 +1468,23 @@ export class BoardView {
       });
     }
     this.overlay?.();
+  }
+
+  /** What 歌舞伎町's street draws with this frame (docs/rules/21 §8): the projection, the view and the map sprites. */
+  private streetView(a: number, b: number, c: number, d: number, visible: (x: number, y: number, m?: number) => { x: number; y: number } | null): StreetView {
+    return {
+      ctx: this.ctx, zoom: this.zoom, rot: this.rot, W: this.W, H: this.H, visible,
+      project: (x, y) => this.project(x, y),
+      toScreen: (dx, dy) => ({ x: a * dx + c * dy, y: b * dx + d * dy }),
+      sprite: (res, frame, sx, sy, flip = false, alpha = 1) => {
+        if (!flip && alpha === 1) { this.sprite('map', res, frame, sx, sy); return; }
+        this.ctx.save();
+        this.ctx.globalAlpha = alpha;
+        if (flip) { this.ctx.translate(sx, 0); this.ctx.scale(-1, 1); sx = 0; }
+        this.sprite('map', res, frame, sx, sy);
+        this.ctx.restore();
+      },
+    };
   }
 
   /** 歌舞伎町's neon (docs/rules/21 §8.2) over a landmark, shop or house just drawn at (sx, sy). */

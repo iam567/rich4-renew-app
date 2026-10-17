@@ -44,6 +44,13 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     copy(fj);
     for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
   }
+  // 歌舞伎町's street life (docs/rules/21 §8.3): vehicles, the train, the street characters (map/1901..1911, registered at run time).
+  for (let res = 1901; res <= 1911; res++) {
+    const fj = `maps/remake/sprites/${res}/frames.json`;
+    if (!existsSync(join(src, fj))) continue;
+    copy(fj);
+    for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+  }
   // The tycoon cards' art (Data#601..606), the lab tools' icons (Data#614..616) and the 在路上 animation layers.
   const cards = [601, 602, 603, 604, 605, 606].map(n => `cards/0${n}.webp`), tools = [614, 615, 616].map(n => `tools/0${n}.webp`);
   for (const f of [...cards, ...tools, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {

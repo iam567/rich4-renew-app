@@ -42,19 +42,23 @@ export interface MemTier {
   clipBytes: number;
   clipCount: number;
   clipScale: number;
-  /** 歌舞伎町's passers-by on the sidewalks (docs/rules/21 §8.1). */
+  /** 歌舞伎町's passers-by on the sidewalks (docs/rules/21 §8.1), the cyclists among them, the cars on the avenues at
+   * once and the crows (§8.3). */
   walkers: number;
+  bikes: number;
+  vehicles: number;
+  crows: number;
 }
 
 const MB = 1024 * 1024;
 export const TIERS: Record<TierName, MemTier> = {
   low: { name: 'low', groundBytes: 24 * MB, previewMax: 1536, tilePx: 1.5, prefetch: false, preloadRing: 0, tileParallel: 2,
-    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 16 },
+    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 30, bikes: 2, vehicles: 4, crows: 2 },
   mid: { name: 'mid', groundBytes: 48 * MB, previewMax: 2304, tilePx: 2.25, prefetch: true, preloadRing: 256, tileParallel: 2,
-    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 28 },
+    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 60, bikes: 4, vehicles: 7, crows: 3 },
   // The limits the game had before the tiers (2026-10-17), with a cap on the map sprites.
   high: { name: 'high', groundBytes: 100 * MB, previewMax: 4096, tilePx: 3, prefetch: true, preloadRing: 512, tileParallel: 3,
-    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 40 },
+    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 100, bikes: 6, vehicles: 10, crows: 4 },
 };
 
 const KEY = 'rich4.memTier';
