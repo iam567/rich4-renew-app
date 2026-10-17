@@ -13,6 +13,7 @@ import { fxScreens, type ScreenContext } from './screens/registry';
 import { CITY_COLORS } from './tycoon';
 import { showResults, type ResultsAction } from './results';
 import { worldResults } from '../core/stats';
+import { phrases } from './text';
 import './tycoon-ending.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -93,7 +94,7 @@ function stats(ctx: ScreenContext, w: World): string {
   const visited = w.cities.map((_c, i) => `<span class="te-city${w.visited[h.id].includes(i) ? ' on' : ''}" style="--cc:${CITY_COLORS[w.mapId(i)]}">${esc(w.cityName(i))}</span>`).join('');
   return `<div class="te-stats">
     <h4>總資產走勢</h4>${curve(w)}
-    <h4>對手破產順序</h4><div class="te-fells">${fell || '<p>沒有對手破產</p>'}</div>
+    <h4>對手破產順序</h4><div class="te-fells">${fell || '<p class="te-none">沒有對手破產</p>'}</div>
     <div class="te-row"><div><h4>各城地產</h4><div class="te-lots">${lots.map(l => `<span style="--cc:${CITY_COLORS[w.mapId(l.i)]}">${esc(w.cityName(l.i))} <b>${l.n}</b></span>`).join('')}</div></div>
     <div><h4>去過的城市</h4><div class="te-cities">${visited}</div></div></div></div>`;
 }
@@ -120,10 +121,10 @@ export async function tycoonEnding(ctx: ScreenContext, w: World, winner: number,
           ${third ? `<div class="p3">${face(ctx, w.players[third.p].character, 'grey')}<b>3</b></div>` : ''}
         </div>
         ${line ? `<span class="te-bubble te-say">${esc(line)}</span>` : ''}
-        <div class="te-sub">${esc(CHARACTERS[ch].name)}讓 11 位對手全部破產！（${format(w.date)}，第 ${w.daysElapsed + 1} 天）</div></div>`
+        <div class="te-sub">${phrases(`${CHARACTERS[ch].name}獲勝，11 位對手全部破產！（${format(w.date)}，第 ${w.daysElapsed + 1} 天）`)}</div></div>`
     : `<div class="te-hero lost"><div class="te-big">破產了……</div>
         <div class="te-lost">${face(ctx, ch, 'grey')}<span class="te-bubble">${esc(line)}</span></div>
-        <div class="te-sub">${esc(CHARACTERS[ch].name)}是第 ${rank} 名・撐了 ${w.daysElapsed + 1} 天・${w.fallen.filter(f => f.p !== h.id).length} 位對手比你先倒下</div></div>`;
+        <div class="te-sub">${phrases(`${CHARACTERS[ch].name}是第 ${rank} 名・撐了 ${w.daysElapsed + 1} 天・${w.fallen.filter(f => f.p !== h.id).length} 位對手比你先倒下`)}</div></div>`;
   return showResults(ctx.bank, ctx.shell ?? ctx.area, worldResults(w, winner), {
     mapName: w.finale.active ? '大富豪模式・大富翁城' : '大富豪模式', hero, extra: stats(ctx, w), cls: `te-end-rs ${won ? 'won' : 'lost'}`, next,
   });

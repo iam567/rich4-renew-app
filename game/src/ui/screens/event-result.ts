@@ -8,6 +8,7 @@
 import { CHARACTERS } from '../../core/characters';
 import type { EventResult } from '../../core/modules/events';
 import type { ScreenContext } from './registry';
+import { fitPhrases, phrases, shrinkText } from '../text';
 import './event-result.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -57,10 +58,25 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
   node.className = `msg er-box ${tone(r.fx)}${two ? ' two' : ''}`;
   const tag = r.tag ?? TAG[r.fx];
   node.innerHTML = `<div class="er-head"><span class="er-cat">${esc(r.title)}</span>${tag ? `<span class="er-tag">${esc(tag)}</span>` : ''}</div>
-    <div class="er-title">${esc(r.head)}</div>${r.hero ?? ''}
+    <div class="er-title">${phrases(r.head)}</div>${r.hero ?? ''}
     <div class="er-rows">${rows}</div>
     <div class="er-tap">點一下繼續</div>`;
   ctx.open(node);
+  shrinkText(node, '.ls-name, .er-name, .er-cat, .er-tag', 9);
+  fitPhrases(node.querySelector<HTMLElement>('.er-title')!, 0.8);
+  // Many rows (大富豪模式's twelve) in a low map area: two columns, and over the whole game screen when even that
+  // does not fit — never cut off.
+  {
+    const room = () => (node.parentElement?.clientHeight ?? 0) - 40, wide = () => (node.parentElement?.clientWidth ?? 0) >= 540;
+    if (node.offsetHeight > room()) node.classList.add('compact');
+    if (node.offsetHeight > room()) {
+      ctx.open(node, true);
+      node.classList.toggle('two', r.lines.length >= 3 && wide());
+      if (node.offsetHeight > room() && r.lines.length >= 3) node.classList.add('two');
+      // the last resort on an extreme screen: the box as a whole a little smaller
+      if (node.offsetHeight > room()) node.style.zoom = String(Math.max(0.7, room() / node.offsetHeight));
+    }
+  }
   const layer = node.parentElement;
   // The whole map takes the closing tap while the box is up (no info bubble, no drag underneath).
   if (layer) layer.style.pointerEvents = 'auto';

@@ -7,6 +7,7 @@
  */
 import type { Ask } from '../../core/types';
 import { askScreens, type ScreenContext } from './registry';
+import { phrases } from '../text';
 import { el, esc, openScene, type Scene } from './place-scene';
 import { audio, Theme } from '../audio';
 import { loadClip } from '../effects';
@@ -43,7 +44,7 @@ const GAMES: Record<6 | 7 | 8, GameInfo> = {
   },
   8: {
     title: '喜從天降', theme: Theme.gifts, sounds: [22, 23, 24, 15], bg: 92, cursor: [],
-    hint: '左右移動接住財神撒下的寶物，別碰到小鬼丟的炸彈！（滑鼠移動、手指拖曳或 ← → 鍵）',
+    hint: '左右移動接住財神撒下的寶物，別碰到小鬼丟的炸彈！（滑鼠移動、手指拖曳、← → 鍵）',
     values: '寶箱 10 · 錢袋 5 · 元寶 3 · 銅錢 1',
     art: [[92, 0, 0], [93, 0, 18], [94, 0, 11], [95, 0, 7], [96, 0, 7], [97, 0, 7], [98, 0, 7], [99, 0, 7]],
   },
@@ -258,7 +259,7 @@ function playMini(ctx: ScreenContext, a: MiniAsk): Promise<number> {
       s.stage.append(cv);
       // The two sky games (射氣球, 喜從天降) are outdoors: a light touch of the day's rain or snow (docs/rules/16).
       if (balloons || gifts) sceneWeather(s.stage, ctx.game);
-      const text = `<b>${esc(info.title)}</b><span>${esc(info.hint)}</span><em>${esc(info.values)}</em>`;
+      const text = `<b>${esc(info.title)}</b><span>${phrases(info.hint)}</span><em>${phrases(info.values)}</em>`;
       // Portrait: a panel under the screen. Landscape: a banner over the top strip (no cell or item there) until
       // the game starts.
       if (s.portrait) s.box('mn-panel', 0, 480, 640, s.h - 480, text);

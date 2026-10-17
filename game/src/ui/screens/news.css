@@ -47,3 +47,13 @@
 .nw-face em.minus { color: #d0202e; }
 .nw-face b:last-child { grid-row: 1 / 3; }
 @keyframes nw-face { from { transform: translateX(20px); opacity: 0; } }
+/* four faces: a little tighter so the fourth stays on the board */
+.nw-faces:has(> .nw-face:nth-child(4)) { gap: 3px; }
+.nw-faces:has(> .nw-face:nth-child(4)) .nw-face { padding-top: 2px; padding-bottom: 2px; }
+/* more than four (大富豪模式's twelve): two columns of small faces with the sums, no names */
+.nw-faces.many { right: 8px; width: 138px; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 3px; }
+.nw-faces.many .nw-face { grid-template-columns: 20px 1fr; grid-template-rows: auto; column-gap: 2px; padding: 1px 3px 1px 1px; border-left-width: 3px; border-radius: 8px; }
+.nw-faces.many .nw-face span { grid-row: 1; width: 20px; height: 20px; }
+.nw-faces.many .nw-face b { display: none; }
+.nw-faces.many .nw-face em { font-size: 11px; line-height: 20px; }
+.nw-text.with-faces:has(~ .nw-faces.many) { right: 152px; }

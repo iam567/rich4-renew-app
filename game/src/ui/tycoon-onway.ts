@@ -9,6 +9,7 @@ import { CHARACTERS } from '../core/characters';
 import { ASSETS } from './assets';
 import { audio, Sfx } from './audio';
 import { fxScreens, type ScreenContext } from './screens/registry';
+import { shrinkText } from './text';
 import './tycoon-onway.css';
 
 interface Layers { plane: Vehicle; train: Vehicle; sky: { width: number; height: number }; land: { width: number; height: number } }
@@ -39,6 +40,7 @@ export async function onwayScene(ctx: ScreenContext, p: number, via: 'station' |
     <div class="ow-cap"><span class="ow-tag">在路上</span>${esc(text)}</div>`;
   audio.sfx(plane ? Sfx.airplane : Sfx.special);
   ctx.open(box);
+  shrinkText(box, '.ow-cap', 9);
   await new Promise<void>(resolve => {
     const t = setTimeout(resolve, ms * Math.max(0.7, ctx.scale()));
     box.addEventListener('click', () => { clearTimeout(t); resolve(); });

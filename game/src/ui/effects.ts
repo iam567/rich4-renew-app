@@ -6,6 +6,8 @@
 import { ASSETS } from './assets';
 import type { Archive, Frame, SpriteBank } from './sprites';
 import { decodeCropped, picSize } from './decode';
+import { memTier } from './mem-tier';
+import { Fireworks, FIREWORKS_MS } from './fireworks';
 import { watch } from './watchdog';
 
 /** Frame delays of the Data.mkf FLC clips in ms, from their headers (`fcn_00450ced` reads header +0x10). */
@@ -204,6 +206,26 @@ export class Effects {
     return this.add(e, 'fx.hold', ms + 2000);
   }
 
+  /**
+   * The level-5 fireworks (fireworks.ts) over a world spot, drawn over everything every frame (they follow the
+   * camera); `start` runs on the first frame (the sound). Resolves after FIREWORKS_MS, as the original clip.
+   */
+  fireworks(spot: Pt, start?: () => void): Promise<void> {
+    const host = this.host, show = new Fireworks();
+    let last = -1;
+    const e: Effect = {
+      done: false,
+      draw: (add, now) => {
+        if (last < 0) { last = now; start?.(); }
+        const ms = now - last, q = host.project(spot.x, spot.y), z = host.scale;
+        last = now;
+        if (show.advance(host.ctx, q.x, q.y, z, ms)) { e.done = true; return; }
+        add(TOP, 0, () => show.draw(host.ctx, q.x, q.y, z));
+      },
+    };
+    return this.add(e, 'fx.fireworks', FIREWORKS_MS + 2000);
+  }
+
   // ---------------------------------------------------------------- speech cloud
 
   /**
@@ -385,15 +407,16 @@ const clips = new Map<number, Loading>();
 /** Clips kept whatever is played meanwhile (decoded in idle time at map load: they play on any lot, any turn). */
 const pinned = new Set<number>();
 /** A 440×440 clip at 2× is ~3 MB a frame before cropping, 100+ MB for a long one. Pinned clips do not count. */
-const CLIP_BUDGET = 128 * 1024 * 1024, CLIP_COUNT = 6;
-/** Scale cap per clip (×original px): the fireworks are soft glows, 1.5× looks the same and is half the memory. */
-const CLIP_CAP: Record<number, number> = { 523: 1.5 };
+const CLIP_BUDGET = () => memTier().clipBytes, CLIP_COUNT = () => memTier().clipCount;
+/** Scale cap per clip (×original px), for clips of soft glows that look the same smaller (none now: the fireworks are drawn in code). */
+const CLIP_CAP: Record<number, number> = {};
 /** Frames decoded at once (two decoding workers, each with a request in flight and one queued). */
 const CLIP_PARALLEL = 4;
 
 function startLoad(bank: SpriteBank, res: number): Loading {
   const [w, h] = FLC_SIZE[res] ?? [440, 440], n = FLC_FRAMES[res] ?? 0;
-  const cap = Math.min(CLIP_CAP[res] ?? 4, Math.max(1, Math.floor(1024 / Math.max(w, h))));
+  // The device's memory tier (ui/mem-tier.ts) caps the scale too: a low-memory phone keeps clips at 1×.
+  const cap = Math.min(CLIP_CAP[res] ?? 4, memTier().clipScale, Math.max(1, Math.floor(1024 / Math.max(w, h))));
   const frames: CanvasImageSource[] = new Array(n), rects: Clip['rects'] = new Array(n).fill(null);
   const got = new Uint8Array(n);
   let head = 0;
@@ -449,12 +472,12 @@ function loading(bank: SpriteBank, res: number): Loading {
     // Least recently played first, while over the budget (the newest and the pinned always stay).
     const used = () => [...clips].reduce((s, [k, l]) => s + (pinned.has(k) ? 0 : l.bytes), 0);
     for (const [k] of [...clips]) {
-      if (used() <= CLIP_BUDGET) break;
+      if (used() <= CLIP_BUDGET()) break;
       if (k !== res && !pinned.has(k)) clips.delete(k);
     }
   }, () => { if (clips.get(res) === me) clips.delete(res); });
   const loose = [...clips.keys()].filter(k => !pinned.has(k));
-  while (loose.length > CLIP_COUNT) clips.delete(loose.shift()!);
+  while (loose.length > CLIP_COUNT()) clips.delete(loose.shift()!);
   return c;
 }
 

@@ -13,6 +13,7 @@ import type { SpriteBank } from './sprites';
 import { askScreens, fxScreens, type ScreenContext } from './screens/registry';
 import { TOOL_TEXT } from './screens/shop';
 import { audio, Sfx } from './audio';
+import { phrases, shrinkText } from './text';
 import './tycoon.css';
 
 /** The world being played (null in a normal game); screens that differ in 大富豪模式 read it. */
@@ -170,23 +171,47 @@ export function logPanel(w: World, bank: SpriteBank): HTMLElement {
   const box = document.createElement('div');
   box.className = 'wlp';
   let city = -1, who = -1, imp = false;
+  // One page, no scrolling: the newest lines that fit, older ones on the next pages (‹ 1/3 ›).
+  let page = 0, starts = [0], items: string[] = [];
   const face = (ch: number) => { const f = bank.art('Data', 2, ch); return f ? `<img src="${f.src}" alt="">` : ''; };
+  const paginate = () => {
+    const list = box.querySelector<HTMLElement>('.wl'), pager = box.querySelector<HTMLElement>('.wlp-pager');
+    if (!list || !pager || !list.clientHeight) return;
+    page = Math.min(page, starts.length - 1);
+    const from = starts[page];
+    list.innerHTML = items.slice(from).join('') || '<p class="info-none">沒有符合的消息</p>';
+    let shown = list.childElementCount;
+    while (shown > 1 && list.scrollHeight > list.clientHeight + 0.5) { list.lastElementChild!.remove(); shown--; }
+    // a day heading never ends a page
+    if (shown > 1 && list.lastElementChild?.classList.contains('wl-day')) { list.lastElementChild.remove(); shown--; }
+    starts = starts.slice(0, page + 1);
+    if (from + shown < items.length) starts.push(from + shown);
+    const pages = starts.length;
+    pager.hidden = pages < 2 && page === 0;
+    pager.innerHTML = `<button class="chip" data-pg="-1"${page ? '' : ' disabled'}>‹ 較新</button><span>${page + 1}</span><button class="chip" data-pg="1"${page < pages - 1 ? '' : ' disabled'}>較舊 ›</button>`;
+  };
   const render = () => {
     const rows = mergeLines(w.log, p => w.name(p)).filter(l => (city < 0 || l.map === city) && (who < 0 || l.p === who) && (!imp || l.important)).reverse().slice(0, 400);
-    let day = -1, out = '';
+    let day = -1;
+    items = [];
     for (const l of rows) {
-      if (l.day !== day) { day = l.day; out += `<div class="wl-day">第 ${day + 1} 天</div>`; }
-      out += `<div class="wl-row${l.important ? ' imp' : ''}">${lineHtml(w, l)}</div>`;
+      if (l.day !== day) { day = l.day; items.push(`<div class="wl-day">第 ${day + 1} 天</div>`); }
+      items.push(`<div class="wl-row${l.important ? ' imp' : ''}">${lineHtml(w, l)}</div>`);
     }
+    page = 0; starts = [0];
     box.innerHTML = `<div class="wlp-filters">
         <button class="chip${city < 0 && who < 0 && !imp ? ' on' : ''}" data-f="all">全部</button>
         <button class="chip${imp ? ' on' : ''}" data-f="imp">重要</button>
         ${w.cities.map((_c, i) => `<button class="chip${city === i ? ' on' : ''}" data-city="${i}" style="--cc:${CITY_COLORS[w.mapId(i)]}">${esc(w.cityName(i))}</button>`).join('')}
       </div>
       <div class="wlp-who">${w.players.map(q => `<button class="wlp-face${who === q.id ? ' on' : ''}${q.bankrupt ? ' out' : ''}" data-who="${q.id}" title="${esc(w.name(q.id))}">${face(q.character)}</button>`).join('')}</div>
-      <div class="wl">${out || '<p class="info-none">沒有符合的消息</p>'}</div>`;
+      <div class="wl"></div><div class="wlp-pager" hidden></div>`;
+    paginate();
   };
+  new ResizeObserver(() => paginate()).observe(box);
   box.addEventListener('click', e => {
+    const pg = (e.target as HTMLElement).closest<HTMLElement>('[data-pg]');
+    if (pg) { audio.ui('click'); page = Math.max(0, page + Number(pg.dataset.pg)); paginate(); return; }
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-f],[data-city],[data-who]');
     if (!b) return;
     audio.ui('click');
@@ -226,11 +251,11 @@ askScreens.travel = (ctx: ScreenContext, a: Ask) => new Promise<unknown>(resolve
       <span class="tv-pic"><img src="${cityThumb(o.mapId)}" alt=""></span>
       <b class="tv-name">${esc(o.name)}</b>
       <span class="tv-fare">${a.card ? '用卡片' : `${o.price.toLocaleString('zh-Hant')} 元`}</span>
-      <span class="tv-meta">地價 ×${(o.landIndex ?? 1).toFixed(1)}・地產 ${o.owned}・對手 ${o.rivals}</span>
-      ${(() => { const lord = tycoon.world?.overlordOf(o.map) ?? -1; return lord >= 0 ? `<span class="tv-lord">${esc(o.name)}霸主：${esc(CHARACTERS[ctx.game.players[lord].character].name)}</span>` : ''; })()}
-      ${RESORT[o.mapId] ? `<span class="tv-resort">度假勝地：旅館收入×${RESORT[o.mapId].base}（夏季×${RESORT[o.mapId].summer}）</span>` : ''}</button>`;
+      <span class="tv-meta"><span>地價 ×${(o.landIndex ?? 1).toFixed(1)}</span><span>地產 ${o.owned}・對手 ${o.rivals}</span></span>
+      ${(() => { const lord = tycoon.world?.overlordOf(o.map) ?? -1; return lord >= 0 ? `<span class="tv-lord">霸主：${esc(CHARACTERS[ctx.game.players[lord].character].name)}</span>` : ''; })()}
+      ${RESORT[o.mapId] ? `<span class="tv-resort"><span>度假勝地</span><span>旅館收入×${RESORT[o.mapId].base}</span><span>（夏季×${RESORT[o.mapId].summer}）</span></span>` : ''}</button>`;
   box.innerHTML = `<div class="ribbon">${pad ? `<img class="tv-pad" src="${pad.src}" alt="">` : ''}${station ? '新幹線' : '飛機'}・從${esc(a.from)}出發</div>
-    <div class="tv-note">${a.card ? `用${station ? '電車卡' : '飛行卡'}，不用買票。` : ''}搭乘要停一回合（在路上），下回合從目的地的${station ? '車站' : '機場'}出發。現金 ${me.cash.toLocaleString('zh-Hant')}・存款 ${me.bank.toLocaleString('zh-Hant')}</div>
+    <div class="tv-note">${phrases(`${a.card ? `用${station ? '電車卡' : '飛行卡'}，不用買票。` : ''}搭乘要停一回合（在路上），下回合從目的地的${station ? '車站' : '機場'}出發。\n現金 ${me.cash.toLocaleString('zh-Hant')}・存款 ${me.bank.toLocaleString('zh-Hant')}`)}</div>
     <div class="tv-cards n${a.options.length}">${a.options.map(card).join('')}</div>
     <div class="choices"><button class="candy ghost" data-v="-1">不搭了</button></div>`;
   box.addEventListener('click', e => {
@@ -242,7 +267,32 @@ askScreens.travel = (ctx: ScreenContext, a: Ask) => new Promise<unknown>(resolve
     ctx.close();
     resolve(v);
   });
-  ctx.open(box);
+  // Over the whole game screen: four destination cards need more than a small phone's map area.
+  ctx.open(box, true);
+  // The city pictures take the height that is left: measured without them, then as tall as the room allows (at most
+  // their 3:2 shape), dropped on a very low screen; only then the dialog shrinks as a whole.
+  const fit = () => {
+    if (!box.isConnected) { ro.disconnect(); return; }
+    const layer = box.parentElement;
+    if (!layer) return;
+    box.style.zoom = '';
+    box.style.maxHeight = 'none';
+    const ls = getComputedStyle(layer);
+    const room = layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom) - parseFloat(getComputedStyle(box).marginTop);
+    const cards = box.querySelector<HTMLElement>('.tv-cards')!, pic = box.querySelector<HTMLElement>('.tv-pic');
+    box.style.setProperty('--tvh', '0px');
+    const rows = Math.round(cards.offsetHeight / Math.max(1, (cards.firstElementChild as HTMLElement).offsetHeight + 4)) || 1;
+    const spare = room - box.offsetHeight - 2;
+    const natural = pic ? pic.offsetWidth / 1.5 : 0;
+    const h = Math.min(natural, Math.floor(spare / rows) - 4);
+    box.style.setProperty('--tvh', h >= 26 ? `${h}px` : '0px');
+    box.classList.toggle('no-pic', h < 26);
+    shrinkText(box, '.tv-name, .tv-fare, .tv-meta > span, .tv-resort > span, .tv-lord', 9);
+    box.style.maxHeight = '';
+    if (box.scrollHeight > room + 0.5) box.style.zoom = String(Math.max(0.6, room / box.scrollHeight));
+  };
+  const ro = new ResizeObserver(fit);
+  ro.observe(box.parentElement ?? box);
 });
 
 // ------------------------------------------------------------------ announcements
@@ -258,11 +308,11 @@ const banner = async (ctx: ScreenContext, cls: string, html: string, ms: number)
 
 fxScreens['travel-arrive'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
-  await banner(ctx, 'arrive', `<div class="msg-text">${esc(d.text ?? '')}</div>`, 1300);
+  await banner(ctx, 'arrive', `<div class="msg-text">${phrases(d.text ?? '')}</div>`, 1300);
 };
 fxScreens['house-full'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
-  await banner(ctx, 'full', `<div class="msg-text">${esc(d.text ?? '')}</div>`, 1800);
+  await banner(ctx, 'full', `<div class="msg-text">${phrases(d.text ?? '')}</div>`, 1800);
 };
 // ------------------------------------------------------------------ twelve-player screens (17 §12)
 
@@ -278,7 +328,9 @@ function sheetRows(ctx: ScreenContext, title: string, head: string, rows: string
     let done = false;
     const close = () => { if (done) return; done = true; ctx.close(); resolve(); };
     box.addEventListener('click', close);
-    ctx.open(box);
+    // Twelve rows: over the whole game screen, two columns, names shrunk to one line (no cut-off, no scrolling).
+    ctx.open(box, true);
+    shrinkText(box, '.tw-name', 9);
     setTimeout(close, ms * Math.max(0.6, ctx.scale()));
   });
 }
@@ -351,7 +403,7 @@ fxScreens['icbm-launch'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
   const ic = ctx.bank.art('Data', 615, 0);
   audio.sfx(Sfx.nuke);
-  await banner(ctx, 'icbm', `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">洲際飛彈！</div><div class="dc-sub">${esc(d.text ?? '')}</div>`, 2400);
+  await banner(ctx, 'icbm', `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">洲際飛彈！</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 2400);
 };
 
 /** 時空機 to another city: a swirl of light around the gadget, then the new city. */
@@ -359,7 +411,7 @@ fxScreens['space-time'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
   const ic = ctx.bank.art('Data', 616, 0);
   audio.sfx(Sfx.magic);
-  await banner(ctx, 'spacetime', `<div class="st-swirl">${ic ? `<img src="${ic.src}" alt="">` : ''}</div><div class="dc-word">時空穿越</div><div class="dc-sub">${esc(d.text ?? '')}</div>`, 2000);
+  await banner(ctx, 'spacetime', `<div class="st-swirl">${ic ? `<img src="${ic.src}" alt="">` : ''}</div><div class="dc-word">時空穿越</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 2000);
 };
 
 /** 召集！: the summoner rings the bell, the rival's face flies in from the other city. */
@@ -370,7 +422,7 @@ fxScreens['summon'] = async (ctx, s) => {
   audio.sfx(Sfx.airplane);
   await banner(ctx, 'summon', `<div class="sm-row"><span class="dc-me">${face(me.character)}</span><span class="sm-bell"></span>
     <span class="sm-in">${face(q?.character ?? 0)}<em>${esc(d.from ?? '')} → ${esc(d.to ?? '')}</em></span></div>
-    <div class="dc-word">召集！</div><div class="dc-sub">${esc(d.text ?? '')}</div>`, 2200);
+    <div class="dc-word">召集！</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 2200);
 };
 
 /** 通緝！: a wanted poster with the target's face, the police sound. */
@@ -380,7 +432,7 @@ fxScreens['wanted'] = async (ctx, s) => {
   const f = q ? ctx.bank.art('Data', 2, q.character) : null;
   audio.sfx(Sfx.police);
   await banner(ctx, 'wanted', `<div class="wt-poster"><b>WANTED</b>${f ? `<img src="${f.src}" alt="">` : ''}<span>${esc(q ? CHARACTERS[q.character].name : '')}</span></div>
-    <div class="dc-sub">${esc(d.text ?? '')}</div>`, 2200);
+    <div class="dc-sub">${phrases(d.text ?? '')}</div>`, 2200);
 };
 
 /** 城市霸主 (17 §3.8): the crown when the human gains (or loses) a city. */
@@ -404,7 +456,7 @@ fxScreens['tycoon-notice'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
   const who = ctx.game.players[s.p ?? 0];
   const f = who ? ctx.bank.art('Data', 2, who.character) : null;
-  await banner(ctx, 'notice', `${f ? `<div class="dc-me">${`<img src="${f.src}" alt="">`}</div>` : ''}<div class="msg-text">${esc(d.text ?? '')}</div>`, 2200);
+  await banner(ctx, 'notice', `${f ? `<div class="dc-me">${`<img src="${f.src}" alt="">`}</div>` : ''}<div class="msg-text">${phrases(d.text ?? '')}</div>`, 2200);
 };
 
 /** 獨裁！: the user's face and the banner, the others flying off in little planes towards their cities. */

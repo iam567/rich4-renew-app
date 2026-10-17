@@ -10,6 +10,7 @@ import { TOOLS } from '../../core/modules/tools';
 import type { Listing } from '../../core/modules/blackmarket';
 import { askScreens, fxScreens } from './registry';
 import { audio, Sfx, Theme } from '../audio';
+import { phrases } from '../text';
 
 const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
 const LAND_STAGES = ['空地', '平房', '店舖', '商場', '商業大樓', '摩天大樓'];
@@ -49,7 +50,7 @@ askScreens['black-market'] = (ctx, ask) => new Promise(resolve => {
         <div class="bm-tag">${l.kind === 'tool' ? '道具' : l.kind === 'card' ? '卡片' : '土地'}</div>
         <div class="bm-pic">${picture(l)}</div>
         <div class="bm-name">${bm.name(l)}</div>
-        <div class="bm-desc">${detail(l)}</div>
+        <div class="bm-desc">${phrases(detail(l))}</div>
         <div class="bm-price">${money(bm.price(l))}</div>
         <button class="candy ${why ? 'ghost' : 'yes'}" data-buy="${i}" ${why ? 'disabled' : ''}>${why || '買下'}</button>
         <div class="bm-since">${format(l.since)} 上架</div></div>`;

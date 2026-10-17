@@ -14,12 +14,13 @@ import type { BoardFace } from '../../core/modules/events';
 import { audio, boardVoice } from '../audio';
 import './news.css';
 import { regionalPicture } from './regional';
+import { clauseWraps, phrases } from '../text';
 
 type Fx = Extract<GameEvent, { t: 'fx' }>;
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 /** Body text: line breaks kept, amounts / percentages / days in gold. */
-const body = (s: string) => esc(s).replace(/(\d[\d,.]*\s*(?:元|％|%|天|倍|張|股)?)/g, '<em>$1</em>').replace(/\n+/g, '<br>');
+const body = (s: string) => phrases(s.replace(/\n+/g, '\n'), h => h.replace(/(\d[\d,.]*\s*(?:元|％|%|天|倍|張|股)?)/g, '<em>$1</em>'));
 
 /** News picture: Data#(441 + news number) (news.asm). */
 export const newsPicture = (id: number) => 441 + id;
@@ -73,7 +74,11 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
     </div>`;
   // Long texts shrink to stay inside the board.
   const box = scene.querySelector<HTMLElement>('.nw-text')!, inner = box.firstElementChild as HTMLElement;
-  for (let size = 27; size > 16 && inner.scrollHeight > box.clientHeight; size -= 1) inner.style.fontSize = `${size}px`;
+  // …and smaller still (to 17 px) until no clause has to break inside itself.
+  for (let size = 27; size > 16; size -= 1) {
+    inner.style.fontSize = `${size}px`;
+    if (inner.scrollHeight <= box.clientHeight && !clauseWraps(inner)) break;
+  }
   // The board's text is voiced ('#0149'…: news 149 + n, fate 185 + t); it stays while the line is spoken and
   // at least 3 s; a double tap ends both.
   const spoken = audio.voice(boardVoice(kind, id, ctx.game.mapSlot));

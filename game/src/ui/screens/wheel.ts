@@ -95,8 +95,8 @@ class Wheel {
     // The game's own toy message box (blue, dashed, ribbon) instead of the original's Data#517.5 frame:
     // the first line ("阿土伯的購物中心") on the ribbon, the rest ("您的消費倍數為...") inside.
     const [head, ...rest] = (WHEEL_TEXT[this.kind & 3] ?? '%s').replace('%s', this.name).split('\n');
-    s.box('wh-panel', 104, 70, 232, 128,
-      `<div class="wh-ribbon">${esc(head)}</div><div class="wh-text">${esc(rest.filter(Boolean).join('\n')).replace(/\n/g, '<br>')}</div>`, boxG);
+    s.box('msg scene-msg wh-panel', 104, 70, 232, 128,
+      `<div class="ribbon">${esc(head)}</div><div class="scene-msg-text wh-text">${esc(rest.filter(Boolean).join('\n')).replace(/\n/g, '<br>')}</div>`, boxG);
     this.hint = s.box('wh-hint', 109, 160, 224, 22, '', boxG);
     s.box('wh-shadow', 138, 238, 165, 165, '', wheelG);
     this.img = s.art('Panel', id, 2, 220, 320, 'wh-wheel', wheelG);

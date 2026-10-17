@@ -10,7 +10,7 @@
   background: linear-gradient(#fff4a6, #ffc22e 55%, #e8901a); border: 3px solid #fff; box-shadow: 0 4px 0 #b06a00, 0 8px 14px rgba(0, 0, 0, .4); }
 .dv-ribbon span { font-size: 26px; font-weight: 900; letter-spacing: 4px; color: #6a2a00; text-shadow: 0 1px 0 #fff7c8; }
 .dv-board table { width: 100%; border-collapse: separate; border-spacing: 0; table-layout: fixed; font-variant-numeric: tabular-nums; color: #eef3ff; }
-.dv-board th, .dv-board td { padding: 8px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 16px; }
+.dv-board th, .dv-board td { padding: 8px 6px; white-space: nowrap; overflow: hidden; font-size: 16px; }
 .dv-board td { text-align: right; }
 .dv-board thead th { padding: 4px 4px 8px; border-bottom: 2px solid rgba(255, 201, 74, .7); }
 .dv-corner { position: relative; height: 54px; width: 22%; }
@@ -19,7 +19,7 @@
 .dv-corner span:last-child { left: 6px; bottom: 8px; }
 .dv-corner::after { content: ''; position: absolute; inset: 6px 4px 10px; background: linear-gradient(to top right, transparent calc(50% - 1px), rgba(255, 216, 106, .6) 50%, transparent calc(50% + 1px)); }
 .dv-who { text-align: center; }
-.dv-who b { display: block; margin-top: 3px; font-size: 14px; color: var(--c); text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, .6); filter: brightness(1.35); }
+.dv-who b { display: block; white-space: nowrap; overflow: hidden; margin-top: 3px; font-size: 14px; color: var(--c); text-shadow: 0 1px 0 #000, 0 0 6px rgba(0, 0, 0, .6); filter: brightness(1.35); }
 .dv-face { position: relative; display: inline-block; width: 34px; height: 34px; border-radius: 50%; overflow: hidden; border: 2px solid var(--c); background: #fff; box-shadow: 0 2px 4px rgba(0, 0, 0, .5); }
 .dv-face img, .dv-face .pl-face { position: static !important; width: 100% !important; height: 100% !important; display: block; left: auto; top: auto; }
 .dv-profit-h { color: #9fe6a6; font-size: 14px !important; }
@@ -44,3 +44,8 @@
 .dv-scene.tall .dv-face { width: 30px; height: 30px; }
 .dv-scene.tall .dv-total { font-size: 15px !important; }
 .dv-scene.tall .dv-tap { top: auto; bottom: 8%; }
+/* many companies: lower rows, so the board (scaled to the screen) keeps a readable size */
+.dv-board.many tbody th, .dv-board.many tbody td { padding-top: 3px; padding-bottom: 3px; }
+.dv-board.many thead .dv-corner { height: 44px; }
+.dv-profit-h { font-size: 15px !important; }
+.dv-tap { font-size: 14px; }

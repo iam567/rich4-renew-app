@@ -50,6 +50,7 @@ class SlotMachine {
   private pos = [1, 1, 1, 1];
   private lever = false;
   private text: string;
+  private title: string;
   private amount: number | null = null;
   private mult = 1;
   private side = false;
@@ -69,12 +70,13 @@ class SlotMachine {
 
   constructor(readonly ctx: ScreenContext, readonly p: number, readonly god: number, big: boolean, readonly human: boolean) {
     this.small = big ? 0 : 1;
-    this.text = `${OBJECT_NAMES[god - 1] ?? ''}附身\n\n${TEXT[god] ?? ''}`;
+    this.title = `${OBJECT_NAMES[god - 1] ?? ''}附身`;
+    this.text = TEXT[god] ?? '';
   }
 
   /** Opens the scene once its art is loaded (or after a short wait). */
   async open() {
-    await preload([...frameSrcs(this.ctx, 'Panel', 67, 0, 23), this.ctx.bank.art('Data', 517, 5)?.src], 1500);
+    await preload(frameSrcs(this.ctx, 'Panel', 67, 0, 23), 1500);
     const area = this.ctx.area;
     this.scene = openScene(this.ctx, 'sm-scene', () => {
       // The layout that shows the machine larger wins.
@@ -94,10 +96,13 @@ class SlotMachine {
     const L = this.side ? SIDE : STACK;
     const boxG = s.box('sm-group', L.box[0], L.box[1], 0, 0);
     const machG = s.box('sm-group', L.machine[0], L.machine[1], 0, 0);
-    s.art('Data', 517, 5, 220, 140, 'sm-box', boxG);
-    this.textBox = s.box('sm-text', 109, 66, 224, 136, '', boxG);
+    // The remake's message box (style.css .msg: blue, orange border, dashed frame, ribbon title) where the original
+    // drew its board Data#517.5: the god on the ribbon, the line and then the amount inside, the tap hint under them.
+    const box = s.box('msg scene-msg sm-msg', BOX.x + 4, BOX.y + 24, BOX.w - 8, BOX.h - 28,
+      `<div class="ribbon">${esc(this.title)}</div><div class="scene-msg-text sm-text"></div><div class="sm-hint"></div>`, boxG);
+    this.textBox = box.querySelector<HTMLElement>('.sm-text');
     this.textHtml = '';
-    this.hint = s.box('sm-hint', 109, 178, 224, 24, '', boxG);
+    this.hint = box.querySelector<HTMLElement>('.sm-hint');
     this.body = s.art('Panel', 67, this.small, 220, REEL_Y, 'sm-body', machG);
     const digits = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(d => `<b${d === 7 ? ' class="seven"' : ''}>${d}</b>`).join('');
     this.reels = [0, 1, 2, 3].map(r => {
@@ -117,7 +122,7 @@ class SlotMachine {
     s.swap(this.leverImg, 'Panel', 67, this.lever ? 3 : 2);
     if (this.textBox) {
       const html = this.amount === null
-        ? esc(this.text).replace(/\n/g, '<br>')
+        ? esc(this.text)
         : `${this.mult > 1 ? `<span class="sm-bonus${this.mult > 2 ? ' seven' : ''}">${this.mult > 2 ? '777 大獎' : '豹子號'}！×${this.mult}</span>` : ''}<span class="sm-amount">${money(this.amount)}元</span>`;
       // Compared with the last markup written, not innerHTML: 简体 (lang.ts) rewrites the text after it is set.
       if (this.textHtml !== html) { this.textHtml = html; this.textBox.innerHTML = html; }

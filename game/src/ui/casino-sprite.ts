@@ -5,7 +5,12 @@
 export const HALL_FIRST = 5, HALL_LAST = 9;
 export const hallSprite = (type: number, level: number) => 1600 + (type - HALL_FIRST) * 10 + Math.max(1, Math.min(5, level));
 
+/** Called once when the first hall is drawn (screens/casino.ts preloads its table art then, long before a visit). */
+export const hallSeen: { fn?: () => void } = {};
+
 /** The sprite of a hall at its level (null for the original facility types). */
 export function casinoSprite(fa: { type: number; level: number }): number | null {
-  return fa.type >= HALL_FIRST && fa.type <= HALL_LAST && fa.level ? hallSprite(fa.type, fa.level) : null;
+  if (!(fa.type >= HALL_FIRST && fa.type <= HALL_LAST && fa.level)) return null;
+  if (hallSeen.fn) { const fn = hallSeen.fn; hallSeen.fn = undefined; setTimeout(fn, 0); }
+  return hallSprite(fa.type, fa.level);
 }

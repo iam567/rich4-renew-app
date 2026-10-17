@@ -1,16 +1,19 @@
 /* Loss notices (ui/losses.ts): what a player lost, as icons with names and counts in the result box. */
-.ls-items { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 4px 10px; }
+.ls-items { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; margin: 0 0 10px; padding: 0 6px; }
 .ls-item { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 74px; padding: 6px 4px 5px; border-radius: 14px;
   background: rgba(255, 255, 255, .94); color: #2a1a0a; box-shadow: 0 3px 0 rgba(0, 0, 0, .25); animation: ls-in .35s cubic-bezier(.3, 1.5, .5, 1) both; }
 .ls-item:nth-child(2) { animation-delay: .08s; } .ls-item:nth-child(3) { animation-delay: .16s; } .ls-item:nth-child(4) { animation-delay: .24s; }
 .ls-item:nth-child(n+5) { animation-delay: .32s; }
 @keyframes ls-in { from { transform: scale(.4) rotate(-8deg); opacity: 0; } }
-.ls-pic { width: 52px; height: 52px; display: grid; place-items: center; }
+.ls-pic { width: 52px; height: 52px; display: grid; grid-template: 100% / 100%; place-items: center; }
 .ls-item.card .ls-pic { width: 40px; height: 58px; }
-.ls-pic img { max-width: 100%; max-height: 100%; object-fit: contain; display: block; filter: grayscale(.35); }
-.ls-name { font-size: 13px; line-height: 1.15; text-align: center; word-break: break-all; }
+.ls-pic img { width: 100%; height: 100%; object-fit: contain; display: block; filter: grayscale(.35); }
+.ls-name { font-size: 13px; line-height: 1.15; text-align: center; white-space: nowrap; overflow: hidden; max-width: 100%; }
 .ls-n { position: absolute; top: -6px; right: -6px; min-width: 24px; padding: 1px 6px; border-radius: 999px; font-size: 14px; color: #fff;
   background: linear-gradient(#ff7a7a, #e0303c); border: 2px solid #fff; box-shadow: 0 2px 3px rgba(0, 0, 0, .3); }
 .ls-item::after { content: ''; position: absolute; left: 10%; right: 10%; top: 42%; height: 3px; border-radius: 2px; background: rgba(224, 48, 60, .85);
   transform: rotate(-18deg); }
 @media (max-width: 380px) { .ls-item { width: 64px; } .ls-pic { width: 44px; height: 44px; } .ls-item.card .ls-pic { width: 34px; height: 50px; } }
+@media (max-height: 440px) { .ls-items { gap: 6px; margin-bottom: 6px; } .ls-item { width: 62px; padding: 4px 3px; } .ls-pic { width: 38px; height: 38px; } .ls-item.card .ls-pic { width: 28px; height: 40px; } }
+/* a low landscape screen: a wider box, so the lost items take fewer rows */
+@media (max-height: 440px) and (orientation: landscape) { .msg.er-box:has(.ls-items) { width: min(660px, 100%); } }

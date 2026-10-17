@@ -3,7 +3,8 @@
  * falling back to the extracted originals (rich4-assets). Frames load on demand; `onLoad` asks for a redraw.
  */
 import { ASSETS } from './assets';
-import { decodeImage, picSize } from './decode';
+import { decodeCropped, decodeImage, picSize, releasePic } from './decode';
+import { memTier } from './mem-tier';
 
 export type Archive = 'Data' | 'map' | 'Panel' | 'jump';
 
@@ -35,7 +36,9 @@ export class SpriteBank {
   private cache = new Map<string, Frame[] | 'loading' | 'missing'>();
   private tinted = new Map<string, HTMLCanvasElement>();
   /** Frames for the board, decoded off the main thread at the board's density (see `board`). */
-  private boardCache = new Map<string, { frames: Frame[] | null; px: number; next?: Promise<Frame[] | null> } | Promise<Frame[] | null>>();
+  private boardCache = new Map<string, BoardEntry | Promise<Frame[] | null>>();
+  /** Decoded bytes of the board's map sprites (`map/…`), which are released over the tier's budget (see `trimBoard`). */
+  private mapBytes = 0;
   /** Device pixels per original pixel the board draws at (0: not known yet, keep full size). */
   private boardPx = 0;
   onLoad: () => void = () => {};
@@ -102,7 +105,8 @@ export class SpriteBank {
    * a quarter of the memory, and nothing to decode while drawing). It only grows: a sharper view reloads.
    */
   setBoardDensity(px: number) {
-    const b = fitPx(px);
+    // Never sharper than the device's memory tier allows (ui/mem-tier.ts): a low-memory phone keeps 1.5.
+    const b = Math.min(fitPx(px), fitPx(memTier().spritePx));
     if (b > this.boardPx) { this.boardPx = b; this.tinted.clear(); }
   }
 
@@ -113,6 +117,7 @@ export class SpriteBank {
   board(archive: Archive, id: number, mul = 1): Frame[] | null {
     const key = `${this.key(archive, id)}@${mul}`, hit = this.boardCache.get(key);
     if (hit && !(hit instanceof Promise)) {
+      hit.used = performance.now();
       if (hit.px < this.want(mul) && !hit.next) this.loadBoard(archive, id, mul, hit);
       return hit.frames;
     }
@@ -128,13 +133,66 @@ export class SpriteBank {
     return this.loadBoard(archive, id, mul);
   }
 
-  private want(mul: number) { return this.boardPx ? fitPx(this.boardPx * mul) : 4; }
+  private want(mul: number) { return fitPx((this.boardPx || memTier().spritePx) * mul); }
 
-  private loadBoard(archive: Archive, id: number, mul: number, stale?: { frames: Frame[] | null; px: number; next?: Promise<Frame[] | null> }): Promise<Frame[] | null> {
+  /** Decoded board frames: how many and their bytes, and the map sprites' bytes (for checks). */
+  boardMemory(): { frames: number; bytes: number; mapBytes: number; budget: number } {
+    let frames = 0, bytes = 0;
+    for (const v of this.boardCache.values()) {
+      if (v instanceof Promise || !v.frames) continue;
+      frames += v.frames.length; bytes += v.bytes;
+    }
+    return { frames, bytes, mapBytes: this.mapBytes, budget: memTier().spriteBytes };
+  }
+
+  /**
+   * Over the tier's budget (ui/mem-tier.ts), the map sprites not drawn for the longest time go, as long as they
+   * have not been drawn for `IDLE_MS`: they are decoded again when seen. The figures and the dice always stay.
+   */
+  private trimBoard() {
+    const budget = memTier().spriteBytes;
+    if (this.mapBytes <= budget) return;
+    const now = performance.now();
+    const old = [...this.boardCache].filter((e): e is [string, BoardEntry] => !(e[1] instanceof Promise) && e[1].map && !e[1].next && now - e[1].used > IDLE_MS)
+      .sort((a, z) => a[1].used - z[1].used);
+    for (const [key, e] of old) {
+      if (this.mapBytes <= budget) break;
+      this.boardCache.delete(key);
+      this.mapBytes -= e.bytes;
+      for (const f of e.frames ?? []) releasePic(f.img);
+      const prefix = `${key.slice(0, key.indexOf('@'))}/`;
+      for (const k of [...this.tinted.keys()]) if (k.startsWith(prefix)) { releasePic(this.tinted.get(k)!); this.tinted.delete(k); }
+    }
+  }
+
+  /** Estimated decoded bytes of a resource's board frames at the board's density (before loading it). */
+  estimate(archive: Archive, id: number, mul = 1): number {
+    const key = this.key(archive, id), hd = this.hd.get(key);
+    if (hd?.frames?.length) {
+      const k = Math.min(1, this.want(mul) / 4);
+      return hd.frames.reduce((s, f) => s + Math.round(f.width * k) * Math.round(f.height * k) * 4, 0);
+    }
+    return (this.orig.get(key)?.frames ?? []).reduce((s, f) => s + f.width * f.height * 4, 0);
+  }
+
+  /** Whether a resource's board frames are decoded at the board's density now. */
+  boardHas(archive: Archive, id: number, mul = 1): boolean {
+    const hit = this.boardCache.get(`${this.key(archive, id)}@${mul}`);
+    return !!hit && !(hit instanceof Promise) && hit.px >= this.want(mul);
+  }
+
+  private loadBoard(archive: Archive, id: number, mul: number, stale?: BoardEntry): Promise<Frame[] | null> {
     const key = `${this.key(archive, id)}@${mul}`, px = this.want(mul);
     const p = this.load(archive, this.key(archive, id), px).catch(() => null).then(f => {
+      // Gone meanwhile (released over the budget while a sharper copy loaded): the copy is not kept.
+      const now = this.boardCache.get(key);
+      if (stale && now !== stale) { if (f) for (const x of f) releasePic(x.img); return f; }
       // A view that grew sharper meanwhile asks again on the next draw.
-      this.boardCache.set(key, { frames: f ?? stale?.frames ?? null, px });
+      const frames = f ?? stale?.frames ?? null, bytes = frames ? frameBytes(frames) : 0;
+      const isMap = archive === 'map';
+      if (isMap) this.mapBytes += bytes - (stale?.bytes ?? 0);
+      this.boardCache.set(key, { frames, px, used: performance.now(), bytes, map: isMap });
+      if (isMap) this.trimBoard();
       this.onLoad();
       return f;
     });
@@ -184,6 +242,15 @@ export class SpriteBank {
     if (hd) {
       try {
         const dir = hd.dir ?? `${ASSETS}/hd/${key}-${hd.type}`;
+        // The dice (Panel#3..6) are drawn on big, mostly empty canvases (the tumble shows on 4–9 % of its frame):
+        // the board keeps them cropped to their visible pixels, the frame's size and anchor following the crop.
+        if (px && archive === 'Panel') {
+          return await Promise.all(hd.frames.map(async f => {
+            const c = await decodeCropped(`${dir}/${f.file}`, k < 1 ? { w: Math.max(1, Math.round(f.width * k)), h: Math.max(1, Math.round(f.height * k)) } : undefined, 'sprite');
+            const u = f.width / c.fw, v = f.height / c.fh;
+            return { img: c.pic, w: c.w * u, h: c.h * v, ax: f.anchor_x - c.x * u, ay: f.anchor_y - c.y * v, scale: 0.25 };
+          }));
+        }
         return await Promise.all(hd.frames.map(async f => ({ img: await fit(`${dir}/${f.file}`, f.width, f.height), w: f.width, h: f.height, ax: f.anchor_x, ay: f.anchor_y, scale: 0.25 })));
       } catch { /* fall back to the original */ }
     }
@@ -284,6 +351,23 @@ export class SpriteBank {
     return c;
   }
 }
+
+interface BoardEntry {
+  frames: Frame[] | null;
+  px: number;
+  /** A sharper copy on its way. */
+  next?: Promise<Frame[] | null>;
+  /** When it was last drawn (performance.now()). */
+  used: number;
+  bytes: number;
+  /** A map sprite (released over the budget); the figures and the dice are not. */
+  map: boolean;
+}
+
+/** A map sprite not drawn for this long may be released over the budget (an effect holding its frames is over by then). */
+const IDLE_MS = 8000;
+
+const frameBytes = (frames: Frame[]) => frames.reduce((s, f) => { const { w, h } = picSize(f.img); return s + w * h * 4; }, 0);
 
 /** Board density rounded up to a quarter pixel, within what the redraws hold (4). */
 const fitPx = (px: number) => Math.min(4, Math.max(0.5, Math.ceil(px * 4 - 1e-6) / 4));

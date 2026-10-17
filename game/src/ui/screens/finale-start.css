@@ -34,3 +34,11 @@
 .fs-root.por .fs-lines { font-size: 11px; }
 .fs-root.por .fs-face { width: 40px; height: 40px; }
 .fs-root.por .fs-cards { margin-top: 10px; }
+/* the scene is scaled down to the screen (~0.64 on a small phone held upright): the figures' smallest words a little
+   larger there (the landscape cards have no room to spare) */
+.fs-root.por .fs-lines { font-size: 12px; }
+.fs-root.por .fs-badges em { font-size: 12px; }
+.fs-name i { font-size: 13px; }
+.fs-total { font-size: 13.5px; }
+.fs-rule { font-size: 13.5px; }
+.fs-sold { font-size: 14px; }

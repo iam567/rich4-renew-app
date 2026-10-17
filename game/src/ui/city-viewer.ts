@@ -13,6 +13,9 @@ import type { Hud } from './hud';
 import type { SpriteBank } from './sprites';
 import { CITY_COLORS } from './tycoon';
 import { audio } from './audio';
+import { groundStyle, groundStylesFor, TiledGround } from './ground';
+import { preloadBoard } from './board-preload';
+import './loading.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -46,11 +49,11 @@ function summary(w: World, i: number, bank: SpriteBank): string {
   const lord = w.overlordOf(i), mine = (q: number) => b.lands.filter(l => l.owner === q + 1).length;
   const lordLine = lord >= 0
     ? `<div class="cv-lord"><b>${esc(w.cityName(i))}霸主</b>${face(w.players[lord].character)}${esc(CHARACTERS[w.players[lord].character].name)}（普通用地 ${mine(lord)}/${b.lands.length}）</div>`
-    : `<div class="cv-lord none"><b>霸主</b>從缺（需要超過一半的普通用地：${Math.floor(b.lands.length / 2) + 1}/${b.lands.length}）</div>`;
+    : `<div class="cv-lord none"><b>霸主</b><span class="ph">從缺</span><span class="ph">（需超過半數普通用地：</span><span class="ph">${Math.floor(b.lands.length / 2) + 1}/${b.lands.length}）</span></div>`;
   return `<div class="cv-sum">${lordLine}
     <div><b>在這裡</b>${who(here) || '<em>沒有人</em>'}${coming.length ? `<b class="cv-coming">在路上</b>${who(coming)}` : ''}</div>
     <div><b>地主</b>${owners.map(o => `<span class="cv-own" style="--c:${hex(CHARACTERS[o.p.character].color)}">${esc(CHARACTERS[o.p.character].name)} ${o.lots}塊${o.houses ? `・${o.houses}棟` : ''}</span>`).join('') || '<em>還沒有人買地</em>'}<span class="cv-own free">空地 ${free}</span></div>
-    <div><b>醫院</b>${w.occupancy(i, 'hospital')}/${PLACES_PER_HOUSE}　<b>監獄</b>${w.occupancy(i, 'prison')}/${PLACES_PER_HOUSE}　<b>地價</b>×${(LAND_INDEX[w.mapId(i)] ?? 1).toFixed(1)}${RESORT[w.mapId(i)] ? `　<b>度假勝地</b>旅館收入×${RESORT[w.mapId(i)].base}（夏季×${RESORT[w.mapId(i)].summer}）` : ''}</div>
+    <div><span class="cv-kv"><b>醫院</b>${w.occupancy(i, 'hospital')}/${PLACES_PER_HOUSE}</span><span class="cv-kv"><b>監獄</b>${w.occupancy(i, 'prison')}/${PLACES_PER_HOUSE}</span><span class="cv-kv"><b>地價</b>×${(LAND_INDEX[w.mapId(i)] ?? 1).toFixed(1)}</span>${RESORT[w.mapId(i)] ? `<span class="cv-kv"><b>度假勝地</b>旅館收入×${RESORT[w.mapId(i)].base}（夏季×${RESORT[w.mapId(i)].summer}）</span>` : ''}</div>
   </div>`;
 }
 
@@ -73,19 +76,34 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
     box.querySelectorAll('canvas, .info-bubble').forEach(e => e.remove());
     shown = i; renderTabs();
     info.innerHTML = summary(w, i, bank);
-    box.querySelector('.cv-load')?.removeAttribute('hidden');
-    let art: MapArt;
-    try { art = await cityArt(w, i); } catch (e) { if (my === token) box.querySelector('.cv-load')!.textContent = (e as Error).message; return; }
-    if (my !== token || !node.isConnected) return;
+    // The city is covered (with its progress) until its first view is complete (ui/board-preload.ts).
+    const load = box.querySelector<HTMLElement>('.cv-load')!;
+    load.removeAttribute('hidden');
+    load.innerHTML = '<div class="cv-load-bar"><div class="boot-track"><i class="boot-fill"></i><b class="boot-pct">0%</b></div></div>';
+    const fill = load.querySelector<HTMLElement>('.boot-fill')!, pct = load.querySelector<HTMLElement>('.boot-pct')!;
+    let shownPct = 0;
+    const progress = (f: number) => { shownPct = Math.max(shownPct, Math.min(1, f)); fill.style.width = `${(shownPct * 100).toFixed(1)}%`; pct.textContent = `${Math.floor(shownPct * 100)}%`; };
+    let art: MapArt, ground: TiledGround | null;
+    try {
+      // The chosen ground style, as in the game (its preview instead of decoding the original picture).
+      const mapId = w.mapId(i), styles = await groundStylesFor(mapId), want = styles.includes(groundStyle()) ? groundStyle() : '';
+      [art, ground] = await Promise.all([cityArt(w, i), want ? TiledGround.load(mapId, want) : null]);
+    } catch (e) { if (my === token) load.textContent = (e as Error).message; return; }
+    if (my !== token || !node.isConnected) { ground?.dispose(); return; }
+    progress(0.15);
     bank.addMapSprites(art.sprites);
     w.mask(i);                      // the board's players as that city sees them (the game waits at the turn menu)
-    view = new BoardView(box, w.cities[i], art, bank);
-    view.setMode('free');
-    view.syncAll();
+    const v = new BoardView(box, w.cities[i], art, bank);
+    view = v;
+    v.setGround(ground);
+    v.setMode('free');
+    v.syncAll();
     // Look at the human there, else at the first player there, else the middle.
     const p = (human && human.map === i ? human : null) ?? w.players.find(q => !q.bankrupt && q.map === i && !q.trip);
-    if (p) view.snapTo(p.id); else view.lookAt(w.cities[i].board.size ? w.cities[i].board.size! / 2 : 1152, 1152);
-    box.querySelector('.cv-load')?.setAttribute('hidden', '');
+    if (p) v.snapTo(p.id); else v.lookAt(w.cities[i].board.size ? w.cities[i].board.size! / 2 : 1152, 1152);
+    await preloadBoard(v, { aim: false, alive: () => my === token && node.isConnected, onProgress: f => progress(0.15 + 0.85 * f) });
+    if (my !== token) return;
+    load.setAttribute('hidden', '');
   };
   tabs.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-city]');

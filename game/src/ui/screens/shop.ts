@@ -17,6 +17,7 @@ import type { Ask } from '../../core/types';
 import type { Archive } from '../sprites';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { audio, Theme } from '../audio';
+import { fitPhrases, phrases, shrinkText } from '../text';
 import './shop.css';
 
 type ShopAsk = Extract<Ask, { t: 'shop' }>;
@@ -43,7 +44,7 @@ export const TOOL_TEXT: Record<number, string> = {
   10: '時光倒流，回到擲骰之前',
   11: '把人物或建築傳送到別的地方',
   12: '開工程車上路，幾回合內只能慢慢走',
-  13: '整個畫面範圍內的建築全部充公',
+  13: '整個畫面範圍內，建築全部充公',
 };
 
 /**
@@ -247,7 +248,11 @@ class ShopScene {
     this.img(this.arm, 'Panel', 10, 3 + pg * 16, ARM[pg].x, ARM[pg].y);
 
     // Bubble.
-    const b = L.bubble[pg], bub = this.img(this.bubbleImg, 'Panel', 10, pg ? 34 : 15, 0, 0);
+    // 大富豪模式's 36 cards fill the shelf's whole width (two columns): her bubble moves off the shelf, beside it
+    // (landscape) or under her face (portrait), so no card is hidden while she talks.
+    const wide = pg === 0 && this.ask.cards.length > 15;
+    const b = wide ? (L === PORT ? { x: 232, y: 296, k: 0.85 } : { x: 232, y: 12, k: 0.85 }) : L.bubble[pg];
+    const bub = this.img(this.bubbleImg, 'Panel', 10, pg ? 34 : 15, 0, 0);
     place(this.bubble, b.x, b.y, bub?.w, bub?.h);
     this.bubble.style.transform = `scale(${b.k})`;
     const t = BUBBLE_TEXT[pg];
@@ -293,15 +298,16 @@ class ShopScene {
     const pg = this.page, a = this.ask, me = this.player;
     place(this.shelf, this.layout.shelf.x, this.layout.shelf.y, 222, 462);
     this.img(this.shelfImg, 'Panel', 10, 1 + pg * 16, 0, 0);
-    const scrolled = pg === 0 ? this.rows.querySelector<HTMLElement>('.shop-scroll')?.scrollTop ?? 0 : 0;
     this.rows.replaceChildren(pg === 0 ? place(el('div', 'shop-face card'), 10, 66, 202, 386) : place(el('div', 'shop-face tool'), 14, 80, 194, 367));
     if (pg === 0) {
       const full = me.cards.length >= HAND_LIMIT;
-      // 大富豪模式's shelf has every card (05 §8.3, 17 §3.10): more than the 15 rows that fit, so the list scrolls.
-      const many = a.cards.length > 15, list = many ? place(el('div', 'shop-scroll'), 10, 66, 202, 386) : this.rows;
-      if (many) { this.rows.append(list); list.append(place(el('i', 'shop-scroll-end'), 0, 4 + 25 * a.cards.length, 1, 4)); }
+      // 大富豪模式's shelf has every card (05 §8.3, 17 §3.10): more than the 15 rows that fit, so two columns of shorter
+      // rows in the same list area, every card on the one page.
+      const many = a.cards.length > 15, per = Math.ceil(a.cards.length / 2), step = many ? Math.min(25, Math.floor(378 / per)) : 25;
       a.cards.forEach((id, i) => {
-        const row = place(el('button', 'shop-row card'), many ? 4 : 14, many ? 4 + 25 * i : 70 + 25 * i, 194, 23);
+        const row = many
+          ? place(el('button', 'shop-row card compact'), 13 + 99 * Math.floor(i / per), 70 + step * (i % per), 97, step - 2)
+          : place(el('button', 'shop-row card'), 14, 70 + 25 * i, 194, 23);
         if (!id) {
           row.classList.add('sold');
           row.innerHTML = '<span class="nm">已售出</span><span class="pr">SOLD</span>';
@@ -314,9 +320,9 @@ class ShopScene {
           row.title = `${cardName(id)}　$${price}\n${(cardDef(id)?.text ?? "")}`;
           this.press(row, () => this.buy('card', i), () => this.cardInfo(id, price));
         }
-        list.append(row);
+        this.rows.append(row);
       });
-      if (many) list.scrollTop = scrolled;
+      if (many) requestAnimationFrame(() => shrinkText(this.rows, '.shop-row.compact .nm', 9));
       if (!a.cards.length) this.rows.append(place(el('div', 'shop-empty', '卡片賣完了'), 14, 70, 194, 48));
     } else {
       a.tools.forEach((id, i) => {
@@ -498,6 +504,9 @@ class ShopScene {
     this.infoBoard.classList.remove('show');
     void this.infoBoard.offsetWidth;
     this.infoBoard.classList.add('show');
+    // a long clause a little smaller rather than broken inside
+    const para = this.infoBoard.querySelector<HTMLElement>('p');
+    if (para) fitPhrases(para, 0.75);
   }
 
   private endInfo(ms = 0) {
@@ -508,14 +517,14 @@ class ShopScene {
 
   private cardInfo(id: number, price: number, held = false) {
     const pic = this.art('Data', 570 + id);
-    this.info(`${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<div class="txt"><b>${esc(cardName(id))}</b><p>${esc((cardDef(id)?.text ?? ""))}</p>
+    this.info(`${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<div class="txt"><b>${esc(cardName(id))}</b><p>${phrases(cardDef(id)?.text ?? '')}</p>
       <em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}</em></div>`);
   }
 
   private toolInfo(id: number, price: number, held = false) {
     const icon = this.art('Panel', 11, id + 1), n = this.player.tools[id - 1];
     this.info(`<span class="icb">${icon ? `<img class="ic" src="${icon.src}" alt="" style="width:${icon.w * 1.5}px;height:${icon.h * 1.5}px">` : ''}</span><div class="txt"><b>${esc(TOOLS[id - 1].name)}</b>
-      <p>${esc(TOOL_TEXT[id] ?? '')}</p><em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}・持有 ${n}/${MAX_HELD}</em></div>`);
+      <p>${phrases(TOOL_TEXT[id] ?? '')}</p><em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}・持有 ${n}/${MAX_HELD}</em></div>`);
   }
 
   private showBubble() {

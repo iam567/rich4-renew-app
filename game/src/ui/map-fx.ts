@@ -9,6 +9,7 @@ import { cardScene, toolScene } from './screens/card-fx';
 import { resultBox } from './screens/event-result';
 import { playEventFx } from './event-fx';
 import { preloadClips } from './effects';
+import { warmFireworks } from './fireworks';
 import type { EventResult } from '../core/modules/events';
 import { cardDef, cardName } from '../core/modules/cards';
 import { CHARACTERS } from '../core/characters';
@@ -87,9 +88,9 @@ export class MapDirector {
   private eventOpen = false;
 
   constructor(private game: Game, private view: BoardView, private hud: Hud) {
-    // Idle time after the map is up: the fireworks (any lot reaching level 5, the robot worker's last floor, the
-    // angel) are decoded once and kept for the session, so they never load while the game waits (11 §0.3).
-    setTimeout(() => void preloadClips(view.bank, [523], true), 2500);
+    // Idle time after the map is up: the fireworks' glow dots (any lot reaching level 5, the robot worker's last
+    // floor, the angel) are painted once, so the first show starts at once (fireworks.ts; no clip to decode).
+    setTimeout(warmFireworks, 2500);
   }
 
   private get pi() { return this.game.priceIndex; }
@@ -208,8 +209,17 @@ export class MapDirector {
     if (!o.stay) this.view.refollow();
   }
 
-  /** Fireworks when a house reaches level 5 (`fcn_0040b0cd`: Data#523, 66 × 42 ms). */
-  private fireworks(at: Pt) { return this.clipAt(523, at, { sound: Sfx.fireworks }); }
+  /**
+   * Fireworks when a house reaches level 5 (`fcn_0040b0cd`: the clip Data#523, 66 × 42 ms, centred on the lot).
+   * Drawn in code (fireworks.ts) for the same time, with the clip's sound from its first frame; the camera goes
+   * to the lot first and back to the player after, as for the clip.
+   */
+  private async fireworks(at: Pt) {
+    await this.view.panTo(at.x, at.y);
+    await this.view.fx.fireworks(at, () => { audio.sfx(Sfx.fireworks); this.view.thawLots(); });
+    this.view.thawLots();
+    this.view.refollow();
+  }
 
   // ---------------------------------------------------------------- events
 
@@ -382,7 +392,7 @@ export class MapDirector {
   /** Map effects of `fx` events. Returns true when it took the time the original takes (no extra pause). */
   async fx(s: Fx): Promise<boolean> {
     const pre = s.kind === 'god-attach' ? [GOD_CLIP[Number(s.data?.type)]?.res].filter((r): r is number => !!r)
-      : [...FX_CLIPS[s.kind] ?? [], ...((s.kind === 'robot-worker' || s.kind === 'free-upgrade') && (s.data?.done || s.data?.top) ? [523] : [])];
+      : FX_CLIPS[s.kind] ?? [];
     if (pre?.length) void preloadClips(this.view.bank, pre);
     await this.idle();
     const v = this.view, p = this.player(s.p);

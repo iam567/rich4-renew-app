@@ -288,6 +288,89 @@ export class BoardView {
   /** Decoded high-resolution ground tiles right now (for checks). */
   groundStats() { return this.tiled ? { style: this.tiled.style, ...this.tiled.stats() } : null; }
 
+  // ---------- the loading screen (ui/board-preload.ts) ----------
+
+  /** The redrawn ground drawn now (null: the original). */
+  get groundTiles(): TiledGround | null { return this.tiled; }
+
+  /** Redraws the whole cached ground on the next frame (the loading screen, once the first view's tiles are in). */
+  refreshGround() { this.groundGen++; }
+
+  /** Puts the camera where the game opens, at once: on the current player when they are on the map. */
+  aimAtStart() {
+    const a = this.actors.get(this.game.current);
+    if (a?.visible) this.snapTo(this.game.current); else this.keepOnBoard();
+  }
+
+  /** The world quad the canvas shows, widened by the ground cache's ring and `ring` more CSS px each way. */
+  preloadQuad(ring: number): { x: number; y: number }[] {
+    const r = 256 / this.dpr + ring;
+    return [this.unproject(-r, -r), this.unproject(this.W + r, -r), this.unproject(this.W + r, this.H + r), this.unproject(-r, this.H + r)];
+  }
+
+  /** The whole map as a world quad. */
+  mapQuad(): { x: number; y: number }[] {
+    const S = worldSize(this.game.board);
+    return [{ x: 0, y: 0 }, { x: S, y: 0 }, { x: S, y: S }, { x: 0, y: S }];
+  }
+
+  /**
+   * The sprites the board draws for the map as it is now (archive, resource, scale as `bank.board` takes them):
+   * event pads, lots' buildings and flags, facilities, companies, landscapes, decorations, objects and gods, the
+   * players' still / walking / throwing figures and the NPCs, the dice. `d`: how far (CSS px) the nearest use is
+   * outside the area the board draws for the view now (0 inside; the figures and the dice 0).
+   */
+  boardSprites(): { a: Archive; res: number; mul: number; d: number }[] {
+    const g = this.game, b = g.board, out = new Map<string, { a: Archive; res: number; mul: number; d: number }>();
+    let at = 0;
+    const add = (a: Archive, res: number, mul = 1) => {
+      const k = `${a}/${res}@${mul}`, e = out.get(k);
+      if (!e) out.set(k, { a, res, mul, d: at }); else e.d = Math.min(e.d, at);
+    };
+    // The same culling as `draw` (`m` the sprite's reach), as a distance.
+    const near = (x: number, y: number, m = 200) => {
+      const p = this.project(x, y);
+      at = Math.max(0, -m - p.x, p.x - this.W - m, -m - p.y, p.y - this.H - m * 1.5);
+      return true;
+    };
+    for (const n of b.nodes) {
+      if (n.event === 17 || n.event === 18) { if (near(n.x, n.y, 60)) add('map', n.event === 17 ? 9017 : 9018); }
+      else if (n.aux && near(n.x, n.y, 60)) add('map', 24);
+    }
+    for (const l of b.lands) {
+      if (!near(l.x, l.y)) continue;
+      const sp = this.landSprite(l);
+      if (sp) add('map', sp.res);
+      if (l.tmpState) add('map', 26);
+    }
+    for (const f of b.facilities) {
+      if (!near(f.x, f.y, 260)) continue;
+      const sp = this.facilitySprite(f);
+      if (sp) add('map', sp.res);
+      if (f.tmpState) add('map', 26);
+    }
+    for (const co of b.companies) if (co.resource && near(co.x, co.y, 260)) add('map', co.resource + 38);
+    for (const ls of b.landscapes) if (ls.resource && near(ls.x, ls.y, 300)) add('map', ls.resource + 38);
+    for (const d of this.art.decor ?? []) if (near(d.x, d.y, 90)) add('map', d.res);
+    at = 0;
+    for (const o of this.objectSlots()) if (o.type) add('Data', 395 + o.type);
+    for (const [id, a] of this.actors) {
+      if (id >= g.npcBase) {
+        if (a.visible) { const r = this.spriteOf(id); if (r) add('Data', r.res); }
+        continue;
+      }
+      const p = g.players[id];
+      if (!p || (g.world && !p.placed)) continue;
+      const phase = a.phase;
+      for (const ph of [0, 1, 2]) { a.phase = ph; const r = this.spriteOf(id); if (r) add('Data', r.res); }
+      a.phase = phase;
+      if (p.sleepwalk) add('Data', 414);
+    }
+    for (const id of [3, 4, 5, 6]) add('Panel', id, DICE_SCALE);
+    for (const res of [521, 522, 517]) add('Data', res);
+    return [...out.values()];
+  }
+
   private overview: { userZoom: number; follow: number | null } | null = null;
 
   /** 工具列「地圖」: zoom out to the whole board, or back to the followed actor. */
@@ -1091,7 +1174,8 @@ export class BoardView {
     if (this.edge) return this.edge;
     try {
       const c = document.createElement('canvas'); c.width = c.height = 64;
-      const x = c.getContext('2d', { willReadFrequently: true })!; x.drawImage(this.art.ground, 0, 0, 64, 64);
+      // The redrawn style's preview when there is one: drawing the original picture would decode all of it.
+      const x = c.getContext('2d', { willReadFrequently: true })!; x.drawImage(this.tiled?.preview ?? this.art.ground, 0, 0, 64, 64);
       const px = x.getImageData(0, 0, 64, 64).data; let r = 0, g = 0, b = 0, n = 0;
       for (let i = 0; i < 64; i++) for (const [u, v] of [[i, 0], [i, 63], [0, i], [63, i]]) { const o = (v * 64 + u) * 4; r += px[o]; g += px[o + 1]; b += px[o + 2]; n++; }
       this.edge = `rgb(${Math.round(r / n * .8)}, ${Math.round(g / n * .8)}, ${Math.round(b / n * .8)})`;

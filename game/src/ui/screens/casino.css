@@ -1,164 +1,301 @@
-/* 大富翁城's casino (casino.ts, docs/rules/19 §5): a toy-style golden casino page, one page in both orientations. */
-.cs-scene .pl-stage { box-shadow: 0 0 0 3px #ffd860, 0 0 0 7px #b0182c, 0 0 30px rgba(255, 200, 80, .45), 0 18px 40px rgba(0,0,0,.6); background: #2a0d1c; border-radius: 22px; }
-.cs-root { position: absolute; color: #fff; display: grid; overflow: hidden; border-radius: 22px; }
-.cs-root.land { grid-template-rows: 74px 1fr; }
-.cs-root.por { grid-template-rows: 150px 1fr; }
-.cs-bg { position: absolute; inset: 0; background: radial-gradient(120% 90% at 50% 10%, #7a1830 0%, #3a0a22 55%, #1a0412 100%);
-  background-size: cover; background-position: center; z-index: 0; }
-.cs-bg::after { content: ''; position: absolute; inset: 0; background: radial-gradient(90% 70% at 50% 45%, transparent 40%, rgba(20, 0, 10, .55) 100%); }
-.cs-head { position: relative; z-index: 1; display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
-.cs-root.por .cs-head { flex-wrap: wrap; justify-content: center; padding: 10px 12px 4px; row-gap: 6px; }
-.cs-plate { display: flex; align-items: center; gap: 8px; padding: 4px 16px; border-radius: 18px; flex: none;
-  background: linear-gradient(#3a0816, #1c0410); border: 3px solid #ffd860; box-shadow: 0 0 14px rgba(255, 200, 80, .55), inset 0 0 10px rgba(255, 120, 60, .35); }
-.cs-sign { font-size: 24px; color: #fff3c2; letter-spacing: 2px; text-shadow: 0 0 6px #ff9a3c, 0 0 14px #ff3a6a; }
-.cs-lv { font-size: 15px; padding: 1px 8px; border-radius: 10px; color: #4a2a00; background: linear-gradient(#fff3b0, #f2b82a); }
-.cs-cap { font-size: 13px; color: #ffd9a8; } .cs-cap b { font-weight: 400; color: #ffe36a; font-size: 17px; }
-.cs-root.por .cs-plate { width: 100%; justify-content: center; }
-.cs-banker, .cs-guest { display: flex; align-items: center; gap: 6px; font-size: 13px; line-height: 1.15; color: #ffd9e0; }
-.cs-banker { margin-left: auto; } .cs-root.por .cs-banker { margin-left: 0; }
-.cs-banker b, .cs-guest b { font-weight: 400; font-size: 16px; color: #fff; }
-.cs-guest b { color: #9cf5a6; }
-.cs-face { width: 42px; height: 42px; border: 3px solid #ffd860; box-shadow: 0 2px 6px rgba(0,0,0,.4); }
-.cs-main { position: relative; z-index: 1; min-height: 0; display: grid; padding: 4px 14px 14px; gap: 12px; }
+/*
+ * 大富翁城's casino (casino.ts, docs/rules/19 §5): a bright glossy CARTOON casino matching the remake's art — chunky
+ * rounded shapes, saturated colours, thick soft outlines, bouncy micro-animations — laid out like a real table.
+ * One page in both orientations (scene units: landscape 880×500, portrait 500×880, scaled to the phone).
+ */
+.cs-scene .pl-stage { background: #3b1670; border-radius: 26px; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ff9f1c, 0 0 0 11px #5a1f9e, 0 20px 40px rgba(0,0,0,.55); }
+.cs-root { position: absolute; color: #fff; display: grid; overflow: hidden; border-radius: 26px; --ink: #2a1250; --gold: #ffd23f; }
+.cs-root.land { grid-template-rows: 76px 1fr; }
+.cs-root.por { grid-template-rows: 128px 1fr; }
+.cs-bg { position: absolute; inset: 0; z-index: 0; background-size: cover; background-position: center; }
+.cs-bg::after { content: ''; position: absolute; inset: 0;
+  background: radial-gradient(circle at 20% 20%, rgba(255,255,255,.10) 0 2px, transparent 3px) 0 0 / 26px 26px,
+    linear-gradient(rgba(70, 20, 140, .72), rgba(40, 8, 90, .88)); }
+.cs-root * { box-sizing: border-box; }
+.fit { white-space: nowrap; overflow: hidden; min-width: 0; }
 
-/* choose: the hall and the stake */
-.ph-choose.land .cs-main { grid-template-columns: 250px 1fr; }
-.ph-choose.por .cs-main { grid-template-rows: 250px 1fr; }
-.cs-hallcard { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; padding: 10px; border-radius: 20px;
-  background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.04)), #3a0a22; border: 3px solid rgba(255, 216, 96, .6); text-align: center; }
-.cs-root.por .cs-hallcard { display: grid; grid-template-columns: 120px 1fr; grid-template-rows: auto auto 1fr; column-gap: 12px; text-align: left; justify-items: start; }
-.cs-root.por .cs-hallcard .cs-hplate { grid-row: 1 / 4; }
-.cs-hallcard .cs-hplate { width: 110px; height: 110px; }
-.cs-hname { font-weight: 400; font-size: 24px; color: #fff3c2; letter-spacing: 2px; text-shadow: 0 0 8px #ff9a3c; }
-.cs-hgame { font-size: 13px; color: #ffd9a8; }
-.cs-big { font-size: 13px; line-height: 1.45; color: #fff; padding: 6px 10px; border-radius: 12px; background: rgba(176, 24, 44, .55); border: 1px dashed #ffd860; }
-.cs-big i { display: block; font-style: normal; font-size: 11px; color: #ffe36a; }
-.cs-opt.k-big { background: linear-gradient(#ff8a8a, #c8202c); color: #fff; box-shadow: 0 3px 0 #6a0a10; }
-.cs-opt.k-small { background: linear-gradient(#8ac8ff, #2a6ad8); color: #fff; box-shadow: 0 3px 0 #10306a; }
-.cs-bac.sic { grid-template-columns: repeat(2, 1fr); }
-/* 骰寶: the cup and the dice */
-.g-sicbo .cs-felt { grid-template-rows: 1fr; }
-.cs-dice-box { position: relative; width: 300px; height: 200px; display: grid; place-items: center; }
-.cs-dice { display: flex; gap: 14px; }
-.cs-die { width: 58px; height: 58px; padding: 7px; border-radius: 12px; background: #fffef8; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
-  box-shadow: 0 5px 0 #c9c2b0, 0 8px 12px rgba(0,0,0,.4); animation: pl-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; }
-.cs-die i { border-radius: 50%; } .cs-die i.on { background: radial-gradient(circle at 35% 35%, #555, #111); }
-.cs-die.red i.on { background: radial-gradient(circle at 35% 35%, #ff6a6a, #b0101a); }
-.cs-cup { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -100px 0 0 -85px; z-index: 2; border-radius: 50% 50% 18px 18px;
-  background: radial-gradient(circle at 35% 25%, #fff3b0, #e0a020 45%, #8a5a10); box-shadow: 0 10px 18px rgba(0,0,0,.45), inset 0 -10px 0 rgba(0,0,0,.18);
-  transition: transform .45s cubic-bezier(.3, 1.4, .5, 1), opacity .45s; }
-.cs-cup::after { content: '骰'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 54px; color: #8a1020; text-shadow: 0 2px 0 #ffe9a0; }
-.cs-cup.shake { animation: cs-shake .18s ease-in-out infinite alternate; }
-@keyframes cs-shake { from { transform: rotate(-9deg) translateY(-6px); } to { transform: rotate(9deg) translateY(4px); } }
-.cs-cup.up { transform: translateY(-150px) rotate(-12deg); opacity: 0; }
-.cs-banner.lose.big { background: linear-gradient(#b0182c, #5a0612); border-color: #ffd860; box-shadow: 0 0 40px rgba(255, 60, 60, .8), 0 10px 0 #3a0008; }
-.cs-games { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; gap: 10px; }
-.cs-game { font: inherit; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; border-radius: 20px; cursor: pointer;
-  color: #fff; border: 3px solid rgba(255, 216, 96, .5); background: linear-gradient(160deg, rgba(255,255,255,.18), rgba(255,255,255,.04)), #3a0a22;
-  box-shadow: 0 5px 0 #14030c, 0 8px 14px rgba(0,0,0,.35); transition: transform .08s; }
-.cs-game.on { border-color: #ffe36a; background: linear-gradient(#ffeb8a, #f2a81e); color: #4a1a00; box-shadow: 0 5px 0 #9a5a00, 0 0 20px rgba(255, 210, 80, .8); transform: translateY(-2px); }
-.cs-game:active { transform: translateY(3px); }
-.cs-gico { font-size: 44px; line-height: 1; filter: drop-shadow(0 3px 2px rgba(0,0,0,.4)); }
-.cs-gname { font-size: 20px; letter-spacing: 2px; }
-.cs-bet { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 20px; min-height: 0;
-  background: rgba(20, 2, 10, .55); border: 2px solid rgba(255, 216, 96, .45); }
-.cs-rule { font-size: 14px; color: #ffe2b8; line-height: 1.4; }
-.cs-pick { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; justify-content: center; }
-.cs-hint { font-size: 15px; color: #fff; opacity: .85; text-align: center; }
-.cs-rbets { display: grid; grid-template-columns: repeat(9, 1fr); gap: 4px; }
-.cs-root.por .cs-rbets { grid-template-columns: repeat(5, 1fr); }
-.cs-opt { font: inherit; font-size: 13px; padding: 5px 2px; border-radius: 10px; border: 2px solid #fff; cursor: pointer; color: #3a1a00;
-  background: linear-gradient(#fff8d8, #ffd86a); box-shadow: 0 3px 0 #b07a00; white-space: nowrap; }
-.cs-opt.k-red { background: linear-gradient(#ff8a8a, #d8242f); color: #fff; box-shadow: 0 3px 0 #7a0a10; }
-.cs-opt.k-black { background: linear-gradient(#6a6a78, #1d1d26); color: #fff; box-shadow: 0 3px 0 #000; }
-.cs-opt.on { outline: 3px solid #5df07a; outline-offset: 1px; transform: translateY(1px); }
-.cs-opt.big { font-size: 26px; padding: 10px 0; display: flex; flex-direction: column; align-items: center; line-height: 1.1; }
-.cs-opt.big small { font-size: 12px; opacity: .8; }
-.cs-opt.k-player { background: linear-gradient(#8ac8ff, #2a6ad8); color: #fff; box-shadow: 0 3px 0 #10306a; }
-.cs-opt.k-banker { background: linear-gradient(#ff8a8a, #c8202c); color: #fff; box-shadow: 0 3px 0 #6a0a10; }
-.cs-opt.k-tie { background: linear-gradient(#9cf5a6, #1c9a4a); color: #fff; box-shadow: 0 3px 0 #0a4a20; }
-.cs-bac { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-.cs-nums { display: grid; grid-template-columns: repeat(13, 1fr); gap: 3px; }
-.cs-root.por .cs-nums { grid-template-columns: repeat(10, 1fr); }
-.cs-num { font: inherit; font-size: 12px; padding: 3px 0; border-radius: 6px; border: 1px solid rgba(255,255,255,.6); color: #fff; cursor: pointer; }
-.cs-num.r { background: #c41f2a; } .cs-num.b { background: #22222c; } .cs-num.z { background: #1c9a4a; }
-.cs-num.on { outline: 3px solid #ffe36a; transform: scale(1.12); z-index: 1; }
-.cs-stake { display: flex; align-items: baseline; justify-content: center; gap: 10px; }
-.cs-stk-l { font-size: 15px; color: #ffd9a8; }
-.cs-stk { font-weight: 400; font-size: 34px; color: #ffe36a; text-shadow: 0 0 10px rgba(255, 210, 80, .7), 0 2px 0 #7a3a00; }
-.cs-range { font-size: 12px; color: #d8b0b8; }
-.cs-chips { display: flex; justify-content: center; gap: 6px; flex-wrap: wrap; }
-.cs-chip { font: inherit; font-size: 13px; width: 54px; height: 54px; border-radius: 50%; cursor: pointer; color: #fff; border: 4px dashed rgba(255,255,255,.9);
-  box-shadow: 0 0 0 3px #fff inset, 0 4px 0 rgba(0,0,0,.4); text-shadow: 0 1px 0 rgba(0,0,0,.5); }
-.cs-chip.c1 { background: #2a6ad8; } .cs-chip.c5 { background: #c8202c; } .cs-chip.c10 { background: #1c9a4a; } .cs-chip.c50 { background: #6b2bd0; }
-.cs-chip.min { background: #555a66; } .cs-chip.max { background: linear-gradient(#ffd860, #e09010); color: #4a2000; text-shadow: none; }
-.cs-chip:active { transform: translateY(3px); }
-.cs-bet .cs-go { position: static; align-self: center; font-size: 22px; padding: 8px 40px; }
+/* ---------------------------------------------------------------- the title bar and the two players */
+.cs-head { position: relative; z-index: 2; display: grid; align-items: center; gap: 8px; padding: 8px 14px 4px; }
+.cs-root.land .cs-head { grid-template-columns: minmax(0, 1fr) auto; }
+.cs-root.por .cs-head { grid-template-rows: 54px 1fr; padding: 10px 12px 2px; }
+.cs-plate { display: flex; align-items: center; gap: 8px; min-width: 0; height: 56px; padding: 4px 14px 4px 18px; border-radius: 22px;
+  background: linear-gradient(#ff5f8f, #e5266b 55%, #b8104f); border: 4px solid #fff; box-shadow: 0 0 0 3px var(--ink), 0 5px 0 3px var(--ink), inset 0 6px 0 rgba(255,255,255,.25); }
+.cs-sign { flex: 1 1 auto; font-size: 27px; letter-spacing: 1px; color: #fff; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill;
+  text-shadow: 0 3px 0 var(--ink), 0 0 10px rgba(255,255,255,.35); }
+.cs-lv { flex: none; font-size: 16px; padding: 2px 9px; border-radius: 12px; color: var(--ink); background: linear-gradient(#fff6a8, #ffc21a); border: 2.5px solid var(--ink); }
+.cs-caps { flex: none; display: flex; flex-direction: column; align-items: flex-end; gap: 1px; font-size: 12px; line-height: 1.15; color: #ffe8f0; white-space: nowrap; }
+.cs-caps b { font-weight: 400; font-size: 16px; color: #fff59a; text-shadow: 0 2px 0 var(--ink); }
+.cs-people { display: flex; align-items: center; gap: 8px; justify-content: center; }
+.cs-banker, .cs-guest { position: relative; display: flex; align-items: center; gap: 5px; }
+.cs-face { width: 46px; height: 46px; border: 3px solid #fff; box-shadow: 0 0 0 3px var(--ink), 0 4px 0 2px var(--ink); flex: none; }
+.cs-np { display: flex; flex-direction: column; line-height: 1.12; padding: 3px 11px 4px 9px; border-radius: 14px; white-space: nowrap;
+  background: rgba(24, 6, 52, .78); border: 2.5px solid var(--gold); box-shadow: 0 3px 0 rgba(0,0,0,.35); text-shadow: 0 2px 0 #000, 0 0 3px #000; }
+.cs-np i { font-style: normal; font-size: 12px; color: #ffe3f4; }
+.cs-np b { font-weight: 400; font-size: 17px; color: #fff; }
+.cs-guest .cs-np b { color: var(--gold); }
+.cs-banker.you .cs-np i { color: var(--gold); }
+.cs-god { position: absolute; left: 50%; top: 100%; transform: translate(-30%, 2px); white-space: nowrap; font-style: normal; font-size: 11px; line-height: 1.5; padding: 0 8px;
+  border-radius: 10px; color: #fff; background: linear-gradient(#ff8a5a, #e0204a); border: 2px solid #fff; box-shadow: 0 2px 0 var(--ink); z-index: 3; }
+/* the banker reacts to the result */
+.cs-bubble { position: absolute; left: -4px; top: 100%; margin-top: 2px; z-index: 4; font-style: normal; font-size: 14px; padding: 1px 9px; border-radius: 12px; white-space: nowrap;
+  color: var(--ink); background: #fff; border: 2.5px solid var(--ink); animation: cs-pop .4s cubic-bezier(.3, 1.8, .5, 1) both; }
+.cs-banker.mood-happy .cs-face { animation: cs-hop .5s ease-in-out 3; }
+.cs-banker.mood-sad .cs-face { animation: cs-sulk .25s ease-in-out 6; filter: saturate(.6) brightness(.9); }
+@keyframes cs-hop { 50% { transform: translateY(-9px) rotate(-6deg); } }
+@keyframes cs-sulk { 0%, 100% { transform: translateX(0); } 50% { transform: translateX(-4px) rotate(-4deg); } }
+@keyframes cs-pop { from { transform: scale(.3); opacity: 0; } to { transform: none; opacity: 1; } }
 
-/* the table */
-.cs-root.land:not(.ph-choose) .cs-main { grid-template-rows: 1fr 54px; }
-.cs-root.por:not(.ph-choose) .cs-main { grid-template-rows: 1fr 64px; }
-.cs-felt { position: relative; display: grid; grid-template-rows: 1fr auto 1fr; align-items: center; justify-items: center; border-radius: 120px / 60px;
-  background: radial-gradient(90% 80% at 50% 50%, #1fa35a 0%, #0f7a3e 60%, #0a5a2c 100%); border: 8px solid #7a3a14;
-  box-shadow: 0 0 0 4px #ffd860, inset 0 0 40px rgba(0,0,0,.4), 0 10px 20px rgba(0,0,0,.4); }
-.g-roulette .cs-felt { grid-template-rows: 1fr; }
-.cs-root.por .cs-felt { border-radius: 60px / 120px; }
+.cs-main { position: relative; z-index: 1; min-height: 0; display: grid; padding: 6px 12px 12px; gap: 10px; }
+
+/* ---------------------------------------------------------------- the hall's panel (its own colours) */
+.cs-hallcard { position: relative; overflow: hidden; min-height: 0; display: flex; flex-direction: column; align-items: stretch; gap: 6px; padding: 10px 10px 10px;
+  border-radius: 22px; border: 4px solid #fff; box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px var(--ink);
+  background: radial-gradient(circle at 25% 15%, rgba(255,255,255,.14) 0 3px, transparent 4px) 0 0 / 22px 22px, linear-gradient(160deg, var(--t1), var(--t2)); }
+.t-roulette { --t1: #ff5a6e; --t2: #b5123a; --tz: #ffe1e6; }
+.t-blackjack { --t1: #36d07a; --t2: #0f8a45; --tz: #dcffe9; }
+.t-baccarat { --t1: #ffbf3a; --t2: #d97a0a; --tz: #fff3d0; }
+.t-holdem { --t1: #a874ff; --t2: #5a24c8; --tz: #efe3ff; }
+.t-sicbo { --t1: #4fb2ff; --t2: #1a5fd8; --tz: #e0f1ff; }
+.cs-hc-art { position: absolute; inset: 0; background-size: cover; background-position: center; opacity: .16; mix-blend-mode: luminosity; }
+.cs-hc-shine { position: absolute; inset: -40%; pointer-events: none; background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.28) 50%, transparent 58%);
+  animation: cs-shine 4.5s ease-in-out infinite; }
+@keyframes cs-shine { 0%, 40% { transform: translateX(-60%); } 100% { transform: translateX(60%); } }
+.cs-hc-top { position: relative; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.cs-hc-top .cs-hplate { width: 52px; height: 52px; border-radius: 14px; box-shadow: 0 0 0 3px #fff, 0 0 0 5px var(--ink); }
+.cs-hc-name { display: flex; flex-direction: column; min-width: 0; flex: 1; }
+.cs-hname { font-weight: 400; font-size: 23px; color: #fff; text-shadow: 0 3px 0 var(--ink); -webkit-text-stroke: .8px var(--ink); paint-order: stroke fill; }
+.cs-hgame { font-size: 12px; color: var(--tz); }
+.cs-hc-wheel { position: relative; align-self: center; width: 170px; height: 170px; flex: none; margin: 4px 0; }
+.cs-hc-wheel .cs-wheel { animation: cs-idle 24s linear infinite; }
+@keyframes cs-idle { to { transform: rotate(-360deg); } }
+.cs-big { position: relative; padding: 5px 8px 6px; border-radius: 14px; background: rgba(255,255,255,.92); color: var(--ink); border: 2.5px solid var(--ink); }
+.cs-big i { display: block; font-style: normal; font-size: 11px; color: #c0185a; margin-bottom: 2px; }
+.cs-bigrow { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; line-height: 1.35; white-space: nowrap; }
+.cs-bigrow b { font-weight: 400; color: #fff; background: #e5266b; border-radius: 8px; padding: 0 6px; font-size: 12px; }
+.cs-rule { position: relative; display: flex; flex-wrap: wrap; justify-content: center; gap: 4px; }
+.cs-rule span { white-space: nowrap; font-size: 12px; padding: 1px 8px; border-radius: 10px; color: var(--ink); background: var(--tz); border: 2px solid rgba(42,18,80,.5); }
+.cs-root.por .cs-hallcard { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto 1fr auto; column-gap: 10px; row-gap: 5px; }
+.cs-root.por .cs-hallcard > .cs-hc-top { grid-column: 2; }
+.cs-root.por .cs-hallcard > .cs-big { grid-column: 2; align-self: start; }
+.cs-root.por .cs-hallcard > .cs-rule { grid-column: 1 / 3; }
+.cs-root.por .cs-hallcard > .cs-hc-wheel { grid-row: 1 / 3; grid-column: 1; width: 140px; height: 140px; }
+.cs-root.por .cs-hallcard:not(.t-roulette) > .cs-hc-top { grid-column: 1 / 3; }
+.cs-root.por .cs-hallcard:not(.t-roulette) > .cs-big { grid-column: 1 / 3; }
+
+/* ---------------------------------------------------------------- choose: the table, the chips, the plaque */
+.ph-choose.land .cs-main { grid-template-columns: 236px minmax(0, 1fr); }
+.ph-choose.por .cs-main { grid-template-rows: 214px minmax(0, 1fr); }
+.cs-play { display: grid; grid-template-rows: auto minmax(0, 1fr) auto auto; gap: 7px; min-height: 0; }
+.cs-hint1 { justify-self: center; display: flex; gap: 6px; align-items: center; font-size: 15px; padding: 3px 14px; border-radius: 14px; white-space: nowrap;
+  color: var(--ink); background: #fffbe0; border: 2.5px solid var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.cs-hint1 b { font-weight: 400; color: #e5266b; }
+.cs-layout { min-height: 0; display: grid; }
+.cs-felt-l, .cs-rl { position: relative; border-radius: 22px; padding: 8px; border: 4px solid #fff; box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px var(--ink), inset 0 0 0 3px rgba(0,0,0,.08);
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.16) 0 3px, transparent 4px) 0 0 / 24px 24px, radial-gradient(120% 100% at 50% 30%, #3fd36c, #1f9e4a 70%, #16803a); }
+.cs-rl { display: grid; gap: 4px; min-height: 0; }
+.cs-rl.land { grid-template-columns: 1.15fr repeat(12, 1fr); grid-template-rows: repeat(3, 1fr) 1.05fr 1.05fr; }
+.cs-rl.por { grid-template-columns: .95fr .95fr repeat(3, 1fr); grid-template-rows: 1.1fr repeat(12, 1fr); }
+.cs-z { position: relative; font: inherit; min-width: 0; min-height: 0; padding: 0; cursor: pointer; border-radius: 10px; border: 2.5px solid var(--ink);
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; transition: transform .12s; box-shadow: 0 3px 0 var(--ink), inset 0 5px 0 rgba(255,255,255,.28); }
+.cs-z span { font-size: 17px; line-height: 1; color: #fff; text-shadow: 0 2px 0 var(--ink); -webkit-text-stroke: .6px var(--ink); paint-order: stroke fill; white-space: nowrap; }
+.cs-z.n.r { background: linear-gradient(#ff6b7a, #e8213f); }
+.cs-z.n.b { background: linear-gradient(#5a5a80, #2b2b48); }
+.cs-z.n.z { background: linear-gradient(#5cf08a, #19b04c); }
+.cs-z.n.z span { font-size: 24px; }
+.cs-z.o { background: linear-gradient(#fffbe6, #ffe48a); }
+.cs-z.o span { color: var(--ink); text-shadow: none; -webkit-text-stroke: 0; font-size: 16px; }
+.cs-z small { font-size: 11px; line-height: 1; color: #b8104f; white-space: nowrap; }
+.cs-z.z small { color: #fff; text-shadow: 0 1px 0 var(--ink); }
+.cs-rl.land .cs-z.z small { writing-mode: vertical-rl; font-size: 10px; }
+.cs-z .v { writing-mode: vertical-rl; letter-spacing: 1px; }
+.cs-z:hover { transform: translateY(-2px); }
+.cs-z.on { z-index: 2; transform: scale(1.06); box-shadow: 0 0 0 3px #fff, 0 0 0 6px #ffe600, 0 0 18px 6px rgba(255, 240, 80, .85); animation: cs-glow 1s ease-in-out infinite alternate; }
+@keyframes cs-glow { to { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #ffe600, 0 0 26px 10px rgba(255, 240, 80, .95); } }
+.cs-dia { width: 22px; height: 22px; transform: rotate(45deg); border-radius: 4px; border: 2.5px solid var(--ink); box-shadow: inset 0 3px 0 rgba(255,255,255,.35); }
+.cs-dia.red { background: linear-gradient(#ff6b7a, #e8213f); } .cs-dia.black { background: linear-gradient(#5a5a80, #2b2b48); }
+.cs-rl.por .cs-dia { width: 18px; height: 18px; }
+/* the computer's step in the bar under the table (never over the wheel) */
+.cs-on.cs-cap2 { display: flex; flex-wrap: wrap; justify-content: center; font-size: 19px; background: #fff36a; animation: cs-pop .3s cubic-bezier(.3, 1.8, .5, 1) both; }
+.cs-root.land .cs-on.cs-cap2 { margin: 0 auto; }
+/* the bet as a chip stack on its zone */
+.cs-stack { position: absolute; right: -8px; top: -10px; width: 30px; height: 30px; z-index: 3; pointer-events: none; animation: cs-drop .35s cubic-bezier(.3, 1.6, .5, 1) both; }
+.cs-stack i { position: absolute; left: 0; top: calc(var(--k) * -4px); width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--ink);
+  background: repeating-conic-gradient(#fff 0 18deg, #ff3d6e 18deg 45deg); box-shadow: 0 2px 0 var(--ink); }
+.cs-stack i::after { content: ''; position: absolute; inset: 5px; border-radius: 50%; background: #ff3d6e; border: 2px solid #fff; }
+.cs-stack b { position: absolute; right: 100%; top: 50%; transform: translate(-2px, -30%); font-weight: 400; font-size: 11px; padding: 0 6px; border-radius: 8px; white-space: nowrap;
+  color: var(--ink); background: var(--gold); border: 2px solid var(--ink); }
+@keyframes cs-drop { from { transform: translateY(-40px) scale(1.4); opacity: 0; } to { transform: none; opacity: 1; } }
+/* the chip tray */
+.cs-tray { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 6px 10px; border-radius: 22px; background: rgba(24, 6, 52, .55); border: 2.5px solid rgba(255,255,255,.6); }
+.cs-tray.off { opacity: .45; pointer-events: none; }
+.cs-chip { position: relative; font: inherit; flex: none; width: 54px; height: 54px; border-radius: 50%; cursor: pointer; padding: 0; border: 3px solid var(--ink);
+  background: repeating-conic-gradient(#fff 0 15deg, var(--c) 15deg 45deg); box-shadow: 0 4px 0 var(--ink); transition: transform .1s; }
+.cs-chip span { position: absolute; inset: 7px; display: grid; place-items: center; border-radius: 50%; background: var(--c); border: 2.5px solid #fff;
+  font-size: 14px; color: #fff; text-shadow: 0 2px 0 var(--ink); white-space: nowrap; }
+.cs-chip.v0 { --c: #2f8cff; } .cs-chip.v1 { --c: #ff3d6e; } .cs-chip.v2 { --c: #1fbf5a; } .cs-chip.v3 { --c: #9b4dff; }
+.cs-chip:hover { transform: translateY(-4px) rotate(-8deg); }
+.cs-chip:active { transform: translateY(2px) scale(.95); }
+.cs-tbtn { font: inherit; flex: none; font-size: 14px; height: 40px; padding: 0 12px; border-radius: 20px; cursor: pointer; color: var(--ink);
+  background: linear-gradient(#fff, #e6e0f5); border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink); }
+.cs-tbtn.max { background: linear-gradient(#fff6a8, #ffc21a); }
+.cs-tbtn:active { transform: translateY(2px); box-shadow: 0 1px 0 var(--ink); }
+/* the plaque and 開始 */
+.cs-betbar { display: flex; align-items: center; justify-content: center; gap: 14px; }
+.cs-plaque { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 10px; align-items: center; padding: 4px 18px; border-radius: 18px;
+  background: linear-gradient(#fff6a8, #ffc21a 60%, #f29a0a); color: var(--ink); border: 3.5px solid var(--ink); box-shadow: 0 4px 0 var(--ink), inset 0 4px 0 rgba(255,255,255,.5); }
+.cs-plaque i { font-style: normal; font-size: 13px; grid-row: 1; }
+.cs-plaque b { font-weight: 400; font-size: 30px; line-height: 1; grid-row: 1 / 3; grid-column: 2; text-shadow: 0 2px 0 #fff; }
+.cs-plaque small { font-size: 11px; grid-row: 2; color: #7a3a00; white-space: nowrap; }
+.cs-betbar .cs-go { position: static; font-size: 26px; padding: 8px 34px; animation: cs-beat 1.1s ease-in-out infinite; }
+.cs-betbar .cs-go:disabled { animation: none; filter: grayscale(.8); opacity: .6; }
+@keyframes cs-beat { 50% { transform: scale(1.06); } }
+
+/* the other halls' picks (until their tables are drawn) */
+.cs-pick { display: flex; flex-direction: column; gap: 8px; justify-content: center; min-height: 0; padding: 10px; border-radius: 22px; border: 4px solid #fff;
+  box-shadow: 0 0 0 3px var(--ink), 0 6px 0 3px var(--ink); background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.16) 0 3px, transparent 4px) 0 0 / 24px 24px, radial-gradient(120% 100% at 50% 30%, #3fd36c, #1f9e4a 70%, #16803a); }
+.cs-hint { display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 18px; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.cs-hint span { white-space: nowrap; }
+.cs-bac { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; } .cs-bac.sic { grid-template-columns: repeat(2, 1fr); }
+.cs-opt { font: inherit; font-size: 14px; padding: 6px 2px; border-radius: 14px; border: 3px solid var(--ink); cursor: pointer; color: var(--ink);
+  background: linear-gradient(#fffbe6, #ffe48a); box-shadow: 0 4px 0 var(--ink); white-space: nowrap; }
+.cs-opt.big { font-size: 30px; padding: 10px 0; display: flex; flex-direction: column; align-items: center; line-height: 1.1; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.cs-opt.big small { font-size: 13px; }
+.cs-opt.k-player, .cs-opt.k-small { background: linear-gradient(#6fc0ff, #2f7cff); }
+.cs-opt.k-banker, .cs-opt.k-big { background: linear-gradient(#ff7a8a, #e8213f); }
+.cs-opt.k-tie { background: linear-gradient(#5cf08a, #19b04c); }
+.cs-opt.on { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #ffe600, 0 0 18px 6px rgba(255, 240, 80, .85); transform: scale(1.04); }
+
+/* ---------------------------------------------------------------- the table in play */
+.cs-root.land:not(.ph-choose) .cs-main { grid-template-rows: minmax(0, 1fr) 56px; }
+.cs-root.por:not(.ph-choose) .cs-main { grid-template-rows: minmax(0, 1fr) 66px; }
+.cs-felt { position: relative; display: grid; grid-template-rows: 1fr auto 1fr; align-items: center; justify-items: center; min-height: 0; border-radius: 120px / 70px;
+  border: 5px solid #fff; box-shadow: 0 0 0 4px var(--ink), 0 8px 0 4px var(--ink), inset 0 0 0 10px rgba(0,0,0,.08), inset 0 0 50px rgba(0,0,0,.25);
+  background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14) 0 3px, transparent 4px) 0 0 / 26px 26px, radial-gradient(110% 90% at 50% 40%, #46d877, #1f9e4a 70%, #157a36); }
+.cs-root.por .cs-felt { border-radius: 70px / 120px; }
+.cs-felt.t-roulette, .cs-felt.t-sicbo { grid-template-rows: 1fr; }
+.cs-felt.t-baccarat { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14) 0 3px, transparent 4px) 0 0 / 26px 26px, radial-gradient(110% 90% at 50% 40%, #3a8cff, #1f5fd0 70%, #17469e); }
+.cs-felt.t-holdem { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14) 0 3px, transparent 4px) 0 0 / 26px 26px, radial-gradient(110% 90% at 50% 40%, #b07aff, #6a2fd8 70%, #4b1d9e); }
+.cs-felt.t-sicbo { background: radial-gradient(circle at 30% 30%, rgba(255,255,255,.14) 0 3px, transparent 4px) 0 0 / 26px 26px, radial-gradient(110% 90% at 50% 40%, #ff8a5a, #e04a2a 70%, #b0301a); }
+.cs-shoe { position: absolute; right: 7%; top: 9%; width: 46px; height: 60px; border-radius: 10px; transform: rotate(14deg);
+  background: linear-gradient(#ffd23f, #f29a0a); border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); }
+.cs-shoe::after { content: ''; position: absolute; left: 6px; right: 6px; top: 8px; height: 30px; border-radius: 6px; background: repeating-linear-gradient(45deg, #e5266b 0 5px, #b8104f 5px 10px); border: 2px solid #fff; }
 .cs-side { display: flex; align-items: center; gap: 10px; }
 .cs-root.por .cs-side { flex-direction: column; gap: 4px; }
-.cs-who { font-size: 14px; padding: 2px 10px; border-radius: 10px; background: rgba(0,0,0,.35); color: #ffe9a0; }
-.cs-total { font-size: 18px; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.4); min-width: 64px; text-align: center; }
+.cs-who { font-size: 15px; padding: 2px 12px; border-radius: 12px; background: rgba(24, 6, 52, .7); color: #fff; border: 2px solid var(--gold); white-space: nowrap; }
+.cs-total { font-size: 19px; color: #fff; text-shadow: 0 2px 0 var(--ink); min-width: 64px; text-align: center; white-space: nowrap; }
+.cs-side.natural .cs-cards { filter: drop-shadow(0 0 8px #fff36a) drop-shadow(0 0 4px #ffe600); }
+.cs-side.natural .cs-total { color: var(--gold); }
 .cs-center { display: flex; flex-direction: column; align-items: center; gap: 4px; }
-.cs-note { font-size: 20px; color: #fff6c8; text-shadow: 0 0 8px rgba(255, 220, 120, .8), 0 2px 0 rgba(0,0,0,.4); min-height: 26px; }
-.cs-cards { display: flex; gap: 8px; min-height: 92px; }
-.cs-card { position: relative; width: 64px; height: 90px; border-radius: 8px; background: #fffef8; color: #1d1d26; box-shadow: 0 4px 8px rgba(0,0,0,.35);
-  border: 1px solid #ccc; }
-.cs-card.deal { animation: cs-deal .28s cubic-bezier(.3, 1.3, .5, 1) both; }
-.cs-card.flip { animation: cs-flip .3s ease-out both; }
-@keyframes cs-flip { from { transform: scaleX(.1); } to { transform: none; } }
-.cs-card.red { color: #d0202c; }
-.cs-card b { position: absolute; left: 6px; top: 3px; font-weight: 400; font-size: 20px; }
+.cs-note { font-size: 22px; color: #fff; text-shadow: 0 3px 0 var(--ink); -webkit-text-stroke: .6px var(--ink); paint-order: stroke fill; min-height: 28px; white-space: nowrap; }
+/* cards: chunky, rounded, dealt from the shoe and turned in 3D */
+.cs-cards { display: flex; gap: 8px; min-height: 92px; perspective: 600px; }
+.cs-card { position: relative; width: 64px; height: 90px; border-radius: 12px; background: #fff; color: var(--ink); border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); flex: none; }
+.cs-card.red { color: #e8213f; }
+.cs-card b { position: absolute; left: 6px; top: 2px; font-weight: 400; font-size: 21px; }
 .cs-card s { position: absolute; left: 7px; top: 26px; text-decoration: none; font-size: 15px; }
-.cs-card em { position: absolute; right: 6px; bottom: 2px; font-style: normal; font-size: 38px; line-height: 1; }
-.cs-card.back { background: repeating-linear-gradient(45deg, #b0182c 0 6px, #8a0f22 6px 12px); border: 4px solid #fff; }
-.cs-card.back i { position: absolute; inset: 8px; border: 2px solid #ffd860; border-radius: 4px; }
-@keyframes cs-deal { from { transform: translate(0, -60px) rotate(-12deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.cs-card em { position: absolute; right: 5px; bottom: 1px; font-style: normal; font-size: 38px; line-height: 1; }
+.cs-card.back { background: repeating-linear-gradient(45deg, #ff5f8f 0 7px, #e5266b 7px 14px); }
+.cs-card.back i { position: absolute; inset: 6px; border: 3px solid #fff; border-radius: 7px; }
+.cs-card.back i::after { content: '★'; position: absolute; inset: 0; display: grid; place-items: center; color: #fff; font-style: normal; font-size: 22px; }
+.cs-card.deal { animation: cs-deal .42s cubic-bezier(.25, 1.25, .5, 1) both; animation-delay: calc(var(--i) * 110ms); }
+.cs-card.flip { animation: cs-flip .5s cubic-bezier(.3, 1.3, .5, 1) both; transform-style: preserve-3d; }
+.t-baccarat .cs-card.flip { animation: cs-peel .8s ease-out both; transform-origin: 50% 100%; }
+@keyframes cs-deal { from { transform: translate(260px, -160px) rotate(-200deg) scale(.5); opacity: 0; } 60% { opacity: 1; } to { transform: none; opacity: 1; } }
+@keyframes cs-flip { 0% { transform: rotateY(90deg) scale(1.1); } 60% { transform: rotateY(-12deg) scale(1.08); } 100% { transform: none; } }
+@keyframes cs-peel { 0% { transform: rotateX(85deg); } 45% { transform: rotateX(55deg); } 100% { transform: none; } }
 .cs-cards.board .cs-card { width: 56px; height: 80px; }
 .cs-cards.board .cs-card em { font-size: 32px; }
-.cs-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.cs-root.por .cs-bar { flex-direction: column; justify-content: center; gap: 4px; }
-.cs-on { font-size: 16px; padding: 4px 14px; border-radius: 14px; background: rgba(0,0,0,.4); color: #ffe9a0; }
-.cs-moves { display: flex; gap: 10px; }
-.cs-moves .candy { position: static; font-size: 19px; padding: 6px 22px; }
-
-/* roulette */
+.cs-cards.show .cs-card:not(.best) { filter: brightness(.6) saturate(.6); }
+.cs-card.best { transform: translateY(-6px); box-shadow: 0 0 0 3px #ffe600, 0 0 16px 4px rgba(255, 240, 80, .9), 0 4px 0 var(--ink); }
+/* roulette: the wheel turns one way, the ball the other way, then drops into its pocket */
 .cs-wheel-box { position: relative; width: 300px; height: 300px; }
 .cs-root.por .cs-wheel-box { width: 380px; height: 380px; }
-.cs-wheel { width: 100%; height: 100%; display: block; filter: drop-shadow(0 8px 10px rgba(0,0,0,.5)); }
-.cs-wheel text { font-size: 7.5px; fill: #fff; font-family: inherit; }
-.cs-ball { position: absolute; left: 50%; top: 6%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
-  background: radial-gradient(circle at 35% 30%, #fff, #c8c8d0); box-shadow: 0 2px 4px rgba(0,0,0,.5); }
-.cs-ball::after { content: '▼'; position: absolute; left: 50%; top: -22px; transform: translateX(-50%); color: #ffe36a; font-size: 16px; text-shadow: 0 0 6px #ff9a3c; }
-.cs-wheel-num { position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -38px 0 0 -38px; border-radius: 50%; display: grid; place-items: center;
-  font-size: 36px; color: #fff; opacity: 0; transform: scale(.3); transition: all .3s cubic-bezier(.3, 1.6, .5, 1); border: 4px solid #ffe36a; }
+.cs-wheel { width: 100%; height: 100%; display: block; filter: drop-shadow(0 6px 0 var(--ink)) drop-shadow(0 10px 12px rgba(0,0,0,.35)); }
+.cs-wheel text { font-size: 8px; fill: #fff; font-family: inherit; }
+.cs-orbit { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+.cs-ball { position: absolute; left: 50%; top: 3.5%; width: 16px; height: 16px; margin-left: -8px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #fff, #c8c8d0); border: 2px solid var(--ink); transition: top .5s cubic-bezier(.3, 1.8, .5, 1); }
+.cs-orbit.settle .cs-ball { top: 9.5%; animation: cs-bounce .5s ease-out; }
+@keyframes cs-bounce { 30% { transform: translateY(-6px); } 60% { transform: translateY(2px); } }
+.cs-pointer { position: absolute; left: 50%; top: -18px; transform: translateX(-50%); z-index: 3; font-size: 20px; color: var(--gold); text-shadow: 0 2px 0 var(--ink); }
+.cs-wheel-num { position: absolute; left: 50%; top: 50%; width: 80px; height: 80px; margin: -40px 0 0 -40px; border-radius: 50%; display: grid; place-items: center; z-index: 3;
+  font-size: 38px; color: #fff; opacity: 0; transform: scale(.3); transition: all .35s cubic-bezier(.3, 1.8, .5, 1); border: 4px solid #fff; box-shadow: 0 0 0 3px var(--ink), 0 0 24px 8px rgba(255, 240, 80, .8); }
 .cs-wheel-num.on { opacity: 1; transform: none; }
-.cs-wheel-num.r { background: #d8242f; } .cs-wheel-num.b { background: #1d1d26; } .cs-wheel-num.z { background: #1c9a4a; }
-
-/* the payout */
-.cs-banner { position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; z-index: 5; display: flex; flex-direction: column; align-items: center;
-  gap: 4px; padding: 16px 44px; border-radius: 26px; animation: pl-pop .4s cubic-bezier(.3, 1.6, .5, 1) both; pointer-events: none; white-space: nowrap; }
-.cs-banner b { font-weight: 400; font-size: 42px; letter-spacing: 2px; }
-.cs-banner span { font-size: 16px; }
-.cs-banner.win { background: linear-gradient(#fff3b0, #f2a81e); color: #6a2a00; border: 5px solid #fff; box-shadow: 0 0 40px rgba(255, 210, 80, .9), 0 10px 0 #9a5a00; }
-.cs-banner.win b { text-shadow: 0 3px 0 #fff; }
-.cs-banner.lose { background: linear-gradient(#8a8a96, #44444e); color: #fff; border: 5px solid #ddd; box-shadow: 0 10px 0 #22222a; }
-.cs-banner.push { background: linear-gradient(#cfe6ff, #6a9ad8); color: #fff; border: 5px solid #fff; box-shadow: 0 10px 0 #2a4a7a; }
+.cs-wheel-num.r { background: #e8213f; } .cs-wheel-num.b { background: #2b2b48; } .cs-wheel-num.z { background: #19b04c; }
+/* 骰寶: the cup shakes (blurred), lifts, the dice tumble */
+.cs-dice-box { position: relative; width: 300px; height: 210px; display: grid; place-items: center; }
+.cs-dice-box::before { content: ''; position: absolute; left: 50%; top: 58%; width: 250px; height: 92px; margin: -46px 0 0 -125px; border-radius: 50%;
+  background: radial-gradient(#fff, #f0e6ff); border: 4px solid var(--ink); box-shadow: 0 6px 0 var(--ink); }
+.cs-dice { position: relative; display: flex; gap: 14px; margin-top: 24px; }
+.cs-die { width: 58px; height: 58px; padding: 7px; border-radius: 14px; background: #fff; display: grid; grid-template-columns: repeat(3, 1fr); gap: 3px;
+  border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); animation: cs-tumble .6s cubic-bezier(.3, 1.4, .5, 1) both; animation-delay: calc(var(--i) * 90ms); }
+@keyframes cs-tumble { from { transform: translateY(-50px) rotate(-220deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.cs-die i { border-radius: 50%; } .cs-die i.on { background: radial-gradient(circle at 35% 35%, #555, #111); }
+.cs-die.red i.on { background: radial-gradient(circle at 35% 35%, #ff6a6a, #d0101a); }
+.cs-cup { position: absolute; left: 50%; top: 50%; width: 170px; height: 170px; margin: -110px 0 0 -85px; z-index: 2; border-radius: 50% 50% 22px 22px;
+  background: radial-gradient(circle at 35% 25%, #fff6a8, #ffc21a 45%, #e08a0a); border: 4px solid var(--ink); box-shadow: 0 6px 0 var(--ink), inset 0 -12px 0 rgba(0,0,0,.12);
+  transition: transform .5s cubic-bezier(.3, 1.4, .5, 1), opacity .5s; }
+.cs-cup::after { content: '骰'; position: absolute; inset: 0; display: grid; place-items: center; font-size: 56px; color: #e5266b; text-shadow: 0 3px 0 #fff; }
+.cs-cup.shake { animation: cs-shake .14s ease-in-out infinite alternate; }
+@keyframes cs-shake { from { transform: rotate(-10deg) translate(-6px, -8px); filter: blur(1.2px); } to { transform: rotate(10deg) translate(6px, 4px); filter: blur(1.2px); } }
+.cs-cup.up { transform: translateY(-170px) rotate(-14deg); opacity: 0; }
+/* the stake on the felt, then to the winner */
+.cs-pot { position: absolute; left: 50%; bottom: 10%; width: 40px; height: 40px; margin-left: -20px; z-index: 3; pointer-events: none; }
+.cs-root.land .cs-pot { left: 80%; bottom: 44%; }
+.cs-pot i { position: absolute; left: 0; width: 40px; height: 40px; border-radius: 50%; border: 2.5px solid var(--ink); background: repeating-conic-gradient(#fff 0 15deg, #ff3d6e 15deg 45deg); box-shadow: 0 2px 0 var(--ink); }
+.cs-pot i:nth-child(1) { top: 0; } .cs-pot i:nth-child(2) { top: -5px; } .cs-pot i:nth-child(3) { top: -10px; }
+.cs-pot i::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #ff3d6e; border: 2px solid #fff; }
+.cs-pot span { position: absolute; left: 50%; top: 100%; transform: translate(-50%, 2px); font-size: 12px; padding: 0 7px; border-radius: 8px; white-space: nowrap; color: var(--ink); background: var(--gold); border: 2px solid var(--ink); }
+.cs-pot.in { animation: cs-potin .5s cubic-bezier(.3, 1.4, .5, 1) both; }
+@keyframes cs-potin { from { transform: translate(180px, 160px) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+.cs-pot.guest { animation: cs-pot-g .8s .3s cubic-bezier(.4, 0, .3, 1) both; }
+.cs-pot.banker { animation: cs-pot-b .8s .3s cubic-bezier(.4, 0, .3, 1) both; }
+@keyframes cs-pot-g { 30% { transform: scale(1.3); } to { transform: translate(140px, -330px) scale(.5); opacity: 0; } }
+@keyframes cs-pot-b { 30% { transform: scale(1.3); } to { transform: translate(-70px, -330px) scale(.5); opacity: 0; } }
+.cs-bar { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.cs-root.por .cs-bar { flex-direction: column; justify-content: center; gap: 4px; }
+.cs-on { font-size: 17px; padding: 4px 16px; border-radius: 16px; background: #fffbe0; color: var(--ink); border: 2.5px solid var(--ink); box-shadow: 0 3px 0 var(--ink); white-space: nowrap; }
+.cs-moves { display: flex; gap: 10px; }
+.cs-moves .candy { position: static; font-size: 20px; padding: 7px 22px; }
 .cs-watch .cs-moves { display: none; }
 
-/* 莊家不在！ the gods' slot machine (slot-machine.css) */
-.cs-auto-text { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; text-align: center; font-size: 16px; line-height: 1.35;
-  color: #fff; text-shadow: 0 2px 0 #3a1460, 2px 2px 0 #3a1460, -1px -1px 0 #3a1460; }
-.cs-auto-h { font-size: 26px; color: #ffe36a; letter-spacing: 3px; }
-.cs-auto-zero { position: absolute; display: grid; place-items: center; font-size: 26px; color: #2a1608; background: #fff8e0; border-radius: 4px; border: 2px solid #8a5a10; margin: -18px 0 0 -15px; }
+/* ---------------------------------------------------------------- the result: banner, arithmetic, a burst */
+.cs-banner { position: absolute; inset: 0; margin: auto; width: fit-content; height: fit-content; max-width: calc(100% - 30px); z-index: 6; display: flex; flex-direction: column; align-items: center;
+  gap: 5px; padding: 14px 34px 16px; border-radius: 28px; border: 5px solid #fff; animation: cs-pop .45s cubic-bezier(.3, 1.8, .5, 1) both; pointer-events: none; }
+.cs-banner b { font-weight: 400; font-size: 44px; letter-spacing: 1px; max-width: 100%; -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; text-shadow: 0 4px 0 var(--ink); color: #fff; }
+.cs-banner > span { font-size: 16px; white-space: nowrap; }
+.cs-banner.win { background: linear-gradient(#fff6a8, #ffc21a 60%, #f29a0a); color: var(--ink); box-shadow: 0 0 0 4px var(--ink), 0 9px 0 4px var(--ink), 0 0 50px 12px rgba(255, 230, 80, .7); }
+.cs-banner.lose { background: linear-gradient(#a8a8c8, #6a6a90); color: #fff; box-shadow: 0 0 0 4px var(--ink), 0 9px 0 4px var(--ink); }
+.cs-banner.lose.big { background: linear-gradient(#ff6b7a, #c8102f); box-shadow: 0 0 0 4px var(--ink), 0 9px 0 4px var(--ink), 0 0 40px 10px rgba(255, 60, 80, .7); }
+.cs-banner.push { background: linear-gradient(#bfe2ff, #5aa0ff); color: #fff; box-shadow: 0 0 0 4px var(--ink), 0 9px 0 4px var(--ink); }
+.cs-math { display: flex; flex-wrap: wrap; justify-content: center; column-gap: 2px; row-gap: 1px; max-width: 640px; font-size: 17px; line-height: 1.35; }
+.cs-root.por .cs-banner { padding: 12px 18px 14px; }
+.cs-root.por .cs-math { max-width: 420px; }
+.cs-pc { white-space: nowrap; }
+.cs-burst { position: absolute; left: 50%; top: 50%; width: 0; height: 0; z-index: -1; }
+.cs-burst i { position: absolute; left: -7px; top: -7px; width: 14px; height: 14px; border-radius: 4px; background: var(--gold); border: 2px solid #fff;
+  animation: cs-burst 1s cubic-bezier(.2, .8, .3, 1) both; animation-delay: var(--d); }
+.cs-burst i:nth-child(3n) { background: #ff5f8f; border-radius: 50%; } .cs-burst i:nth-child(3n + 1) { background: #4fb2ff; }
+@keyframes cs-burst { from { transform: rotate(var(--a)) translateY(0) scale(.4); opacity: 1; } to { transform: rotate(var(--a)) translateY(-230px) rotate(240deg) scale(1); opacity: 0; } }
+.cs-caption { position: absolute; left: 0; right: 0; margin: 0 auto; top: 12px; z-index: 5; max-width: calc(100% - 60px); width: fit-content;
+  display: flex; flex-wrap: wrap; justify-content: center; padding: 6px 18px; border-radius: 18px; font-size: 19px; line-height: 1.3; color: var(--ink);
+  background: #fffbe0; border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink); animation: cs-pop .3s cubic-bezier(.3, 1.8, .5, 1) both; }
+.cs-hplate { position: relative; display: grid; place-items: center; border-radius: 18px; overflow: hidden; flex: none; }
+.cs-hplate img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+.cs-hplate em { font-style: normal; font-size: 30px; line-height: 1; }
+
+/* 莊家不在！ the gods' slot machine (slot-machine.css) beside the remake's message box (style.css .msg), in scene units. */
+.cs-auto-msg { position: absolute; box-sizing: border-box; min-width: 0; max-width: none; margin: 0; padding: 18px 10px 10px; border-width: 3px; border-radius: 16px;
+  justify-content: center; box-shadow: 0 0 0 2px #8a3bd1, 0 4px 0 2px #4b1d78, 0 10px 18px rgba(0, 0, 0, .45); }
+.cs-auto-msg::before { inset: 4px; border-width: 1px; border-radius: 12px; }
+.cs-auto-msg::after { display: none; }
+.cs-auto-msg .ribbon { position: absolute; top: -12px; left: 50%; transform: translateX(-50%); margin: 0; padding: 2px 12px; font-size: 13px; letter-spacing: 2px; border-width: 2px; box-shadow: 0 2px 0 #c97a00; }
+.cs-auto-text { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; margin: 0; font-size: 13px; line-height: 1.3; color: #fff;
+  text-align: center; overflow-wrap: anywhere; }
+.cs-auto-text small { font-size: 11px; color: #ffe9a0; }
+.cs-auto-win { font-weight: 400; font-size: 20px; color: #ffe36a; text-shadow: 0 2px 0 #0b2160; }
+.cs-auto-reel .sm-strip b { height: 36px; line-height: 36px; font-size: 22px; }
+.cs-auto-zero { background: linear-gradient(90deg, #e8e0c8, #fffbea 30%, #fffbea 70%, #e0d8c0); }
 
 /* 過路稅 / 籌碼券 (19 §4.4): a small banner at the top, gone by itself. */
 .cs-toast { position: fixed; left: 50%; top: 18%; z-index: 60; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center;
@@ -169,14 +306,216 @@
 .cs-toast b { font-weight: 400; font-size: 15px; } .cs-toast span { font-size: 26px; line-height: 1.1; } .cs-toast small { font-size: 12px; opacity: .9; }
 .cs-toast.out { opacity: 0; transform: translateX(-50%) translateY(-12px); }
 
-/* A computer's visit (19 §7): what it does now, the arithmetic under the result, 你是莊家. */
-.cs-caption { position: absolute; left: 0; right: 0; margin: 0 auto; top: 14px; z-index: 4; max-width: calc(100% - 60px); width: fit-content;
-  padding: 6px 18px; border-radius: 16px; font-size: 19px; line-height: 1.3; text-align: center; color: #3a1a00;
-  background: linear-gradient(#fff8dc, #ffd86a); border: 3px solid #fff; box-shadow: 0 4px 0 #b07a00, 0 8px 16px rgba(0,0,0,.45); animation: pl-pop .3s cubic-bezier(.3, 1.6, .5, 1) both; }
-.cs-banner .cs-math { font-style: normal; font-size: 17px; line-height: 1.35; white-space: normal; max-width: 640px; text-align: center; }
-.cs-root.por .cs-banner { max-width: 470px; padding: 14px 22px; }
-.cs-root.por .cs-banner .cs-math { max-width: 420px; }
-.cs-banker.you span { color: #ffe36a; }
-/* The visitor's god at the table (19 §5.6). */
-.cs-god { display: inline-block; margin-left: 6px; vertical-align: 1px; white-space: nowrap; font-style: normal; font-size: 11px; line-height: 1.5; padding: 0 7px; border-radius: 10px;
-  color: #fff; background: linear-gradient(#ff8a5a, #d8202c); box-shadow: 0 2px 0 rgba(0,0,0,.3); }
+.cs-rl.por .cs-z.z { flex-direction: row; gap: 10px; }
+
+/* ---------------------------------------------------------------- the cartoon props (tools/tycoon-art/props.py, CSS vars from casino.ts) */
+.cs-wheel3 { position: relative; width: 100%; height: 100%; }
+.w-rotor { position: absolute; inset: 16.5%; z-index: 1; border-radius: 50%; }
+.w-rotor .cs-wheel { filter: none; }
+.cs-wheel text { font-size: 10px; font-weight: 700; fill: #fff; stroke: #2a1250; stroke-width: 2px; paint-order: stroke fill; }
+.w-turret { position: absolute; inset: 21%; background: var(--p-roulette-turret) center / contain no-repeat; filter: drop-shadow(0 3px 2px rgba(0,0,0,.35)); }
+.w-bowl { position: absolute; inset: 0; z-index: 2; pointer-events: none; background: var(--p-roulette-bowl) center / contain no-repeat;
+  filter: drop-shadow(0 5px 0 rgba(42, 18, 80, .9)) drop-shadow(0 10px 12px rgba(0,0,0,.3)); }
+.cs-hc-wheel .w-rotor { animation: cs-idle 24s linear infinite; }
+.cs-hc-wheel .cs-wheel { animation: none; }
+.cs-orbit { z-index: 3; }
+.cs-ball { width: 22px; height: 22px; margin-left: -11px; top: 7.5%; border: 0; border-radius: 0; background: var(--p-roulette-ball) center / contain no-repeat;
+  filter: drop-shadow(0 2px 1px rgba(0,0,0,.45)); }
+.cs-orbit.settle .cs-ball { top: 19.5%; }
+.cs-wheel-num { z-index: 4; }
+/* chips: the art with the value printed on the cream face */
+.cs-chip { width: 58px; height: 58px; border: 0; box-shadow: none; background: var(--chip) center / contain no-repeat; filter: drop-shadow(0 4px 0 var(--ink)); }
+.cs-chip span { inset: 24%; background: none; border: 0; color: var(--ink); text-shadow: none; font-size: 14px; }
+.cs-chip.v0 { --chip: var(--p-chip-blue); } .cs-chip.v1 { --chip: var(--p-chip-red); } .cs-chip.v2 { --chip: var(--p-chip-green); } .cs-chip.v3 { --chip: var(--p-chip-purple); }
+.cs-stack i, .cs-pot i { border: 0; box-shadow: none; background: var(--p-chip-red) center / contain no-repeat; filter: drop-shadow(0 2px 0 var(--ink)); }
+.cs-stack i::after, .cs-pot i::after { display: none; }
+/* cards, the shoe, the squeeze frame */
+.cs-card.back { border: 0; box-shadow: none; background: var(--p-card-back) center / 100% 100% no-repeat; filter: drop-shadow(0 4px 0 var(--ink)); }
+.cs-card.back i { display: none; }
+.cs-shoe { width: 84px; height: 74px; border: 0; box-shadow: none; border-radius: 0; transform: none; background: var(--p-card-shoe) center / contain no-repeat;
+  filter: drop-shadow(0 4px 0 rgba(42, 18, 80, .8)); }
+.cs-shoe::after { display: none; }
+.t-baccarat .cs-card.flip::after { content: ''; position: absolute; inset: -16px -13px; z-index: 2; pointer-events: none; background: var(--p-squeeze-frame) center / 100% 100% no-repeat;
+  animation: cs-frame 1.3s ease-out both; }
+@keyframes cs-frame { 0%, 70% { opacity: 1; transform: none; } 100% { opacity: 0; transform: scale(1.15); } }
+/* 骰寶: the cup and the plate */
+.cs-cup { border: 0; border-radius: 0; box-shadow: none; background: var(--p-dice-cup) center / contain no-repeat; filter: drop-shadow(0 6px 0 rgba(42, 18, 80, .85)); }
+.cs-cup::after { display: none; }
+.cs-dice-box::before { width: 290px; height: 180px; margin: -90px 0 0 -145px; border: 0; border-radius: 0; box-shadow: none; background: var(--p-dice-plate) center / contain no-repeat; }
+/* the felts: each hall's pattern under a soft light and vignette */
+.cs-rl, .cs-pick, .cs-felt { background-size: auto, auto, 150px 150px; }
+.t-roulette .cs-rl, .t-roulette.cs-pick, .t-roulette .cs-pick, .cs-felt.t-roulette { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(31,158,74,.42), rgba(31,158,74,.42)), var(--p-felt-roulette); }
+.t-blackjack .cs-pick, .cs-felt.t-blackjack { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(31,158,74,.42), rgba(31,158,74,.42)), var(--p-felt-blackjack); }
+.t-baccarat .cs-pick, .cs-felt.t-baccarat { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(31,95,208,.42), rgba(31,95,208,.42)), var(--p-felt-baccarat); }
+.t-holdem .cs-pick, .cs-felt.t-holdem { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(106,47,216,.42), rgba(106,47,216,.42)), var(--p-felt-holdem); }
+.t-sicbo .cs-pick, .cs-felt.t-sicbo { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(224,74,42,.42), rgba(224,74,42,.42)), var(--p-felt-sicbo); }
+
+/* ---------------------------------------------------------------- the other halls' printed felts */
+.cs-tbl { position: relative; display: flex; flex-direction: column; align-items: stretch; justify-content: center; gap: 6px; min-height: 0; background-size: auto, auto, 150px 150px; }
+.cs-tbl.t-baccarat { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(31,95,208,.42), rgba(31,95,208,.42)), var(--p-felt-baccarat); }
+.cs-tbl.t-sicbo { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(224,74,42,.42), rgba(224,74,42,.42)), var(--p-felt-sicbo); }
+.cs-tbl.t-blackjack { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(31,158,74,.42), rgba(31,158,74,.42)), var(--p-felt-blackjack); }
+.cs-tbl.t-holdem { background-image: radial-gradient(120% 100% at 50% 30%, rgba(255,255,255,.16), rgba(0,0,0,.24)), linear-gradient(rgba(106,47,216,.42), rgba(106,47,216,.42)), var(--p-felt-holdem); }
+/* 百家樂: card boxes and the three arcs */
+.cs-boxes { display: flex; justify-content: center; gap: 18%; }
+.cs-cbox { position: relative; display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 12px; border: 2.5px dashed rgba(255,255,255,.75); }
+.cs-cbox b { font-weight: 400; font-size: 18px; color: #fff; text-shadow: 0 2px 0 var(--ink); margin-right: 4px; }
+.cs-cbox i { width: 22px; height: 31px; border-radius: 5px; background: rgba(255,255,255,.18); border: 2px solid rgba(255,255,255,.6); }
+.cs-arc { position: relative; font: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 12px; min-height: 0; flex: 1;
+  margin: 0 6%; border-radius: 0 0 50% 50% / 0 0 46px 46px; border: 3px solid var(--ink); box-shadow: 0 4px 0 var(--ink), inset 0 6px 0 rgba(255,255,255,.3); transition: transform .12s; }
+.cs-arc.k-tie { margin: 0 24%; background: linear-gradient(#7af59e, #19b04c); }
+.cs-arc.k-player { margin: 0 12%; background: linear-gradient(#7cc8ff, #2f7cff); }
+.cs-arc.k-banker { margin: 0 2%; background: linear-gradient(#ff8a96, #e8213f); }
+.cs-arc span, .cs-sz span { font-size: 30px; line-height: 1; color: #fff; text-shadow: 0 3px 0 var(--ink); -webkit-text-stroke: 1px var(--ink); paint-order: stroke fill; white-space: nowrap; }
+.cs-arc small, .cs-sz small { font-size: 16px; color: #fff; padding: 1px 10px; border-radius: 12px; background: rgba(24,6,52,.55); white-space: nowrap; }
+.cs-arc.on, .cs-sz.on, .cs-circle.on { z-index: 2; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #ffe600, 0 0 18px 6px rgba(255, 240, 80, .85); animation: cs-glow 1s ease-in-out infinite alternate; }
+.cs-arc:hover, .cs-sz:hover { transform: translateY(-2px); }
+.cs-arc .cs-stack, .cs-sz .cs-stack { right: 12%; top: 50%; margin-top: -15px; }
+/* 骰寶: cup on its plate, the 小 / 大 zones, the house's band */
+.cs-sic-top { position: relative; height: 54px; flex: none; display: grid; place-items: center; }
+.cs-mini-plate { position: absolute; width: 130px; height: 50px; bottom: 0; background: var(--p-dice-plate) center / contain no-repeat; }
+.cs-mini-cup { position: absolute; width: 58px; height: 62px; bottom: 8px; background: var(--p-dice-cup) center / contain no-repeat; animation: cs-wobble 2.4s ease-in-out infinite; }
+@keyframes cs-wobble { 0%, 80%, 100% { transform: none; } 85% { transform: rotate(-8deg); } 90% { transform: rotate(8deg); } 95% { transform: rotate(-4deg); } }
+.cs-sic-zones { flex: 1; min-height: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 0 4px; }
+.cs-sz { position: relative; font: inherit; cursor: pointer; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; min-height: 0;
+  border-radius: 22px; border: 3px solid var(--ink); box-shadow: 0 5px 0 var(--ink), inset 0 6px 0 rgba(255,255,255,.3); transition: transform .12s; }
+.cs-sz.k-small { background: linear-gradient(#7cc8ff, #2f7cff); } .cs-sz.k-big { background: linear-gradient(#ff8a96, #e8213f); }
+.cs-sz span { font-size: 40px; }
+.cs-sz em { font-style: normal; font-size: 15px; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.cs-leopard { align-self: center; font-size: 14px; padding: 2px 16px; border-radius: 14px; color: var(--ink); background: #fff36a; border: 2.5px solid var(--ink); white-space: nowrap; }
+/* 21點 / 德州: the dealer's arc, the shoe, the betting circles */
+.cs-tshoe { position: absolute; right: 4%; top: 6%; width: 74px; height: 64px; background: var(--p-card-shoe) center / contain no-repeat; filter: drop-shadow(0 3px 0 rgba(42,18,80,.8)); }
+.cs-darc { align-self: center; width: 72%; height: 44px; border: 3px solid rgba(255, 230, 120, .9); border-top: 0; border-radius: 0 0 50% 50% / 0 0 100% 100%;
+  display: grid; place-items: center; }
+.cs-darc span { font-size: 14px; color: #fff59a; text-shadow: 0 2px 0 var(--ink); white-space: nowrap; }
+.cs-circles { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 28px; }
+.cs-circle { position: relative; width: 120px; height: 120px; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  border: 4px dashed #fff; background: rgba(255,255,255,.12); }
+.cs-circle span { font-size: 22px; color: #fff; text-shadow: 0 2px 0 var(--ink); }
+.cs-circle small { font-size: 11px; color: #fff; }
+.cs-circle.later { opacity: .65; }
+.cs-circle .cs-stack { right: auto; left: 50%; top: 58%; margin: -15px 0 0 -15px; }
+.cs-circle .cs-stack b { right: auto; left: 100%; transform: translate(2px, -30%); }
+.cs-pays { display: flex; justify-content: center; gap: 8px; flex-wrap: wrap; }
+.cs-pays span { font-size: 15px; padding: 2px 12px; border-radius: 14px; color: var(--ink); background: #fffbe0; border: 2.5px solid var(--ink); white-space: nowrap; }
+.cs-root.por .cs-circle { width: 132px; height: 132px; }
+.cs-wheel text { font-size: 11px; }
+
+.cs-root.por .cs-pot { left: 84%; bottom: 34%; }
+.cs-root.land .cs-hallcard { justify-content: space-between; }
+.cs-root.land .cs-hallcard:not(.t-roulette) .cs-hc-top { flex-direction: column; text-align: center; }
+.cs-root.land .cs-hallcard:not(.t-roulette) .cs-hc-top .cs-hplate { width: 96px; height: 96px; }
+
+/* ---------------------------------------------------------------- the result banner: pops in the middle, then docks at the bottom */
+.cs-bwrap { position: absolute; inset: 0; z-index: 6; display: grid; place-items: center; pointer-events: none; transition: transform .55s cubic-bezier(.3, 1.25, .5, 1); }
+.cs-bwrap .cs-banner { position: relative; inset: auto; margin: 0; }
+
+/* ---------------------------------------------------------------- 輪盤 in play: the wheel and the layout with the stake */
+.cs-felt.t-roulette .cs-center { display: grid; align-items: center; justify-items: center; column-gap: 26px; row-gap: 4px; }
+.cs-root.land .cs-felt.t-roulette .cs-center { grid-template-columns: auto auto; grid-template-rows: auto auto; }
+.cs-root.land .cs-felt.t-roulette .cs-wheel-box { grid-row: 1; grid-column: 1; width: 272px; height: 272px; margin-top: 12px; }
+.cs-root.land .cs-felt.t-roulette .cs-note { grid-row: 2; grid-column: 1; }
+.cs-root.land .cs-felt.t-roulette .cs-mini { grid-row: 1 / 3; grid-column: 2; width: 470px; height: 214px; }
+.cs-root.por .cs-felt.t-roulette .cs-wheel-box { width: 330px; height: 330px; margin-top: 10px; }
+.cs-root.por .cs-felt.t-roulette .cs-mini { width: 444px; height: 176px; margin-top: 6px; }
+.cs-mini { display: grid; pointer-events: none; }
+.cs-rl.mini { gap: 2px; padding: 5px; border-width: 3px; border-radius: 14px; box-shadow: 0 0 0 2px var(--ink), 0 4px 0 2px var(--ink); }
+.cs-rl.mini .cs-z { border-width: 1.5px; border-radius: 6px; box-shadow: 0 2px 0 var(--ink), inset 0 3px 0 rgba(255,255,255,.28); }
+.cs-rl.mini .cs-z span { font-size: 13px; -webkit-text-stroke: .4px var(--ink); }
+.cs-rl.mini .cs-z.o span { font-size: 12px; }
+.cs-rl.mini .cs-z.n.z span { font-size: 18px; }
+.cs-rl.mini .cs-z small { display: none; }
+.cs-rl.mini .cs-dia { width: 12px; height: 12px; border-width: 1.5px; border-radius: 2px; }
+.cs-rl.mini .cs-z.on { transform: none; box-shadow: 0 0 0 2px #fff, 0 0 0 4px #ffe600, 0 0 10px 3px rgba(255, 240, 80, .8); animation: none; }
+.cs-rl .cs-z.hit { z-index: 3; transform: scale(1.08); filter: brightness(1.15); box-shadow: 0 0 0 2px #fff, 0 0 0 4px #24e070, 0 0 14px 5px rgba(120, 255, 160, .9); animation: cs-hit .5s ease-in-out infinite alternate; }
+@keyframes cs-hit { to { transform: scale(1.16); box-shadow: 0 0 0 2px #fff, 0 0 0 5px #24e070, 0 0 20px 8px rgba(120, 255, 160, 1); } }
+.cs-rl.mini .cs-stack { width: 20px; height: 20px; right: -6px; top: -8px; }
+.cs-rl.mini .cs-stack i { width: 20px; height: 20px; top: calc(var(--k) * -3px); }
+.cs-rl .cs-z .cs-stack b { display: none; }
+.cs-rl:not(.mini) .cs-z .cs-stack { width: 26px; height: 26px; right: -7px; top: -9px; }
+.cs-rl:not(.mini) .cs-z .cs-stack i { width: 26px; height: 26px; }
+.cs-rl.land:not(.mini) .cs-dia { width: 17px; height: 17px; margin: 3px 0 4px; }
+/* the ball rests in its pocket, inside the numbers (the number stays readable) */
+.cs-orbit.settle .cs-ball { top: calc(26.6% - 11px); }
+.cs-stack.still { animation: none; }
+
+/* ---------------------------------------------------------------- 百家樂 / 骰寶 in play: the zones on the felt */
+.cs-zones { display: flex; justify-content: center; align-items: stretch; gap: 10px; margin-top: 2px; }
+.cs-zn { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 92px; padding: 3px 14px 5px; border-radius: 16px;
+  border: 3px solid var(--ink); box-shadow: 0 3px 0 var(--ink), inset 0 4px 0 rgba(255,255,255,.3); }
+.cs-zn span { font-size: 22px; line-height: 1.05; color: #fff; text-shadow: 0 2px 0 var(--ink); -webkit-text-stroke: .7px var(--ink); paint-order: stroke fill; white-space: nowrap; }
+.cs-zn small { font-size: 12px; color: #fff; white-space: nowrap; text-shadow: 0 1px 0 var(--ink); }
+.cs-zn.k-player, .cs-zn.k-small { background: linear-gradient(#7cc8ff, #2f7cff); }
+.cs-zn.k-banker, .cs-zn.k-big { background: linear-gradient(#ff8a96, #e8213f); }
+.cs-zn.k-tie { background: linear-gradient(#7af59e, #19b04c); }
+.cs-zn.k-triple { min-width: 0; background: linear-gradient(#fff6a8, #ffc21a); }
+.cs-zn.k-triple span, .cs-zn.k-triple small { color: var(--ink); text-shadow: none; -webkit-text-stroke: 0; }
+.cs-zn.on { box-shadow: 0 0 0 3px #fff, 0 0 0 6px #ffe600, 0 0 14px 5px rgba(255, 240, 80, .8); }
+.cs-zn:not(.on):not(.win) { filter: saturate(.75) brightness(.92); }
+.cs-zn.win { z-index: 2; animation: cs-hit .5s ease-in-out infinite alternate; box-shadow: 0 0 0 3px #fff, 0 0 0 6px #24e070, 0 0 18px 6px rgba(120, 255, 160, .9); }
+.cs-zn.win::after { content: '贏！'; position: absolute; left: -12px; top: -14px; font-size: 13px; padding: 0 7px; border-radius: 10px; color: var(--ink); background: #fff36a; border: 2px solid var(--ink);
+  transform: rotate(-12deg); }
+.cs-zn .cs-stack { width: 26px; height: 26px; right: -10px; top: -12px; }
+.cs-zn .cs-stack i { width: 26px; height: 26px; }
+.cs-zn .cs-stack b { display: none; }
+/* the chips on the zone go to the winner */
+.cs-felt.pay-guest .on > .cs-stack { animation: cs-pay-g 1s 1.1s cubic-bezier(.4, 0, .3, 1) both; }
+.cs-felt.pay-banker .on > .cs-stack { animation: cs-pay-b 1s 1.1s cubic-bezier(.4, 0, .3, 1) both; }
+@keyframes cs-pay-g { 25% { transform: scale(1.5); } to { transform: translate(150px, -300px) scale(.6); opacity: 0; } }
+@keyframes cs-pay-b { 25% { transform: scale(1.5); } to { transform: translate(-150px, -300px) scale(.6); opacity: 0; } }
+.cs-dice.still .cs-die { animation: none; }
+
+/* 百家樂 in landscape: 閒 on the left, 莊 on the right, the zones under them (a real table seen from the player) */
+.cs-root.land .cs-felt.t-baccarat { grid-template-columns: 1fr 1fr; grid-template-rows: minmax(0, 1fr) auto; }
+.cs-root.land .cs-felt.t-baccarat .cs-side { grid-row: 1; flex-direction: column; gap: 4px; }
+.cs-root.land .cs-felt.t-baccarat .cs-side.player { grid-column: 1; }
+.cs-root.land .cs-felt.t-baccarat .cs-side.dealer { grid-column: 2; }
+.cs-root.land .cs-felt.t-baccarat .cs-center { grid-row: 2; grid-column: 1 / 3; padding-bottom: 12px; }
+.cs-root.land .cs-felt.t-baccarat .cs-shoe { right: auto; left: 50%; margin-left: -42px; top: 7%; }
+.t-baccarat .cs-who { font-size: 20px; padding: 1px 20px; }
+.t-baccarat .cs-side.player .cs-who { background: linear-gradient(#7cc8ff, #2f7cff); border-color: #fff; }
+.t-baccarat .cs-side.dealer .cs-who { background: linear-gradient(#ff8a96, #e8213f); border-color: #fff; }
+.cs-root.land .cs-felt.t-sicbo .cs-dice-box { height: 186px; }
+.cs-root.land .cs-felt.t-sicbo .cs-center { gap: 2px; }
+
+/* the banker's reaction, big enough to read */
+.cs-bubble { font-size: 19px; padding: 1px 12px 2px; border-width: 3px; box-shadow: 0 3px 0 var(--ink); }
+.cs-bubble::before { content: ''; position: absolute; left: 22px; top: -9px; border: 7px solid transparent; border-top: 0; border-bottom: 8px solid var(--ink); }
+
+/* 21點 / 德州 moves: big buttons; in portrait they take the bar (the hint is on the felt) */
+.cs-moves .candy { font-size: 23px; padding: 7px 24px; }
+.cs-root.por .cs-bar.asking .cs-on { display: none; }
+.cs-pot::before { content: ''; position: absolute; left: 50%; top: 50%; width: 66px; height: 66px; margin: -33px 0 0 -33px; border-radius: 50%; border: 3px dashed rgba(255,255,255,.8); }
+
+/* sizes: winners lit without crowding; bigger zones, cards and dice where the felt has room */
+.cs-rl .cs-z.o.hit { transform: scale(1.03); animation-name: cs-hit-o; }
+@keyframes cs-hit-o { to { transform: scale(1.06); box-shadow: 0 0 0 2px #fff, 0 0 0 5px #24e070, 0 0 20px 8px rgba(120, 255, 160, 1); } }
+.cs-zones .cs-zn { min-width: 118px; padding: 4px 18px 6px; }
+.cs-zones .cs-zn span { font-size: 28px; }
+.cs-zones .cs-zn small { font-size: 14px; }
+.cs-zones .cs-zn.k-triple { min-width: 0; padding: 4px 12px 6px; }
+.cs-zones .cs-zn.k-triple span { font-size: 20px; }
+.cs-root.por .cs-cards { min-height: 110px; }
+.cs-root.por .cs-card { width: 76px; height: 106px; }
+.cs-root.por .cs-card b { font-size: 25px; }
+.cs-root.por .cs-card s { top: 31px; font-size: 18px; }
+.cs-root.por .cs-card em { font-size: 46px; }
+.cs-root.por .cs-cards.board { min-height: 100px; }
+.cs-root.por .cs-cards.board .cs-card { width: 72px; height: 100px; }
+.cs-root.por .cs-cards.board .cs-card em { font-size: 42px; }
+.cs-root.por .cs-who { font-size: 18px; }
+.cs-root.por .cs-total { font-size: 22px; }
+.cs-root.por .cs-felt.t-sicbo .cs-dice-box { width: 400px; height: 290px; }
+.cs-root.por .cs-felt.t-sicbo .cs-dice-box::before { width: 380px; height: 236px; margin: -118px 0 0 -190px; }
+.cs-root.por .cs-felt.t-sicbo .cs-cup { width: 220px; height: 220px; margin: -150px 0 0 -110px; }
+.cs-root.por .cs-felt.t-sicbo .cs-die { width: 74px; height: 74px; padding: 9px; gap: 4px; border-radius: 17px; }
+.cs-root.por .cs-felt.t-sicbo .cs-dice { gap: 18px; margin-top: 36px; }
+.cs-root.por .cs-felt.t-roulette .cs-wheel-box { width: 350px; height: 350px; }
+.cs-root.por .cs-felt.t-roulette .cs-mini { width: 458px; height: 190px; }
+.cs-root.por .cs-rl.mini .cs-z span { font-size: 14px; }
+.cs-zn.win::after { left: auto; right: -12px; top: auto; bottom: -13px; transform: rotate(-8deg); }
+/* 21點 / 德州 betting circle: the label up top, the chips and their amount below it */
+.cs-circle.on > span { margin-top: -30px; }
+.cs-circle .cs-stack { top: 60%; width: 34px; height: 34px; margin: -17px 0 0 -17px; }
+.cs-circle .cs-stack i { width: 34px; height: 34px; }
+.cs-circle .cs-stack b { left: 50%; right: auto; top: 100%; transform: translate(-50%, 3px); font-size: 13px; }

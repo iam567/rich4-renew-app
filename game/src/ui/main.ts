@@ -23,6 +23,8 @@ import { applyOrientation, orientationMode, ORIENTATIONS, setOrientation } from 
 import { GROUND_STYLES, groundIndex, groundStyle, groundStylesFor, setGroundStyle, TiledGround } from './ground';
 import { Watchdog } from './watchdog';
 import { preloadClips } from './effects';
+import { LoadingScreen } from './loading';
+import { preloadBoard } from './board-preload';
 import { WeatherFx } from './weather-fx';
 import { LossNotices } from './losses';
 import { CITY_NAMES, TYCOON_MAPS, tycoonSettings, type World } from '../core/world';
@@ -39,6 +41,7 @@ import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
+import { phrases, shrinkText } from './text';
 
 const app = document.getElementById('app')!;
 // The orientation chosen in the settings is applied at start, before the title screen is laid out.
@@ -116,7 +119,7 @@ function title() {
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
-    <div class="title-note">只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。</div></div>`;
+    <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div></div>`;
   buttonSounds(app.querySelector('.title-buttons')!, '.title-btn');
   app.onclick = async e => {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
@@ -238,7 +241,11 @@ function newGame() {
     const w = app.clientWidth, h = app.clientHeight, portrait = h > w;
     sheet.classList.toggle('portrait', portrait);
     const [dw, dh] = portrait ? [540, 900] : [960, 540];
-    sheet.style.transform = `translate(-50%, -50%) scale(${Math.min((w - 12) / dw, (h - 12) / dh)})`;
+    // room above for the ribbon (it sits half over the top edge)
+    const k = Math.min((w - 12) / dw, (h - 12) / (dh + 34));
+    sheet.style.top = `calc(50% + ${Math.round(14 * k)}px)`;
+    sheet.style.transform = `translate(-50%, -50%) scale(${k})`;
+    shrinkText(sheet, '.ng-seat b, .ng-map span, .ng-pick span', 9);
   };
   window.addEventListener('resize', fit);
   const render = () => {
@@ -266,7 +273,7 @@ function newGame() {
           <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button></div>
           ${pages > 1 ? `<div class="ng-pager"><button class="chip" data-page="-1">‹</button><span>${page + 1}/${pages}</span><button class="chip" data-page="1">›</button></div>` : ''}</div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
-          <p class="ng-tycoon-note">你一人對上其他 11 位角色，大家隨機分散在五座城市。搭新幹線、飛機往來各地，讓所有對手破產就能成為「首富大富豪」。</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>`}</section>
+          <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>`}</section>
       <section class="ng-players-sec"><div class="ng-head"><h3>選擇角色</h3><div class="chips">${ty ? '<span class="ng-ty-who">選你的角色，其他 11 位都是電腦</span>' : `${[2, 3, 4].map(n => `<button class="chip${state.count === n ? ' on' : ''}" data-count="${n}">${n} 人</button>`).join('')}
           <button class="chip" data-reroll="1">重新抽選</button>`}</div></div>
         <div class="ng-roster">${CHARACTERS.map(c => {
@@ -384,7 +391,7 @@ async function nextGame(root: HTMLElement, carried: CarriedSettings, humans: num
 
 /** 大富豪模式: build the world from the five cities' records, then show the human's city (docs/rules/17). */
 async function startTycoon(settings: import('../core/world').TycoonSettings, world?: World) {
-  app.innerHTML = '<div class="loading">建立大富豪世界中…</div>';
+  if (!world) bootScreen('大富豪模式', '', '建立大富豪世界中…');
   let w: World;
   try { w = world ?? await newWorld(settings); } catch (e) { app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
   if (!ledgerOf(w.players)) attachLedger(w.players); // statistics (core/stats.ts); an old save starts an empty one
@@ -404,13 +411,21 @@ async function resume(slot: number) {
   if (!data) { alert('無法讀取這個存檔'); return; }
   if (isWorldSave(data)) {
     const save = data;
-    app.innerHTML = '<div class="loading">讀取大富豪世界中…</div>';
+    bootScreen('大富豪模式', '', '讀取大富豪世界中…');
     try { void startTycoon(save.settings, await resumeWorld(save)); } catch (e) { alert((e as Error).message); }
     return;
   }
   const saved = data;
   // Names of stocks and companies from the map as it is now (a city that got its own local firms later).
   begin(saved.settings.mapId, board => { const g = loadGame(saved, board); if (!ledgerOf(g.players)) attachLedger(g.players); return g; }, true);
+}
+
+/** The loading screen (ui/loading.ts) alone on the page. */
+function bootScreen(name: string, thumb: string, what: string, sub = ''): LoadingScreen {
+  const boot = new LoadingScreen(name, thumb, sub);
+  boot.progress(0, what);
+  app.replaceChildren(boot.el);
+  return boot;
 }
 
 async function begin(mapId: number, make: (board: import('../core/board').Board) => Game, loaded: boolean, ty?: { world: World; flow: ReturnType<World['run']> }) {
@@ -420,25 +435,33 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   currentWeather?.destroy();
   currentWeather = null;
   app.onclick = null;
-  app.innerHTML = '<div class="loading">載入地圖中…</div>';
+  // The loading screen covers everything until the board's first view is complete (ui/board-preload.ts).
+  const boot = bootScreen(mapName(mapId), thumbOf(mapId), '載入地圖資料…', ty ? '大富豪模式' : '');
   // 大富豪模式: the same world on another city (the human travelled) keeps its music going.
   const sameWorld = !!ty && tycoon.world === ty.world;
   tycoon.world = ty?.world ?? null;
   // The loading scene stops the music and forgets the stack (fcn_00454edc).
   if (!sameWorld) { audio.stopMusic(true); audio.holiday = 0; }
   let art, game: Game;
+  // 地圖風格: this map's redrawn ground in the chosen style, or the original when it has none; loaded with the
+  // map so the board's first frame already has it.
+  let groundStyles: string[] = [];
+  let groundWant = '';
+  let firstGround: TiledGround | null = null;
   try {
-    [art, bank] = await Promise.all([loadMap(mapId), bank ?? SpriteBank.create()]);
+    [art, bank, firstGround] = await Promise.all([loadMap(mapId), bank ?? SpriteBank.create(), groundStylesFor(mapId).then(st => {
+      groundStyles = st;
+      groundWant = st.includes(groundStyle()) ? groundStyle() : '';
+      return groundWant ? TiledGround.load(mapId, groundWant) : null;
+    })]);
+    boot.progress(0.12, '載入地圖資料…');
     bank.addMapSprites(art.sprites);
     if (ty) { await registerSprites(bank); installWorldScreens(); }
     if (ty || mapId === FINALE_MAP) await prepareFinale(bank); // 大富翁城's halls (docs/rules/19)
     game = make(art.board);
-  } catch (e) { app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
-  if (me !== session) return;
-  app.innerHTML = '';
-  // A new game starts with the first background track (fcn_00415872: fcn_00454d91(1)); a loaded one with the
-  // next in turn (_rich4_start_game_loop(1) / save_load.asm:978: fcn_00454d91(0)).
-  if (!sameWorld) audio.background(loaded ? 0 : 1);
+  } catch (e) { firstGround?.dispose(); boot.dispose(); app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
+  if (me !== session) { firstGround?.dispose(); return; }
+  app.replaceChildren(boot.el);
   // The original's slot sounds for this map's loops are not left running from an old game.
   for (const id of [Sfx.walk, Sfx.scooter, Sfx.car, Sfx.truck, Sfx.boat, Sfx.doll, Sfx.bombTick]) audio.stop(id);
   // The original screen (docs/rules/09 §1): toolbar over the map, the player panel and calendar beside it.
@@ -459,15 +482,15 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   app.append(shell);
   fitShell(shell);
   const view = new BoardView(stage, game, art, bank);
+  view.setGround(firstGround);
   currentView = view;
   // 天氣 (docs/rules/16): the day's weather over the map, from the map's climate and the calendar.
   const weather = new WeatherFx(view, game);
   currentWeather = weather;
-  const minimap = new Minimap(game, bank, view, art.ground);
+  // The redrawn style's preview when there is one (the original picture is then never decoded).
+  const minimap = new Minimap(game, bank, view, firstGround?.preview ?? art.ground);
   mapBox.append(minimap.el);
-  // 地圖風格: this map's redrawn ground in the chosen style, or the original when it has none.
-  let groundStyles: string[] = [];
-  let groundWant = '';
+  // Another style chosen in 系統.
   const applyGround = async () => {
     const want = groundStyles.includes(groundStyle()) ? groundStyle() : '';
     groundWant = want;
@@ -478,7 +501,6 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     view.setGround(g);
     minimap.update();
   };
-  void groundStylesFor(mapId).then(st => { groundStyles = st; if (me === session) return applyGround(); });
   const hud = new Hud(stage, game, bank, panel, calendar);
   hud.shell = shell;
   for (const c of ty?.world.cities ?? [game]) c.animation = miniGameMode() === 0;
@@ -647,9 +669,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         return;
       }
       case 'help':
-        await hud.panelScreen('說明', `<p>輪到你時，按地圖上的 <b>GO</b> 擲骰子出發；GO 左邊的小骰子可以選擇骰子數（騎車、開車時）。</p>
-          <p>上方工具列：讀檔、存檔、地圖、查詢、道具、卡片、交易、股市，用法和原版一樣。</p>
-          <p>右邊是目前玩家的資料（點右側分頁切換）和日曆（點太陽 / 月亮切換日、月檢視）。</p>`);
+        await hud.panelScreen('說明', [
+          '輪到你時，按地圖上的 GO 擲骰子出發；\nGO 左邊的小骰子，可以選擇骰子數（騎車、開車時）。',
+          '上方工具列：讀檔、存檔、地圖、查詢、道具、卡片、交易、股市，\n用法和原版一樣。',
+          '右邊是目前玩家的資料，點右側分頁切換；\n日曆點太陽／月亮，切換日、月檢視。',
+        ].map(t => `<p>${phrases(t, h => h.replace(/GO/g, '<b>GO</b>'))}</p>`).join(''));
         return;
     }
   };
@@ -658,8 +682,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const colorOf = (p: number) => CHARACTERS[game.players[p].character].color;
   const isPlayer = (p: number) => p >= 0 && p < game.players.length;
   /**
-   * Starts decoding the big one-off clips a player may set off from the tool or card menu (robot worker and its
-   * fireworks, missiles, the monster and demolish cards), so playing them never decodes on the fly.
+   * Starts decoding the big one-off clips a player may set off from the tool or card menu (robot worker,
+   * missiles, the monster and demolish cards), so playing them never decodes on the fly.
    */
   const warmFor = (p: import('../core/types').Player | undefined, menu?: 'tool' | 'card') => {
     if (!p) return;
@@ -706,6 +730,18 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     view.syncAll();
   };
 
+  // Everything the first view shows, loaded and decoded before the loading screen goes (within the device's memory
+  // tier, ui/mem-tier.ts); a new game's first landing clip too.
+  const lander = game.players[game.current];
+  await preloadBoard(view, { root: shell, alive: () => me === session, clips: lander && !lander.placed ? [559 + lander.character] : [],
+    onProgress: (f, what) => boot.progress(0.12 + 0.88 * f, what) });
+  if (me !== session) return;
+  // A new game starts with the first background track (fcn_00415872: fcn_00454d91(1)); a loaded one with the
+  // next in turn (_rich4_start_game_loop(1) / save_load.asm:978: fcn_00454d91(0)).
+  if (!sameWorld) audio.background(loaded ? 0 : 1);
+  // The game goes on once the board shows whole (its first move would otherwise start under the fading screen).
+  await boot.close();
+  if (me !== session) return;
   /** The original's small map effects and lines for each event (docs/rules/11). */
   const director = new MapDirector(game, view, hud);
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.director = director;
@@ -813,6 +849,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           continue;
         }
         stage.append(hint);
+        shrinkText(hint, 'span', 10); // a long title stays on its one line, smaller rather than cut off
         stage.classList.add('picking');
         hint.querySelector('button')?.addEventListener('click', () => pick.cancel());
         // An on-screen pick (every card and tool but the missiles) keeps the map still, as the original does;

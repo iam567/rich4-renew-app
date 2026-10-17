@@ -58,6 +58,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   if (existsSync(join(src, 'maps/remake/casino'))) {
     for (const f of readdirSync(join(src, 'maps/remake/casino'))) if (f.endsWith('.webp')) copy(`maps/remake/casino/${f}`);
+    // The tables' cartoon props (tools/tycoon-art/props.py): wheel layers, chips, cards, dice, felts.
+    if (existsSync(join(src, 'maps/remake/casino/props'))) for (const f of readdirSync(join(src, 'maps/remake/casino/props'))) if (f.endsWith('.webp')) copy(`maps/remake/casino/props/${f}`);
   }
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.
   if (existsSync(join(src, 'maps/remake/stats'))) {
@@ -72,6 +74,9 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
 // The old workshop maps (editor/export_custom.py, maps/custom/) are no longer offered (the 自製地圖 are the remake's
 // six maps above), so the app does not carry them (2026-10-17).
 
+// Clips the game no longer plays: Data#523, the level-5 fireworks, is drawn in code (src/ui/fireworks.ts).
+const UNUSED_DATA = new Set([523]);
+
 // Original sprites of the archives the game draws from.
 copy('orig/manifest.json');
 copy('orig/outline-colors.json');
@@ -79,6 +84,7 @@ const orig = json('orig/manifest.json').archives;
 for (const archive of ['Data.mkf', 'map.mkf', 'Panel.mkf']) {
   const dir = archive.replace('.mkf', '');
   for (const e of orig[archive] ?? []) {
+    if (archive === 'Data.mkf' && UNUSED_DATA.has(e.id)) continue;
     for (const f of e.frames ?? []) if (f.file) copy(`orig/${dir}/${f.file}`);
     if (e.file) copy(`orig/${dir}/${e.file}`); // whole pictures (card art, holiday photos)
     if (e.frames_dir) for (let i = 0; i < e.frame_count; i++) copy(`orig/${dir}/${e.frames_dir}/frame-${String(i).padStart(3, '0')}.png`);
@@ -91,6 +97,7 @@ const webp = !!process.env.RICH4_WEBP;
 const hdManifest = json('hd/manifest-hd.json');
 const jobs = [];
 for (const [key, e] of Object.entries(hdManifest.resources)) {
+  if (key.startsWith('Data/') && UNUSED_DATA.has(Number(key.slice(5)))) { delete hdManifest.resources[key]; continue; }
   for (const f of e.frames ?? []) {
     const rel = `hd/${key}-${e.type}/${f.file}`;
     if (webp && f.file.endsWith('.png')) { jobs.push(rel); f.file = f.file.replace(/\.png$/, '.webp'); } else copy(rel);

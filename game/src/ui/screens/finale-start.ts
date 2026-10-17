@@ -36,15 +36,20 @@ fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
       </div>`;
     }).join('');
     const sold = mine?.sold.length
-      ? `<div class="fs-sold">以下卡片、道具在大富翁城無法使用，已自動賣出：<b>${mine.sold.map(x => `${esc(x.name)}×${x.n}`).join('、')}</b>，共得 <b>${n(mine.points)}</b> 點券</div>`
+      ? `<div class="fs-sold"><span class="ph">以下卡片、道具在大富翁城無法使用，</span><span class="ph">已自動賣出：<b>${mine.sold.map(x => `${esc(x.name)}×${x.n}`).join('、')}</b>，</span><span class="ph">共得 <b>${n(mine.points)}</b> 點券</span></div>`
       : '';
     sc.box(`fs-root ${sc.portrait ? 'por' : 'land'}`, 0, 0, sc.w, sc.h, `
       <div class="fs-bg" style="background-image:url('${ASSETS}/maps/remake/finale-thumb.jpg')"></div>
       <div class="fs-rays"></div>
       <div class="fs-title">最終決戰<small>只剩 ${vals.length} 人！全體前往 大富翁城</small></div>
       <div class="fs-cards">${rows}</div>
-      <div class="fs-rule">整局的表現換成籌碼進城（原本的地產、股票、現金凍結保留到結局）・點券、卡片、道具保留・籌碼用完就出局<br>
-        10 塊用地蓋五種賭場：停在別人的賭場先付門票再賭一局・贏錢上限 Lv1 ${n((caps[1] ?? 10000) / chip)} … Lv5 ${n((caps[5] ?? 80000) / chip)} 籌碼</div>
+      <div class="fs-rule">${[
+        '整局的表現換成籌碼進城（原本的地產、股票、現金凍結保留到結局）・',
+        '點券、卡片、道具保留・', '籌碼用完就出局',
+      ].map(t => `<span class="ph">${t}</span>`).join('')}<br>${[
+        '10 塊用地蓋五種賭場：', '停在別人的賭場先付門票再賭一局・',
+        `贏錢上限 Lv1 ${n((caps[1] ?? 10000) / chip)} … Lv5 ${n((caps[5] ?? 80000) / chip)} 籌碼`,
+      ].map(t => `<span class="ph">${t}</span>`).join('')}</div>
       ${sold}
       <button class="candy yes fs-go">前往大富翁城</button>`);
     sc.stage.querySelector<HTMLButtonElement>('.fs-go')!.onclick = e => { e.stopPropagation(); finish(); };

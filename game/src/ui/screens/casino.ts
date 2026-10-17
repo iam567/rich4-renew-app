@@ -17,6 +17,7 @@ import { chipMode, fmtMoney } from '../finale';
 const money = (n: number) => fmtMoney(n, false);
 import { audio, Sfx } from '../audio';
 import { ASSETS } from '../assets';
+import { hallSeen } from '../casino-sprite';
 import './casino.css';
 
 type Fx = { t: 'fx'; kind: string; p?: number; target?: number; node?: number; data?: Record<string, unknown> };
@@ -31,17 +32,47 @@ const ART: Record<string, string> = {
   blackjack: `${ASSETS}/maps/remake/casino/blackjack.webp`, baccarat: `${ASSETS}/maps/remake/casino/baccarat.webp`,
   holdem: `${ASSETS}/maps/remake/casino/holdem.webp`, sicbo: `${ASSETS}/maps/remake/casino/sicbo.webp`,
 };
+/** The tables' cartoon props (tools/tycoon-art/props.py → maps/remake/casino/props/), set as CSS variables on the page. */
+const PROP_NAMES = ['roulette-bowl', 'roulette-turret', 'roulette-ball', 'dice-cup', 'dice-plate', 'card-back', 'card-shoe', 'squeeze-frame',
+  'chip-blue', 'chip-red', 'chip-green', 'chip-purple', 'felt-roulette', 'felt-blackjack', 'felt-baccarat', 'felt-holdem', 'felt-sicbo', 'felt-lobby'];
+const PROP = (n: string) => `${ASSETS}/maps/remake/casino/props/${n}.webp`;
+const PROP_VARS = PROP_NAMES.map(n => `--p-${n}:url('${PROP(n)}')`).join(';');
 /** The halls' plates (the build picker's strip, tools/tycoon-art/casino.py): maps/remake/casino/plate-<type>.webp. */
 export const PLATE = (type: number) => `${ASSETS}/maps/remake/casino/plate-${type}.webp`;
 const TYPE_OF: Record<C.CasinoGame, number> = { roulette: 5, blackjack: 6, baccarat: 7, holdem: 8, sicbo: 9 };
 export const GAME_ICON: Record<C.CasinoGame, string> = { roulette: '🎡', blackjack: '🂡', baccarat: '🀄', holdem: '♠', sicbo: '🎲' };
-const GAME_RULE: Record<C.CasinoGame, string> = {
-  roulette: '押顏色、單雙、大小 1 賠 1，押一打 1 賠 2，押單號 1 賠 35（0 號莊家通吃）',
-  blackjack: '比莊家接近 21 點，超過就爆。21 點（黑傑克）1 賠 1.5，可加倍再拿一張',
-  baccarat: '押閒或莊 1 賠 1（莊贏抽 5%），押和 1 賠 8；按標準補牌規則',
-  holdem: '先下底注看翻牌，跟注再押一份看到底，五張最大牌型比大小，贏了兩份 1 賠 1',
-  sicbo: '莊家搖三顆骰子：押大（11–17）或小（4–10），1 賠 1；豹子（三顆一樣）通殺',
+/** Each hall's rules as deliberate short lines (shown as chips, never wrapped mid-phrase). */
+const GAME_RULE: Record<C.CasinoGame, string[]> = {
+  roulette: ['紅黑・單雙・大小 1 賠 1', '押一打 1 賠 2', '押單號 1 賠 35', '開出 0 號莊家通吃'],
+  blackjack: ['比莊家接近 21 點', '超過 21 點就爆牌', '黑傑克 1 賠 1.5', '頭兩張可加倍'],
+  baccarat: ['押閒或押莊 1 賠 1', '莊贏抽水 5%', '押和 1 賠 8', '照標準補牌規則'],
+  holdem: ['先下底注看翻牌', '跟注再押一份', '七張取最好五張', '贏了兩份 1 賠 1'],
+  sicbo: ['莊家搖三顆骰子', '押大 11–17', '押小 4–10', '1 賠 1・豹子通殺'],
 };
+/** Text cut at its natural breaks (，・→) into pieces that never wrap inside. */
+const pieces = (text: string, cls = '') => text.split(/(?<=[，・])|(?= → )/).filter(Boolean).map(t => `<span class="cs-pc${cls ? ` ${cls}` : ''}">${esc(t.trim())}</span>`).join('');
+/** The banker's big hands of a hall as rows: label and multiplier (BANKER_TABLE's 「…×5・…全部現金」). */
+const bigRows = (game: C.CasinoGame) => C.BANKER_TABLE[game].replace(/現金/g, chipMode() ? '籌碼' : '現金').split('・').map(x => {
+  const m = /^(.*?)\s*(×\d+(?:\.\d+)?|全部\S+)$/.exec(x.trim());
+  return `<div class="cs-bigrow"><span>${esc(m ? m[1] : x)}</span><b>${esc(m ? m[2] : '')}</b></div>`;
+}).join('');
+/** Shrinks a one-line text until it fits its box (no wraps in names and titles). */
+function fitText(root: HTMLElement) {
+  for (const el of root.querySelectorAll<HTMLElement>('.fit')) {
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    for (let k = 0; k < 24 && el.scrollWidth > el.clientWidth + 1 && size > 11; k++) el.style.fontSize = `${(size -= 1)}px`;
+  }
+}
+/** The table art loaded before it is needed (no decode stall on the first table). */
+let preloaded = false;
+/** Kept alive so the decoded pictures stay in memory. */
+const kept: HTMLImageElement[] = [];
+export function preload() {
+  if (preloaded) return;
+  preloaded = true;
+  for (const u of [...Object.values(ART), ...[5, 6, 7, 8, 9].map(PLATE), ...PROP_NAMES.map(PROP)]) { const i = new Image(); i.decoding = 'async'; i.src = u; void i.decode?.().catch(() => 0); kept.push(i); }
+}
+hallSeen.fn = preload;
 const ROULETTE_BETS: { key: string; label: string; bet: C.RouletteBet }[] = [
   { key: 'red', label: '紅', bet: { kind: 'red' } }, { key: 'black', label: '黑', bet: { kind: 'black' } },
   { key: 'odd', label: '單', bet: { kind: 'odd' } }, { key: 'even', label: '雙', bet: { kind: 'even' } },
@@ -54,10 +85,11 @@ const RANK = ['2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K', 'A'];
 const SUIT = ['♠', '♥', '♦', '♣'];
 
 /** A playing card (CSS); `back` shows the back. */
-export function cardHtml(c: number | null, cls = ''): string {
-  if (c === null || c < 0) return `<div class="cs-card back ${cls}"><i></i></div>`;
+export function cardHtml(c: number | null, cls = '', i = 0): string {
+  const st = `style="--i:${i}"`;
+  if (c === null || c < 0) return `<div class="cs-card back ${cls}" ${st}><i></i></div>`;
   const r = RANK[C.rank(c)], s = SUIT[C.suit(c)];
-  return `<div class="cs-card ${SUIT_RED(c) ? 'red' : ''} ${cls}"><b>${r}</b><s>${s}</s><em>${s}</em></div>`;
+  return `<div class="cs-card ${SUIT_RED(c) ? 'red' : ''} ${cls}" ${st}><b>${r}</b><s>${s}</s><em>${s}</em></div>`;
 }
 
 const name = (ctx: ScreenContext, p: number) => CHARACTERS[ctx.game.players[p]?.character ?? 0]?.name ?? '';
@@ -89,6 +121,21 @@ class CasinoPage {
   /** Cards on the table at the last drawing (new ones are dealt in, turned ones flip). */
   seen: Record<'dealer' | 'player' | 'board', (number | null)[]> = { dealer: [], player: [], board: [] };
   wheelAt = 0;
+  /** The ball has dropped into its pocket (kept over a redraw). */
+  settled = false;
+  /** The stake on the table: 'in' slides in once, 'on' stays, then to the winner. */
+  pot: '' | 'in' | 'on' | 'guest' | 'banker' = '';
+  /** The five cards of the winning hand (德州), lit at the showdown. */
+  best: number[] = [];
+  /** 百家樂: a side with a natural (天生 8/9) glows. */
+  natural: { player: boolean; dealer: boolean } = { player: false, dealer: false };
+  /** The banker's face at the result: happy when the visitor loses, sad when it wins. */
+  mood: '' | 'happy' | 'sad' = '';
+  /** The result on the table: the roulette number (-1 before), the winning 百家樂 / 骰寶 zone ('' before). */
+  hitNum = -1;
+  won = '';
+  /** The dice have tumbled in once (a redraw shows them still). */
+  diceShown = false;
   /** Replay of a computer's visit (no controls). */
   constructor(readonly ctx: ScreenContext, a: ChooseAsk, readonly watch = false) {
     this.choose = a;
@@ -100,6 +147,7 @@ class CasinoPage {
   get max(): number { return Math.max(this.choose.min, Math.min(this.choose.cap, this.choose.max ?? this.choose.cap)); }
 
   open() {
+    preload();
     this.scene = openScene(this.ctx, 'cs-scene', portrait => (portrait ? [500, 880] : [880, 500]), s => { this.scene = s; this.render(); });
     if (this.watch) this.scene.root.addEventListener('pointerdown', () => { this.skip = true; }, { capture: true });
     audio.ui('click');
@@ -113,10 +161,14 @@ class CasinoPage {
   private head(): string {
     const a = this.choose, ctx = this.ctx;
     const bk = ctx.game.players[a.banker];
-    return `<div class="cs-plate"><span class="cs-sign">${esc(a.name)}${esc(a.hall)}</span><span class="cs-lv">Lv${a.level}</span>
-      <span class="cs-cap">贏錢上限 <b>${money(a.cap)}</b>${a.fee ? `・門票 <b>${money(a.fee)}</b>` : ''}</span></div>
-      <div class="cs-banker${this.youBank && this.watch ? ' you' : ''}">${face(ctx, bk?.character ?? 0, 'cs-face')}<span>${this.youBank && this.watch ? '你是莊家' : '莊家'}<br><b>${esc(name(ctx, a.banker))}</b></span></div>
-      <div class="cs-guest">${face(ctx, ctx.game.players[a.p]?.character ?? 0, 'cs-face')}<span>${esc(name(ctx, a.p))}${a.godLine ? `<em class="cs-god">${esc(a.godLine)}</em>` : ''}<br><b>${money(a.cash)}</b></span></div>`;
+    const you = this.youBank && this.watch;
+    // One line each, never wrapped: the name shrinks to fit; the cap and the 門票 two tidy lines.
+    return `<div class="cs-plate"><span class="cs-sign fit">${esc(a.name)}${esc(a.hall)}</span><span class="cs-lv">Lv${a.level}</span>
+      <span class="cs-caps"><span>贏錢上限 <b>${money(a.cap)}</b></span>${a.fee ? `<span>門票 <b>${money(a.fee)}</b></span>` : ''}</span></div>
+      <div class="cs-people">
+        <div class="cs-banker${you ? ' you' : ''}${this.mood ? ` mood-${this.mood}` : ''}">${this.mood ? `<em class="cs-bubble">${this.mood === 'happy' ? '哈哈！' : '嗚…'}</em>` : ''}${face(ctx, bk?.character ?? 0, 'cs-face')}<span class="cs-np"><i>${you ? '你是莊家' : '莊家'}</i><b class="nm">${esc(name(ctx, a.banker))}</b></span></div>
+        <div class="cs-guest">${face(ctx, ctx.game.players[a.p]?.character ?? 0, 'cs-face')}<span class="cs-np"><i>${esc(name(ctx, a.p))}</i><b>${money(a.cash)}</b></span>${a.godLine ? `<em class="cs-god">${esc(a.godLine)}</em>` : ''}</div>
+      </div>`;
   }
 
   render() {
@@ -128,32 +180,38 @@ class CasinoPage {
     const bg = this.phase === 'choose' ? ART.lobby : ART[this.game];
     const root = s.box(`cs-root ${s.portrait ? 'por' : 'land'} ph-${this.phase} g-${this.game}`, 0, 0, s.w, s.h,
       `<div class="cs-bg" style="background-image:url('${bg}')"></div><div class="cs-head">${this.head()}</div><div class="cs-main"></div>`);
+    root.setAttribute('style', `${root.getAttribute('style') ?? ''};${PROP_VARS}`);
     const main = root.querySelector<HTMLElement>('.cs-main')!;
     if (this.phase === 'choose') this.renderChoose(main);
     else this.renderTable(main);
+    fitText(root);
   }
 
   // ---------------------------------------------------------------- choose: game and stake
 
   private renderChoose(main: HTMLElement) {
-    const a = this.choose;
-    main.innerHTML = `<div class="cs-hallcard">${hallPlate(TYPE_OF[this.game], this.game)}
-        <b class="cs-hname">${esc(a.hall)}</b><span class="cs-hgame">${C.GAME_NAMES[this.game]}</span>
-        <div class="cs-big"><i>莊家大牌（不設上限）</i>${esc(C.BANKER_TABLE[this.game].replace(/現金/g, chipMode() ? '籌碼' : '現金')).replace(/・/g, '<br>')}</div></div>
-      <div class="cs-bet">
-        <div class="cs-rule">${esc(GAME_RULE[this.game])}</div>
-        <div class="cs-pick">${this.pickHtml()}</div>
-        <div class="cs-stake"><span class="cs-stk-l">${a.free ? '免費注' : '下注'}${chipMode() ? '（籌碼）' : ''}</span><b class="cs-stk">${money(this.stake)}</b>
-          <span class="cs-range">${money(a.min)} – ${money(this.max)}</span></div>
-        <div class="cs-chips">
-          ${chipButtons(a.mult ?? 1)}
-          <button class="cs-chip min" data-set="min">最低</button><button class="cs-chip max" data-set="max">${this.max < a.cap ? '全押' : '上限'}</button>
-        </div>
-        <button class="candy yes cs-go">開始！</button>
+    const a = this.choose, mult = a.mult ?? 1, por = !!this.scene?.portrait, g = this.game;
+    const maxLabel = this.max < a.cap ? '全押' : '上限';
+    // Left: the hall's own velvet panel (its colours, its room behind, gold trim, a slow shimmer; the wheel for 輪盤).
+    // Right: the hall's table layout with the chips on the chosen zone, the chip tray and the gold plaque.
+    main.innerHTML = `<div class="cs-hallcard t-${g}"><div class="cs-hc-art" style="background-image:url('${ART[g]}')"></div><div class="cs-hc-shine"></div>
+        <div class="cs-hc-top">${hallPlate(TYPE_OF[g], g)}<div class="cs-hc-name"><b class="cs-hname fit">${esc(a.hall)}</b><span class="cs-hgame">${C.GAME_NAMES[g]}</span></div></div>
+        ${g === 'roulette' ? `<div class="cs-hc-wheel">${wheelHtml()}<div class="cs-pointer">▼</div></div>` : ''}
+        <div class="cs-big"><i>莊家大牌・不設上限</i>${bigRows(g)}</div>
+        <div class="cs-rule">${GAME_RULE[g].map(l => `<span>${esc(l)}</span>`).join('')}</div>
+      </div>
+      <div class="cs-play t-${g}">
+        <div class="cs-hint1">${this.stake < a.min ? `點下面的<b>籌碼</b>加注（最低 ${money(a.min)}）` : g === 'roulette' ? `點<b>桌上的格子</b>換押注・好了按<b>開始！</b>` : g === 'baccarat' ? `點<b>閒／莊／和</b>換押注・好了按<b>開始！</b>` : g === 'sicbo' ? `點<b>小／大</b>換押注・好了按<b>開始！</b>` : `點<b>籌碼</b>加注・好了按<b>開始！</b>`}</div>
+        <div class="cs-layout">${g === 'roulette' ? this.rouletteLayout(por) : this.tableLayout(g)}</div>
+        <div class="cs-tray${a.free ? ' off' : ''}">${trayChips(mult)}
+          <button class="cs-tbtn" data-set="clear">清除</button><button class="cs-tbtn" data-set="min">最低</button><button class="cs-tbtn max" data-set="max">${maxLabel}</button></div>
+        <div class="cs-betbar"><div class="cs-plaque"><i>${a.free ? '免費注' : '下注'}${chipMode() ? '・籌碼' : ''}</i><b>${money(this.stake)}</b><small>${money(a.min)} – ${money(this.max)}</small></div>
+          <button class="candy yes cs-go"${this.stake < a.min ? ' disabled' : ''}>開始！</button></div>
       </div>`;
-    main.querySelectorAll<HTMLButtonElement>('.cs-chip').forEach(b => b.onclick = () => {
+    main.querySelectorAll<HTMLButtonElement>('[data-set], [data-d]').forEach(b => b.onclick = () => {
+      if (a.free) return;
       const set = b.dataset.set;
-      this.stake = set === 'min' ? a.min : set === 'max' ? this.max : Math.max(a.min, Math.min(this.max, this.stake + Number(b.dataset.d)));
+      this.stake = set === 'clear' ? 0 : set === 'min' ? a.min : set === 'max' ? this.max : Math.min(this.max, this.stake + Number(b.dataset.d));
       audio.sfx(Sfx.points);
       this.render();
     });
@@ -162,27 +220,73 @@ class CasinoPage {
     main.querySelectorAll<HTMLButtonElement>('[data-bac]').forEach(b => b.onclick = () => { this.bacBet = b.dataset.bac as C.BaccaratBet; audio.ui('click'); this.render(); });
     main.querySelectorAll<HTMLButtonElement>('[data-num]').forEach(b => b.onclick = () => { this.bet = 'num'; this.number = Number(b.dataset.num); audio.ui('click'); this.render(); });
     main.querySelector<HTMLButtonElement>('.cs-go')!.onclick = () => {
+      if (this.stake < a.min) return;
       audio.ui('yes');
-      const bet = this.game === 'roulette' ? (this.bet === 'num' ? { kind: 'number', n: this.number } : ROULETTE_BETS.find(r => r.key === this.bet)!.bet)
-        : this.game === 'baccarat' ? this.bacBet : this.game === 'sicbo' ? this.sicBet : undefined;
-      this.answer({ game: this.game, stake: this.stake, bet });
+      const bet = g === 'roulette' ? (this.bet === 'num' ? { kind: 'number', n: this.number } : ROULETTE_BETS.find(r => r.key === this.bet)!.bet)
+        : g === 'baccarat' ? this.bacBet : g === 'sicbo' ? this.sicBet : undefined;
+      this.answer({ game: g, stake: this.stake, bet });
     };
   }
 
-  private pickHtml(): string {
-    if (this.game === 'roulette') {
-      const nums = Array.from({ length: 37 }, (_, n) => `<button class="cs-num ${n === 0 ? 'z' : C.RED.has(n) ? 'r' : 'b'}${this.bet === 'num' && this.number === n ? ' on' : ''}" data-num="${n}">${n}</button>`).join('');
-      return `<div class="cs-rbets">${ROULETTE_BETS.map(r => `<button class="cs-opt${this.bet === r.key ? ' on' : ''} k-${r.key}" data-bet="${r.key}">${r.label}</button>`).join('')}</div>
-        <div class="cs-nums">${nums}</div>`;
+  /**
+   * The other halls' tables as printed felts (cartoon): 百家樂 the 和 / 閒 / 莊 arcs and the two card boxes; 骰寶 the big
+   * 小 / 大 zones with the house's 豹子 band and the cup on its plate; 21點 / 德州 the dealer's arc, the shoe and the betting
+   * circle(s). Each zone says what it pays; the stake sits on the chosen zone as a chip stack.
+   */
+  private tableLayout(g: C.CasinoGame): string {
+    const stack = this.stake > 0 ? chipStack(this.stake) : '';
+    if (g === 'baccarat') {
+      const arc = (b: C.BaccaratBet, label: string, pay: string) =>
+        `<button class="cs-arc k-${b}${this.bacBet === b ? ' on' : ''}" data-bac="${b}"><span>押${label}</span><small>${pay}</small>${this.bacBet === b ? stack : ''}</button>`;
+      return `<div class="cs-felt-l cs-tbl t-baccarat"><div class="cs-boxes"><div class="cs-cbox p"><b>閒</b><i></i><i></i><i></i></div><div class="cs-cbox b"><b>莊</b><i></i><i></i><i></i></div></div>
+        ${arc('tie', '和', '贏 8 倍')}${arc('player', '閒', '贏 1 倍')}${arc('banker', '莊', '贏 0.95 倍')}</div>`;
     }
-    if (this.game === 'baccarat') {
-      return `<div class="cs-bac">${(['player', 'banker', 'tie'] as C.BaccaratBet[]).map(b => `<button class="cs-opt big${this.bacBet === b ? ' on' : ''} k-${b}" data-bac="${b}">${C.BACCARAT_NAMES[b]}<small>${b === 'tie' ? '1 賠 8' : b === 'banker' ? '1 賠 0.95' : '1 賠 1'}</small></button>`).join('')}</div>`;
+    if (g === 'sicbo') {
+      const zone = (b: C.SicboBet, label: string, range: string) =>
+        `<button class="cs-sz k-${b}${this.sicBet === b ? ' on' : ''}" data-sic="${b}"><span>押${label}</span><em>${range}</em><small>贏 1 倍</small>${this.sicBet === b ? stack : ''}</button>`;
+      return `<div class="cs-felt-l cs-tbl t-sicbo"><div class="cs-sic-top"><span class="cs-mini-plate"></span><span class="cs-mini-cup"></span></div>
+        <div class="cs-sic-zones">${zone('small', '小', '4 – 10 點')}${zone('big', '大', '11 – 17 點')}</div>
+        <div class="cs-leopard">豹子（三顆一樣）莊家通殺</div></div>`;
     }
-    if (this.game === 'sicbo') {
-      return `<div class="cs-bac sic">${(['small', 'big'] as C.SicboBet[]).map(b => `<button class="cs-opt big${this.sicBet === b ? ' on' : ''} k-${b}" data-sic="${b}">${C.SICBO_NAMES[b]}<small>${b === 'big' ? '11–17・1 賠 1' : '4–10・1 賠 1'}</small></button>`).join('')}</div>`;
-    }
-    if (this.game === 'blackjack') return `<div class="cs-hint">發兩張牌，再決定要牌、停牌或加倍。</div>`;
-    return `<div class="cs-hint">跟莊家各拿兩張底牌，看完翻牌（三張公牌）再決定跟注或棄牌。</div>`;
+    const bj = g === 'blackjack';
+    return `<div class="cs-felt-l cs-tbl t-${g}"><span class="cs-tshoe"></span>
+      <div class="cs-darc"><span>${bj ? '莊家拿到 17 點以上就停牌' : '莊家　與你比最好的五張牌'}</span></div>
+      <div class="cs-circles"><div class="cs-circle on"><span>${bj ? '下注' : '底注'}</span>${stack}</div>${bj ? '' : '<div class="cs-circle later"><span>跟注</span><small>看翻牌後決定</small></div>'}</div>
+      <div class="cs-pays">${bj ? '<span>黑傑克 贏 1.5 倍</span><span>其他贏 1 倍</span><span>頭兩張可加倍</span>' : '<span>贏了兩份 1 賠 1</span><span>棄牌只輸底注</span>'}</div></div>`;
+  }
+
+  /**
+   * 輪盤's betting layout as printed on a real table: the 0, the 3 × 12 numbers (red / black), the dozens, then
+   * 1–18 / 雙 / 紅◆ / 黑◆ / 單 / 19–36; landscape as seen from the side, portrait from the end (12 rows of 3).
+   * The stake sits as a chip stack on the chosen zone.
+   */
+  private rouletteLayout(por: boolean, mini = false): string {
+    const stack = this.stake > 0 ? chipStack(this.stake, !mini) : '';
+    // Selected (glowing) and, at the result, every zone the number wins lit up.
+    const cls = (sel: boolean, b: C.RouletteBet) => `${sel ? ' on' : ''}${this.hitNum >= 0 && C.rouletteWins(b, this.hitNum) ? ' hit' : ''}`;
+    const tag = mini ? 'div' : 'button';
+    const cell = (n: number) => {
+      const r = Math.floor((n - 1) / 3), c = (n - 1) % 3;
+      const pos = por ? `grid-row:${r + 2};grid-column:${c + 3}` : `grid-row:${3 - c};grid-column:${r + 2}`;
+      const sel = this.bet === 'num' && this.number === n;
+      return `<${tag} class="cs-z n ${C.RED.has(n) ? 'r' : 'b'}${cls(sel, { kind: 'number', n })}" data-num="${n}" style="${pos}"><span>${n}</span>${sel ? stack : ''}</${tag}>`;
+    };
+    const z0 = this.bet === 'num' && this.number === 0;
+    const zero = `<${tag} class="cs-z n z${cls(z0, { kind: 'number', n: 0 })}" data-num="0" style="${por ? 'grid-row:1;grid-column:3 / 6' : 'grid-row:1 / 4;grid-column:1'}"><span>0</span><small>單號 贏 35 倍</small>${z0 ? stack : ''}</${tag}>`;
+    const dozens = [1, 2, 3].map(k => `<${tag} class="cs-z o${cls(this.bet === `d${k}`, { kind: 'dozen', n: k })}" data-bet="d${k}" style="${por ? `grid-row:${(k - 1) * 4 + 2} / ${k * 4 + 2};grid-column:2` : `grid-row:4;grid-column:${(k - 1) * 4 + 2} / ${k * 4 + 2}`}"><span>第${['一', '二', '三'][k - 1]}打</span><small>贏 2 倍</small>${this.bet === `d${k}` ? stack : ''}</${tag}>`).join('');
+    const outs: [C.RouletteBet['kind'], string][] = [['low', '1–18'], ['even', '雙'], ['red', ''], ['black', ''], ['odd', '單'], ['high', '19–36']];
+    const outside = outs.map(([k, label], i) => `<${tag} class="cs-z o${cls(this.bet === k, { kind: k } as C.RouletteBet)}" data-bet="${k}" style="${por ? `grid-row:${i * 2 + 2} / ${i * 2 + 4};grid-column:1` : `grid-row:5;grid-column:${i * 2 + 2} / ${i * 2 + 4}`}">${k === 'red' || k === 'black' ? `<i class="cs-dia ${k}"></i>` : `<span>${label}</span>`}<small>贏 1 倍</small>${this.bet === k ? stack : ''}</${tag}>`).join('');
+    return `<div class="cs-rl ${por ? 'por' : 'land'}${mini ? ' mini' : ''}">${zero}${Array.from({ length: 36 }, (_, i) => cell(i + 1)).join('')}${dozens}${outside}</div>`;
+  }
+
+  /** 百家樂 / 骰寶 in play: the betting zones printed on the felt, the stake on the chosen one, the winner lit. */
+  private playZones(): string {
+    const stack = this.stake > 0 ? chipStack(this.stake, false) : '';
+    const zone = (k: string, label: string, pay: string, sel: boolean) =>
+      `<div class="cs-zn k-${k}${sel ? ' on' : ''}${this.won === k ? ' win' : ''}"><span>${label}</span><small>${pay}</small>${sel ? stack : ''}</div>`;
+    if (this.game === 'baccarat') return `<div class="cs-zones bac">${zone('player', '閒', '贏 1 倍', this.bacBet === 'player')}${zone('tie', '和', '贏 8 倍', this.bacBet === 'tie')}${zone('banker', '莊', '贏 0.95 倍', this.bacBet === 'banker')}</div>`;
+    if (this.game === 'sicbo') return `<div class="cs-zones sic">${zone('small', '小', '4–10 點', this.sicBet === 'small')}${zone('big', '大', '11–17 點', this.sicBet === 'big')}<div class="cs-zn k-triple${this.won === 'triple' ? ' win' : ''}"><span>豹子</span><small>莊家通殺</small></div></div>`;
+    return '';
   }
 
   // ---------------------------------------------------------------- the table
@@ -192,31 +296,43 @@ class CasinoPage {
     // Only the cards new since the last drawing fly in (a card turned over flips).
     const row = (cards: (number | null)[], cls: 'dealer' | 'player' | 'board') => {
       const was = this.seen[cls];
-      const html = `<div class="cs-cards ${cls}">${cards.map((c, i) => cardHtml(c, i >= was.length ? 'deal' : was[i] !== c ? 'flip' : '')).join('')}</div>`;
+      let k = 0;
+      const html = `<div class="cs-cards ${cls}${this.best.length ? ' show' : ''}">${cards.map((c, i) => cardHtml(c, `${i >= was.length ? 'deal' : was[i] !== c ? 'flip' : ''}${c !== null && this.best.includes(c) ? ' best' : ''}`, i >= was.length ? k++ : 0)).join('')}</div>`;
       this.seen[cls] = [...cards];
       return html;
     };
     let center = '';
-    if (this.game === 'roulette') center = `<div class="cs-wheel-box">${wheelSvg()}<div class="cs-ball"></div><div class="cs-wheel-num"></div></div>`;
-    else if (this.game === 'sicbo') center = `<div class="cs-dice-box"><div class="cs-cup${this.dice.length ? ' up' : ''}"></div><div class="cs-dice">${this.dice.map(n => diceHtml(n)).join('')}</div></div>`;
-    else if (this.game === 'holdem') center = row(t.board, 'board');
+    // 輪盤: the wheel beside (portrait: above) the betting layout with the stake on its zone, the winners lit.
+    if (this.game === 'roulette') center = `<div class="cs-wheel-box">${wheelHtml()}<div class="cs-orbit${this.settled ? ' settle' : ''}"><div class="cs-ball"></div></div><div class="cs-pointer">▼</div><div class="cs-wheel-num"></div></div><div class="cs-mini">${this.rouletteLayout(false, true)}</div>`;
+    else if (this.game === 'sicbo') {
+      center = `<div class="cs-dice-box"><div class="cs-cup${this.dice.length ? ' up' : ''}"></div><div class="cs-dice${this.diceShown ? ' still' : ''}">${this.dice.map((n, i) => diceHtml(n, i)).join('')}</div></div>`;
+      if (this.dice.length) this.diceShown = true;
+    } else if (this.game === 'holdem') center = row(t.board, 'board');
     const bk = this.choose.banker, p = this.choose.p;
     const dealerLabel = this.game === 'baccarat' ? '莊' : `莊家 ${esc(name(this.ctx, bk))}`;
     const playerLabel = this.game === 'baccarat' ? '閒' : esc(name(this.ctx, p));
-    main.innerHTML = `<div class="cs-felt">
-        ${this.game === 'roulette' || this.game === 'sicbo' ? '' : `<div class="cs-side dealer"><span class="cs-who">${dealerLabel}</span>${row(t.dealer, 'dealer')}<span class="cs-total">${esc(t.dealerNote)}</span></div>`}
-        <div class="cs-center">${center}<div class="cs-note">${esc(t.note)}</div></div>
-        ${this.game === 'roulette' || this.game === 'sicbo' ? '' : `<div class="cs-side player"><span class="cs-who">${playerLabel}</span>${row(t.player, 'player')}<span class="cs-total">${esc(t.playerNote)}</span></div>`}
+    const cards = this.game !== 'roulette' && this.game !== 'sicbo';
+    // 21點 / 德州: the stake in the betting circle; the other halls have it on their zone (it slides to the winner).
+    const zoned = this.game === 'roulette' || this.game === 'baccarat' || this.game === 'sicbo';
+    const pot = this.pot && !zoned ? `<div class="cs-pot ${this.pot}"><i></i><i></i><i></i><span>${money(this.stake)}</span></div>` : '';
+    if (this.pot === 'in') this.pot = 'on';
+    main.innerHTML = `<div class="cs-felt t-${this.game}${this.pot === 'guest' || this.pot === 'banker' ? ` pay-${this.pot}` : ''}">
+        ${cards ? '<div class="cs-shoe"></div>' : ''}
+        ${cards ? `<div class="cs-side dealer${this.natural.dealer ? ' natural' : ''}"><span class="cs-who">${dealerLabel}</span>${row(t.dealer, 'dealer')}<span class="cs-total">${esc(t.dealerNote)}</span></div>` : ''}
+        <div class="cs-center">${center}<div class="cs-note">${esc(t.note)}</div>${this.playZones()}</div>
+        ${cards ? `<div class="cs-side player${this.natural.player ? ' natural' : ''}"><span class="cs-who">${playerLabel}</span>${row(t.player, 'player')}<span class="cs-total">${esc(t.playerNote)}</span></div>` : ''}
+        ${pot}
       </div>
-      ${this.caption ? `<div class="cs-caption">${esc(this.caption)}</div>` : ''}
-      <div class="cs-bar"><span class="cs-on">${esc(this.betText())}</span><div class="cs-moves"></div></div>
-      ${this.banner ? `<div class="cs-banner ${this.banner.cls}"><b>${esc(this.banner.text)}</b>${this.banner.math ? `<i class="cs-math">${esc(this.banner.math)}</i>` : ''}<span>${esc(this.banner.sub)}</span></div>` : ''}`;
+      <div class="cs-bar">${this.caption ? `<span class="cs-on cs-cap2">${pieces(this.caption)}</span>` : `<span class="cs-on">${esc(this.betText())}</span>`}<div class="cs-moves"></div></div>
+      ${this.banner ? `<div class="cs-bwrap"><div class="cs-banner ${this.banner.cls}">${this.banner.cls === 'win' ? `<div class="cs-burst">${Array.from({ length: 18 }, (_, i) => `<i style="--a:${i * (360 / 18)}deg;--d:${(i % 3) * 60}ms"></i>`).join('')}</div>` : ''}<b class="fit">${esc(this.banner.text)}</b>${this.banner.math ? `<div class="cs-math">${pieces(this.banner.math)}</div>` : ''}<span>${esc(this.banner.sub)}</span></div></div>` : ''}`;
     const moves = main.querySelector<HTMLElement>('.cs-moves')!;
     if (this.phase === 'blackjack' && this.ask?.phase === 'blackjack' && !this.watch) {
       const a = this.ask;
+      main.querySelector('.cs-bar')!.classList.add('asking');
       moves.innerHTML = `<button class="candy yes" data-m="hit">要牌</button><button class="candy no" data-m="stand">停牌</button>${a.canDouble ? `<button class="candy" data-m="double">加倍 +${money(a.double ?? this.stake)}</button>` : ''}`;
     } else if (this.phase === 'holdem' && this.ask?.phase === 'holdem' && !this.watch) {
       const call = this.ask.call ?? this.stake;
+      main.querySelector('.cs-bar')!.classList.add('asking');
       moves.innerHTML = `<button class="candy yes" data-m="call">${call < this.stake ? '全押' : '跟注'} +${money(call)}</button><button class="candy no" data-m="fold">棄牌</button>`;
     }
     moves.querySelectorAll<HTMLButtonElement>('[data-m]').forEach(b => b.onclick = () => { audio.ui(b.dataset.m === 'stand' || b.dataset.m === 'fold' ? 'no' : 'yes'); moves.innerHTML = ''; this.answer(b.dataset.m); });
@@ -238,10 +354,10 @@ class CasinoPage {
     this.ask = a;
     if (a.phase === 'blackjack') {
       this.phase = 'blackjack'; this.game = 'blackjack';
-      this.table = { ...this.table, dealer: [a.up, null], player: [...a.player], note: '', playerNote: `${C.bjValue(a.player).total} 點`, dealerNote: '' };
+      this.table = { ...this.table, dealer: [a.up, null], player: [...a.player], note: a.canDouble ? '要牌・停牌・還是加倍？' : '再要一張，還是停牌？', playerNote: `${C.bjValue(a.player).total} 點`, dealerNote: '' };
     } else if (a.phase === 'holdem') {
       this.phase = 'holdem'; this.game = 'holdem';
-      this.table = { ...this.table, dealer: [null, null], player: [...a.hole], board: [...a.board, null, null], note: '翻牌', playerNote: C.bestHand([...a.hole, ...a.board]).name, dealerNote: '' };
+      this.table = { ...this.table, dealer: [null, null], player: [...a.hole], board: [...a.board, null, null], note: '牌不錯就跟注，不好就棄牌', playerNote: C.bestHand([...a.hole, ...a.board]).name, dealerNote: '' };
     }
     this.render();
     return new Promise(resolve => { this.resolve = resolve; });
@@ -260,6 +376,9 @@ class CasinoPage {
     if (r.game === 'roulette') { this.bet = r.bet.kind === 'number' ? 'num' : r.bet.kind === 'dozen' ? `d${r.bet.n}` : r.bet.kind; if (r.bet.kind === 'number') this.number = r.bet.n; }
     if (r.game === 'baccarat') this.bacBet = r.bet;
     if (r.game === 'sicbo') this.sicBet = r.bet;
+    this.best = []; this.natural = { player: false, dealer: false }; this.mood = ''; this.settled = false;
+    this.hitNum = -1; this.won = ''; this.diceShown = false;
+    this.pot = 'in';
     // A computer's visit is played at a readable pace (19 §7): its bet first, its moves one by one; a tap skips ahead.
     const step = (ms: number) => (this.skip ? Promise.resolve() : sleep(ms * this.ctx.scale()));
     const show = () => this.render();
@@ -277,6 +396,7 @@ class CasinoPage {
       await this.spinWheel(r.number, this.skip ? 300 : (this.watch ? 2200 : 2600) * this.ctx.scale());
       audio.stop(Sfx.wheel);
       this.table.note = `${r.number} 號${r.number === 0 ? '' : C.RED.has(r.number) ? '・紅' : '・黑'}`;
+      this.hitNum = r.number;
       show();
       this.placeWheel(true, r.number);
     } else if (r.game === 'blackjack') {
@@ -313,13 +433,23 @@ class CasinoPage {
       const order: ['player' | 'dealer', number][] = [['player', r.player[0]], ['dealer', r.banker[0]], ['player', r.player[1]], ['dealer', r.banker[1]]];
       if (r.player[2] !== undefined) order.push(['player', r.player[2]]);
       if (r.banker[2] !== undefined) order.push(['dealer', r.banker[2]]);
-      for (const [side, c] of order) {
-        (side === 'player' ? this.table.player : this.table.dealer).push(c);
-        this.table.playerNote = `${C.bacTotal(this.table.player as number[])} 點`;
-        this.table.dealerNote = `${C.bacTotal(this.table.dealer as number[])} 點`;
-        audio.sfx(Sfx.cardFlip); show(); await step(420);
+      // Each card is dealt face down, then squeezed open (a slow peel).
+      for (const [k, [side, c]] of order.entries()) {
+        const hand = side === 'player' ? this.table.player : this.table.dealer;
+        hand.push(null); show(); await step(260);
+        hand[hand.length - 1] = c;
+        this.table.playerNote = `${C.bacTotal(this.table.player.filter((x): x is number => x !== null))} 點`;
+        this.table.dealerNote = `${C.bacTotal(this.table.dealer.filter((x): x is number => x !== null))} 點`;
+        audio.sfx(Sfx.cardFlip); show(); await step(560);
+        if (k === 3) {
+          // 天生 8 / 9 on the first two cards glow.
+          const nat = (h: (number | null)[]) => C.bacTotal(h.slice(0, 2) as number[]) >= 8;
+          this.natural = { player: nat(this.table.player), dealer: nat(this.table.dealer) };
+          if (this.natural.player || this.natural.dealer) { this.table.note = '天生贏家！'; show(); await step(500); }
+        }
       }
       this.table.note = r.winner === 'tie' ? '和局' : `${C.BACCARAT_NAMES[r.winner]}贏`;
+      this.won = r.winner;
       show();
     } else if (r.game === 'sicbo') {
       this.table = { dealer: [], player: [], board: [], note: '搖骰中…', dealerNote: '', playerNote: '' };
@@ -331,6 +461,7 @@ class CasinoPage {
       await step(1400);
       this.dice = [...r.dice];
       this.table.note = r.triple ? `豹子 ${r.dice[0]}${r.dice[0]}${r.dice[0]}！` : `${r.total} 點・${r.total >= 11 ? '大' : '小'}`;
+      this.won = r.triple ? 'triple' : r.total >= 11 ? 'big' : 'small';
       show();
     } else {
       this.table = { dealer: [null, null], player: [...r.hole], board: [...r.board.slice(0, 3), null, null], note: this.watch ? '翻牌' : r.called ? '跟注' : '棄牌', dealerNote: '', playerNote: C.bestHand([...r.hole, ...r.board.slice(0, 3)]).name };
@@ -348,6 +479,8 @@ class CasinoPage {
         this.table.dealer = [...r.dealer];
         this.table.playerNote = r.playerHand; this.table.dealerNote = r.dealerHand;
         this.table.note = r.outcome === 'win' ? '贏了' : r.outcome === 'lose' ? '輸了' : '平手';
+        // The winning five light up (the others dim).
+        this.best = C.bestHand(r.outcome === 'lose' ? [...r.dealer, ...r.board] : [...r.hole, ...r.board]).five;
         audio.sfx(Sfx.cardFlip); show();
       } else { this.table.note = '棄牌，輸掉底注'; show(); }
     }
@@ -357,13 +490,30 @@ class CasinoPage {
     const bk = this.youBank ? '你（莊家）' : `莊家${name(this.ctx, this.choose.banker)}`;
     const math = typeof d.line === 'string' ? d.line : '';
     this.caption = '';
+    this.pot = net > 0 || net === 0 ? 'guest' : 'banker';
+    this.mood = net < 0 ? 'happy' : net > 0 ? 'sad' : '';
     this.banner = net > 0 ? { text: `${this.watch ? `${who} ` : ''}贏 +${money(net)}`, cls: 'win', math, sub: clipped && !math ? `超過上限，以 ${money(cap)} 計` : `${bk}付出` }
       : net < 0 ? { text: `${this.watch ? `${who} ` : ''}輸 −${money(-net)}`, cls: `lose${why ? ' big' : ''}`, math, sub: `${math ? '' : big}付給${bk}` }
         : { text: '平手', cls: 'push', math, sub: '退回賭注' };
     audio.sfx(net > 0 ? (net >= cap / 2 ? Sfx.fireworks : Sfx.points) : net < 0 ? Sfx.monthlyLow : Sfx.couponFlip);
     show();
-    await this.scene.wait(this.watch ? 2000 : 2600);
+    // The banner pops in the middle, then slides down to the bottom so the table's result stays in view.
+    void this.scene.sleep(this.watch ? 700 : 1000).then(() => this.dockBanner());
+    await this.scene.wait(this.watch ? 2400 : 3000);
     this.close();
+  }
+
+  /** Slides the result banner from the middle down onto the bar (no redraw: the table keeps its state). */
+  private dockBanner() {
+    if (this.closed) return;
+    const wrap = this.scene.stage.querySelector<HTMLElement>('.cs-bwrap'), ban = wrap?.querySelector<HTMLElement>('.cs-banner');
+    if (!wrap || !ban) return;
+    // Scaled about the middle, then moved so its bottom sits just above the page's bottom edge (scene units).
+    // Landscape: to the bottom right, beside the bet line (the felt's zones stay in view).
+    const por = this.scene.portrait, s = por ? 0.86 : 0.68, rh = wrap.offsetHeight, rw = wrap.offsetWidth, bh = ban.offsetHeight, bw = ban.offsetWidth;
+    const dx = por ? 0 : Math.max(0, rw / 2 - 14 - (bw * s) / 2);
+    wrap.style.transform = `translate(${dx}px, ${Math.max(0, rh / 2 - (por ? 10 : 6) - (bh * s) / 2)}px) scale(${s})`;
+    wrap.classList.add('docked');
   }
 
   // ---------------------------------------------------------------- the wheel
@@ -371,7 +521,7 @@ class CasinoPage {
   private placeWheel(done: boolean, n?: number) {
     const box = this.scene.stage.querySelector<HTMLElement>('.cs-wheel-box');
     if (!box) return;
-    const wheel = box.querySelector<SVGElement>('svg')!;
+    const wheel = box.querySelector<HTMLElement>('.w-rotor')!;
     wheel.style.transform = `rotate(${this.wheelAt}deg)`;
     if (done && n !== undefined) {
       const num = box.querySelector<HTMLElement>('.cs-wheel-num')!;
@@ -386,7 +536,7 @@ class CasinoPage {
     const target = -(i * per) - 360 * 5;
     this.wheelAt = 0;
     this.placeWheel(false);
-    const wheel = this.scene.stage.querySelector<SVGElement>('.cs-wheel-box svg');
+    const wheel = this.scene.stage.querySelector<HTMLElement>('.cs-wheel-box .w-rotor');
     if (wheel) {
       wheel.style.transition = 'none';
       wheel.style.transform = 'rotate(0deg)';
@@ -394,23 +544,39 @@ class CasinoPage {
       wheel.style.transition = `transform ${Math.max(300, ms)}ms cubic-bezier(.12,.6,.18,1)`;
       wheel.style.transform = `rotate(${target}deg)`;
     }
+    // The ball runs the other way round the rim, slows down later than the wheel, then drops in at the top.
+    const orbit = this.scene.stage.querySelector<HTMLElement>('.cs-orbit');
+    if (orbit) {
+      orbit.classList.remove('settle');
+      orbit.style.transition = 'none';
+      orbit.style.transform = 'rotate(0deg)';
+      void orbit.getBoundingClientRect();
+      orbit.style.transition = `transform ${Math.max(300, ms)}ms cubic-bezier(.2,.7,.25,1)`;
+      orbit.style.transform = `rotate(${360 * 7}deg)`;
+    }
     this.wheelAt = target;
     await sleep(Math.max(300, ms));
+    this.settled = true;
+    orbit?.classList.add('settle');
   }
 }
 
-/** The stake chips: ±1,000 / ±5,000 元, shown as ±10 / ±50 in the finale's chips; × the finale's blinds (19 §5.5). */
-function chipButtons(mult = 1): string {
-  const t = (n: number) => (chipMode() ? (n / 100).toLocaleString('en-US') : `${n / 1000}千`);
-  const a = 1000 * mult, b = 5000 * mult;
-  return `<button class="cs-chip c5" data-d="${-b}">−${t(b)}</button><button class="cs-chip c1" data-d="${-a}">−${t(a)}</button>
-    <button class="cs-chip c50" data-d="${a}">+${t(a)}</button><button class="cs-chip c10" data-d="${b}">+${t(b)}</button>`;
+/** A chip's face value as printed: chips in the finale, 千 / 萬 elsewhere. */
+const chipLabel = (v: number) => (chipMode() ? (v / 100).toLocaleString('en-US') : v >= 10000 ? `${v / 10000}萬` : `${v / 1000}千`);
+/** The chip tray (19 §5.1): four denominations, × the finale's blinds (19 §5.5); a tap adds one to the bet. */
+function trayChips(mult = 1): string {
+  return [1000, 5000, 10000, 50000].map((v, k) => `<button class="cs-chip v${k}" data-d="${v * mult}"><span>${chipLabel(v * mult)}</span></button>`).join('');
+}
+/** The bet as a little stack of chips with its amount, set on the chosen zone. */
+function chipStack(amount: number, drop = true): string {
+  const n = Math.min(4, 1 + Math.floor(Math.log10(Math.max(1, amount / 1000)) * 1.5));
+  return `<span class="cs-stack${drop ? '' : ' still'}">${Array.from({ length: n }, (_, i) => `<i style="--k:${i}"></i>`).join('')}<b>${esc(money(amount))}</b></span>`;
 }
 
 /** A die face (CSS pips). */
-function diceHtml(n: number): string {
+function diceHtml(n: number, i = 0): string {
   const pips: Record<number, number[]> = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
-  return `<div class="cs-die${n === 1 || n === 4 ? ' red' : ''}">${Array.from({ length: 9 }, (_, i) => `<i${pips[n]?.includes(i) ? ' class="on"' : ''}></i>`).join('')}</div>`;
+  return `<div class="cs-die${n === 1 || n === 4 ? ' red' : ''}" style="--i:${i}">${Array.from({ length: 9 }, (_, i) => `<i${pips[n]?.includes(i) ? ' class="on"' : ''}></i>`).join('')}</div>`;
 }
 
 /** A hall's plate (the picker's art), or its emoji on a coloured tile while the art is missing. */
@@ -418,22 +584,26 @@ export function hallPlate(type: number, game: C.CasinoGame): string {
   return `<span class="cs-hplate t${type}"><img src="${PLATE(type)}" alt="" onerror="this.remove()"><em>${GAME_ICON[game]}</em></span>`;
 }
 
-/** The roulette wheel as SVG: 37 pockets in the European order, 0 at the top. */
-function wheelSvg(): string {
-  const R = 100, r2 = 64, per = (2 * Math.PI) / 37;
+/**
+ * The roulette wheel in layers: the rotor (SVG: the 37 pockets in the exact European order, crisp numbers, under the
+ * art turret) turns inside the static bowl art (its middle cut out), the ball (art) runs on the bowl's track.
+ */
+function wheelHtml(): string {
+  const R = 108, r2 = 70, per = (2 * Math.PI) / 37;
   const parts: string[] = [];
   C.WHEEL.forEach((n, i) => {
     const a0 = i * per - per / 2 - Math.PI / 2, a1 = a0 + per;
     const p = (a: number, rr: number) => `${(110 + rr * Math.cos(a)).toFixed(2)},${(110 + rr * Math.sin(a)).toFixed(2)}`;
-    const col = n === 0 ? '#1c9a4a' : C.RED.has(n) ? '#d8242f' : '#1d1d26';
-    parts.push(`<path d="M${p(a0, r2)} L${p(a0, R)} A${R},${R} 0 0 1 ${p(a1, R)} L${p(a1, r2)} A${r2},${r2} 0 0 0 ${p(a0, r2)}Z" fill="${col}" stroke="#f4d27a" stroke-width="0.8"/>`);
-    const am = a0 + per / 2, tx = 110 + 88 * Math.cos(am), ty = 110 + 88 * Math.sin(am);
+    const col = n === 0 ? 'url(#cs-pz)' : C.RED.has(n) ? 'url(#cs-pr)' : 'url(#cs-pb)';
+    parts.push(`<path d="M${p(a0, r2)} L${p(a0, R)} A${R},${R} 0 0 1 ${p(a1, R)} L${p(a1, r2)} A${r2},${r2} 0 0 0 ${p(a0, r2)}Z" fill="${col}" stroke="#ffd23f" stroke-width="1.6"/>`);
+    const am = a0 + per / 2, tx = 110 + 92 * Math.cos(am), ty = 110 + 92 * Math.sin(am);
     parts.push(`<text x="${tx.toFixed(1)}" y="${ty.toFixed(1)}" transform="rotate(${(am * 180) / Math.PI + 90} ${tx.toFixed(1)} ${ty.toFixed(1)})" text-anchor="middle" dominant-baseline="central">${n}</text>`);
   });
-  return `<svg viewBox="0 0 220 220" class="cs-wheel"><circle cx="110" cy="110" r="108" fill="#7a4a12" stroke="#ffd860" stroke-width="4"/>${parts.join('')}
-    <circle cx="110" cy="110" r="62" fill="url(#csg)"/><defs><radialGradient id="csg"><stop offset="0" stop-color="#fff2b0"/><stop offset=".6" stop-color="#e2a92a"/><stop offset="1" stop-color="#8a5a10"/></radialGradient></defs>
-    ${[0, 1, 2, 3].map(k => `<rect x="106" y="58" width="8" height="104" rx="4" fill="#ffe9a0" transform="rotate(${k * 45} 110 110)"/>`).join('')}
-    <circle cx="110" cy="110" r="14" fill="#ffd860" stroke="#8a5a10" stroke-width="3"/></svg>`;
+  const grad = (id: string, a: string, b: string) => `<radialGradient id="${id}" cx="110" cy="110" r="108" gradientUnits="userSpaceOnUse"><stop offset=".62" stop-color="${b}"/><stop offset=".86" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></radialGradient>`;
+  return `<div class="cs-wheel3"><div class="w-rotor"><svg viewBox="0 0 220 220" class="cs-wheel"><defs>${grad('cs-pr', '#ff6b7a', '#d0102f')}${grad('cs-pb', '#5a5a80', '#22223a')}${grad('cs-pz', '#5cf08a', '#139a40')}
+    <radialGradient id="cs-cone"><stop offset="0" stop-color="#fff2b0"/><stop offset=".7" stop-color="#e2a92a"/><stop offset="1" stop-color="#9a5a10"/></radialGradient></defs>
+    <circle cx="110" cy="110" r="109" fill="#2a1250"/>${parts.join('')}<circle cx="110" cy="110" r="${r2}" fill="url(#cs-cone)" stroke="#2a1250" stroke-width="3"/></svg>
+    <span class="w-turret"></span></div><span class="w-bowl"></span></div>`;
 }
 
 /** The page of the human's visit, from the first question to the result fx. */
@@ -485,20 +655,24 @@ fxScreens['casino-auto'] = async (ctx, fx) => {
         r.classList.toggle('fast', !stopped[i]);
       });
       if (text) text.innerHTML = stopped[3]
-        ? `<span class="cs-auto-h">莊家不在！</span><span class="sm-amount">自動獲勝 ${fmtMoney(amount)}</span>`
-        : `<span class="cs-auto-h">莊家不在！</span><span>莊家${esc(String(d.away ?? ''))}<br>拉霸決定彩金（最高 ${money(Number(d.cap))}）</span>`;
+        ? `<span>自動獲勝</span><b class="cs-auto-win">${esc(fmtMoney(amount))}</b>`
+        : `<span>莊家${esc(String(d.away ?? ''))}</span><span>拉霸決定彩金</span><small>最高 ${esc(fmtMoney(Number(d.cap)))}</small>`;
     };
     const s = openScene(ctx, 'cs-auto sm-scene', portrait => (portrait ? [272, 384] : [505, 199]), sc => {
       const side = !sc.portrait;
       const g1 = sc.box('sm-group', side ? 8 - 97 : -88, side ? 14 - 39 : -30, 0, 0);
       const g2 = sc.box('sm-group', side ? 8 + 249 + 16 - 124 : -88, side ? 8 - 222 : -30, 0, 0);
-      sc.art('Data', 517, 5, 220, 140, 'sm-box', g1);
-      text = sc.box('sm-text cs-auto-text', 109, 66, 224, 136, '', g1);
+      // The remake's message box (style.css .msg: blue, orange border, dashed frame, ribbon title), not the original's board.
+      void g1;
+      const box = sc.box('msg cs-auto-msg', side ? 20 : 26, side ? 52 : 34, side ? 222 : 220, side ? 128 : 128, '<div class="ribbon">莊家不在！</div><div class="msg-text cs-auto-text"></div>');
+      text = box.querySelector<HTMLElement>('.cs-auto-text');
       sc.art('Panel', 67, 0, 220, 320, 'sm-body spin', g2);
       const strip = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 0].map(x => `<b>${x}</b>`).join('');
-      reels = [145, 182, 219, 256].map(x => sc.box('sm-reel fast', x, 320, 36, 36, `<div class="sm-strip">${strip}</div>`, g2));
+      // Four reels and the fixed last 0 as a fifth, static reel of the same look (amount = the four digits × 10).
+      // The original's four reel windows (145…292) hold five narrower reels.
+      reels = [146, 175.5, 205, 234.5].map(x => sc.box('sm-reel fast cs-auto-reel', x, 320, 27, 36, `<div class="sm-strip">${strip}</div>`, g2));
+      sc.box('sm-reel cs-auto-reel cs-auto-zero', 264, 320, 27, 36, '<div class="sm-strip"><b>0</b></div>', g2);
       sc.art('Panel', 67, 3, 317, 240, 'sm-lever', g2);
-      sc.box('cs-auto-zero', 296, 320, 30, 36, '0', g2);
       paint();
     });
     audio.sfx(Sfx.slot, true);
@@ -548,6 +722,7 @@ fxScreens['finale-blinds'] = async (ctx, fx) => {
 
 fxScreens['casino-fee'] = async (ctx, fx) => {
   const d = fx.data ?? {};
+  preload();
   audio.sfx(Sfx.rent);
   await ctx.flash(`${name(ctx, fx.p ?? 0)}進入${String(d.name ?? '')}${String(d.hall ?? '賭場')}\n\n門票 ${fmtMoney(Number(d.fee))}\n（付給莊家${name(ctx, fx.target ?? 0)}）`, (ctx.game.players[fx.p ?? 0]?.human ? 1100 : 750) * Math.max(0.5, ctx.scale()));
 };

@@ -9,7 +9,7 @@
   box-shadow: 0 4px 0 #c97a00, 0 8px 14px rgba(0,0,0,.35); }
 .au-lot { z-index: 1; filter: drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
 .au-lot-name { position: absolute; z-index: 1; display: grid; place-items: center; font-size: 15px; color: #5a2d00; white-space: nowrap; overflow: hidden; }
-.au-tag { position: absolute; z-index: 1; display: flex; align-items: center; font-size: 12px; color: #8a5a20; }
+.au-tag { position: absolute; z-index: 1; display: flex; align-items: center; font-size: 14px; color: #8a5a20; }
 .au-price { position: absolute; z-index: 1; display: flex; justify-content: flex-end; align-items: center; font-size: 16px; color: #d8202a; font-weight: 700; white-space: nowrap; }
 .au-mark { opacity: 0; transition: opacity .2s; filter: drop-shadow(0 0 4px #fff27a); }
 .au-mark.on { opacity: 1; animation: au-blink .8s ease-in-out infinite; }

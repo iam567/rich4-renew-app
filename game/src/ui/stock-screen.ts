@@ -35,6 +35,19 @@ export class StockScreen {
     if (world) { this.city = Math.max(0, world.cities.indexOf(game)); this.el.classList.add('world'); }
     this.el.addEventListener('click', e => this.click(e));
     this.render();
+    new ResizeObserver(() => this.fit()).observe(this.el);
+  }
+
+  /** One page, no scrolling: the table's sizes step down (--k) until it fits; a tiny screen shrinks it as a whole. */
+  private fit() {
+    const el = this.el;
+    if (!el.isConnected || !el.clientHeight) return;
+    el.style.zoom = '';
+    for (const k of [1, 0.92, 0.85, 0.78, 0.72]) {
+      el.style.setProperty('--k', String(k));
+      if (el.scrollHeight <= el.clientHeight + 0.5) return;
+    }
+    el.style.zoom = String(Math.max(0.6, el.clientHeight / el.scrollHeight));
   }
 
   /** The market shown: the game's, or the chosen city's in 大富豪模式. */
@@ -95,6 +108,7 @@ export class StockScreen {
         `<button class="chip${i === this.city ? ' on' : ''}" data-a="city" data-v="${i}">${this.world!.cityName(i)}${this.market.stocks.open() || i !== this.city ? '' : '（休市）'}</button>`).join('')}</div>` : ''}`;
     const body = this.detail >= 0 ? this.company_page(this.detail) : this.view === 'prices' ? this.prices() : this.holders();
     this.el.innerHTML = `${head}${body}${this.trade ? this.tradeBox() : ''}`;
+    this.fit();
   }
 
   private prices(): string {

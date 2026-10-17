@@ -10,6 +10,8 @@
  * draws the strips it uncovers.
  */
 
+import { memTier } from './mem-tier';
+
 export interface Pt { x: number; y: number }
 /** World → device pixels: x' = a x + c y + e, y' = b x + d y + f. */
 export interface Affine { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -85,8 +87,9 @@ export class GroundCache {
         if (c) this.paintChunk(c, i, j, paint); else this.render(i, j, paint).used = this.frame;
       }
     }
-    // Keep about two views' worth: the visible chunks and the ring, the oldest go first.
-    const limit = 2 * (i1 - i0 + 3) * (j1 - j0 + 3);
+    // Keep about two views' worth (one on a low-memory device, ui/mem-tier.ts): the visible chunks and the ring,
+    // the oldest go first.
+    const limit = memTier().chunkViews * (i1 - i0 + 3) * (j1 - j0 + 3);
     if (this.chunks.size > limit) {
       const old = [...this.chunks].filter(([, c]) => c.used < this.frame).sort((p, q) => p[1].used - q[1].used);
       for (const [k, c] of old) {

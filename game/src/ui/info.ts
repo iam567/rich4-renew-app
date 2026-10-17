@@ -9,6 +9,7 @@ import { TOOLS, TYCOON_TOOLS, toolIcon } from '../core/modules/tools';
 import { cardName } from '../core/modules/cards';
 import type { SpriteBank } from './sprites';
 import { tycoon } from './tycoon';
+import { shrinkText } from './text';
 
 const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
@@ -28,14 +29,71 @@ export class InfoScreen {
     this.el = document.createElement('div');
     this.el.className = 'info';
     this.el.addEventListener('click', e => {
-      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-who],[data-page],[data-filter]');
+      const t = (e.target as HTMLElement).closest<HTMLElement>('[data-who],[data-page],[data-filter],[data-sheet]');
       if (!t) return;
       if (t.dataset.who) this.who = Number(t.dataset.who);
       if (t.dataset.page) this.page = Number(t.dataset.page);
       if (t.dataset.filter) this.filter = Number(t.dataset.filter);
+      if (t.dataset.who || t.dataset.page || t.dataset.filter) this.sheet = 0;
+      if (t.dataset.sheet) this.sheet = Math.max(0, this.sheet + Number(t.dataset.sheet));
       this.render();
     });
     this.render();
+    new ResizeObserver(() => this.fit()).observe(this.el);
+  }
+
+  /** Which page of a long list (地產 / 股票) is shown: everything is on one page, a long list in pages (‹ 1/3 ›). */
+  private sheet = 0;
+
+  /**
+   * One page, no scrolling: a list longer than the room is split into pages of the rows that fit; the 資產 page
+   * steps its sizes down (--k) and, only on a tiny screen, shrinks as a whole.
+   */
+  private fit() {
+    const body = this.el.querySelector<HTMLElement>('.info-body');
+    if (!body || !body.clientHeight) return;
+    shrinkText(this.el, '.info-face-tab span, .info-tab, .info-page, .info-filter', 9);
+    const inner = body.firstElementChild as HTMLElement | null;
+    if (!inner) return;
+    inner.style.zoom = '';
+    const rows = [...body.querySelectorAll<HTMLElement>('tbody tr')];
+    const pager = body.querySelector<HTMLElement>('.info-pager');
+    if (rows.length && pager) {
+      for (const r of rows) r.hidden = false;
+      pager.hidden = true;
+      const room = body.clientHeight - parseFloat(getComputedStyle(body).paddingTop) - parseFloat(getComputedStyle(body).paddingBottom);
+      if (inner.offsetHeight <= room) { this.sheet = 0; return; }
+      pager.hidden = false;
+      const rowH = Math.max(...rows.map(r => r.offsetHeight)) || 24;
+      const fixed = inner.offsetHeight - rows.reduce((h, r) => h + r.offsetHeight, 0);
+      const per = Math.max(1, Math.floor((room - fixed) / rowH));
+      const pages = Math.ceil(rows.length / per);
+      this.sheet = Math.min(this.sheet, pages - 1);
+      rows.forEach((r, i) => { r.hidden = Math.floor(i / per) !== this.sheet; });
+      pager.innerHTML = `<button class="chip" data-sheet="-1"${this.sheet ? '' : ' disabled'}>‹</button><span>${this.sheet + 1} / ${pages}</span><button class="chip" data-sheet="1"${this.sheet < pages - 1 ? '' : ' disabled'}>›</button>`;
+      if (inner.offsetHeight > room) inner.style.zoom = String(Math.max(0.6, room / inner.offsetHeight));
+      return;
+    }
+    // 資產: both blocks at a step-down size, else one block at a time (‹ 1/2 ›), each stepped down again.
+    const room = body.clientHeight - parseFloat(getComputedStyle(body).paddingTop) - parseFloat(getComputedStyle(body).paddingBottom);
+    const tryK = (ks: number[]) => {
+      // fits the height, and no figure runs into its neighbour (a narrow phone)
+      const wide = () => [...inner.querySelectorAll<HTMLElement>('.info-cell')].every(c => c.offsetParent === null || c.scrollWidth <= c.clientWidth + 0.5);
+      for (const k of ks) { inner.style.setProperty('--k', String(k)); if (inner.offsetHeight <= room + 0.5 && wide()) return true; }
+      return false;
+    };
+    const blks = [...inner.querySelectorAll<HTMLElement>(':scope > .info-blk')];
+    if (pager) pager.hidden = true;
+    for (const b of blks) b.hidden = false;
+    if (tryK([1, 0.92, 0.85])) { this.sheet = 0; return; }
+    if (blks.length > 1 && pager) {
+      this.sheet = Math.min(this.sheet, blks.length - 1);
+      blks.forEach((b, i) => { b.hidden = i !== this.sheet; });
+      pager.hidden = false;
+      pager.innerHTML = `<button class="chip" data-sheet="-1"${this.sheet ? '' : ' disabled'}>‹</button><span>${this.sheet + 1} / ${blks.length}</span><button class="chip" data-sheet="1"${this.sheet < blks.length - 1 ? '' : ' disabled'}>›</button>`;
+    }
+    if (tryK([1, 0.92, 0.85, 0.78])) return;
+    inner.style.zoom = String(Math.max(0.6, room / inner.offsetHeight));
   }
 
   private render() {
@@ -60,7 +118,10 @@ export class InfoScreen {
       ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small>${godSlot && g.rules?.godNote ? `<small class="info-god-note">${g.rules.godNote(godSlot.type).replace(/^：/, '賭場')}</small>` : ''}</div>` : ''}
       ${PAGES.map((t, i) => `<button class="info-page${i === this.page ? ' on' : ''}" data-page="${i}">${t}</button>`).join('')}</div>`;
     const body = this.page === 0 ? this.assets() : this.page === 1 ? this.property() : this.stocks();
-    this.el.innerHTML = `<div class="info-tabs">${tabs}</div><div class="info-main">${side}<div class="info-body">${body}</div></div>`;
+    this.el.innerHTML = `<div class="info-tabs">${tabs}</div><div class="info-main">${side}<div class="info-body"><div class="info-inner">${body}</div></div></div>`;
+    this.fit();
+    // again once 简体 (lang.ts) has rewritten the new text, which can change its widths
+    requestAnimationFrame(() => this.fit());
   }
 
   /** 資產: cash, deposit, loan, total; stock value, points, insurance, companies; property counts; tools; cards. */
@@ -77,7 +138,8 @@ export class InfoScreen {
       return `<span class="info-tool" title="${t.name}">${a ? `<img src="${a.src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
     }).join('') || '<span class="info-none">沒有道具</span>';
     const cards = p.cards.map(id => `<span class="info-card">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
-    return `<div class="info-grid">
+    // Two blocks (the figures; 道具 and 卡片): on a small screen that cannot hold both, one at a time (fit()).
+    return `<div class="info-blk"><div class="info-grid">
         ${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}
         ${cell('存款', money(p.bank))}${cell('點券', String(p.points))}
         ${cell('貸款', money(p.loan))}${cell('保險', `${p.insurance & 0x7f}天`)}
@@ -86,9 +148,9 @@ export class InfoScreen {
       <div class="info-grid four">
         ${cell('土地', `×${lands.length + facs.length}`)}${cell('連鎖店', `×${lands.filter(l => l.chain).length}`)}
         ${cell('房屋', `×${lands.filter(l => l.level && !l.chain).length}`)}${cell('設施', `×${facs.filter(f => f.level).length}`)}
-      </div>
-      <h4>道具</h4><div class="info-tools">${tools}</div>
-      <h4>卡片</h4><div class="info-cards">${cards}</div>`;
+      </div></div>
+      <div class="info-blk"><h4>道具</h4><div class="info-tools">${tools}</div>
+      <h4>卡片</h4><div class="info-cards">${cards}</div></div><div class="info-pager" hidden></div>`;
   }
 
   /** 地產: the owned lots and plots, filtered as in the original. */
@@ -127,7 +189,7 @@ export class InfoScreen {
     const list = rows.length ? rows.map(r => r.price < 0 ? `<tr class="city"><td colspan="5">${r.name}</td></tr>` : `<tr class="${r.facility ? 'fac' : ''}"><td>${r.name}</td><td>${r.stage}</td><td>${money(r.price)}</td><td>${money(r.fee)}</td><td>${r.lease}</td></tr>`).join('')
       : '<tr><td colspan="5" class="info-none">沒有地產</td></tr>';
     return `<div class="info-filters">${filters}</div>
-      <table class="info-table"><thead><tr><th>地名</th><th>開發狀況</th><th>價格</th><th>收費</th><th>租期</th></tr></thead><tbody>${list}</tbody></table>`;
+      <table class="info-table"><thead><tr><th>地名</th><th>開發狀況</th><th>價格</th><th>收費</th><th>租期</th></tr></thead><tbody>${list}</tbody></table><div class="info-pager" hidden></div>`;
   }
 
   /** 股票: the twelve stocks with shares held and their market value. */
@@ -147,7 +209,7 @@ export class InfoScreen {
         });
       });
       return `<table class="info-table stocks"><thead><tr><th>股票（全國股市）</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows.join('') || '<tr><td colspan="3" class="info-none">沒有股票</td></tr>'}
-        ${rows.length ? `<tr class="city"><td>合計</td><td></td><td>${money(total)}</td></tr>` : ''}</tbody></table>`;
+        ${rows.length ? `<tr class="city"><td>合計</td><td></td><td>${money(total)}</td></tr>` : ''}</tbody></table><div class="info-pager" hidden></div>`;
     }
     const st = this.game.stocks as unknown as { stocks: { name: string; price: number }[]; holdings: { shares: number }[][] };
     const h = st.holdings[this.who] ?? [];
@@ -155,6 +217,6 @@ export class InfoScreen {
       const n = h[i]?.shares ?? 0;
       return `<tr${n ? '' : ' class="dim"'}><td>${s.name}</td><td>${n.toLocaleString('en-US')}</td><td>${money(Math.trunc(n * s.price))}</td></tr>`;
     }).join('');
-    return `<table class="info-table stocks"><thead><tr><th>股票</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table class="info-table stocks"><thead><tr><th>股票</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows}</tbody></table><div class="info-pager" hidden></div>`;
   }
 }

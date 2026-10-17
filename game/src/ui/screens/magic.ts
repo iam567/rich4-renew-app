@@ -10,6 +10,7 @@ import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { resultBox } from './event-result';
 import { charColor, el, esc, face, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
+import { phrases } from '../text';
 import './magic.css';
 
 type Choose = Extract<Ask, { t: 'choose' }>;
@@ -154,16 +155,16 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       let teller = s.art('Panel', 18, 1, 241, 140, 'mg-teller');
       let ball: HTMLImageElement | null = null;
       const showGroup = () => { ball?.remove(); ball = s.art('Panel', 18, 11 + group, 326, 296, 'mg-ball pl-pop'); };
-      // Speech balloon #18.8 anchored at (320,384).
-      const bub = ctx.bank.art('Panel', 18, 8);
-      const balloon = s.box('mg-say', 320 - (bub?.ax ?? 140), 384 - (bub?.ay ?? 86), bub?.w ?? 280, bub?.h ?? 173);
-      if (bub) balloon.style.backgroundImage = `url('${bub.src}')`;
+      // Her lines in the remake's message box (style.css .msg, the teller's name on the ribbon) where the original drew
+      // its board #18.8 centred on (320,384).
+      const balloon = s.box('msg scene-msg mg-say', 320 - 150, 384 - 64, 300, 128, '<div class="ribbon">占卜師</div><div class="scene-msg-text"></div>');
+      const sayText = balloon.querySelector<HTMLElement>('.scene-msg-text')!;
       // The balloon covers the lower symbols: while picking it goes away after the line, as the original's does.
       let said = 0;
       const say = (t: string) => {
         const n = ++said;
         void audio.say(t); // the teller's lines are voiced (#0037-#0057)
-        balloon.textContent = t; balloon.hidden = false;
+        sayText.innerHTML = phrases(t); balloon.hidden = false;
         balloon.classList.remove('pl-pop'); void balloon.offsetWidth; balloon.classList.add('pl-pop');
         if (phase === 'pick') void s.sleep(2000).then(() => { if (n === said && phase === 'pick') balloon.hidden = true; });
       };

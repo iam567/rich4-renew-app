@@ -6,6 +6,7 @@
  */
 import { ASSETS } from './assets';
 import { decodeImage, releasePic, type Pic } from './decode';
+import { memTier } from './mem-tier';
 
 /** Style ids in the order of the settings; '' is the original ground. */
 export const GROUND_STYLES: { id: string; name: string }[] = [
@@ -44,14 +45,14 @@ export async function groundStylesFor(mapId: number): Promise<string[]> {
 
 interface Manifest { size: number; scale: number; tile: number; cols: number; rows: number; tiles: string[][]; preview: string }
 
-/** Decoded tiles may use this much memory together (the 2304 preview comes on top). */
-const BUDGET = 100 * 1024 * 1024;
+/** Decoded tiles may use this much memory together (the preview comes on top): the device's tier (ui/mem-tier.ts). */
+const BUDGET = () => memTier().groundBytes;
 /** Tiles kept beyond the ones on screen, so panning back and forth does not decode them again. */
 const SPARE = 2;
 /** Below this many device pixels per original pixel the 1× preview is sharp enough. */
 const TILE_FROM = 1.15;
 /** At most this many tiles decoding at once. */
-const PARALLEL = 2;
+const PARALLEL = () => memTier().tileParallel;
 /** Frames a prefetched tile is kept for although not on screen yet (the camera is on its way). */
 const SOON_FRAMES = 120;
 
@@ -104,7 +105,9 @@ export class TiledGround {
       const r = await fetch(`${base}/manifest.json`);
       if (!r.ok) return null;
       const g = new TiledGround(style, base, await r.json() as Manifest);
-      g.preview = await decodeImage(`${base}/${g.m.preview}`, undefined, 'ground');
+      // The preview is the map's size at 1×; a low-memory device holds it smaller (a 3456 map's is 48 MB at 1×).
+      const cap = memTier().previewMax, side = g.m.size > cap ? cap : 0;
+      g.preview = await decodeImage(`${base}/${g.m.preview}`, side ? { w: side, h: side } : undefined, 'ground');
       g.changed(null);
       return g;
     } catch { return null; }
@@ -132,8 +135,24 @@ export class TiledGround {
   /** How many tiles fit the memory budget at the current density. */
   private get maxTiles() {
     const side = Math.round(this.m.tile * (this.px || this.m.scale));
-    return Math.max(4, Math.min(this.m.cols * this.m.rows, Math.floor(BUDGET / (side * side * 4))));
+    return Math.max(4, Math.min(this.m.cols * this.m.rows, Math.floor(BUDGET() / (side * side * 4))));
   }
+
+  /** The tiles the last `update` decided to hold, and how many of them are decoded at the current density (the loading screen waits for them). */
+  progress(): { done: number; total: number } {
+    let done = 0;
+    for (const k of this.keep) {
+      const have = this.tiles.get(k);
+      if ((have && have.px >= this.px - 1e-6) || this.failed.has(k)) done++;
+    }
+    return { done, total: this.keep.size };
+  }
+  /** The tiles kept by the last `update` (empty while the preview is enough). */
+  private keep = new Set<string>();
+  /** Tiles in the whole map (the loading screen may take them all when they fit the budget). */
+  get count() { return this.m.cols * this.m.rows; }
+  /** How many tiles fit the memory budget at the current density (0 before the first `update` that wanted tiles). */
+  get room() { return this.px ? this.maxTiles : 0; }
 
   /** Decoded tiles and tiles on their way (for checks). */
   stats() { return { wanted: this.wanted, decoded: this.tiles.size, loading: this.loading.size, max: this.maxTiles, px: this.px }; }
@@ -156,8 +175,9 @@ export class TiledGround {
    * Starts decoding the tiles a view at `quad` will need (the camera is about to glide there), so they are
    * ready when it arrives instead of popping in from the blurry preview on the way.
    */
-  prefetch(quad: { x: number; y: number }[]) {
-    if (!this.px || this.disposed) return;
+  prefetch(quad: { x: number; y: number }[], force = false) {
+    // A low-memory device decodes tiles only where the camera is (`force`: the loading screen's own margin).
+    if (!this.px || this.disposed || (!force && !memTier().prefetch)) return;
     for (const w of this.under(quad)) {
       this.soon.set(w.key, this.frame + SOON_FRAMES);
       if (!this.tiles.has(w.key) && !this.queue.includes(w.key)) this.queue.push(w.key);
@@ -174,14 +194,15 @@ export class TiledGround {
     const m = this.m;
     this.frame++;
     for (const [k, until] of this.soon) if (until < this.frame) this.soon.delete(k);
-    if (density < TILE_FROM) { this.wanted = 0; this.queue = []; this.trim(new Set(this.soon.keys()), SPARE); return; }
-    // Decoded no sharper than the view shows (a quarter pixel up), never sharper than the files.
-    this.px = Math.min(m.scale, Math.ceil(density * 4 - 1e-6) / 4);
+    if (density < TILE_FROM) { this.wanted = 0; this.queue = []; this.keep = new Set(); this.trim(new Set(this.soon.keys()), SPARE); return; }
+    // Decoded no sharper than the view shows (a quarter pixel up), never sharper than the files or the tier allows.
+    this.px = Math.min(m.scale, memTier().tilePx, Math.ceil(density * 4 - 1e-6) / 4);
     const want = this.under(quad), max = this.maxTiles;
     this.wanted = want.length;
     // Nearest first; beyond the budget the preview stands in.
     const keep = new Set(want.slice(0, max).map(w => w.key));
     for (const k of this.soon.keys()) if (keep.size < max) keep.add(k);
+    this.keep = keep;
     this.trim(keep, Math.min(max, keep.size + SPARE));
     const queue: string[] = [];
     for (const w of want) {
@@ -222,7 +243,7 @@ export class TiledGround {
   /** Starts the next decodes in the queue, within the parallel and memory limits. */
   private pump() {
     for (const key of this.queue) {
-      if (this.loading.size >= PARALLEL) return;
+      if (this.loading.size >= PARALLEL()) return;
       if (this.loading.has(key) || this.failed.has(key)) continue;
       const have = this.tiles.get(key);
       if (have && have.px >= this.px - 1e-6) continue;

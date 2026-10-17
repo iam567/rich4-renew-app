@@ -8,12 +8,13 @@ import * as C from '../../core/modules/casino';
 import { HALL_GAME } from '../../core/casino-rules';
 import { askScreens } from './registry';
 import { esc } from './place-scene';
-import { hallPlate } from './casino';
+import { hallPlate, preload } from './casino';
 import { audio } from '../audio';
 import './casino-hall.css';
 
 askScreens['choose:casino-hall'] = (ctx, ask) => new Promise(resolve => {
   const a = ask as Extract<Ask, { t: 'choose' }>;
+  preload();
   const box = document.createElement('div');
   // The original's facility picker (hud.ts 'facility-type'): one row of five, the plate above its name; the banker's
   // big hands of the hall under the pointer (or held down) in one line below the row.

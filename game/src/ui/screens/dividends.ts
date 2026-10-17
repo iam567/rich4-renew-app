@@ -10,6 +10,7 @@ import { fitOverlay } from './bank';
 import { fxScreens } from './registry';
 import { charColor, face } from './place-scene';
 import { audio } from '../audio';
+import { shrinkText } from '../text';
 import './dividends.css';
 
 type Row = { company: string; profit: number; each: number[] };
@@ -29,7 +30,9 @@ fxScreens['dividends'] = (ctx, fx) => {
   const g = ctx.game;
   const who = g.players.filter(p => p.whoPlays !== 0);
   let ready = false;
-  const ov = fitOverlay(ctx.shell, 'dv-ov', tall => (tall ? [440, 640] : [640, 432]), tall => { if (ready) draw(tall); }, 12);
+  // The canvas grows with the table (a dozen companies), so the whole board always shows, scaled to the screen.
+  let need = 0;
+  const ov = fitOverlay(ctx.shell, 'dv-ov', tall => (tall ? [440, Math.max(640, need)] : [640, Math.max(432, need)]), tall => { if (ready) draw(tall); }, 12);
   const { root, scene } = ov;
   ready = true;
   scene.classList.add('dv-scene');
@@ -40,7 +43,7 @@ fxScreens['dividends'] = (ctx, fx) => {
     const num = (v: number, cls = '') => v === 0 ? `<td class="dv-zero ${cls}">—</td>` : `<td class="${cls}${v < 0 ? ' dv-neg' : ''}">${money(v)}</td>`;
     const head = who.map(p => `<th class="dv-who" style="--c:${charColor(ctx, p.id)}"><span class="dv-face">${face(ctx, p.character)}</span><b>${esc(g.name(p.id))}</b></th>`).join('');
     scene.classList.toggle('tall', tall);
-    scene.innerHTML = `<div class="dv-board">
+    scene.innerHTML = `<div class="dv-board${rows.length > 6 ? ' many' : ''}">
       <div class="dv-ribbon"><span>上市公司分紅</span></div>
       <table>
         <thead><tr><th class="dv-corner"><span>人名</span><span>公司</span></th>${head}<th class="dv-profit-h">本月盈餘</th></tr></thead>
@@ -57,6 +60,11 @@ fxScreens['dividends'] = (ctx, fx) => {
     };
     const c0 = ++draws;
     requestAnimationFrame(tick);
+    // Long company names and big figures get a smaller type rather than cut off.
+    shrinkText(scene, '.dv-co, .dv-board tbody td, .dv-who b', 9);
+    const board = scene.querySelector<HTMLElement>('.dv-board')!;
+    const h = board.offsetHeight + 56;
+    if (Math.abs(h - need) > 2 && h > (tall ? 640 : 432)) { need = h; ov.refit(); }
   }
   let draws = 0;
   draw(ov.isTall());

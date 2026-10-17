@@ -71,6 +71,7 @@
 .te-curve path.riv { opacity: .35; }
 .te-curve path.me { stroke: #ffe14a; stroke-width: 3.5; }
 .te-curve text { fill: #fff; font-size: 11px; opacity: .7; }
+.te-none { grid-column: 1 / -1; white-space: nowrap; margin: 2px 0; }
 .te-fells { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); gap: 6px; }
 .te-fell { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; padding: 4px; border-radius: 10px; background: rgba(0,0,0,.25); font-size: 13px; }
 .te-fell .te-face { width: 40px; height: 40px; border-width: 2px; }

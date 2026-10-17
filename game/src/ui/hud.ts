@@ -13,10 +13,12 @@ import { tycoon } from './tycoon';
 import { askKey, askScreens, type ScreenContext } from './screens/registry';
 import './screens';
 import { audio, boardVoice, characterVoice, voiceOf } from './audio';
+import { fitPhrases, phrases, shrinkText } from './text';
 
 const money = (n: number) => n.toLocaleString('zh-Hant');
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-const lines = (s: string) => esc(s).replace(/\n{2,}/g, '<br><span class="gap"></span>').replace(/\n/g, '<br>');
+/** Message text, broken only between clauses (text.ts). */
+const lines = (s: string) => phrases(s);
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string) => {
   const e = document.createElement(tag);
   if (cls) e.className = cls;
@@ -57,64 +59,201 @@ export class Hud {
   context(shell: HTMLElement): ScreenContext {
     return {
       game: this.game, bank: this.bank, area: this.area, shell,
-      open: node => this.show(node), close: () => this.hide(), scale: this.scale,
+      open: (node, full) => this.show(node, full), close: () => this.hide(), scale: this.scale,
       flash: (text, ms) => this.flash(text, ms),
     };
   }
   /** Set by the controller: the game screen element, for full-screen scenes. */
   shell: HTMLElement | null = null;
 
-  private show(node: HTMLElement) {
-    this.layer.replaceChildren(node);
-    this.layer.classList.add('show');
+  /**
+   * The layer over the whole game screen (toolbar, map and side panels) for the big sheets — 查詢, 股市, 地圖, 說明,
+   * 各地動態 — which need more room than the map area leaves on a phone; made on first use.
+   */
+  private fullLayer: HTMLElement | null = null;
+
+  private show(node: HTMLElement, full = false) {
+    if (full && this.shell && !this.fullLayer) { this.fullLayer = el('div', 'ui-layer full'); this.shell.append(this.fullLayer); }
+    const target = full && this.fullLayer ? this.fullLayer : this.layer;
+    const other = target === this.layer ? this.fullLayer : this.layer;
+    if (other) { other.classList.remove('show'); other.replaceChildren(); }
+    target.replaceChildren(node);
+    target.classList.add('show');
+    // A clause longer than the line: the text a little smaller rather than broken inside the clause.
+    for (const t of node.querySelectorAll<HTMLElement>('.msg-text')) fitPhrases(t, 0.8);
+    // A long title stays on its ribbon's one line, smaller rather than wider than the dialog.
+    shrinkText(node, ':scope > .ribbon', 12);
     requestAnimationFrame(() => {
+      if (target !== this.layer) { this.onModal(null); return; }
       const box = node.getBoundingClientRect(), area = this.area.getBoundingClientRect();
       this.onModal(area.height ? (box.top - area.top) / area.height : null);
     });
   }
-  private hide() { this.layer.classList.remove('show'); this.layer.replaceChildren(); this.onModal(null); }
+  private hide() {
+    for (const l of [this.layer, this.fullLayer]) { l?.classList.remove('show'); l?.replaceChildren(); }
+    this.onModal(null);
+  }
 
   /**
-   * The card grid on one page whatever the hand (up to 15) and the screen: picks the column count that gives the
-   * biggest card in the dialog layer's free box, sizes the pictures to it (CSS vars on the row), and does it again
-   * when the layer changes size (rotation). Where height is short (landscape) 取消 moves up beside the ribbon.
+   * A grid of pictures (cards, tools, faces) on one page whatever their number and the screen: picks the column count
+   * that gives the biggest picture in the dialog layer's free box (no column narrower than the longest name), sizes the
+   * pictures to it (CSS vars on the row), and does it again when the layer changes size (rotation). Where height is
+   * short (landscape) 取消 becomes the grid's last cell instead of a row of its own.
    */
-  private fitCards(box: HTMLElement, row: HTMLElement) {
-    const n = row.childElementCount;
-    if (!n) return;
-    const CARD = 960 / 624, GAP = 8, MAX_H = 112;
+  private fitTiles(box: HTMLElement, row: HTMLElement, cancel: HTMLElement | null, ratio: number, MAX_H: number) {
+    const cancelRow = cancel?.parentElement ?? null;
+    if (!row.childElementCount) return;
+    const GAP = 8;
     const fit = () => {
       if (!box.isConnected) { ro.disconnect(); return; }
-      const ls = getComputedStyle(this.layer);
-      const W = this.layer.clientWidth - parseFloat(ls.paddingLeft) - parseFloat(ls.paddingRight);
-      const H = this.layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom) - parseFloat(getComputedStyle(box).marginTop);
+      box.style.zoom = '';
+      box.style.maxHeight = '';
+      const { W, H } = this.room(box);
       if (W <= 0 || H <= 0) return;
       box.classList.add('card-grid');
-      box.classList.toggle('short', H < W * 0.75);
+      const short = H < W * 0.75;
+      box.classList.toggle('short', short);
+      if (cancel && cancelRow) {
+        if (short && cancel.parentElement !== row) { row.append(cancel); cancelRow.hidden = true; }
+        if (!short && cancel.parentElement === row) { cancelRow.append(cancel); cancelRow.hidden = false; }
+      }
+      const n = row.childElementCount;
       // Measure one tile around its picture at a known size (name at its default size)…
       const set = (h: number, cols: number) => {
-        row.style.setProperty('--ph', `${h}px`); row.style.setProperty('--pw', `${Math.floor(h / CARD)}px`); row.style.setProperty('--cols', String(cols));
+        row.style.setProperty('--ph', `${h}px`); row.style.setProperty('--pw', `${Math.floor(h / ratio)}px`); row.style.setProperty('--cols', String(cols));
       };
       row.style.removeProperty('--fs');
       set(90, Math.min(n, 8));
       const tile = row.firstElementChild as HTMLElement, pic = tile.querySelector<HTMLElement>('.tile-pic')!;
       const tw = tile.offsetWidth - pic.offsetWidth, th = tile.offsetHeight - pic.offsetHeight;
+      // the narrowest a cell may be: the longest name (at the smallest font) with the tile's padding
+      const pad = parseFloat(getComputedStyle(tile).paddingLeft) + parseFloat(getComputedStyle(tile).paddingRight) + 6;
+      const names = [...row.querySelectorAll<HTMLElement>('.tile-name')];
+      const name10 = names.length ? Math.max(...names.map(e => e.scrollWidth)) * 10 / parseFloat(getComputedStyle(names[0]).fontSize) : 0;
+      // the names' size for a picture height, at most what lets the longest one fit its cell
+      const fsFor = (h: number, cellW: number) => Math.min(Math.max(10.5, Math.min(14, 9 + h / ratio / 14)), name10 ? (cellW - pad) * 10 / name10 : 14);
       // …and the dialog around a tiny grid, so it is not capped by max-height (grid margins count in the chrome,
       // offsetHeight leaves them out; the dialog is at most 760 wide).
       set(4, n);
       const chromeW = box.offsetWidth - row.clientWidth, chromeH = box.offsetHeight - row.offsetHeight;
-      const rowW = Math.min(W, 760) - chromeW, rowH = H - chromeH - 4;
-      let best = { cols: 1, h: 0 };
+      const rowW = Math.min(W, 760) - chromeW - 6, rowH = H - chromeH - 4; // (a few px spare for rounding)
+      let best = { cols: 1, h: 0, fs: 12 };
       for (let cols = 1; cols <= n; cols++) {
-        const rows = Math.ceil(n / cols);
-        const byW = ((rowW - GAP * (cols - 1)) / cols - tw) * CARD;
+        const rows = Math.ceil(n / cols), cellW = (rowW - GAP * (cols - 1)) / cols;
+        const byW = (cellW - tw) * ratio;
         const byH = (rowH - (GAP + 5) * (rows - 1) - 5) / rows - th;
-        const h = Math.min(byW, byH, MAX_H);
-        if (h > best.h + 0.5) best = { cols, h };
+        const h = Math.min(byW, byH, MAX_H), fs = fsFor(h, cellW);
+        if (cols > 1 && fs < 10) break; // no column narrower than the longest name at 10 px
+        if (h > best.h + 0.5) best = { cols, h, fs };
       }
-      const h = Math.max(28, Math.floor(best.h));
+      // Pictures too small for the map area (a small phone): the dialog moves over the whole game screen.
+      if (best.h < MAX_H * 0.5 && this.promote(box, ro)) return;
+      const h = Math.max(24, Math.floor(best.h));
       set(h, best.cols);
-      row.style.setProperty('--fs', `${Math.max(10, Math.min(13, h / 6.4)).toFixed(1)}px`);
+      row.style.setProperty('--fs', `${Math.max(10, best.fs).toFixed(1)}px`);
+      this.shrink(box, H);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(this.layer);
+    fit();
+  }
+
+  /**
+   * Any other dialog: when it is taller than the map area (a small phone), it moves over the whole game screen, and
+   * only an extreme screen shrinks it as a whole. Again on rotation.
+   */
+  private fitBox(box: HTMLElement) {
+    const fit = () => {
+      if (!box.isConnected) { ro.disconnect(); return; }
+      box.style.zoom = '';
+      box.style.maxHeight = '';
+      const { H } = this.room(box);
+      if (H <= 0 || box.scrollHeight <= H + 0.5) return;
+      if (this.promote(box, ro)) return;
+      this.shrink(box, H);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(this.layer);
+    fit();
+  }
+
+  /** Moves a dialog from the map area to the whole game screen (once); true when it moved. */
+  private promote(box: HTMLElement, ro: ResizeObserver): boolean {
+    if (box.parentElement !== this.layer || !this.shell) return false;
+    this.show(box, true);
+    if (this.fullLayer) ro.observe(this.fullLayer);
+    return true;
+  }
+
+  /** The last resort for an extreme screen: the dialog shrinks as a whole to the room `H`. */
+  private shrink(box: HTMLElement, H: number) {
+    box.style.zoom = '';
+    box.style.maxHeight = '';
+    if (box.scrollHeight <= H + 0.5) return;
+    box.style.maxHeight = 'none';
+    box.style.zoom = String(Math.max(0.6, H / box.scrollHeight));
+  }
+
+  /** The free box of the dialog layer for `box` (CSS px): its width and height, less the box's top margin. */
+  private room(box: HTMLElement) {
+    const layer = box.parentElement ?? this.layer, ls = getComputedStyle(layer);
+    const W = layer.clientWidth - parseFloat(ls.paddingLeft) - parseFloat(ls.paddingRight);
+    const H = layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom) - parseFloat(getComputedStyle(box).marginTop);
+    return { W, H };
+  }
+
+  /**
+   * A list of choices on one page whatever their number (up to ~16) and the screen: the labels stay on one line, the
+   * grid takes as many columns as the widest label allows, and the font steps down (18 → 13 px) until the whole
+   * dialog fits the layer; only an extreme screen shrinks the dialog as a whole. Again on rotation.
+   */
+  private fitChoices(box: HTMLElement, row: HTMLElement) {
+    const items = [...row.children] as HTMLElement[];
+    const n = items.length;
+    if (!n) return;
+    box.classList.add('fit-list');
+    row.classList.remove('scroll');
+    row.classList.add('fit');
+    const fit = () => {
+      if (!box.isConnected) { ro.disconnect(); return; }
+      box.style.zoom = '';
+      box.style.maxHeight = '';
+      const { H } = this.room(box);
+      if (H <= 0) return;
+      for (const fs of [18, 17, 16, 15, 14, 13]) {
+        // Still too tall at 15 px in the map area (a small phone): the list moves over the whole game screen.
+        if (fs === 14 && this.promote(box, ro)) return;
+        row.style.setProperty('--fs', `${fs}px`);
+        row.classList.add('measure');
+        const widest = Math.max(...items.map(b => b.offsetWidth));
+        row.classList.remove('measure');
+        const gap = parseFloat(getComputedStyle(row).columnGap) || 8;
+        const most = Math.max(1, Math.min(n, Math.floor((row.clientWidth + gap) / (widest + gap))));
+        const cols = Math.ceil(n / Math.ceil(n / most)); // the same rows, balanced
+        row.style.setProperty('--cols', String(cols));
+        if (box.scrollHeight <= H + 0.5) return;
+      }
+      this.shrink(box, H);
+    };
+    const ro = new ResizeObserver(fit);
+    ro.observe(this.layer);
+    fit();
+  }
+
+  /** Faces to pick (pick-player): the faces get smaller until every one shows on the page. */
+  private fitFaces(box: HTMLElement, row: HTMLElement) {
+    const fit = () => {
+      if (!box.isConnected) { ro.disconnect(); return; }
+      box.style.zoom = '';
+      box.style.maxHeight = '';
+      const { H } = this.room(box);
+      if (H <= 0) return;
+      for (const f of [64, 56, 48, 40, 34]) {
+        if (f === 40 && this.promote(box, ro)) return;
+        row.style.setProperty('--face', `${f}px`);
+        if (box.scrollHeight <= H + 0.5) return;
+      }
+      this.shrink(box, H);
     };
     const ro = new ResizeObserver(fit);
     ro.observe(this.layer);
@@ -205,6 +344,7 @@ export class Hud {
         if (a.cancellable) {
           const c = el('div', 'choices tiles-cancel'); const b = el('button', 'candy ghost', '取消'); b.onclick = () => { audio.ui('no'); done(-1); }; c.append(b); box.append(row, c);
           this.show(box);
+          this.fitBox(box);
           return;
         }
       } else if (a.t === 'choose' && a.layout) {
@@ -214,20 +354,27 @@ export class Hud {
         row.className = `choices tiles ${a.layout}`;
         for (const o of a.options) {
           const pic = o.icon ? this.bank.art(o.icon.archive, o.icon.id, o.icon.frame ?? 0) : null;
-          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'faces' ? `<span class="tile-where">${esc(o.detail)}</span>` : ''}${o.badge ? `<span class="tile-badge">${esc(o.badge)}</span>` : ''}`, o.value, 'tile', o.disabled);
+          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail.replace(/^需(?:要研究所)?\s*(\d+)\s*級$/, '需$1級'))}</span>` : ''}${o.detail && a.layout === 'faces' ? `<span class="tile-where">${esc(o.detail)}</span>` : ''}${o.badge ? `<span class="tile-badge">${esc(o.badge)}</span>` : ''}`, o.value, 'tile', o.disabled);
           if (o.detail) b.title = o.detail;
         }
         if (a.cancellable) {
           const c = el('div', 'choices tiles-cancel'); const b = el('button', 'candy ghost', '取消'); b.onclick = () => { audio.ui('no'); done(-1); }; c.append(b); box.append(row, c);
           this.show(box);
-          if (a.layout === 'cards') this.fitCards(box, row);
+          if (a.layout === 'cards') this.fitTiles(box, row, b, 960 / 624, 112);
+          if (a.layout === 'tiles') this.fitTiles(box, row, b, 44 / 52, 72);
+          if (a.layout === 'faces') this.fitTiles(box, row, b, 1, 60);
+          if (a.layout === 'lab') { shrinkText(box, '.tile-name, .tile-need', 8); this.fitBox(box); }
           return;
         }
       } else if (a.t === 'choose') {
         box.innerHTML = `${head(a.title)}${a.text ? `<div class="msg-text small">${lines(a.text)}</div>` : ''}`;
-        row.className = `choices grid${a.options.length > 8 ? ' scroll' : ''}`;
+        row.className = 'choices grid';
         for (const o of a.options) { const b = button(esc(o.label), o.value, 'opt', o.disabled); if (o.detail) b.title = o.detail; }
         if (a.cancellable) button('取消', -1, 'ghost');
+        box.append(row);
+        this.show(box);
+        this.fitChoices(box, row);
+        return;
       } else if (a.t === 'pick-player') {
         box.innerHTML = head(a.title);
         row.className = 'choices players';
@@ -236,26 +383,38 @@ export class Hud {
           button(`${this.portrait(c.id)}<span>${c.name}</span>`, q, 'cell');
         }
         if (a.cancellable) button('取消', -1, 'ghost');
+        box.append(row);
+        this.show(box);
+        this.fitFaces(box, row);
+        return;
       } else if (a.t === 'pick-node') {
         box.innerHTML = head(a.title);
-        row.className = 'choices grid scroll';
+        row.className = 'choices grid';
         for (const id of a.nodes) button(esc(this.describeNode(id)), id);
         if (a.cancellable) button('取消', 0, 'ghost');
+        box.append(row);
+        this.show(box);
+        this.fitChoices(box, row);
+        return;
       } else if (a.t === 'pick-map') {
         box.innerHTML = head(a.title);
-        row.className = 'choices grid scroll';
+        row.className = 'choices grid';
         a.spots.forEach((sp, i) => button(esc(sp.label || (sp.at === 'node' ? this.describeNode(sp.id) : String(sp.id))), i));
         if (a.cancellable) button('取消', -1, 'ghost');
+        box.append(row);
+        this.show(box);
+        this.fitChoices(box, row);
+        return;
       } else if (a.t === 'stock-market') {
         const screen = new StockScreen(this.game, a.p, tycoon.world);
         screen.done = v => done(v);
         const sheet = el('div', 'msg sheet wide stocks', `<div class="ribbon"><span class="ribbon-face">${this.portrait(ch.id)}</span>股市</div>`);
-        const exit = el('div', 'choices');
+        const exit = el('div', 'choices sheet-close');
         const b = el('button', 'candy ghost', '離開股市');
         b.onclick = () => { audio.ui('no'); done(-1); };
         exit.append(b);
         sheet.append(screen.el, exit);
-        this.show(sheet);
+        this.show(sheet, true);
         return;
       } else if (a.t === 'amount') {
         box.innerHTML = `${head(a.title)}${a.text ? `<div class="msg-text small">${lines(a.text)}</div>` : ''}`;
@@ -291,6 +450,8 @@ export class Hud {
       }
       box.append(row);
       this.show(box);
+      if (a.t === 'choose' && a.layout && a.layout !== 'lab') this.fitTiles(box, row, null, a.layout === 'cards' ? 960 / 624 : a.layout === 'faces' ? 1 : 44 / 52, a.layout === 'cards' ? 112 : 64);
+      else this.fitBox(box);
     });
   }
 
@@ -328,7 +489,7 @@ export class Hud {
         row.append(btn);
       }
       box.append(row);
-      this.show(box);
+      this.show(box, true);
     });
   }
 
@@ -346,19 +507,19 @@ export class Hud {
         row.append(btn);
       }
       box.append(node, row);
-      this.show(box);
-      // Small phones (the map area of an iPhone SE is ~400 px high): shrink the whole window to fit, never cut
-      // off its buttons, and do it again on rotation.
+      this.show(box, true);
+      // Over the whole game screen (the map area of a small phone is too low for it); an extreme screen still shrinks
+      // the whole window rather than cut off its buttons, again on rotation.
       const fit = () => {
         if (!box.isConnected) { ro.disconnect(); return; }
         box.style.zoom = '';
-        const ls = getComputedStyle(this.layer);
-        const room = this.layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom);
+        const layer = box.parentElement ?? this.layer, ls = getComputedStyle(layer);
+        const room = layer.clientHeight - parseFloat(ls.paddingTop) - parseFloat(ls.paddingBottom);
         const need = box.scrollHeight + parseFloat(getComputedStyle(box).marginTop) + 12;   // scrollHeight: max-height caps the box itself
         if (need > room && room > 0) box.style.zoom = String(Math.max(0.6, room / need));
       };
       const ro = new ResizeObserver(fit);
-      ro.observe(this.layer);
+      ro.observe(box.parentElement ?? this.layer);
     });
   }
 
@@ -366,12 +527,12 @@ export class Hud {
   sheetNode(title: string, node: HTMLElement): Promise<void> {
     return new Promise(resolve => {
       const box = el('div', 'msg sheet wide', `<div class="ribbon">${esc(title)}</div>`);
-      const row = el('div', 'choices');
+      const row = el('div', 'choices sheet-close');
       const btn = el('button', 'candy ghost', '關閉');
       btn.onclick = () => { audio.ui('no'); this.hide(); resolve(); };
       row.append(btn);
       box.append(node, row);
-      this.show(box);
+      this.show(box, true);
     });
   }
 

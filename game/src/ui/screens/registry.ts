@@ -15,8 +15,11 @@ export interface ScreenContext {
   area: HTMLElement;
   /** The whole game screen, for scenes that cover everything (the original's 640×480 screens). */
   shell: HTMLElement;
-  /** Show a node on the dialog layer over the map / take it down. */
-  open(node: HTMLElement): void;
+  /**
+   * Show a node on the dialog layer over the map / take it down. `full`: over the whole game screen instead (a sheet
+   * with more than the map area of a small phone can hold).
+   */
+  open(node: HTMLElement, full?: boolean): void;
   close(): void;
   /** Time scale of the game speed (1 = slow, 0.33 = fast); multiply waits by it. */
   scale(): number;

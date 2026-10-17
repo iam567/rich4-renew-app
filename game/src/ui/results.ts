@@ -16,6 +16,7 @@ import { drawOpponents, type RunRecord } from './next-game';
 import { drawResultsCard, statIcon, type StatIcon } from './results-card';
 import { saveImage, shareImage } from './share';
 import type { SpriteBank } from './sprites';
+import { phrases, shrinkText } from './text';
 import './results.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -115,7 +116,7 @@ function defaultHero(bank: SpriteBank, r: GameResults, o: ResultsOptions): strin
   return `<div class="rs-hero${lost ? ' lost' : ''}">
     <div class="rs-hero-face">${w ? '<i class="rs-crown"></i>' : ''}${face(bank, who.character, w ? 'big' : 'big grey')}</div>
     <div class="rs-hero-text"><div class="rs-title">${esc(title)}</div>
-      <div class="rs-sub">${icon('days', 'rs-ic small')}${esc(o.mapName)}・${r.days} 天・${format(r.date)}${lost && me.human ? `・你是第 ${me.rank} 名` : ''}</div></div></div>`;
+      <div class="rs-sub">${icon('days', 'rs-ic small')}${[esc(o.mapName), `${r.days} 天`, format(r.date), ...(lost && me.human ? [`你是第 ${me.rank} 名`] : [])].map((t, i, a) => `<span class="ph">${t}${i < a.length - 1 ? '・' : ''}</span>`).join('')}</div></div></div>`;
 }
 
 const confetti = (n: number) => Array.from({ length: n }, (_, i) => `<i style="--x:${(i * 37) % 100}%;--d:${(i % 9) * 0.21}s;--h:${(i * 53) % 360}"></i>`).join('');
@@ -128,9 +129,11 @@ export function showResults(bank: SpriteBank, root: HTMLElement, r: GameResults,
   cover.className = `rs-cover ${o.cls ?? ''}${won ? ' won' : ''}`;
   cover.innerHTML = `${won ? `<div class="rs-confetti">${confetti(40)}</div>` : ''}<div class="msg rs-box">
     <div class="ribbon">遊戲結算</div>
+    <div class="chips rs-tabs"><button class="chip" data-tab="rank">排名</button><button class="chip" data-tab="stats">成績</button>${o.extra ? '<button class="chip" data-tab="extra">大富豪</button>' : ''}</div>
     <div class="rs-body">
-      <section class="rs-side">${o.hero ?? defaultHero(bank, r, o)}<div class="rs-rank"></div></section>
-      <section class="rs-detail"><div class="rs-detail-head"></div><div class="rs-stats"></div>${o.extra ? `<div class="rs-extra">${o.extra}</div>` : ''}</section>
+      <section class="rs-side rs-pane" data-pane="rank"><div class="rs-fit">${o.hero ?? defaultHero(bank, r, o)}<div class="rs-rank${r.players.length > 6 ? ' many' : ''}"></div></div></section>
+      <section class="rs-detail rs-pane" data-pane="stats"><div class="rs-fit"><div class="rs-detail-head"></div><div class="rs-stats"></div></div></section>
+      ${o.extra ? `<section class="rs-extra rs-pane" data-pane="extra"><div class="rs-fit">${o.extra}</div></section>` : ''}
     </div>
     <div class="rs-actions">
       <button class="candy ghost" data-a="save">儲存到相簿</button><button class="candy ghost" data-a="share">分享</button>
@@ -145,9 +148,72 @@ export function showResults(bank: SpriteBank, root: HTMLElement, r: GameResults,
     head.innerHTML = `${face(bank, x.character, 'small')}<b>${esc(ch.name)}的成績</b><span>第 ${x.rank} 名</span>`;
     stats.innerHTML = statTiles(x, r.cityNames);
   };
-  render();
-  const fit = () => cover.classList.toggle('land', cover.clientWidth > cover.clientHeight);
+  // One page, no scrolling: portrait shows the ranking with the figures under it when both fit, else one pane at a
+  // time (排名 / 成績 / 大富豪 tabs); landscape keeps the ranking
+  // on the left and the tabs for the right. Each pane steps its sizes down (--k) until it fits, shrinking as a whole
+  // only on a tiny screen.
+  let tab = 'rank';
+  const setTab = (t: string) => {
+    const land = cover.classList.contains('land');
+    tab = land && t === 'rank' ? 'stats' : t;
+    cover.dataset.tab = tab;
+    cover.querySelectorAll<HTMLElement>('[data-tab]').forEach(b => b.classList.toggle('on', b.dataset.tab === tab));
+    fitPanes();
+  };
+  const fitPanes = () => {
+    // Each pane: its sizes stepped down (--k) until it fits; when one would need to go below 0.85, the whole screen
+    // takes its compact layout (.tight: the winner beside the podium, lower buttons) and tries again; zoom last.
+    const fitAll = () => {
+      let worst = 1;
+      for (const pane of cover.querySelectorAll<HTMLElement>('.rs-pane')) {
+        const inner = pane.firstElementChild as HTMLElement;
+        if (!pane.clientHeight) continue;
+        inner.style.zoom = '';
+        let ok = false;
+        for (const k of [1, 0.92, 0.85, 0.78, 0.72]) {
+          inner.style.setProperty('--k', String(k));
+          if (inner.offsetHeight <= pane.clientHeight + 0.5 && inner.scrollWidth <= pane.clientWidth + 0.5) { ok = true; worst = Math.min(worst, k); break; }
+        }
+        if (!ok) { worst = 0; inner.style.zoom = String(Math.max(0.6, Math.min(pane.clientHeight / inner.offsetHeight, pane.clientWidth / inner.scrollWidth))); }
+      }
+      return worst;
+    };
+    // Portrait with room to spare (a few players): the ranking and the chosen player's figures on the one page, no
+    // tabs — when both fit at 0.85 or more; otherwise (twelve players, 大富豪) the tabs.
+    const combo = () => {
+      cover.classList.remove('combo');
+      if (cover.classList.contains('land') || cover.classList.contains('short') || o.extra) return false;
+      cover.classList.add('combo');
+      const body = cover.querySelector<HTMLElement>('.rs-body')!;
+      const inners = [...cover.querySelectorAll<HTMLElement>('.rs-pane > .rs-fit')];
+      for (const k of [1, 0.92, 0.85]) {
+        for (const i of inners) { i.style.zoom = ''; i.style.setProperty('--k', String(k)); }
+        // (the panes, scroll containers, would shrink in the grid: the room is measured on their contents)
+        const need = inners.reduce((h, i) => h + i.offsetHeight + (i.parentElement!.offsetHeight - i.parentElement!.clientHeight)
+          + parseFloat(getComputedStyle(i.parentElement!).paddingTop), 0) + parseFloat(getComputedStyle(body).rowGap || '0') * (inners.length - 1);
+        if (need <= body.clientHeight + 0.5 && inners.every(i => i.scrollWidth <= body.clientWidth + 0.5)) return true;
+      }
+      cover.classList.remove('combo');
+      return false;
+    };
+    cover.classList.remove('tight');
+    if (!combo() && fitAll() < 0.85) { cover.classList.add('tight'); fitAll(); }
+    shrinkText(cover, '.rs-title, .rs-who b, .rs-detail-head b', 10);
+    shrinkText(cover, '.rs-who small, .rs-tile small, .rs-tile b, .rs-tile em', 8.5); // a narrow row / tile: its words smaller, never cut
+  };
+  const baseRender = render;
+  const rerender = () => { baseRender(); fitPanes(); };
+  rerender();
+  const fit = () => {
+    // Landscape: the ranking beside the figures when there is height for both; a low landscape phone gets the tabs
+    // too, with the winner beside the ranking.
+    const wide = cover.clientWidth > cover.clientHeight * 1.15, low = cover.clientHeight < 520;
+    cover.classList.toggle('land', wide && !low);
+    cover.classList.toggle('short', wide && low);
+    setTab(tab);
+  };
   fit();
+  requestAnimationFrame(fitPanes); // again once 简体 (lang.ts) has rewritten the text
   const ro = new ResizeObserver(fit);
   ro.observe(cover);
   let toastTimer = 0;
@@ -162,7 +228,9 @@ export function showResults(bank: SpriteBank, root: HTMLElement, r: GameResults,
     cover.addEventListener('click', async e => {
       const t = e.target as HTMLElement;
       const row = t.closest<HTMLElement>('[data-p]');
-      if (row) { audio.ui('click'); sel = Number(row.dataset.p); render(); return; }
+      if (row) { audio.ui('click'); sel = Number(row.dataset.p); rerender(); if (!cover.classList.contains('land') && !cover.classList.contains('combo')) setTab('stats'); return; }
+      const tb = t.closest<HTMLElement>('.rs-tabs [data-tab]'); // (the cover itself carries data-tab, the pane shown)
+      if (tb) { audio.ui('click'); setTab(tb.dataset.tab!); return; }
       const a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
       if (!a || busy) return;
       if (a === 'save' || a === 'share') {
@@ -217,25 +285,61 @@ export function pickNextMap(bank: SpriteBank, root: HTMLElement, maps: MapInfo[]
     sheet.innerHTML = `<div class="msg sheet rs-next-box"><div class="ribbon">下一局</div>
       <div class="chips rs-next-tabs"><button class="chip${kind === 'orig' ? ' on' : ''}" data-k="orig">原版地圖</button><button class="chip${kind === 'custom' ? ' on' : ''}" data-k="custom">自製地圖</button></div>
       <div class="rs-maps">${shown.map(m => `<button class="rs-map${m.id === mapId ? ' on' : ''}" data-m="${m.id}"><img src="${m.thumbnail}" alt=""><span>${esc(m.name)}</span>${run.cleared.includes(m.id) ? '<i class="rs-stamp">已通關</i>' : m.id === current ? '<i class="rs-stamp now">剛玩過</i>' : ''}</button>`).join('')}</div>
-      <div class="rs-vs"><div class="rs-vs-side">${humans.map(c => face(bank, c)).join('')}</div><b>VS</b><div class="rs-vs-side">${opponents.map(c => face(bank, c, run.defeated.includes(c) ? 'beaten' : '')).join('')}</div>
+      <div class="rs-next-foot"><div class="rs-vs"><div class="rs-vs-side">${humans.map(c => face(bank, c)).join('')}</div><b>VS</b><div class="rs-vs-side">${opponents.map(c => face(bank, c, run.defeated.includes(c) ? 'beaten' : '')).join('')}</div>
         <button class="chip" data-reroll="1">重新抽選</button></div>
-      <p class="rs-next-note">沿用這一局的設定（資金、行進方式、土地權限、遊戲時間、勝利條件）</p>
-      <div class="choices"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
+      <p class="rs-next-note">${phrases('沿用這一局的設定（資金、行進方式、土地權限、遊戲時間、勝利條件）')}</p>
+      <div class="choices"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div></div>`;
   };
-  render();
+  /**
+   * Every map on one page: the thumbnails' columns and size are worked out from the room left between the tabs and
+   * the buttons (the biggest pictures that let all of them show), again on rotation.
+   */
+  const fitMaps = () => {
+    const grid = sheet.querySelector<HTMLElement>('.rs-maps');
+    if (!grid || !grid.clientHeight) return;
+    const n = grid.childElementCount, W = grid.clientWidth, H = grid.clientHeight, gap = 8, label = 22;
+    // no column narrower than the longest name at 10 px (it stays on one line, shrunk at most to that)
+    const names = [...grid.querySelectorAll<HTMLElement>('.rs-map span')];
+    names.forEach(e => { e.style.fontSize = ''; });
+    const fs = names.length ? parseFloat(getComputedStyle(names[0]).fontSize) : 13;
+    const need = names.length ? Math.max(...names.map(e => e.scrollWidth)) * 10 / fs : 0;
+    let best = { cols: 1, w: 0, h: 0 };
+    for (let cols = 1; cols <= n; cols++) {
+      const rows = Math.ceil(n / cols), w = (W - gap * (cols - 1)) / cols - 10, h = Math.min(w, (H - gap * (rows - 1)) / rows - 10 - label);
+      if (cols > 1 && w + 4 < need) break;
+      if (h < w * 0.35) continue; // (a map cropped wider than that says little)
+      if (w * h > best.w * best.h) best = { cols, w, h };
+    }
+    if (!best.w) {
+      // very low: the most columns the names allow, the pictures as tall as the rows leave
+      let cols = 1;
+      while (cols < n && (W - gap * cols) / (cols + 1) - 6 >= need) cols++;
+      const rows = Math.ceil(n / cols);
+      best = { cols, w: (W - gap * (cols - 1)) / cols - 10, h: (H - gap * (rows - 1)) / rows - 10 - label };
+    }
+    grid.style.setProperty('--cols', String(best.cols));
+    grid.style.setProperty('--th', `${Math.max(16, Math.floor(best.h))}px`);
+    shrinkText(grid, '.rs-map span', 10);
+  };
+  const ro = new ResizeObserver(fitMaps);
+  const baseRender = render;
+  const rerender = () => { baseRender(); fitMaps(); };
+  rerender();
   root.append(sheet);
+  requestAnimationFrame(fitMaps);
+  ro.observe(sheet);
   return new Promise(resolve => {
     sheet.addEventListener('click', e => {
       const t = (e.target as HTMLElement).closest<HTMLElement>('button');
       if (!t) return;
       const d = t.dataset;
       audio.sfx(d.go ? 2 : d.back ? 4 : 1);
-      if (d.back) { sheet.remove(); resolve(null); return; }
-      if (d.go) { sheet.remove(); resolve({ mapId, opponents }); return; }
+      if (d.back) { ro.disconnect(); sheet.remove(); resolve(null); return; }
+      if (d.go) { ro.disconnect(); sheet.remove(); resolve({ mapId, opponents }); return; }
       if (d.k) { kind = d.k as MapInfo['kind']; const first = list.find(m => m.kind === kind); if (first && !list.some(m => m.id === mapId && m.kind === kind)) mapId = first.id; }
       if (d.m) mapId = Number(d.m);
       if (d.reroll) opponents = roll();
-      render();
+      rerender();
     });
   });
 }

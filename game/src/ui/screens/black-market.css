@@ -26,7 +26,7 @@
   background: linear-gradient(160deg, rgba(255,255,255,.16), rgba(255,255,255,.05)); border: 2px solid rgba(255, 210, 122, .45); }
 .bm.portrait .bm-item { grid-template-columns: 1fr; grid-template-rows: auto auto auto auto auto; justify-items: center; text-align: center; padding: 8px; }
 .bm-item.off { filter: saturate(.6); }
-.bm-tag { position: absolute; top: -9px; left: 12px; font-size: 12px; padding: 0 8px; border-radius: 8px; background: #ff5a8a; color: #fff; }
+.bm-tag { position: absolute; top: -10px; left: 12px; font-size: 13px; padding: 0 8px; border-radius: 8px; background: #ff5a8a; color: #fff; }
 .bm-item.tool .bm-tag { background: #2fa0ff; } .bm-item.land .bm-tag { background: #2dbb48; }
 .bm-pic { grid-row: 1 / 4; display: grid; place-items: center; height: 100%; min-height: 0; }
 .bm.portrait .bm-pic { grid-row: auto; height: 86px; }
@@ -41,7 +41,7 @@
 .bm-price { font-size: 22px; color: #ffe27a; text-shadow: 0 0 8px rgba(255, 200, 80, .6); }
 .bm-item .candy { grid-column: 2; padding: 5px 12px; font-size: 15px; justify-self: start; }
 .bm.portrait .bm-item .candy { grid-column: auto; justify-self: center; }
-.bm-since { position: absolute; right: 12px; top: 6px; font-size: 10px; color: #a99bd6; }
+.bm-since { position: absolute; right: 12px; top: 5px; font-size: 12px; color: #a99bd6; }
 .bm-item.empty { display: grid; place-items: center; grid-template-columns: 1fr; border-style: dashed; color: #8f82c0; font-size: 14px; background: rgba(0,0,0,.15); }
 .bm-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; font-size: 12px; color: #c9bdf0; }
 .bm.portrait .bm-foot { flex-direction: column; text-align: center; }
