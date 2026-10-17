@@ -214,6 +214,13 @@ export function tick(counter: number): number {
 }
 
 /** Facility level caps by type (ref_00474940). */
+/**
+ * The remake's hotel rules (the user 2026-10-18; docs/rules/02 §4.3, 06 §5.5): a hotel stay takes 免費卡 / 嫁禍卡 like
+ * the other facility fees (framed, the other player stays), and 土地公 takes a hotel only at check-out. `on: false`
+ * plays the original (the golden test proves that everything else is unchanged).
+ */
+export const REMAKE_HOTEL = { on: true };
+
 export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
@@ -714,7 +721,7 @@ export class Game {
         if (!p.whoPlays) return;
       }
     }
-    if (p.hotel === 0x80) { p.hotel = 0; yield { t: 'fx', kind: 'leave-hotel', p: p.id }; } else p.hotel = tick(p.hotel);
+    if (p.hotel === 0x80) { p.hotel = 0; yield { t: 'fx', kind: 'leave-hotel', p: p.id }; yield* this.checkOut(p); } else p.hotel = tick(p.hotel);
     if (p.vanish & 0x80) { const alien = (p.vanish & 0x40) !== 0; p.vanish = 0; yield { t: 'fx', kind: 'reappear', p: p.id, data: { alien } }; }
     else if (p.vanish) { p.vanish = ((p.vanish & 0x3f) - 1) ? p.vanish - 1 : p.vanish | 0x80; }
     if (p.prison === 0x80) { p.prison = 0; yield { t: 'fx', kind: 'leave-prison', p: p.id }; } else p.prison = tick(p.prison);
@@ -913,6 +920,7 @@ export class Game {
    */
   *land(p: Player): Flow {
     const n = this.node(p.node);
+    this.checkedIn = false;
     if (p.sleepwalk && n.event !== 0) return;
     if (this.rules?.landSquare && (yield* this.rules.landSquare(this, p, n))) return; // 大富翁城 (docs/rules/19 §4.4)
     switch (n.event) {
@@ -1174,20 +1182,81 @@ export class Game {
       amount = vehicle && vehicle < 3 ? 500 * (1 << (vehicle - 1)) * this.diceTotal * this.priceIndex : 0;
       if (amount) yield* this.say(undefined, `董事長${this.name(owner.id)} 請付${amount}元加油費`);
     }
+    if (f.type === 1 && REMAKE_HOTEL.on) {
+      // The remake (02 §4.3): the stay takes the passive cards; framed, the other player stays.
+      const stayer = amount ? yield* this.hotelPay(p, owner, f, amount, fee) : p;
+      if (stayer && days && stayer.whoPlays && !this.over) yield* this.checkIn(stayer, p, f, days, false);
+      return;
+    }
     const paid = amount ? yield* this.collect(p, owner, amount, fee, f.type !== 1) : null;
     if (paid) f.lastFee = yield* this.transfer(paid.payer, f.owner - 1, paid.amount, 0, fee);
-    if (f.type === 1 && days && p.whoPlays && !this.over) {
-      // Hotel stay (docs/rules/02 §4.3): the guest skips days - 1 more turns; insurance pays 2000 × days × F.
-      this.addHostility(p.id, owner.id, 20 * days * this.priceIndex);
-      this.clearStays(p);
-      p.hotel = days - 1 || 0x80;
-      p.facility = f.id;
-      p.monthBadDays += days;
-      // The guest's bad-days line comes before the stay is set (core_actions:1600-1610, fcn_0044f2c2); then
-      // fcn_0040d5a5 turns them to the hotel and they walk in.
-      yield { t: 'fx', kind: 'enter-hotel', p: p.id, data: { days, facility: f.id } };
-      yield* this.insurancePayout(p, 2000 * days * this.priceIndex);
+    if (f.type === 1 && days && p.whoPlays && !this.over) yield* this.checkIn(p, p, f, days, false);
+  }
+
+  /** Set by a stay begun on this landing (土地公 then waits for the check-out, REMAKE_HOTEL). */
+  checkedIn = false;
+
+  /**
+   * A hotel stay's fee with the passive cards (REMAKE_HOTEL; 歌舞伎町's 情人酒店): the payer's god, then 免費卡 /
+   * 嫁禍卡 as on the other facility fees (04 §2.6: the same thresholds, order and questions), then 死神. Returns who
+   * stays: the visitor, or the framed player (who pays); null when framed onto the owner (nobody stays).
+   */
+  *hotelPay(p: Player, owner: Player, f: Facility, total: number, fee: string): Flow<Player | null> {
+    let amount = this.godModify(p, total), stayer: Player | null = p;
+    if (amount !== total) yield* this.say(p.id, amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`);
+    if (amount <= 0) return stayer;
+    this.addHostility(p.id, owner.id, Math.trunc(amount / 100));
+    const r = yield* this.cards.tollPassive(p, owner.id, amount);
+    let payer = r.payer;
+    amount = r.amount;
+    if (payer !== p.id) stayer = payer === owner.id ? null : this.players[payer];
+    if (amount > 0) {
+      const death = this.objects.deathPayer(this.players[payer]);
+      if (death !== null) { yield* this.say(undefined, `死神顯靈\n\n由${this.name(death)}賠償${fee}`); payer = death; }
+      if (payer !== owner.id && payer !== owner.ally - 1) f.lastFee = yield* this.transfer(payer, owner.id, amount, 0, fee);
     }
+    return stayer;
+  }
+
+  /**
+   * A hotel stay begins (02 §4.3): the guest skips days - 1 more turns; insurance pays 2000 × days × F. A framed
+   * stayer (≠ the visitor) is first taken to the hotel's square. `park`: 歌舞伎町's child at the amusement park.
+   */
+  *checkIn(stayer: Player, visitor: Player, f: Facility, days: number, park: boolean): Flow {
+    const owner = this.players[f.owner - 1];
+    if (stayer !== visitor) {
+      const n = this.board.nodes.find(x => x.ref === f.id + 4000);
+      if (!n) return;
+      const where = park ? '遊樂場' : f.type === 1 ? '旅館' : '情人酒店';
+      yield* this.say(stayer.id, `被嫁禍！住進${where}`, `${this.name(stayer.id)}被嫁禍，代替${this.name(visitor.id)}去${where}${days}天`);
+      stayer.lastNode = stayer.node; stayer.node = n.id;
+      yield { t: 'teleport', p: stayer.id, node: n.id };
+    }
+    if (owner) this.addHostility(stayer.id, owner.id, 20 * days * this.priceIndex);
+    this.clearStays(stayer);
+    stayer.hotel = days - 1 || 0x80;
+    stayer.facility = f.id;
+    stayer.monthBadDays += days;
+    this.checkedIn = true;
+    // The guest's bad-days line comes before the stay is set (core_actions:1600-1610, fcn_0044f2c2); then
+    // fcn_0040d5a5 turns them to the hotel and they walk in.
+    yield { t: 'fx', kind: 'enter-hotel', p: stayer.id, data: { days, facility: f.id, ...(park ? { park } : {}) } };
+    yield* this.insurancePayout(stayer, 2000 * days * this.priceIndex);
+  }
+
+  /** Whether the remake's hotel rules are on (REMAKE_HOTEL; read by the modules, which cannot import it). */
+  get remakeHotel(): boolean { return REMAKE_HOTEL.on; }
+  /** A hotel of this map (the original 旅館, 歌舞伎町's 情人酒店). */
+  isHotel(f: Facility): boolean { return f.type === 1 || f.type === this.rules?.hotelType; }
+
+  /** Check-out (REMAKE_HOTEL, 06 §5.5): 土地公 still on the guest takes the hotel now (not on the day they stopped). */
+  private *checkOut(p: Player): Flow {
+    if (!REMAKE_HOTEL.on) return;
+    const f = this.board.facilities.find(x => x.id === p.facility);
+    if (!f || !f.level || !this.isHotel(f) || !f.owner || f.owner === p.id + 1) return;
+    if (this.objects.godType(p) !== 12) return;
+    const n = this.board.nodes.find(x => x.ref === f.id + 4000);
+    yield* this.objects.earthGodTakes(p, f, f.id + 4000, n?.id ?? p.node);
   }
 
   /**

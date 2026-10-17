@@ -3,7 +3,7 @@
  * Owns: the 46 object slots (gods, dog, gift, chest, Death, roadblocks, mines, time bombs), attaching gods
  * to players (luck values), what happens when a player steps on or stops at an object, and monthly moves.
  */
-import { facilityOf, landOf, type BoardNode } from '../board';
+import { facilityOf, landOf, type BoardNode, type Facility, type Land } from '../board';
 import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
 import type { Player } from '../types';
@@ -514,11 +514,18 @@ export class Objects {
       return;
     }
     // Earth god: takes the lot with its buildings. Bug decision #2: the hostility is the real value, not a mangled double.
-    const lot = land ?? fac!;
+    // The remake (REMAKE_HOTEL): a hotel someone checked into on this landing is taken at the check-out instead.
+    if (fac && g.checkedIn && g.isHotel(fac) && g.remakeHotel) return;
+    yield* this.earthGodTakes(p, land ?? fac!, n.ref, n.id);
+  }
+
+  /** 土地公 takes a lot or plot (06 §5.5): hostility, the owner changes, the fx. */
+  *earthGodTakes(p: Player, lot: Land | Facility, ref: number, node: number): Flow {
+    const g = this.g;
     if (lot.owner === p.id + 1) return;
     if (lot.owner) g.addHostility(lot.owner - 1, p.id, Math.trunc((lot.price * g.priceIndex * (lot.level + 2)) / 5));
     lot.owner = p.id + 1;
-    yield { t: 'fx', kind: 'earth-god', p: p.id, node: n.id, data: { ref: n.ref } };
+    yield { t: 'fx', kind: 'earth-god', p: p.id, node, data: { ref } };
     yield { t: 'board' };
   }
 

@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
-import { Game } from './game';
+import { Game, REMAKE_HOTEL } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
 import { Forks } from './modules/forks';
@@ -53,8 +53,20 @@ export function goldenRun(mapId: number, days: number): string {
   return h.digest('hex').slice(0, 16);
 }
 
-/** Hashes with the fork choices of 2026-10-18 (docs/rules/14 §2). */
+/**
+ * Hashes with the fork choices of 2026-10-18 (docs/rules/14 §2) and the remake's hotel rules of the same day
+ * (REMAKE_HOTEL: 免費卡 / 嫁禍卡 on a stay, 土地公 at check-out; docs/rules/02 §4.3, 06 §5.5). Maps 0, 7, 102 and 103
+ * changed with the hotel rules (a stay framed or a hotel taken at check-out in those runs); with them off every map
+ * gives the fork-rule hashes below (FORKS_ONLY), checked by the second test.
+ */
 const GOLDEN: Record<number, string> = {
+  0: 'ff64da19cc51dc47', 1: 'f0246854a78ee808', 2: 'bda32fecd5e7d8d1', 3: '3531ca59818d688a', 4: '7e01b1cee5d1146e',
+  5: 'd21d73aecf156451', 6: '3c325285a23ded9b', 7: '8f129350179c3558', 100: '85ddb441591645bf', 101: 'e7b047bbe7fc0067',
+  102: 'c21cd9facece35d5', 103: 'fc429a45646aaf27', 104: '2e436d9ef29514b5',
+};
+
+/** The fork-rule hashes of 2026-10-18 before the hotel rules (REMAKE_HOTEL off). */
+const FORKS_ONLY: Record<number, string> = {
   0: '1ec7b32d388daaf6', 1: 'f0246854a78ee808', 2: 'bda32fecd5e7d8d1', 3: '3531ca59818d688a', 4: '7e01b1cee5d1146e',
   5: 'd21d73aecf156451', 6: '3c325285a23ded9b', 7: '80b147d1bcc5e179', 100: '85ddb441591645bf', 101: 'e7b047bbe7fc0067',
   102: '292bc4eba5631a1f', 103: 'c6d0981b302b83fb', 104: '2e436d9ef29514b5',
@@ -74,11 +86,19 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
     for (const id of MAPS) expect(got[id], `map ${id}`).toBe(GOLDEN[id]);
   }, 120_000);
 
-  it('with the earlier fork rule every map still plays bit for bit as before 2026-10-18', () => {
-    Forks.legacy = true;
+  it('with the hotel rules off every map plays as with the fork rule alone', () => {
+    REMAKE_HOTEL.on = false;
+    try {
+      const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
+      for (const id of MAPS) expect(got[id], `map ${id} (hotel rules off)`).toBe(FORKS_ONLY[id]);
+    } finally { REMAKE_HOTEL.on = true; }
+  }, 120_000);
+
+  it('with the earlier fork rule (and the hotel rules off) every map still plays bit for bit as before 2026-10-18', () => {
+    Forks.legacy = true; REMAKE_HOTEL.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (legacy forks)`).toBe(LEGACY[id]);
-    } finally { Forks.legacy = false; }
+    } finally { Forks.legacy = false; REMAKE_HOTEL.on = true; }
   }, 120_000);
 });
