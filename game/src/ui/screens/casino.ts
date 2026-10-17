@@ -20,7 +20,7 @@ import { ASSETS } from '../assets';
 import './casino.css';
 
 type Fx = { t: 'fx'; kind: string; p?: number; target?: number; node?: number; data?: Record<string, unknown> };
-interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; mult?: number; cash: number; fee: number; godLine?: string }
+interface ChooseAsk { t: 'casino'; p: number; phase: 'choose'; game: C.CasinoGame; hall: string; banker: number; facility: number; name: string; level: number; cap: number; min: number; max?: number; mult?: number; cash: number; fee: number; godLine?: string; free?: boolean }
 interface BjAsk { t: 'casino'; p: number; phase: 'blackjack'; player: number[]; up: number; canDouble: boolean; double?: number; stake: number }
 interface HeAsk { t: 'casino'; p: number; phase: 'holdem'; hole: number[]; board: number[]; stake: number; call?: number }
 type CasinoAsk = ChooseAsk | BjAsk | HeAsk;
@@ -143,7 +143,7 @@ class CasinoPage {
       <div class="cs-bet">
         <div class="cs-rule">${esc(GAME_RULE[this.game])}</div>
         <div class="cs-pick">${this.pickHtml()}</div>
-        <div class="cs-stake"><span class="cs-stk-l">下注${chipMode() ? '（籌碼）' : ''}</span><b class="cs-stk">${money(this.stake)}</b>
+        <div class="cs-stake"><span class="cs-stk-l">${a.free ? '免費注' : '下注'}${chipMode() ? '（籌碼）' : ''}</span><b class="cs-stk">${money(this.stake)}</b>
           <span class="cs-range">${money(a.min)} – ${money(this.max)}</span></div>
         <div class="cs-chips">
           ${chipButtons(a.mult ?? 1)}

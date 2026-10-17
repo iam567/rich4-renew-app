@@ -80,7 +80,7 @@ export const DENY = {
     [0, '強制拆除房屋：只拆一般土地的房屋'], [1, '徵收土地：只收一般土地'], [8, '股票違約交割：沒有股市'], [9, '變賣所有股票：沒有股市'],
   ]),
   cards: new Map<number, string>([
-    [24, '紅卡：沒有股市'], [25, '黑卡：沒有股市'], [27, '漲價卡：賭場不收過路費'],
+    [24, '紅卡：沒有股市'], [25, '黑卡：沒有股市'],
     [31, '飛行卡：大富翁城不能離開'], [32, '電車卡：大富翁城不能離開'], [33, '遣返卡：不能送人去別的城市'], [34, '獨裁卡：不能送人去別的城市'],
     [35, '召集卡：其他城市已經沒有人'],
   ]),
@@ -125,6 +125,15 @@ export abstract class CasinoRules implements MapRules {
   godDays(type: number): number | undefined { return CASINO_GODS.has(type) ? CASINO_GOD_DAYS : undefined; }
   readonly godsCasinoOnly = true;
   godNote(type: number): string { return GOD_CASINO[type] ? `：${GOD_CASINO[type]}` : ''; }
+
+  /** The cards and tools on this map (19 §3.6, the user's OK of 2026-10-17). */
+  readonly casinoItems = true;
+  /** 飛彈 takes a hall down one level, 核子飛彈 / 洲際飛彈 back to an empty plot (owned). */
+  blastMode(nuke: boolean): 0 | 1 | 2 { return nuke ? 2 : 0; }
+  /** 工程車 takes the hall it stops on down one level (and does not go in). */
+  readonly constructionMode = 0 as const;
+  /** 機器工人 +2 levels, 超級工人 straight to Lv5. */
+  workerExtra(tool: number): number { return tool === 14 ? 4 : tool === 9 ? 1 : 0; }
 
   /** The blinds' multiplier (the finale's 盲注遞增, 19 §5.5; 1 elsewhere). */
   blind(): number { return 1; }
@@ -217,6 +226,8 @@ export abstract class CasinoRules implements MapRules {
       yield { t: 'build', p: p.id, kind: 'facility', id: f.id, level: f.level, cost };
       return true;
     }
+    // 工程車 (19 §3.6): it does not go in; Tools.construction takes the hall down a level after the stop.
+    if (f.level >= 1 && (p.traffic & 0x83) === 3 && !p.sleepwalk && !p.hotel) return true;
     if (f.level >= 1) yield* this.visit(g, p, f);
     return true;
   }
@@ -309,11 +320,26 @@ export abstract class CasinoRules implements MapRules {
     // 門票 (19 §5.0): 500..5,000 in hundreds to the owner first, also when the banker is away.
     // Never more than the visitor holds (19 §5.1); 財神 / 窮神 change what the visitor pays (19 §5.6).
     const god = g.objects.godType(p), pay = GOD_PAY[god] ?? 1, godLine = GOD_CASINO[god] ? `${OBJECT_NAMES[god - 1]}附身：${GOD_CASINO[god]}` : '';
-    const fee = Math.min(round(this.entryFee(rng, level) * pay, 100), CasinoRules.holding(p));
-    yield { t: 'fx', kind: 'casino-fee', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], level, cap, fee, god, godLine, text: `${where}門票 ${this.price(fee)}${pay !== 1 ? `（${OBJECT_NAMES[god - 1]}附身）` : ''}` } };
-    if (fee > 0) yield* g.transfer(p.id, banker.id, fee, 1, '賭場門票', true);
-    (this.stats[banker.id] ??= emptyStats()).bankerIn += fee;
-    st.lost += fee; this.flow('fee', fee);
+    // 漲價卡 on the hall (19 §3.6): 門票 ×2 while it lasts.
+    const priceUp = f.tmpState >> 4 && !(f.tmpState & 0xf) ? 2 : 1;
+    let fee = Math.min(round(this.entryFee(rng, level) * pay * priceUp, 100), CasinoRules.holding(p));
+    // 免費卡 (19 §3.6): no 門票 and one free bet of the minimum (a loss of it is not paid).
+    let free = false;
+    if (p.cards.includes(20) && (yield* g.cards.tryFree(p, banker.id, fee, { text: `進入${where}\n門票 ${this.price(fee)}\n\n是否使用免費卡？\n（免門票，送一注最低注的免費注）` }))) { fee = 0; free = true; }
+    // 嫁禍卡 (19 §3.6): only the 門票 can be passed on (never the gamble).
+    let feePayer = p.id;
+    if (!free && fee > 0 && p.cards.includes(19)) {
+      const r = yield* g.cards.tryFrame(p, 1, fee);
+      if (r >= 0) { feePayer = r; fee = Math.min(fee, CasinoRules.holding(g.players[r])); }
+    }
+    const note = free ? '（免費卡）' : feePayer !== p.id ? `（嫁禍給${g.name(feePayer)}）` : pay !== 1 ? `（${OBJECT_NAMES[god - 1]}附身）` : priceUp > 1 ? '（漲價中 ×2）' : '';
+    yield { t: 'fx', kind: 'casino-fee', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], level, cap, fee, god, godLine, free, payer: feePayer, priceUp, text: `${where}門票 ${this.price(fee)}${note}` } };
+    if (fee > 0 && feePayer !== banker.id) {
+      yield* g.transfer(feePayer, banker.id, fee, 1, '賭場門票', true);
+      (this.stats[banker.id] ??= emptyStats()).bankerIn += fee;
+      if (feePayer === p.id) st.lost += fee;
+      this.flow('fee', fee);
+    }
     if (!p.whoPlays || g.over || banker.bankrupt) return;
     const away = this.bankerAway(banker);
     if (away) {
@@ -329,10 +355,10 @@ export abstract class CasinoRules implements MapRules {
     // the minimum); with nothing left the visitor only pays the 門票.
     const have = CasinoRules.holding(p);
     if (have <= 0) { if (human) yield* g.say(p.id, `${this.moneyWord()}不足，無法下注！`); return; }
-    const hi = Math.min(cap, have), lo = Math.min(this.minStake(level), hi);
+    const lo = Math.min(this.minStake(level), Math.min(cap, have)), hi = free ? lo : Math.min(cap, have);
     let choice: CasinoChoice;
     if (human) {
-      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, max: hi, mult: this.blind(), cash: p.cash + p.bank, fee, godLine } as never)) as unknown as CasinoChoice | undefined;
+      const a = (yield ask({ t: 'casino', p: p.id, phase: 'choose', game, hall: HALL_NAMES[f.type], banker: banker.id, facility: f.id, name: f.name, level, cap, min: lo, max: hi, mult: this.blind(), cash: p.cash + p.bank, fee, godLine, free } as never)) as unknown as CasinoChoice | undefined;
       choice = this.validChoice(game, a, lo, hi) ?? this.aiChoice(rng, game, p, lo, hi);
     } else choice = this.aiChoice(rng, game, p, lo, hi, god);
     // 福神 / 衰神 (19 §5.6): the outcome they force, the table dealt to match it (C.rigged and friends).
@@ -340,10 +366,12 @@ export abstract class CasinoRules implements MapRules {
     const result = yield* this.play(rng, p, choice, human, have, rig);
     // The visitor's win is capped by the level; what the visitor loses is the stake (×2 for a double or a call)
     // times the banker's big hand (19 §5.2), not capped: all the visitor's money for a royal flush.
-    const { net, big } = CasinoRules.settle(result, cap, p.cash + p.bank, pay);
+    const settled = CasinoRules.settle(result, cap, p.cash + p.bank, pay), big = settled.big;
+    // The free bet's loss is not paid (免費卡).
+    const net = free && settled.net < 0 ? 0 : settled.net;
     // One line with the bet and the arithmetic (the ticker, the replay's caption).
     const line = C.resultLine(result, { net, cap, mult: big.mult, all: big.all, why: big.why }, n => this.price(n), this.moneyWord());
-    const text = `${g.name(p.id)}在${where}${C.betLabel(result)} ${this.price(choice.stake)}：${line}${godLine && (rig || (pay !== 1 && result.net < 0)) ? `（${godLine}）` : ''}`;
+    const text = `${g.name(p.id)}在${where}${C.betLabel(result)} ${this.price(choice.stake)}：${line}${godLine && (rig || (pay !== 1 && result.net < 0)) ? `（${godLine}）` : ''}${free ? '（免費卡的免費注）' : ''}`;
     const extra = Math.max(0, Math.min(choice.stake, have - choice.stake));
     yield { t: 'fx', kind: 'casino-result', p: p.id, target: banker.id, node: p.node, data: { facility: f.id, name: f.name, hall: HALL_NAMES[f.type], fee, level, cap, stake: choice.stake, extra, line, god, godLine, pay, result: result as unknown as Record<string, unknown>, net, raw: result.net, clipped: result.net > cap, mult: big.mult, all: big.all, why: big.why, human, text } };
     this.note(text, p.id, Math.abs(net) >= cap); // every visit on the ticker (a city off screen stays headless)

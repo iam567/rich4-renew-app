@@ -205,8 +205,28 @@ describe.skipIf(!haveFinale)('大富翁城 as a normal map (19 §9)', () => {
         if (s.t === 'fx' && s.kind === 'fate') expect(DENY.fate.has(Number(s.data?.id)), `fate ${s.data?.id}`).toBe(false);
       }
       for (const p of g.players) for (const id of p.cards) expect(DENY.cards.has(id)).toBe(false);
+      // The money game has none of the chips finale's rules: no blinds, no road tax, no chip coupons (19 §9).
+      expect(steps.some(s => s.t === 'fx' && (s.kind === 'finale-square' || s.kind === 'finale-blinds'))).toBe(false);
+      const r = g.rules as ClassicCasino;
+      expect(r.blind()).toBe(1);
+      expect([1, 2, 3, 4, 5].map(l => r.cap(l))).toEqual(CAPS.slice(1));
+      expect(r.minStake(5)).toBe(1000);
+      expect((r as unknown as { landSquare?: unknown }).landSquare).toBeUndefined();
     });
   }
+
+  it('the classic map 105 pays the coupon squares in points, the road costs nothing, whatever day it is', () => {
+    const g = new Game(classic(2, 5), finaleBoard());
+    const p = g.players[1]; Object.assign(p, { whoPlays: 2, cash: 50_000, bank: 0, points: 0 });
+    g.daysElapsed = 200;
+    const land = (node: number) => { p.node = node; return drain((g as unknown as { land(p: unknown): Flow<unknown> }).land(p)); };
+    const road = g.board.nodes.find(n => n.event === 0 && !n.ref)!, c50 = g.board.nodes.find(n => n.event === 10)!;
+    land(road.id);
+    expect(p.cash).toBe(50_000);
+    land(c50.id);
+    expect(p.points).toBe(50);
+    expect(p.cash).toBe(50_000);
+  });
 
   it('builds a hall for 10,000 and raises it for a token 1,000 a level (× the price index); worth counts what was paid', () => {
     const g = new Game(classic(2, 7), finaleBoard());
@@ -233,6 +253,123 @@ describe.skipIf(!haveFinale)('大富翁城 as a normal map (19 §9)', () => {
   });
 });
 
+describe.skipIf(!haveFinale)('大富翁城 cards and tools (19 §3.6)', () => {
+  const setup = (seed = 3) => {
+    const g = new Game({ mapId: FINALE_MAP, players: [0, 3, 6].map(c => ({ character: c, human: false })), fundIndex: 1, traffic: 1, landLimitIndex: 0, daysLimitIndex: 3, victoryIndex: 0, startDate: pack(2026, 10, 16), seed }, finaleBoard());
+    for (const p of g.players) Object.assign(p, { whoPlays: 2, cash: 500_000, bank: 0 });
+    return g;
+  };
+  /** Drives a flow, answering the questions with `answer` (undefined: the default). */
+  const drive = <T>(flow: Flow<T>, answer: (s: Step) => Answer = () => undefined): { steps: Step[]; value: T } => {
+    const steps: Step[] = []; let a: Answer;
+    for (let r = flow.next(); ; r = flow.next(a)) { if (r.done) return { steps, value: r.value as T }; steps.push(r.value); a = 'ask' in r.value ? answer(r.value) : undefined; }
+  };
+  const play = (g: Game, p: Game['players'][number], id: number, answer: (s: Step) => Answer) => {
+    p.cards.push(id);
+    return drive((g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> }).play(p, id, true), answer);
+  };
+  const spot = (ref: number) => (s: Step) => { const q = s as unknown as { t: string; spots?: { id: number }[] }; return (q.t === 'pick-map' ? q.spots!.findIndex(x => x.id === ref) : undefined) as Answer; };
+  const hall = (g: Game, i: number, owner: number, level: number, type = 5) => Object.assign(g.board.facilities[i], { owner: owner + 1, level, type, tmpState: 0 });
+
+  it('購地卡 buys the hall at what was paid for it; 怪獸卡 empties a hall; 惡魔卡 takes every hall of one owner down a level', () => {
+    const g = setup(), [a, b, c] = g.players;
+    const f0 = hall(g, 0, b.id, 3, 8), f1 = hall(g, 1, b.id, 1, 6), f2 = hall(g, 2, b.id, 5, 9), f3 = hall(g, 3, c.id, 4, 5);
+    a.node = g.board.nodes.find(n => n.ref === f0.id + 4000)!.id;
+    const cash = a.cash;
+    expect(play(g, a, 3, () => undefined).value).toBe(true);
+    expect([f0.owner, f0.level, f0.type]).toEqual([a.id + 1, 3, 8]);
+    expect(cash - a.cash).toBe((PLOT_PRICE + BUILD_COST + 2 * UPGRADE_COST) * g.priceIndex);
+    play(g, a, 10, spot(f1.id + 4000));
+    expect([f1.level, f1.type, f2.level, f3.level, f0.level]).toEqual([0, 0, 4, 4, 3]);   // b's halls only
+    play(g, a, 11, spot(f3.id + 4000));
+    expect([f3.owner, f3.level]).toEqual([c.id + 1, 0]);
+  });
+
+  it('查稅卡 only on hall owners; 漲價卡 only on one\'s own hall, its 門票 ×2', () => {
+    const g = setup(), [a, b, c] = g.players;
+    g.players.forEach((p, i) => Object.assign(p, { placed: true, node: g.board.nodes[3 + i].id }));
+    const f = hall(g, 0, b.id, 3);
+    let offered: number[] = [];
+    play(g, a, 26, s => { const q = s as unknown as { spots?: { id: number }[] }; offered = q.spots?.map(x => x.id) ?? []; return 0 as Answer; });
+    expect(offered).toEqual([b.id]);
+    expect(DENY.cards.has(27)).toBe(false);
+    let refs: number[] = [];
+    play(g, b, 27, s => { const q = s as unknown as { t: string; spots?: { id: number }[] }; refs = q.spots?.map(x => x.id) ?? []; return 0 as Answer; });
+    expect(refs).toEqual([f.id + 4000]);
+    expect(f.tmpState).toBe(0x50);
+    // The same square and day: the 門票 doubled.
+    const fee = () => { Object.assign(c, { cash: 500_000, node: g.board.nodes[5].id }); return (drive(g.rules!.landOnFacility!(g, c, f)).steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number } }).data.fee; };
+    const up = fee(); f.tmpState = 0; const plain = fee();
+    expect(up).toBe(plain * 2);
+  });
+
+  it('免費卡: no 門票 and one free bet of the minimum, its loss not paid; 嫁禍卡 passes on the 門票 only', () => {
+    const g = setup(9), [a, b, c] = g.players;
+    const f = hall(g, 0, a.id, 5, 9);
+    let freeLoss = 0, frees = 0;
+    for (let i = 0; i < 40 && freeLoss === 0; i++) {
+      Object.assign(b, { cash: 500_000, node: g.board.nodes[i % g.board.nodes.length].id, cards: [20] });
+      g.daysElapsed = i;
+      const { steps } = drive(g.rules!.landOnFacility!(g, b, f));
+      const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number; free: boolean } };
+      const res = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as unknown as { data: { stake: number; raw: number; net: number } };
+      expect(fee.data).toMatchObject({ fee: 0, free: true });
+      expect(b.cards).toEqual([]);
+      expect(res.data.stake).toBe(1000);
+      frees++;
+      if (res.data.raw < 0) { expect(res.data.net).toBe(0); expect(b.cash).toBe(500_000); freeLoss++; }
+    }
+    expect(freeLoss).toBe(1);
+    // 嫁禍卡 (a human visitor here, to pick): c pays the 門票, the visitor still plays and pays its own loss.
+    b.human = true; b.whoPlays = 1;
+    let paidLoss = false;
+    for (let i = 0; i < 40 && !paidLoss; i++) {
+      Object.assign(b, { cash: 500_000, node: g.board.nodes[i % g.board.nodes.length].id, cards: [19] }); c.cash = 500_000; a.cash = 500_000;
+      g.daysElapsed = 100 + i;
+      const { steps } = drive(g.rules!.landOnFacility!(g, b, f), s => {
+        const q = s as unknown as { t: string; phase?: string; kind?: string };
+        if (q.t === 'choose') return c.id as Answer;
+        if (q.t === 'casino' && q.phase === 'choose') return { game: 'sicbo', stake: 5000, bet: 'big' } as unknown as Answer;
+        return undefined;
+      });
+      const fee = (steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number; payer: number } }).data;
+      const res = (steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as unknown as { data: { net: number } }).data;
+      expect(fee.payer).toBe(c.id);
+      expect(c.cash).toBe(500_000 - fee.fee);
+      expect(b.cash).toBe(500_000 + res.net);
+      if (res.net < 0) paidLoss = true;
+    }
+    expect(paidLoss).toBe(true);
+  });
+
+  it('飛彈 a level, 核子飛彈 back to an empty owned plot; 機器工人 +2, 工程車 a level and no visit', () => {
+    const g = setup(), [a, b] = g.players;
+    const f = hall(g, 0, b.id, 4);
+    drive((g.tools as unknown as { blast(p: unknown, x: number, y: number, half: number, nuke: boolean): Flow<unknown> }).blast(a, f.x, f.y, 1, false));
+    expect([f.owner, f.level]).toEqual([b.id + 1, 3]);
+    drive(g.tools.nukeAt(a, f.x, f.y));
+    expect([f.owner, f.level, f.type]).toEqual([b.id + 1, 0, 0]);
+    const h = hall(g, 5, a.id, 1);
+    a.tools[8] = 1;
+    drive(g.tools.use(a, 9, h.id + 4000));
+    expect(h.level).toBe(3);
+    hall(g, 0, b.id, 4);
+    Object.assign(a, { traffic: 0x1f, node: g.board.nodes.find(n => n.ref === f.id + 4000)!.id });
+    const { steps } = drive((g as unknown as { land(p: unknown): Flow<unknown> }).land(a));
+    expect(steps.some(s => s.t === 'fx' && s.kind === 'casino-fee')).toBe(false);
+    expect(f.level).toBe(3);
+  });
+
+  it('elsewhere the originals: 核子飛彈 leaves a plot ownerless, 機器工人 one level', () => {
+    const g = new Game({ mapId: 100, players: [0, 3].map(c => ({ character: c, human: false })), fundIndex: 1, traffic: 1, landLimitIndex: 0, daysLimitIndex: 3, victoryIndex: 0, startDate: pack(2026, 10, 16), seed: 3 }, parseBoard(JSON.parse(readFileSync(file(100), 'utf8')) as RawMap));
+    const [a, b] = g.players; a.whoPlays = 2; b.whoPlays = 2;
+    expect(g.rules).toBeUndefined();
+    const f = Object.assign(g.board.facilities[0], { owner: b.id + 1, level: 2, type: 1 });
+    drive(g.tools.nukeAt(a, f.x, f.y));
+    expect(f.owner).toBe(0);
+  });
+});
+
 describe.skipIf(!haveFinale)('大富翁城 gods (19 §5.6)', () => {
   const setupGame = (seed = 11) => {
     const g = new Game({ mapId: FINALE_MAP, players: [0, 3].map(c => ({ character: c, human: false })), fundIndex: 1, traffic: 1, landLimitIndex: 0, daysLimitIndex: 3, victoryIndex: 0, startDate: pack(2026, 10, 16), seed }, finaleBoard());
@@ -251,8 +388,8 @@ describe.skipIf(!haveFinale)('大富翁城 gods (19 §5.6)', () => {
       Object.assign(v, { cash: 10_000_000, bank: 0 }); g.players[0].cash = 1_000_000_000;
       v.node = g.board.nodes[i % g.board.nodes.length].id; g.daysElapsed = Math.floor(i / g.board.nodes.length);
       const steps = drain(g.rules!.landOnFacility!(g, v, f) as Flow<unknown>);
-      const fee = (steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as { data: { fee: number } } | undefined)?.data.fee ?? 0;
-      const r = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as { data: Res } | undefined;
+      const fee = (steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number } } | undefined)?.data.fee ?? 0;
+      const r = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as unknown as { data: Res } | undefined;
       if (r) out.push({ ...r.data, fee });
     }
     return out;
@@ -414,7 +551,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     const cash0 = v.cash + v.bank, bank0 = b.cash + b.bank;
     w.mask(5);
     const steps = drain(w.finale.visit(g, v, f));
-    const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as { data: { fee: number } } | undefined;
+    const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number } } | undefined;
     const auto = steps.find(s => s.t === 'fx' && s.kind === 'casino-auto') as { data: { amount: number } } | undefined;
     expect(fee && auto).toBeTruthy();
     expect(auto!.data.amount).toBeLessThanOrEqual(CAPS[4]);
@@ -467,7 +604,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(null);
   });
 
-  it('過路稅 and 籌碼券: a plain road square takes 50 chips × the blinds, the coupon squares give 300 / 500 × the blinds', () => {
+  it('過路稅 and 籌碼券: a plain road square takes 50 chips × the blinds, the coupon squares give a fixed 300 / 500', () => {
     setFinaleBoard(finaleBoard());
     const w = nearFinale(23, [0, 3, 6, 9]);
     drain(w.finale.check());
@@ -483,7 +620,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
       expect(v.cash + v.bank).toBe(120_000 - 50 * FINALE_CHIP * mult);
       expect(run(c30)).toBe(true);
       expect(run(c50)).toBe(true);
-      expect(v.cash + v.bank).toBe(120_000 - 50 * FINALE_CHIP * mult + 800 * FINALE_CHIP * mult);
+      expect(v.cash + v.bank).toBe(120_000 - 50 * FINALE_CHIP * mult + 800 * FINALE_CHIP);   // coupons fixed, the tax × the blinds
       expect(v.points).toBe(points);                              // chips in place of points
     }
     // At most what the visitor holds (out at the next check).
@@ -498,6 +635,19 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     expect(f.aiRemoteDice(g, p, ahead)).toBe(3);
     // Not on the classic map 105 (money; no road tax).
     expect((new ClassicCasino(g) as unknown as { landSquare?: unknown }).landSquare).toBeUndefined();
+    setFinaleBoard(null);
+  });
+
+  it('超級工人 takes the holder\'s own hall straight to Lv5 in the finale', () => {
+    setFinaleBoard(finaleBoard());
+    const w = nearFinale(23, [0, 3, 6, 9]);
+    drain(w.finale.check());
+    const g = w.cities[5], p = w.players[0];
+    w.mask(5);
+    const f = Object.assign(g.board.facilities[2], { owner: p.id + 1, level: 1, type: 7, tmpState: 0 });
+    p.tools[13] = 1;
+    drain(g.tools.use(p, 14, f.id + 4000));
+    expect(f.level).toBe(5);
     setFinaleBoard(null);
   });
 
@@ -524,9 +674,9 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
         if (q.phase === 'holdem') { expect(q.stake! + q.call!).toBeLessThanOrEqual(held); return 'call' as Answer; }
         return undefined;
       });
-      const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as { data: { fee: number } } | undefined;
+      const fee = steps.find(s => s.t === 'fx' && s.kind === 'casino-fee') as unknown as { data: { fee: number } } | undefined;
       held = before - (fee?.data.fee ?? 0);
-      const res = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as { data: { stake: number; net: number } } | undefined;
+      const res = steps.find(s => s.t === 'fx' && s.kind === 'casino-result') as unknown as { data: { stake: number; net: number } } | undefined;
       if (res) {
         visits++;
         stake = res.data.stake;

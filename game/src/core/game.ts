@@ -119,6 +119,17 @@ export interface MapRules {
   readonly godsCasinoOnly?: boolean;
   /** What a god does here, said when it attaches (「：必勝」). */
   godNote?(type: number): string;
+  /**
+   * The cards and tools reworked for this map (大富翁城, docs/rules/19 §3.6): 購地卡 at the hall's worth, 惡魔卡 on all
+   * of one owner's halls, 查稅卡 only on hall owners, 漲價卡 on one's own hall; 免費卡 / 嫁禍卡 at the tables.
+   */
+  readonly casinoItems?: boolean;
+  /** Damage of a blast here (飛彈 / 核子飛彈 / 洲際飛彈) on a large plot: Game.damageProperty's mode. */
+  blastMode?(nuke: boolean): 0 | 1 | 2;
+  /** 工程車 here: Game.damageProperty's mode on the building it stops on. */
+  readonly constructionMode?: 0 | 1 | 2;
+  /** 機器工人 / 超級工人 here: free levels after the first (undefined: the original's). */
+  workerExtra?(tool: number): number;
   /** A stop on any square, before the original's handling (大富翁城's finale: road tax, chip coupons); true when handled. */
   landSquare?(g: Game, p: Player, n: BoardNode): Flow<boolean>;
   /** The computer's remote dice here (the die value, null none); undefined: the original's judgement. */

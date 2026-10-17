@@ -366,7 +366,7 @@ export class Tools {
     if (!prop || prop.owner === p.id + 1 || prop.level === 0) return;
     if (prop.owner) g.addHostility(prop.owner - 1, p.id, 30 * g.priceIndex);
     yield { t: 'fx', kind: 'demolish', p: p.id, node: p.node, data: { ref } };
-    g.damageProperty(ref, 2);
+    g.damageProperty(ref, g.rules?.constructionMode ?? 2); // 大富翁城: one level (docs/rules/19 §3.6)
     yield { t: 'board' };
   }
 
@@ -584,7 +584,7 @@ export class Tools {
     for (const f of g.board.facilities) {
       if (!hit(f.x, f.y)) continue;
       if (f.owner) g.addHostility(f.owner - 1, p.id, nuke ? 30 * f.level * PI : 30 * PI);
-      g.damageProperty(f.id + 4000, nuke ? 1 : 0);
+      g.damageProperty(f.id + 4000, g.rules?.blastMode?.(nuke) ?? (nuke ? 1 : 0)); // 大富翁城 (19 §3.6)
     }
     const hurt: Player[] = [];
     for (const q of g.players) {
@@ -665,7 +665,8 @@ export class Tools {
       } else level = g.freeUpgrade(ref);
     } else level = g.freeUpgrade(ref);
     // 超級工人 (17 §3.6): a second free level, when there is room.
-    if (tool === 14 && level >= 0 && !(level & 0x80)) { const l2 = g.freeUpgrade(ref); if (l2 >= 0) level = l2; }
+    // 大富翁城 (docs/rules/19 §3.6): 機器工人 +2, 超級工人 to the top.
+    for (let k = g.rules?.workerExtra?.(tool) ?? (tool === 14 ? 1 : 0); k > 0 && level >= 0 && !(level & 0x80); k--) { const l2 = g.freeUpgrade(ref); if (l2 < 0) break; level = l2; }
     yield { t: 'fx', kind: 'robot-worker', p: p.id, data: { ref, level: level < 0 ? -1 : level & 0x7f, done: level >= 0 && (level & 0x80) !== 0 } };
     yield { t: 'board' };
     return true;

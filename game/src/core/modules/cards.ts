@@ -282,7 +282,9 @@ export class Cards {
         const ref = g.node(p.node).ref, plot = this.plot(ref);
         if (!plot || plot.owner === 0 || plot.owner === me + 1) return false;
         const level = plot.level;
-        const price = (plot.price + level * this.perLevel(ref)) * pi;
+        // 大富翁城 (docs/rules/19 §3.6): a hall at what was paid for it (plot, build, upgrades).
+        const worth = ref > 4000 && g.rules?.facilityWorth ? g.rules.facilityWorth(plot as Facility) : plot.price + level * this.perLevel(ref);
+        const price = worth * pi;
         if (price > p.cash) { yield* this.say(p, '您的現金不足！'); return false; }
         const seller = plot.owner - 1;
         g.addHostility(seller, me, Math.trunc((plot.price * pi * (level + 2)) / 5));
@@ -390,15 +392,19 @@ export class Cards {
         return true;
       }
       case 10: { // 惡魔卡 §3.10
-        const ref = yield* this.pickRef(p, human, '請選擇土地', this.plotRefs(() => true));
+        // 大富翁城 (docs/rules/19 §3.6): a hall of one owner, then every hall of that owner one level down.
+        const halls = !!g.rules?.casinoItems;
+        const ref = yield* this.pickRef(p, human, halls ? '請選擇一座賭場（它的地主所有賭場降一級）' : '請選擇土地', this.plotRefs(r => !halls || (r > 4000 && (this.plot(r)?.owner ?? 0) > 0 && (this.plot(r)?.level ?? 0) > 0)));
         if (ref <= 0) return false;
         this.consume(p, 10);
-        const refs = ref < 4000 ? this.street(g.board.lands[ref - 2001].name).map(l => l.id + 2000) : [ref];
+        const owner = halls ? this.plot(ref)!.owner : 0;
+        const refs = halls ? g.board.facilities.filter(f => f.owner === owner && f.level > 0).map(f => f.id + 4000)
+          : ref < 4000 ? this.street(g.board.lands[ref - 2001].name).map(l => l.id + 2000) : [ref];
         const was = refs.map(r => this.plot(r)!.level);
         for (const r of refs) {
           const plot = this.plot(r)!;
-          if (plot.owner) g.addHostility(plot.owner - 1, me, plot.level * 30 * pi);
-          g.damageProperty(r, 2);
+          if (plot.owner) g.addHostility(plot.owner - 1, me, (halls ? 1 : plot.level) * 30 * pi);
+          g.damageProperty(r, halls ? 0 : 2);
         }
         yield { t: 'fx', kind: 'devil', p: me, data: { ref, lots: refs, was } };
         yield { t: 'board' };
@@ -575,7 +581,8 @@ export class Cards {
         return true;
       }
       case 26: { // 查稅卡 §3.26
-        const t = yield* this.pickPlayer(p, human, '請選擇查稅對象', this.opponents(p).map(q => q.id));
+        // 大富翁城 (docs/rules/19 §3.6): only on someone with a hall (「查賭場的帳」).
+        const t = yield* this.pickPlayer(p, human, '請選擇查稅對象', this.opponents(p).filter(q => this.taxable(q)).map(q => q.id));
         if (t < 0) return false;
         this.consume(p, 26);
         const q = g.players[t];
@@ -592,7 +599,9 @@ export class Cards {
         return true;
       }
       case 27: case 28: { // 漲價卡 §3.27 / 查封卡 §3.28
-        const ref = yield* this.pickRef(p, human, '請選擇土地', this.plotRefs(() => true));
+        // 大富翁城 (docs/rules/19 §3.6): 漲價卡 on one's own hall (門票 ×2 for its days).
+        const own = id === 27 && !!g.rules?.casinoItems;
+        const ref = yield* this.pickRef(p, human, own ? '請選擇自己的賭場' : '請選擇土地', this.plotRefs(r => !own || (r > 4000 && this.plot(r)?.owner === me + 1 && (this.plot(r)?.level ?? 0) > 0)));
         if (ref <= 0) return false;
         this.consume(p, id);
         const state = id === 27 ? 0x50 : 0x51;
@@ -708,17 +717,25 @@ export class Cards {
     return r >= 0 ? r : p.id;
   }
 
-  /** _rich4_try_use_card_mianfeika (04 §2.6): human is asked, computer uses it on a fee above cash or a random bar. */
-  *tryFree(p: Player, payee: number, fee: number): Flow<boolean> {
+  /** 查稅卡's target here: anyone, or on 大富翁城 (docs/rules/19 §3.6) only someone owning a built hall. */
+  private taxable(q: Player): boolean {
+    return !this.g.rules?.casinoItems || this.g.board.facilities.some(f => f.owner === q.id + 1 && f.level > 0);
+  }
+
+  /**
+   * _rich4_try_use_card_mianfeika (04 §2.6): human is asked, computer uses it on a fee above cash or a random bar.
+   * 大富翁城's tables (docs/rules/19 §3.6) pass their own question text and have the computer always use it.
+   */
+  *tryFree(p: Player, payee: number, fee: number, table?: { text: string }): Flow<boolean> {
     if (!this.has(p, 20)) return false;
     const g = this.g;
     const use = g.isHuman(p)
-      ? (yield ask({ t: 'yesno', p: p.id, kind: 'free-card', text: `需付${fee}元\n\n是否使用免費卡？` })) === true
-      : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
+      ? (yield ask({ t: 'yesno', p: p.id, kind: 'free-card', text: table?.text ?? `需付${fee}元\n\n是否使用免費卡？` })) === true
+      : table ? true : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
     if (!use) return false;
     this.consume(p, 20);
     yield { t: 'fx', kind: 'card', p: p.id, data: { card: 20 } };
-    yield* this.say(undefined, g.isPlayerId(payee) ? `${g.name(p.id)}使用免費卡\n\n免付${g.name(payee)}${fee}元` : `${g.name(p.id)}使用免費卡\n\n免付${fee}元`);
+    yield* this.say(undefined, table ? `${g.name(p.id)}使用免費卡\n\n免門票，送一注免費注` : g.isPlayerId(payee) ? `${g.name(p.id)}使用免費卡\n\n免付${g.name(payee)}${fee}元` : `${g.name(p.id)}使用免費卡\n\n免付${fee}元`);
     // _rich4_try_use_card_mianfeika: the holder's card[0][19], then the payee's card[2][19] (face 1).
     if (g.isPlayerId(payee)) yield { t: 'fx', kind: 'card-line', p: payee, data: { card: 20, role: 2 } };
     return true;
@@ -850,6 +867,14 @@ export class Cards {
         return set(cands[g.rng.below(cands.length)][0].id + 2000);
       }
       case 10: { // fcn_0041f1b3
+        if (g.rules?.casinoItems) {
+          // 大富翁城 (docs/rules/19 §3.6): the rival (the most resented first) with the most hall levels, from 6.
+          const levels = (o: number) => g.board.facilities.filter(f => f.owner === o + 1 && f.level > 0).reduce((x, f) => x + f.level, 0);
+          const rivals = this.opponents(p).filter(q => p.ally !== q.id + 1).sort((a, b) => (b.id === H ? 1 : 0) - (a.id === H ? 1 : 0) || levels(b.id) - levels(a.id));
+          const t = rivals.find(q => levels(q.id) >= 6);
+          const hall = t && g.board.facilities.find(f => f.owner === t.id + 1 && f.level > 0);
+          return !!hall && set(hall.id + 4000);
+        }
         type Stat = { first: Land; count: number[]; levels: number[] };
         const stats = new Map<string, Stat>();
         for (const s of view()) {
@@ -948,9 +973,9 @@ export class Cards {
       }
       case 26: { // fcn_004202d2
         const v = view();
-        if (H >= 0 && seesPlayer(v, H) && g.players[H].cash > 30000 * pi) return set(H);
+        if (H >= 0 && seesPlayer(v, H) && g.players[H].cash > 30000 * pi && this.taxable(g.players[H])) return set(H);
         let pick = -1;
-        for (const s of v) if (s.k === 'player' && s.q.id !== p.id && s.q.whoPlays && s.q.cash > 50000 * pi) pick = s.q.id;
+        for (const s of v) if (s.k === 'player' && s.q.id !== p.id && s.q.whoPlays && s.q.cash > 50000 * pi && this.taxable(s.q)) pick = s.q.id;
         return pick >= 0 && set(pick);
       }
       case 27: { // fcn_0042040e

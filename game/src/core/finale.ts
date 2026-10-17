@@ -32,7 +32,7 @@ export const FINALE_MIN_STAKE = [0, 50, 100, 150, 250, 400];
 export const FINALE_FEE: [number, number][] = [[0, 0], [20, 50], [40, 100], [60, 150], [80, 200], [100, 300]];
 /** 過路稅 (19 §4.4): chips lost on stopping on a plain road square, before the blinds (to nobody). */
 export const FINALE_ROAD_TAX = 50;
-/** The coupon squares give chips there (19 §4.4): event 11 (+30 點券) 300, event 10 (+50 點券) 500, before the blinds. */
+/** The coupon squares give chips there (19 §4.4): event 11 (+30 點券) 300, event 10 (+50 點券) 500, fixed (not × the blinds). */
 export const FINALE_COUPON: Record<number, number> = { 11: 300, 10: 500 };
 /**
  * Scale of the caps in the finale (19 §5.1): 'flat' the user's table as it is (the default); 'index' × the price
@@ -141,14 +141,14 @@ export class Finale extends CasinoRules implements WorldHooks {
   /**
    * The finale's squares (19 §4.4), on stopping: a plain road square (no event, no plot) takes 50 chips × the
    * blinds to nobody (at most what the visitor holds: out below one chip at the next check); the coupon squares give
-   * 300 / 500 chips × the blinds in place of their points. The original's handling goes on for the road (objects).
+   * a fixed 300 / 500 chips (not × the blinds) in place of their points. The original's handling goes on for the road (objects).
    */
   *landSquare(g: Game, p: Player, n: BoardNode): Flow<boolean> {
     if (!this.active || g !== this.game()) return false;
     const mult = this.blind();
     const coupon = FINALE_COUPON[n.event];
     if (coupon) {
-      const amount = coupon * FINALE_CHIP * mult;
+      const amount = coupon * FINALE_CHIP; // fixed: not × the blinds (the user, 2026-10-17)
       g.gain(p, amount, 1);
       this.flow('coupon', amount);
       const text = `${g.name(p.id)}拿到籌碼券 +${this.price(amount)}`;
@@ -180,7 +180,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     const mult = this.blind(), me = p.id + 1, god = g.objects.godType(p);
     const worth = (id: number) => {
       const n = g.node(id);
-      if (FINALE_COUPON[n.event]) return FINALE_COUPON[n.event] * FINALE_CHIP * mult;
+      if (FINALE_COUPON[n.event]) return FINALE_COUPON[n.event] * FINALE_CHIP;
       if (n.event === 0 && !n.ref) return -FINALE_ROAD_TAX * FINALE_CHIP * mult;
       const f = n.ref > 4000 && n.ref < 6000 ? g.board.facilities[n.ref - 4001] : undefined;
       if (!f) return 0;
