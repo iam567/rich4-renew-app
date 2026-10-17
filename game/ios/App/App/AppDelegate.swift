@@ -12,6 +12,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         // The game's sound (Web Audio in the web view) plays even when the phone is on silent, like a game you
         // started on purpose; it still mixes with music from other apps. The in-game 靜音 / volume settings apply.
         Self.playSound()
+        // After an interruption (a call, an alarm, another app's audio) iOS leaves our session inactive: take it back
+        // as soon as the interruption ends, not only when the app becomes active again.
+        NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { note in
+            guard let raw = note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
+                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
+            Self.playSound()
+        }
         return true
     }
 
@@ -36,6 +43,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     }
 
     func applicationWillEnterForeground(_ application: UIApplication) {
+        Self.playSound()
         // Called as part of the transition from the background to the active state; here you can undo many of the changes made on entering the background.
     }
 

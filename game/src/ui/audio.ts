@@ -125,8 +125,13 @@ class AudioEngine {
       for (const ev of ['pointerdown', 'touchend', 'keydown', 'click']) window.addEventListener(ev, unlock, { capture: true, passive: true });
       document.addEventListener('visibilitychange', () => {
         if (!this.ctx) return;
-        if (document.hidden) void this.ctx.suspend().catch(() => {});
-        else this.wake();
+        if (document.hidden) { this.hiddenAt = Date.now(); void this.ctx.suspend().catch(() => {}); return; }
+        this.wake();
+        // iOS WKWebView: after the app was in the background (a message, a call, the home screen) the context often
+        // reports 'running' but plays nothing, and resume() can't fix it. So coming back from the background always
+        // builds a fresh context (the app's web view needs no touch to start audio — mediaTypesRequiringUserAction
+        // ForPlayback = []), a moment after AppDelegate re-activates the audio session.
+        if (this.hiddenAt) { this.hiddenAt = 0; setTimeout(() => { if (!document.hidden) this.rebuild(); }, 400); }
       });
       // iOS: coming back from another app (a message, a call) can leave the context 'interrupted' or silently
       // dead; try at once, and again on the next touch (unlock), rebuilding the context if it won't run.
@@ -180,6 +185,7 @@ class AudioEngine {
     this.ctx = null; this.out = null; this.master = null;
     try { void old.close().catch(() => {}); } catch { /* gone */ }
     this.generation++;
+    this.unlocked = false;   // the next touch plays the silent tick on the new context too
     const ctx = this.ensure();
     if (!ctx) return;
     void ctx.resume().catch(() => {});
@@ -188,6 +194,7 @@ class AudioEngine {
   }
   /** Bumped when the context is replaced: makers of live nodes (weather, street sounds) rebuild theirs. */
   generation = 0;
+  private hiddenAt = 0;
 
   unlock() {
     const first = !this.ctx;

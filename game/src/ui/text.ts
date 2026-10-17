@@ -8,11 +8,18 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 /** A clause: everything up to and including its closing punctuation (and closing brackets after it). */
 const CLAUSE = /[^，。、！？：；,!?;…　・]+(?:[，。、！？：；,!?;…　・]+[」』）)]*)?|[，。、！？：；,!?;…　・]+/g;
 
+/**
+ * Amounts never break inside: a number with its thousands separators, a 萬/億 and its unit (20,000 元, 3 天, ×2 倍)
+ * stays whole on one line (`.nb`, white-space: nowrap) — the user saw 「2」 at a line's end and 「0000」 on the next.
+ */
+const AMOUNT = /([+\-−×x]?\s?\d[\d,.]*\s*(?:[萬万億亿])?\s*(?:元|點券|点券|顆|颗|枚|天|倍|級|级|%|％|股|張|张|個|个|格|步|回合|號|号)?)/g;
+export const keepAmounts = (html: string) => html.replace(AMOUNT, '<span class="nb">$1</span>');
+
 /** One line of text as clauses (`deco` may mark up each clause's escaped text, e.g. numbers in gold). */
 export function phraseLine(line: string, deco: (html: string) => string = h => h): string {
   const parts = line.match(CLAUSE) ?? [];
-  if (parts.length <= 1) return `<span class="ph">${deco(esc(line))}</span>`;
-  return parts.map(p => `<span class="ph">${deco(esc(p))}</span>`).join('');
+  if (parts.length <= 1) return `<span class="ph">${deco(keepAmounts(esc(line)))}</span>`;
+  return parts.map(p => `<span class="ph">${deco(keepAmounts(esc(p)))}</span>`).join('');
 }
 
 /** Several lines: \n keeps a hard break, \n\n a small gap. */

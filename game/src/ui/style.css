@@ -703,6 +703,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* Text broken only between clauses (text.ts): a clause stays on one line; a longer one wraps inside, balanced. */
 .ph { display: inline-block; max-width: 100%; text-wrap: balance; }
+.nb { white-space: nowrap; }
 
 /* A list of choices on one page (Hud.fitChoices): one-line labels in --cols columns, the font stepped down to fit. */
 .msg.fit-list { width: min(620px, 100%); max-width: min(620px, 100%); }
