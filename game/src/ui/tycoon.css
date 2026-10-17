@@ -213,7 +213,6 @@
 .wlp-pager .chip { padding: 2px 12px; font-size: 13px; }
 .wlp-pager .chip:disabled { opacity: .35; }
 .wl-row.imp .wb-msg { font-weight: 700; color: #ffe9a8; }
-  border: 3px solid #fff; transform: rotate(-4deg); }
 .msg.tb.dictator { width: min(520px, 100%); background: radial-gradient(circle at 50% 30%, #7a3cff, #2a0a5a 70%); color: #fff; overflow: hidden; }
 .dc-me { width: 96px; height: 96px; margin: -50px auto 0; border-radius: 50%; overflow: hidden; border: 4px solid #ffe14a; box-shadow: 0 0 30px 8px rgba(255, 220, 80, .6); animation: te-medal .8s both; }
 .dc-me img { width: 100%; height: 100%; display: block; }
