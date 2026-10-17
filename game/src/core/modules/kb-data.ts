@@ -23,7 +23,7 @@ export const SHOP_RULES: Record<number, string> = {
 
 /**
  * An incident (§2.2): drawn first on every visit with its weight in ‰ of visits; `alcohol` ones never happen to a minor
- * (§3: the visit goes on as without an incident); `bad` ones are what a 保鑣 turns away. `pic`: the picture id
+ * (§3: the visit goes on as without an incident); `bad`: bad for the visitor. `pic`: the picture id
  * (maps/remake/events/<pic>.webp; the 陪酒店's are -m / -f by the visitor's sex).
  */
 export interface Incident { id: string; shop: number; w: number; title: string; visitor: string; owner: string; pic: string; alcohol?: boolean; bad?: boolean; gendered?: boolean }
@@ -94,11 +94,21 @@ export const GANG_PRISON_DAYS = 7;
 
 /** The exclusive tools of the 柏青哥店 / 拉霸店 counter (§7.5): ids 17–20 (14–16 are 大富豪模式's). */
 export const KB_TOOLS = [
-  { id: 17, name: '確變骰子', price: 25, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合多擲一顆骰子，擲完挑一顆不算' },
-  { id: 18, name: '計程車券', price: 20, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合擲 3 顆骰子（像開汽車一回合）' },
-  { id: 19, name: '保鑣', price: 50, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '自動：擋掉一次保護費，或一次對你不利的店內事件' },
-  { id: 20, name: '霓虹燈箱', price: 60, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '選自己的一塊地或一家店：7 天內收費 ×1.5' },
+  { id: 17, name: '確變骰子', price: 25, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合多擲一顆骰子，擲完挑一顆不算', short: '多擲一顆\n挑一顆不算' },
+  { id: 18, name: '計程車券', price: 20, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合擲 3 顆骰子（像開汽車一回合）', short: '這回合\n擲 3 顆骰子' },
 ];
+/**
+ * 保鑣卡 (§4.1, the user 2026-10-18; was the tool 保鑣 19): a card, passive like 免費卡, only on this map: when a 黑幫
+ * holder stops on the owner's property, one is used by itself and no 保護費 is paid. Only at the prize counter. Old saves: a 保鑣 tool becomes this card, a 霓虹燈箱 (20, dropped) its 60 points back.
+ */
+export const KB_CARD = 37;
+export const KB_CARD_SHORT = '黑幫收保護費時\n自動出面，免付一次';
+/** 暴走卡 (§7.5, the user 2026-10-18): played in one's turn, one more whole turn right after it (no day passes). */
+export const KB_RAMPAGE = 38;
+export const KB_RAMPAGE_SHORT = '這回合走完\n馬上再來一回合';
+/** The prize counter's own goods (the only place to get them): the exclusive tools and the two cards. */
+export const KB_CARDS_OWN = [KB_CARD, KB_RAMPAGE];
+export const OLD_BODYGUARD = 19, OLD_NEON = 20, OLD_NEON_POINTS = 60;
 export const KB_TOOL_IDS = KB_TOOLS.map(t => t.id);
 
 // ------------------------------------------------------------------ news and fate (§6)
@@ -129,7 +139,7 @@ export const KB_NEWS: KbCard[] = [
   N('kb-n-goldenfire', 0, '社會新聞', '黃金街電線走火', '黃金街電線走火／黃金街的房子各降一級'),
   N('kb-n-taxistrike', 0, '路況報導', '計程車大罷工', '計程車大罷工／三天內所有人只擲一顆骰子'),
   N('kb-n-blackout', 0, '政府公告', '霓虹燈節電令', '霓虹燈節電令／三天內小地過路費減半'),
-  N('kb-n-exchange', 1, '娛樂新聞', '景品交換所改裝', '景品交換所改裝開幕／三天內兌換現金的匯率提高'),
+  N('kb-n-exchange', 1, '娛樂新聞', '景品交換所改裝', '景品交換所改裝開幕／三天內景品一律打七折'),
   N('kb-n-ordinance', 0, '政府公告', '暴力團排除條例', '暴力團排除條例上路／被黑幫附身的人交出一半保護費'),
   N('kb-n-hostweek', 1, '娛樂新聞', '陪酒店週年慶', '陪酒店週年慶／三天內女性顧客免費'),
   N('kb-n-stocks', 1, '財經新聞', '娛樂概念股大漲', '娛樂概念股大漲／{stock}股價漲停兩天'),
@@ -148,7 +158,7 @@ export const KB_FATE: KbCard[] = [
   F('kb-f-trouble', 0, '店裡有人鬧事', '有人在你的店裡鬧事，砸壞了裝潢'),
   F('kb-f-fake', 0, '買到假名牌', '買到假名牌包，被騙了{amount}元', '買到假的限量玩具，被騙了{amount}元'),
   F('kb-f-photo', 1, '被街拍', '被街拍攝影師拍到，上了雜誌'),
-  F('kb-f-lottery', 1, '抽中特獎', '柏青哥店週年抽獎抽中特獎', '商店街抽獎抽中特獎'),
+  F('kb-f-lottery', 1, '抽中特獎', '柏青哥店週年抽獎抽中特獎，獲得{amount}點券', '商店街抽獎抽中特獎，獲得{amount}點券'),
   F('kb-f-taxi', 2, '被載到柏青哥店', '計程車司機把你載到柏青哥店門口', '公車坐過站，在柏青哥店門口下車'),
   F('kb-f-lovehotel', 0, '主題房生日派對', '朋友在情人酒店的主題房辦生日派對，你也被拉去住下', '迷路了，在巷子裡繞了一圈'),
   F('kb-f-lasttrain', 0, '錯過末班車', '錯過末班電車，在網咖過夜', '補習班下課太晚，在車站等家人來接'),

@@ -101,6 +101,12 @@ export interface MapRules {
   landOnFacility?(g: Game, p: Player, f: Facility): Flow<boolean>;
   /** The facility type an effect builds on an empty plot here (a card or tool: no choice), for 大富翁城's halls. */
   facilityType?(f: Facility): number;
+  /**
+   * A human's free building on an empty large plot of this map (機器工人, 超級工人, 天使卡, 魔法屋): its own picker
+   * (歌舞伎町's five shops, 大富翁城's halls), as the original asks for the facility type there (05 §3.8,
+   * fcn_0040b110 → fcn_00440aac). A cancel gives the map's default (`facilityType`).
+   */
+  pickFacilityType?(g: Game, p: Player, f: Facility): Flow<number>;
   /** 改建卡 on a facility here: the new type (-1 cancelled), the level kept. */
   rebuildFacility?(g: Game, p: Player, f: Facility, human: boolean): Flow<number>;
   /** News / fate entries that do not happen here (skipped like a failed precondition). */
@@ -157,7 +163,15 @@ export interface MapRules {
   readonly hotelType?: number;
   /** What a staying player is said to be doing instead of 住宿中 (歌舞伎町: a child taken to the amusement park, §3). */
   stayLabel?(g: Game, p: Player): string | undefined;
-  /** A factor on a street toll (news of the day, a 霓虹燈箱 on the street). */
+  /** This map's own cards, outside the pool (歌舞伎町's 37 保鑣卡, 38 暴走卡): they can be held. */
+  readonly ownCards?: readonly number[];
+  /** Plays one of `ownCards` that is not passive (暴走卡); false: nothing happened, the card is kept. */
+  playCard?(g: Game, p: Player, id: number, human: boolean): Flow<boolean>;
+  /** Whether a computer plays one of `ownCards` now. */
+  aiPlayCard?(g: Game, p: Player, id: number): boolean;
+  /** After a player's turn: true when they take one more whole turn now (暴走卡; no day passes between). */
+  extraTurn?(g: Game, p: Player): boolean;
+  /** A factor on a street toll (news of the day). */
   tollFactor?(g: Game, land: Land): number;
   /** Someone was moved by a 傳送機 (no landing; the map may still react, the prison square). */
   teleported?(g: Game, q: Player): Flow;
@@ -564,8 +578,12 @@ export class Game {
 
   private *loop(): Flow {
     while (!this.over) {
-      if (this.current < this.npcBase) yield* this.playerTurn(this.players[this.current]);
-      else yield* this.places.npcTurn(this.current);
+      if (this.current < this.npcBase) {
+        const p = this.players[this.current];
+        yield* this.playerTurn(p);
+        // 歌舞伎町's 暴走卡 (docs/rules/21 §7.5): another whole turn at once, the day not ended in between.
+        while (!this.over && p.whoPlays && this.rules?.extraTurn?.(this, p)) yield* this.playerTurn(p);
+      } else yield* this.places.npcTurn(this.current);
       if (this.over) break;
       yield* this.endTurn();
     }

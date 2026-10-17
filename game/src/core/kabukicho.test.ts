@@ -6,7 +6,7 @@ import { parseBoard, type RawMap } from './board';
 import { pack } from './date';
 import { Game } from './game';
 import { EV_PACHINKO, EV_PACHISLOT, KB_MAP, KabukichoRules, kbRules } from './kabukicho';
-import { GANG_AWAY, GANG_SPAWNS, INCIDENTS, INCIDENT_TOTAL, KB_FATE, KB_NEWS, MINORS, TOUT_SPAWNS } from './modules/kb-data';
+import { GANG_AWAY, GANG_SPAWNS, INCIDENTS, INCIDENT_TOTAL, KB_CARD, KB_FATE, KB_NEWS, KB_RAMPAGE, MINORS, TOUT_SPAWNS } from './modules/kb-data';
 import * as M from './modules/kb-machines';
 import { Rng } from './rng';
 import { loadGame, saveGame } from './save';
@@ -138,6 +138,55 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(stay.kinds).not.toContain('kb-park');
     expect(adult.hotel).toBeGreaterThan(0);
     expect(kb.stayLabel(g, adult)).toBeUndefined();
+  });
+
+  it('the halls are arcades: anyone plays, no cash; leftovers back as 點券, the counter\'s own goods only there', () => {
+    const g = new Game(settings(41, [9, 0, 4, 11]), board()), kb = kbRules(g)!;
+    const drain = (f: Generator<unknown, unknown, unknown>) => { let r = f.next(); const out: Step[] = []; while (!r.done) { out.push(r.value as Step); r = f.next(); } return { value: r.value, out }; };
+    const kid = g.players[0];
+    kid.placed = true; kid.whoPlays = 2; kid.points = 200;
+    const cash = kid.cash, pts = kid.points;
+    const r = drain(kb.machine(g, kid, 'pachinko') as Generator<unknown, unknown, unknown>);
+    expect(r.out.some(s => s.t === 'fx' && s.kind === 'kb-machine-result' && !(s.data as { skipped?: boolean }).skipped)).toBe(true);   // a child plays
+    expect(kid.cash).toBe(cash);                                                                   // no cash ever
+    expect(r.out.some(s => s.t === 'pay' && (s as { reason?: string }).reason === '景品兌換')).toBe(false);
+    expect(kid.points).not.toBe(pts);
+    // At the counter: what is left comes back as 點券 at the buying rate (25 balls a point).
+    const q = g.players[1]; q.placed = true; q.whoPlays = 2; q.points = 0; q.tools[16] = 1; q.tools[17] = 1; q.cards = [KB_CARD, KB_RAMPAGE];
+    const ex = drain(kb.exchange(g, q, 'pachinko', 25 * 30 + 7, new Rng(1)) as Generator<unknown, unknown, unknown>);
+    expect(q.points).toBe(30);
+    expect(String(ex.value)).toContain('點券 30');
+    // The goods are nowhere else: not on the card shelf, not from the lottery fate.
+    for (let k = 0; k < 50; k++) for (const id of g.tools.cardShelf()) expect(id).toBeLessThanOrEqual(30);
+    // 搶奪卡 can move an exclusive tool like any other.
+    expect(g.tools.receive(kid, 17)).toBe(true);
+  });
+
+  it('保鑣卡 stops the 保護費 by itself; 暴走卡 gives one more whole turn; old saves convert', () => {
+    const g = new Game(settings(43), board()), kb = kbRules(g)!;
+    const drain = (f: Generator<unknown, unknown, unknown>) => { let r = f.next(); const out: Step[] = []; while (!r.done) { out.push(r.value as Step); r = f.next(); } return { value: r.value, out }; };
+    const [owner, holder] = g.players;
+    owner.cards = [KB_CARD]; owner.cash = 50000;
+    const before = owner.cash;
+    const r = drain(kb.protection(g, holder, owner, 2001, 9000) as Generator<unknown, unknown, unknown>);
+    expect(owner.cash).toBe(before);
+    expect(owner.cards).not.toContain(KB_CARD);
+    expect(r.out.some(s => s.t === 'fx' && s.kind === 'kb-bodyguard')).toBe(true);
+    // 暴走卡
+    holder.cards = [KB_RAMPAGE]; holder.placed = true; holder.whoPlays = 2;
+    expect(drain(kb.playCard(g, holder, KB_RAMPAGE) as Generator<unknown, unknown, unknown>).value).toBe(true);
+    expect(holder.cards).not.toContain(KB_RAMPAGE);
+    expect(kb.extraTurn(g, holder)).toBe(true);
+    expect(kb.extraTurn(g, holder)).toBe(false);
+    // A save from before: tool 19 (保鑣) → the card, tool 20 (霓虹燈箱) → 60 點券 each.
+    const save = saveGame(g) as unknown as { players: { tools: number[]; cards: number[]; points: number }[]; mapRules: Record<string, unknown> };
+    save.players[2].tools[18] = 2; save.players[2].tools[19] = 1; save.players[2].cards = []; save.players[2].points = 5;
+    save.mapRules.neon = [{ ref: 2001, days: 3 }];
+    const h = loadGame(JSON.parse(JSON.stringify(save)), board());
+    expect(h.players[2].cards.filter(c => c === KB_CARD)).toHaveLength(2);
+    expect(h.players[2].points).toBe(65);
+    expect(h.players[2].tools[18]).toBe(0);
+    expect((kbRules(h)!.s as unknown as { neon?: unknown }).neon).toBeUndefined();
   });
 
   it('a saved game plays on the same as the unsaved one', () => {

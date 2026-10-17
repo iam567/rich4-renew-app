@@ -12,6 +12,7 @@ import type { Game } from '../core/game';
 import type { Player } from '../core/types';
 import { picSize } from './decode';
 import { memTier } from './mem-tier';
+import { warmKbFx } from './screens/kb-fx';
 import { BIKE, buildTracks, Crowd, nearestView, walkerFacing } from './kb-crowd';
 import { AMB, Ambient, ambientSprites, phoneGlow, type AddItem, type StreetView } from './kb-ambient';
 import type { MapSprites } from './assets';
@@ -116,14 +117,19 @@ export function kbPanelTags(game: Game, p: Player): string {
   return kbBadges(game, p.id).map((b, i) => `<div class="pp-kb ${b.kind}" style="--i:${i}">${b.text}</div>`).join('');
 }
 
-/** The exclusive tools' icons (§7.5): tools 17–20 as Data#617..620 (maps/remake/tools/, as the lab tools 614..616). */
+/**
+ * The prize counter's own goods (§7.5): the tools 17, 18 as Data#617, 618 (maps/remake/tools/, as the lab tools
+ * 614..616) and the cards 37 保鑣卡, 38 暴走卡 as Data#607, 608 (maps/remake/cards/, after 大富豪模式's 601..606).
+ */
 export function prepareKabukicho(bank: SpriteBank): void {
   const out: MapSprites = {};
-  for (const [id, w, h] of [[617, 470, 480], [618, 480, 409], [619, 393, 480], [620, 445, 480]]) {
+  for (const [id, w, h] of [[617, 470, 480], [618, 480, 409]]) {
     out[`Data/0${id}`] = { dir: 'remake/tools', frames: [{ file: `0${id}.webp`, width: w, height: h, anchor_x: 0, anchor_y: 0 }] };
   }
+  for (const id of [607, 608]) out[`Data/0${id}`] = { dir: 'remake/cards', frames: [{ file: `0${id}.webp`, width: 660, height: 1024, anchor_x: 0, anchor_y: 0 }] };
   bank.addMapSprites(out);
   bank.addMapSprites(ambientSprites()); // the street life's vehicles, train and street characters (§8.3)
+  warmKbFx(bank); // the pictures of the prize goods' animations (screens/kb-fx.ts)
 }
 
 // ------------------------------------------------------------------ settings (§8.1)

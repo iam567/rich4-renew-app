@@ -168,30 +168,99 @@ function toast(ctx: ScreenContext, fx: Fx, cls: string, title: string, sub = '',
   return new Promise(r => setTimeout(r, hold ? ms : 250));
 }
 
-// 女性顧客免費, 拉客仔, 店被砸了, 保鑣 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
+// 女性顧客免費, 拉客仔, 店被砸了 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
 // board) saying the same: no toast (one would cover the speech cloud of a player near the top of the map).
 fxScreens['kb-smash'] = async () => { audio.sfx(Sfx.smallBlast); };
 fxScreens['kb-gang-arrest'] = (ctx, fx) => {
   audio.sfx(Sfx.police);
   return toast(ctx, fx, 'bad big', '違反暴力團對策法！', '附身結束', `<span class="kbt-line">保護費 <em>${fmt(Number(fx.data?.take) || 0)}元</em> 沒收・坐牢 7 天</span>`, true);
 };
+// ------------------------------------------------------------------ the prize counter's goods in use (§7.5, §4.1)
+
+/** An animated stage over the map (w × h units, fitted): `play` runs it; a tap ends it at once. Times × game speed. */
+function stage(ctx: ScreenContext, cls: string, size: [number, number], html: string, total: number, hold = false): Promise<void> {
+  const ov = fitOverlay(ctx.area, `kba-ov ${cls}`, () => size, undefined, 12);
+  const { scene, root } = ov;
+  scene.classList.add('kba-scene');
+  scene.innerHTML = html;
+  root.style.setProperty('--k', String(Math.max(0.45, ctx.scale())));
+  const ms = Math.max(900, total * ctx.scale()) + (hold ? 900 : 0);
+  return new Promise<void>(resolve => {
+    let done = false;
+    const end = () => {
+      if (done) return;
+      done = true;
+      clearTimeout(timer);
+      root.classList.add('out');
+      setTimeout(() => { ov.close(); resolve(); }, 160);
+    };
+    const timer = setTimeout(end, ms);
+    setTimeout(() => { if (!done) root.addEventListener('pointerup', end); }, 200);
+  });
+}
+const die = (v: number, cls = '') => `<i class="kba-die ${cls}" data-v="${v}">${Array.from({ length: v }, () => '<b></b>').join('')}</i>`;
+
+/** 確變骰子 at the roll: the dice land, the glowing extra one tumbles in last, the one not counted fades out. */
 fxScreens['kb-kakuhen'] = (ctx, fx) => {
   const vals = Array.isArray(fx.data?.values) ? (fx.data.values as number[]) : [];
-  const drop = Number(fx.data?.drop);
-  const dice = `<span class="kbt-dice">${vals.map((v, i) => `<i class="${i === drop ? 'drop' : ''}">${v}</i>`).join('')}</span>`;
+  const drop = Number(fx.data?.drop), n = vals.length;
   const steps = vals.reduce((a, v, i) => a + (i === drop ? 0 : v), 0);
-  // A computer's choice holds the game until read; the human has just chosen it.
   const p = ctx.game.players[fx.p ?? -1];
-  return toast(ctx, fx, 'good big', '確變骰子', `${vals[drop] ?? ''} 不算・走 ${steps} 步`, dice, !p || !ctx.game.isHuman(p));
+  audio.sfx(Sfx.dice);
+  setTimeout(() => audio.sfx(Sfx.special), 700 * Math.max(0.45, ctx.scale()));
+  return stage(ctx, 'kakuhen', [520, 300], `<div class="kba-card kakuhen">
+      <div class="kba-head">${faceImg(ctx, fx.p, 'kba-face')}<b>確變骰子</b></div>
+      <div class="kba-dice">${vals.map((v, i) => die(v, `${i === n - 1 ? 'extra' : ''}${i === drop ? ' drop' : ''}`)).join('')}</div>
+      <div class="kba-line">${vals[drop] ?? ''} 不算・走 <em>${steps}</em> 步</div></div>`, 2400, !p || !ctx.game.isHuman(p));
 };
-/** The dice tools say nothing else when used (霓虹燈箱 has its 'say' line). */
-const TOOL_LINE: Record<number, [string, string]> = { 17: ['確變骰子', '這回合多擲一顆，挑一顆不算'], 18: ['計程車券', '這回合擲 3 顆骰子'] };
+
+/** 計程車券 used: a cartoon taxi pulls up and honks, the player hops in, and it zooms off with three dice. */
+function taxiScene(ctx: ScreenContext, fx: Fx): Promise<void> {
+  const taxi = ctx.bank.art('map', 1901, 2);
+  audio.sfx(Sfx.car);
+  return stage(ctx, 'taxi', [560, 300], `<div class="kba-road">
+      <div class="kba-taxi">${taxi ? `<img src="${taxi.src}" alt="">` : '<span class="kba-taxi-box"></span>'}<span class="kba-honk">叭叭！</span></div>
+      <div class="kba-rider">${faceImg(ctx, fx.p, 'kba-face')}</div>
+      <div class="kba-three">${die(6, 'a')}${die(5, 'b')}${die(4, 'c')}</div>
+      <div class="kba-banner">計程車券：這回合擲 3 顆骰子！</div></div>`, 2300);
+}
+
 fxScreens['kb-tool'] = (ctx, fx) => {
-  const id = Number(fx.data?.tool), line = TOOL_LINE[id];
-  if (!line) return Promise.resolve();
+  const id = Number(fx.data?.tool);
+  if (id === 18) return taxiScene(ctx, fx);
+  if (id !== 17) return Promise.resolve();
   audio.sfx(Sfx.cardUse);
   const src = toolIconSrc(ctx, id);
-  return toast(ctx, fx, 'good', line[0], line[1], src ? `<img class="kbt-tool" src="${src}" alt="">` : '');
+  return toast(ctx, fx, 'good', '確變骰子', '這回合多擲一顆，挑一顆不算', src ? `<img class="kbt-tool" src="${src}" alt="">` : '');
 };
+
+/** 保鑣卡: the bodyguard (the card's picture) steps in front of the owner, the 黑幫 backs off: 保護費免了！ */
+fxScreens['kb-bodyguard'] = (ctx, fx) => {
+  const card = ctx.bank.art('Data', 607), gang = ctx.bank.art('map', 1768, 1);
+  audio.sfx(Sfx.special);
+  setTimeout(() => audio.sfx(Sfx.points), 900 * Math.max(0.45, ctx.scale()));
+  return stage(ctx, 'guard', [520, 340], `<div class="kba-card guard">
+      <div class="kba-gang">${gang ? `<img src="${gang.src}" alt="">` : ''}<span>${esc(who(ctx, fx.target))}</span></div>
+      <div class="kba-owner">${faceImg(ctx, fx.p, 'kba-face')}<span>${esc(who(ctx, fx.p))}</span></div>
+      <div class="kba-guard">${card ? `<img src="${card.src}" alt="">` : ''}</div>
+      <div class="kba-banner">保鑣出面！保護費免了！</div></div>`, 2600);
+};
+
+/** 暴走卡: a burst of flames and speed lines, the banner, the player revving. */
+fxScreens['kb-rampage'] = (ctx, fx) => {
+  const card = ctx.bank.art('Data', 608);
+  audio.sfx(Sfx.scooter);
+  return stage(ctx, 'rampage', [540, 320], `<div class="kba-burst"></div><div class="kba-lines"></div>
+      <div class="kba-rev">${card ? `<img class="kba-rcard" src="${card.src}" alt="">` : ''}${faceImg(ctx, fx.p, 'kba-face big')}</div>
+      <div class="kba-banner big">暴走！再來一回合！</div>`, 2300);
+};
+
+/** The pictures these use, decoded before they are needed (called when the map is prepared). */
+export function warmKbFx(bank: { art: ScreenContext['bank']['art'] }) {
+  for (const [a, id, f] of [['Data', 607, 0], ['Data', 608, 0], ['map', 1901, 2], ['map', 1768, 1]] as const) {
+    const src = bank.art(a, id, f)?.src;
+    if (src) { const im = new Image(); im.decoding = 'async'; im.src = src; void im.decode?.().catch(() => {}); }
+  }
+}
 // The owner made to wait (no line of its own); the turns it sits out are said by the rules.
 fxScreens['kb-busy'] = (ctx, fx) => (fx.data?.sitting ? Promise.resolve() : toast(ctx, fx, 'busy', '處理事務中', `${who(ctx, fx.p)}要停 ${Number(fx.data?.turns) || 0} 回合`));

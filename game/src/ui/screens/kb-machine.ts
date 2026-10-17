@@ -11,6 +11,9 @@
  */
 import { CHARACTERS } from '../../core/characters';
 import type { MachineKind } from '../../core/modules/kb-machines';
+import { cardName } from '../../core/modules/cards';
+import { toolDef } from '../../core/modules/tools';
+import { itemIconSrc, itemText } from './item-text';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { esc, openScene, type Scene } from './place-scene';
 import { RESULT_MIN_MS } from './event-result';
@@ -107,13 +110,16 @@ fxScreens['kb-machine-result'] = async (ctx, fx) => {
   const face = ch ? ctx.bank.art('Data', 2, ch.id) : null;
   // 「忍太郎　柏青哥　花 30 點券（750 顆）→ 大當たり 2 次 → 剩 1,420 顆 → 換：…」: the name, then one step a line.
   const [who, ...rest] = text.split('　');
+  // The prizes taken, each with its picture and what it does (the exclusive ones above all, §7.5).
+  const items = Array.isArray(d.items) ? (d.items as { id: number; card: boolean; n: number }[]) : [];
   const steps = rest.join('　').split(/\s*→\s*/).filter(Boolean);
   const node = document.createElement('div');
   node.className = `msg kbm-result ${kind}${d.skipped ? ' skipped' : ''}`;
   node.innerHTML = `<div class="ribbon">${kind === 'pachinko' ? '柏青哥店' : '拉霸店'}</div>
     <div class="kbm-r-body"><img class="kbm-r-pad" src="${PAD(kind)}" alt="">
       <div class="kbm-r-text"><b class="kbm-r-who">${face ? `<img src="${face.src}" alt="">` : ''}${esc(who)}</b>
-        ${steps.map((t, i) => `<span class="kbm-r-step${i === steps.length - 1 && !d.skipped ? ' last' : ''}">${i ? '→ ' : ''}${esc(t)}</span>`).join('')}</div></div>`;
+        ${steps.map((t, i) => `<span class="kbm-r-step${i === steps.length - 1 && !d.skipped ? ' last' : ''}">${i ? '→ ' : ''}${esc(t)}</span>`).join('')}</div></div>
+    ${items.length ? `<div class="kbm-r-items">${items.map(it => `<div class="kbm-r-item"><img class="${it.card ? 'card' : ''}" src="${itemIconSrc(ctx.bank, it.id, it.card)}" alt=""><span><b>${esc((it.card ? cardName(it.id) : toolDef(it.id)?.name) ?? '')}${it.n > 1 ? ` ×${it.n}` : ''}</b><small>${esc(itemText(it.id, it.card))}</small></span></div>`).join('')}</div>` : ''}`;
   ctx.open(node);
   if (!d.skipped) audio.sfx(Number(d.left) > Number(d.cost ?? 0) * (kind === 'pachinko' ? 25 : 5) ? Sfx.points : Sfx.couponFlip);
   const layer = node.parentElement;

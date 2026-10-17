@@ -98,6 +98,7 @@ const CARD_INFO: readonly [name: string, price: number, f7: number][] = [
   ['免罪卡', 25, 0], ['送神符', 10, 0], ['請神符', 20, 0], ['紅卡', 50, 0], ['黑卡', 30, 1],
   ['查稅卡', 35, 1], ['漲價卡', 35, 0], ['查封卡', 35, 1], ['同盟卡', 40, 0], ['烏龜卡', 70, 0],
   ['飛行卡', 20, 0], ['電車卡', 10, 0], ['遣返卡', 15, 1], ['獨裁卡', 300, 2], ['召集卡', 25, 1], ['通緝卡', 60, 2], // 大富豪模式 only (cards.ts TYCOON_CARDS)
+  ['保鑣卡', 25, 0], ['暴走卡', 80, 0], // 歌舞伎町 only (cards.ts KB_CARDS)
 ];
 const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
 /** 通緝卡: one per city even in 大富豪模式's unlimited shop (17 §3.5, §3.10). */
@@ -199,7 +200,8 @@ export class Tools {
 
   /** Give a tool if under the cap of 9 and in stock for tools 1-8 (05 §2.1, fcn_00445a4d). */
   receive(p: Player, tool: number): boolean {
-    if (tool < 1 || tool > (this.g.world ? 16 : 13) || p.tools[tool - 1] >= MAX_HELD) return false;
+    const own = this.g.rules?.extraTools?.some(t => t.id === tool) ?? false;   // a map's own tool (歌舞伎町 17, 18)
+    if (tool < 1 || (tool > (this.g.world ? 16 : 13) && !own) || p.tools[tool - 1] >= MAX_HELD) return false;
     if (tool <= 8) {
       if (this.shopStock[tool - 1] <= 0) return false;
       this.shopStock[tool - 1] -= 1;
@@ -403,7 +405,8 @@ export class Tools {
   /** Lab finished: the developed tool (02 §4.5, 05 §7); not delivered when 9 are already held. */
   *labDone(p: Player, tool: number): Flow {
     // Message box 「%s開發完成！」 1500 ms (core_actions:4590-4605).
-    yield* this.g.say(undefined, `${toolDef(tool)?.name ?? ''}開發完成！`);
+    // The remake names the owner: with up to 12 players it isn't clear whose lab finished (user, 2026-10-18).
+    yield* this.g.say(undefined, `${this.g.name(p.id)}的${toolDef(tool)?.name ?? ''}開發完成！`);
     this.receive(p, tool);
   }
 
@@ -414,7 +417,7 @@ export class Tools {
     for (;;) {
       // The held tools packed in tool order, each with its icon Panel#11.(id+1) and count (09 §7.3).
       const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : []), ...(this.g.rules?.extraTools ?? [])].filter(t => p.tools[t.id - 1] > 0)
-        .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: toolIcon(t.id) }));
+        .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: toolIcon(t.id), ...((t as { short?: string }).short ? { hint: (t as { short?: string }).short } : {}) }));
       const v = p.traffic;
       if (v === 1 || v === 2) options.push({ label: '下車', value: 99, icon: { archive: 'Panel', id: 11, frame: v === 1 ? 15 : 16 } });
       const a = Number(yield ask({ t: 'choose', p: p.id, title: '道具', options, cancellable: true, layout: 'tiles' }));
@@ -660,7 +663,8 @@ export class Tools {
       if (f.level === 0) {
         // An empty large plot: choose the facility type first (human dialog; a computer's own plot rand() % 4 + 1).
         // 大富翁城 (docs/rules/19): only casinos are built there, no type to choose.
-        const only = g.rules?.facilityType?.(f);
+        // A human on a map with its own facilities gets that map's picker (歌舞伎町, 大富翁城).
+        const only = g.isHuman(p) && g.rules?.pickFacilityType ? yield* g.rules.pickFacilityType(g, p, f) : g.rules?.facilityType?.(f);
         f.type = only !== undefined ? only : g.isHuman(p)
           ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
           : f.owner === p.id + 1 ? g.rng.rand() % 4 + 1 : 0;

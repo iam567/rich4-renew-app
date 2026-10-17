@@ -102,7 +102,7 @@ export class LossNotices {
         const m = s.p !== undefined && /^使用(.+)$/.exec(s.text);
         if (m && s.p !== undefined) {
           const name = m[1];
-          for (let id = 1; id <= 16; id++) if (toolDef(id)?.name === name) this.give(s.p, `t${id}`);
+          for (let id = 1; id <= 30; id++) if (toolDef(id)?.name === name) this.give(s.p, `t${id}`);
           for (let id = 1; id <= 40; id++) if (cardName(id) === name) this.give(s.p, `c${id}`);
         }
         break;

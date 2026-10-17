@@ -5,7 +5,8 @@
 import { CHARACTERS } from '../core/characters';
 import { day, month, year } from '../core/date';
 import type { Game } from '../core/game';
-import { TOOLS, TYCOON_TOOLS, toolIcon } from '../core/modules/tools';
+import { TOOLS, TYCOON_TOOLS } from '../core/modules/tools';
+import { itemIconSrc, itemText } from './screens/item-text';
 import { cardName } from '../core/modules/cards';
 import type { SpriteBank } from './sprites';
 import { tycoon } from './tycoon';
@@ -29,6 +30,14 @@ export class InfoScreen {
     this.el = document.createElement('div');
     this.el.className = 'info';
     this.el.addEventListener('click', e => {
+      // A tool or card: what it does, in the line under the lists.
+      const item = (e.target as HTMLElement).closest<HTMLElement>('[data-tool],[data-card]');
+      if (item) {
+        const tip = this.el.querySelector<HTMLElement>('.info-tip');
+        const card = item.dataset.card !== undefined, id = Number(card ? item.dataset.card : item.dataset.tool);
+        if (tip) tip.textContent = `${item.title}：${itemText(id, card)}`;
+        return;
+      }
       const t = (e.target as HTMLElement).closest<HTMLElement>('[data-who],[data-page],[data-filter],[data-sheet]');
       if (!t) return;
       if (t.dataset.who) this.who = Number(t.dataset.who);
@@ -133,11 +142,12 @@ export class InfoScreen {
     const stockValue = g.markets().reduce((v, m) => m.holdingsValue(v, p), 0);
     const companies = boards.reduce((n, b) => n + b.companies.filter(c => c.controller === me).length, 0);
     const cell = (label: string, value: string) => `<div class="info-cell"><span>${label}</span><b>${value}</b></div>`;
-    const tools = [...TOOLS, ...(g.world ? TYCOON_TOOLS : [])].filter(t => p.tools[t.id - 1] > 0).map(t => {
-      const ic = toolIcon(t.id), a = this.bank.art(ic.archive, ic.id, ic.frame);
-      return `<span class="info-tool" title="${t.name}">${a ? `<img src="${a.src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
+    // Every tool the player holds: the original 13, 大富豪模式's 14–16, the map's own (歌舞伎町 17, 18).
+    const tools = [...TOOLS, ...(g.world ? TYCOON_TOOLS : []), ...(g.rules?.extraTools ?? [])].filter(t => p.tools[t.id - 1] > 0).map(t => {
+      const src = itemIconSrc(this.bank, t.id);
+      return `<span class="info-tool" data-tool="${t.id}" title="${t.name}">${src ? `<img src="${src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
     }).join('') || '<span class="info-none">沒有道具</span>';
-    const cards = p.cards.map(id => `<span class="info-card">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
+    const cards = p.cards.map(id => `<span class="info-card" data-card="${id}" title="${cardName(id)}">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
     // Two blocks (the figures; 道具 and 卡片): on a small screen that cannot hold both, one at a time (fit()).
     return `<div class="info-blk"><div class="info-grid">
         ${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}
@@ -150,7 +160,7 @@ export class InfoScreen {
         ${cell('房屋', `×${lands.filter(l => l.level && !l.chain).length}`)}${cell('設施', `×${facs.filter(f => f.level).length}`)}
       </div></div>
       <div class="info-blk"><h4>道具</h4><div class="info-tools">${tools}</div>
-      <h4>卡片</h4><div class="info-cards">${cards}</div></div><div class="info-pager" hidden></div>`;
+      <h4>卡片</h4><div class="info-cards">${cards}</div><div class="info-tip">點一下道具或卡片看用途</div></div><div class="info-pager" hidden></div>`;
   }
 
   /** 地產: the owned lots and plots, filtered as in the original. */

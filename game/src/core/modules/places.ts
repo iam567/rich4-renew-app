@@ -359,7 +359,8 @@ export class Places {
         if (ref > 4000) {
           const f = g.board.facilities[ref - 4001];
           if (f.level === 0) {
-            const only = g.rules?.facilityType?.(f); // 歌舞伎町 (docs/rules/21): a shop, no type to choose
+            // 歌舞伎町, 大富翁城: a human picks from the map's own facilities; otherwise the map's default.
+            const only = g.isHuman(q) && g.rules?.pickFacilityType ? yield* g.rules.pickFacilityType(g, q, f) : g.rules?.facilityType?.(f);
             if (only !== undefined) f.type = only;
             else if (g.isHuman(q)) f.type = Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: q.id, price: 0 })) || 0));
             else f.type = f.owner === q.id + 1 ? g.rng.below(4) + 1 : 0;

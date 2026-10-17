@@ -27,17 +27,18 @@ import { MAP_TOOLS, type ToolDef } from './modules/tools';
 import { WheelKind } from './modules/wheel';
 import { shuffleDeck, type ResultLine } from './modules/events';
 import {
-  GANG_AWAY, GANG_DAYS, GANG_PRISON_DAYS, GANG_SPAWNS, INCIDENTS, KB_FATE, KB_ID_BASE, KB_NEWS, KB_TOOLS, MERCH, MERCH_LINE, MINOR_REFUSED, MINORS,
-  SHOP_NAMES, SHOP_RULES, SHOP_TYPES, TOUT_SPAWNS, isKbShop, shopNameFor, type Incident, type KbCard,
+  GANG_AWAY, GANG_DAYS, GANG_PRISON_DAYS, GANG_SPAWNS, INCIDENTS, KB_CARD, KB_CARDS_OWN, KB_FATE, KB_RAMPAGE, KB_ID_BASE, KB_NEWS, KB_TOOLS, MERCH, MERCH_LINE, MINOR_REFUSED, MINORS,
+  OLD_BODYGUARD, OLD_NEON, OLD_NEON_POINTS, SHOP_NAMES, SHOP_RULES, SHOP_TYPES, TOUT_SPAWNS, isKbShop, shopNameFor, type Incident, type KbCard,
 } from './modules/kb-data';
 import * as M from './modules/kb-machines';
+import { HAND_LIMIT } from './modules/cards';
 import type { Player } from './types';
 
 export const KB_MAP = 106;
 export const KB_NAME = '歌舞伎町';
 /** Events of the two pads (§7; 17 / 18 are 大富豪模式's station / airport). */
 export const EV_PACHINKO = 19, EV_PACHISLOT = 20;
-const T_BODYGUARD = 19, T_NEON = 20, T_KAKUHEN = 17, T_TAXI = 18, T_TELEPORT = 11;
+const T_KAKUHEN = 17, T_TAXI = 18, T_TELEPORT = 11;
 
 for (const t of KB_TOOLS) if (!MAP_TOOLS.some(m => m.id === t.id)) MAP_TOOLS.push(t);
 
@@ -51,12 +52,12 @@ export interface KbState {
   tout: { node: number; gone: number };
   /** Shops closed for some days (facility id → days). */
   closed: Record<string, number>;
-  /** 霓虹燈箱: refs (2001.. lots, 4001.. facilities) and days left. */
-  neon: { ref: number; days: number }[];
   /** The news of the day still in force (name → days). */
   mods: Record<string, number>;
   /** VIP card (fate): the next shop visit has no incident and pays ×1. */
   vip: number[];
+  /** 暴走卡: extra turns still to take right after this one, by player. */
+  extra: number[];
   /** The dice tool used this turn (17 確變骰子, 18 計程車券), by player. */
   roll: number[];
   /** The decks: order and next position. */
@@ -76,15 +77,19 @@ export class KabukichoRules implements MapRules {
   /** 情人酒店 is a hotel (Game.damageProperty sends its guests out like the original 旅館's). */
   readonly hotelType = 13;
   readonly extraTools: readonly ToolDef[] = KB_TOOLS;
+  /** The prizes of the last counter visit (the result notice shows them with their pictures). */
+  prizes: { id: number; card: boolean; n: number }[] = [];
+  /** 保鑣卡, 暴走卡 (§4.1, §7.5): held outside the card pool, only from the prize counter. */
+  readonly ownCards = KB_CARDS_OWN;
 
   constructor(readonly g: Game) {
     const n = g.players.length;
     this.s = {
       busy: new Array(n).fill(0), gang: { node: 0, holder: -1, days: 0, take: 0, back: 0 }, tout: { node: 0, gone: 0 },
-      closed: {}, neon: [], mods: {}, vip: new Array(n).fill(0), roll: new Array(n).fill(0),
+      closed: {}, mods: {}, extra: new Array(n).fill(0), vip: new Array(n).fill(0), roll: new Array(n).fill(0),
       news: { deck: [], next: 0 }, fate: { deck: [], next: 0 }, tama: new Array(n).fill(0), medals: new Array(n).fill(0), draws: 0,
     };
-    // The exclusive tools need room in every player's tool counts (ids 17..20).
+    // The exclusive tools need room in every player's tool counts (ids 17, 18; 19 and 20 were 保鑣 and 霓虹燈箱).
     for (const p of g.players) while (p.tools.length < 20) p.tools.push(0);
     const r = this.stream(0x5eed, -1);
     this.s.news.deck = shuffleDeck(r, KB_NEWS.length);
@@ -94,7 +99,45 @@ export class KabukichoRules implements MapRules {
   }
 
   saveState(): KbState { return this.s; }
-  loadState(s: unknown): void { if (s && typeof s === 'object') this.s = { ...this.s, ...(s as KbState) }; }
+  loadState(s: unknown): void {
+    if (s && typeof s === 'object') this.s = { ...this.s, ...(s as KbState) };
+    delete (this.s as unknown as { neon?: unknown }).neon;
+    // A save from before 2026-10-18: the tool 保鑣 becomes the card, a 霓虹燈箱 (dropped) its price back in 點券.
+    for (const p of this.g.players) {
+      for (let n = p.tools[OLD_BODYGUARD - 1] ?? 0; n > 0; n--) this.g.cards.receive(p, KB_CARD);
+      p.points = Math.min(0xffff, p.points + (p.tools[OLD_NEON - 1] ?? 0) * OLD_NEON_POINTS);
+      if (p.tools.length >= OLD_NEON) p.tools[OLD_BODYGUARD - 1] = p.tools[OLD_NEON - 1] = 0;
+    }
+  }
+
+  /** 暴走卡 (§7.5): one more whole turn after this one (state `extra`, by player). */
+  *playCard(g: Game, p: Player, id: number): Flow<boolean> {
+    if (id !== KB_RAMPAGE || !g.cards.consume(p, id)) return false;
+    this.s.extra[p.id] = (this.s.extra[p.id] ?? 0) + 1;
+    yield { t: 'fx', kind: 'kb-rampage', p: p.id, data: { turns: this.s.extra[p.id] } };
+    yield* g.say(p.id, '暴走模式！\n這回合走完，馬上再來一回合');
+    return true;
+  }
+
+  /**
+   * The computer plays a 暴走卡 when another turn is worth it: cash to buy or build (on hand above 15,000 × the price
+   * index, with an unowned plot or an own building below level 5 on the map), or the 黑幫 on it (more 保護費).
+   */
+  aiPlayCard(g: Game, p: Player, id: number): boolean {
+    if (id !== KB_RAMPAGE || (this.s.extra[p.id] ?? 0) > 0) return false;
+    if (this.s.gang.holder === p.id) return true;
+    const me = p.id + 1;
+    const room = g.board.lands.some(l => !l.owner || (l.owner === me && l.level < 5)) || g.board.facilities.some(f => !f.owner || (f.owner === me && f.level < 5));
+    return p.cash >= 15000 * g.priceIndex && room;
+  }
+
+  extraTurn(_g: Game, p: Player): boolean {
+    const n = this.s.extra[p.id] ?? 0;
+    if (n <= 0) return false;
+    this.s.extra[p.id] = n - 1;
+    return !this.g.offRoad(p);
+  }
+
 
   /** An own stream (§ header): seed, salt, player, day and the draw counter. */
   stream(salt: number, p: number): Rng {
@@ -109,7 +152,6 @@ export class KabukichoRules implements MapRules {
   minor(p: Player): boolean { return MINORS.has(p.character); }
   /** The shop's rate R (§2): its fee at its level × the price index. */
   rate(f: Facility): number { return (f.fees[f.level] ?? 0) * this.g.priceIndex; }
-  neonOn(ref: number): boolean { return this.s.neon.some(n => n.ref === ref && n.days > 0); }
   mod(name: string): boolean { return (this.s.mods[name] ?? 0) > 0; }
   prisonSquare(): BoardNode | undefined { return this.g.board.nodes.find(n => n.event === 4); }
   facilityNode(f: Facility): BoardNode | undefined { return this.g.board.nodes.find(n => n.ref === f.id + 4000); }
@@ -160,7 +202,6 @@ export class KabukichoRules implements MapRules {
     const s = this.s;
     for (const k of Object.keys(s.mods)) if (--s.mods[k] <= 0) delete s.mods[k];
     for (const k of Object.keys(s.closed)) if (--s.closed[k] <= 0) delete s.closed[k];
-    s.neon = s.neon.filter(n => --n.days > 0);
     if (s.tout.gone > 0) s.tout.gone -= 1;
     const h = s.gang.holder;
     if (h >= 0) {
@@ -282,10 +323,10 @@ export class KabukichoRules implements MapRules {
 
   /** The owner pays the possessed visitor (§4.1): cash only; none → the property loses a level (店被砸了). */
   *protection(g: Game, p: Player, owner: Player, ref: number, amount: number): Flow {
-    if (owner.tools[T_BODYGUARD - 1] > 0) {
-      owner.tools[T_BODYGUARD - 1] -= 1;
-      yield { t: 'fx', kind: 'kb-bodyguard', p: owner.id, target: p.id, data: { why: 'gang' } };
-      yield* g.say(owner.id, `${g.name(owner.id)}的保鑣擋住了黑幫，不付保護費！`);
+    if (owner.cards.includes(KB_CARD)) {
+      g.cards.consume(owner, KB_CARD);
+      yield { t: 'fx', kind: 'kb-bodyguard', p: owner.id, target: p.id };
+      yield* g.say(owner.id, `${g.name(owner.id)}的保鑣卡：保鑣出面，保護費免了！`);
       return;
     }
     if (owner.cash <= 0) {
@@ -349,11 +390,10 @@ export class KabukichoRules implements MapRules {
     return false;
   }
 
-  tollFactor(_g: Game, land: Land): number {
+  tollFactor(_g: Game, _land: Land): number {
     let k = 1;
     if (this.mod('tourists')) k *= 1.5;
     if (this.mod('blackout')) k *= 0.5;
-    if (this.neonOn(land.id + 2000)) k *= 1.5;
     return k;
   }
 
@@ -416,8 +456,14 @@ export class KabukichoRules implements MapRules {
     return true;
   }
 
-  /** The shop an effect builds on an empty plot (天使, 機器工人 …: no choice): each plot's own, round the four shops. */
+  /** The shop a computer's free building puts on an empty plot (天使卡, 機器工人 …): each plot's own, round the four shops. */
   facilityType(f: Facility): number { return 10 + ((f.id - 1) % 4); }
+
+  /** A human's free building there: the five-shop picker (as when buying it); a cancel builds the plot's default shop. */
+  *pickFacilityType(_g: Game, p: Player, f: Facility): Flow<number> {
+    const t = yield* this.askShop(p, f, 0, '免費建設（取消：蓋這塊地預設的店）');
+    return t >= 0 ? t : this.facilityType(f);
+  }
 
   /** 改建卡 on a shop: another of the five (the level kept); a computer turns a rival's into the 研究所 (no income). */
   *rebuildFacility(g: Game, p: Player, f: Facility, human: boolean): Flow<number> {
@@ -427,9 +473,9 @@ export class KabukichoRules implements MapRules {
   }
 
   /** The human picks the shop (the original facility picker's row, screen 'kb-shop'); -1 cancels. */
-  *askShop(p: Player, f: Facility, cost: number): Flow<number> {
+  *askShop(p: Player, f: Facility, cost: number, text?: string): Flow<number> {
     const options = SHOP_TYPES.map(t => ({ label: SHOP_NAMES[t], value: t, detail: SHOP_RULES[t] }));
-    const a = yield ask({ t: 'choose', p: p.id, title: `${f.name}：選擇要蓋的店`, text: `建設費用 ${fmt(cost)}元`, options, cancellable: true, screen: 'kb-shop' });
+    const a = yield ask({ t: 'choose', p: p.id, title: `${f.name}：選擇要蓋的店`, text: text ?? `建設費用 ${fmt(cost)}元`, options, cancellable: true, screen: 'kb-shop' });
     return typeof a === 'number' && (SHOP_TYPES as readonly number[]).includes(a) ? a : -1;
   }
 
@@ -471,12 +517,6 @@ export class KabukichoRules implements MapRules {
     if (vip) this.s.vip[p.id] = 0;
     let inc = vip ? null : this.drawIncident(rng, f.type);
     if (inc && inc.alcohol && this.minor(p)) inc = null;          // §3: no alcohol for a child
-    if (inc && inc.bad && p.tools[T_BODYGUARD - 1] > 0) {
-      p.tools[T_BODYGUARD - 1] -= 1;
-      yield { t: 'fx', kind: 'kb-bodyguard', p: p.id, data: { why: 'incident', incident: inc.title } };
-      yield* g.say(p.id, `保鑣擋下了「${inc.title}」！照正常付帳`);
-      inc = null;
-    }
     if (inc) { yield* this.incident(g, p, owner, f, inc, rng); return; }
     let mult: number;
     if ((f.type === 12 && female) || (f.type === 11 && female && this.mod('hostweek'))) {
@@ -488,7 +528,7 @@ export class KabukichoRules implements MapRules {
     else mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
     let rate = this.rate(f);
     if (f.tmpState) rate *= 2;
-    const k = (f.type === 10 && this.mod('matsuri') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1);
+    const k = (f.type === 10 && this.mod('matsuri') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1);
     const amount = Math.round(rate * mult * k);
     yield* g.say(undefined, `${where}\n\n您的消費金額為\n${fmt(rate)}x${mult}倍${k !== 1 ? `x${k}` : ''}=${fmt(amount)}元`);
     const paid = yield* g.collect(p, owner, amount, '消費', true);
@@ -518,7 +558,7 @@ export class KabukichoRules implements MapRules {
     const mult = vip ? 1 : yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
     let rate = this.rate(f);
     if (f.tmpState) rate *= 2;
-    const k = (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1);
+    const k = this.mod('typhoon') ? 0.5 : 1;
     const amount = Math.round(rate * mult * k);
     yield { t: 'fx', kind: 'kb-merch', p: p.id, target: owner.id, data: { facility: f.id, shop, name: f.name, pic: item.pic, item: item.name, line: item.line, amount } };
     yield* g.say(undefined, `${where}\n\n${item.name}\n${fmt(rate)}x${mult}倍${k !== 1 ? `x${k}` : ''}=${fmt(amount)}元`);
@@ -541,7 +581,7 @@ export class KabukichoRules implements MapRules {
     if (!(yield* g.ownerCollects(owner, f.tmpState, fee))) return;
     let rate = this.rate(f);
     if (f.tmpState) rate *= 2;
-    rate = Math.round(rate * (this.mod('valentine') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1));
+    rate = Math.round(rate * (this.mod('valentine') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1));
     const vip = this.s.vip[p.id] > 0;
     if (vip) this.s.vip[p.id] = 0;
     const days = vip ? 1 : yield* g.spin(WheelKind.hotel, this.wheelName(g, owner, f, p));
@@ -638,33 +678,42 @@ export class KabukichoRules implements MapRules {
     const cost = buys * M.BUY_POINTS;
     p.points = Math.max(0, p.points - cost);
     const unit = kind === 'pachinko' ? '顆' : '枚', per = kind === 'pachinko' ? M.BALLS_PER_BUY : M.MEDALS_PER_BUY;
+    this.prizes = [];
     const got = yield* this.exchange(g, p, kind, left, rng);
     const text = `${g.name(p.id)}　${kind === 'pachinko' ? '柏青哥' : '拉霸'}　花 ${cost} 點券（${buys * per}${unit}）→ ${summary} → 剩 ${fmt(left)}${unit} → 換：${got}`;
-    yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, buys, cost, left, text, human } };
+    yield { t: 'fx', kind: 'kb-machine-result', p: p.id, data: { kind, buys, cost, left, text, human, items: this.prizes } };
   }
 
   /**
-   * The prize counter (§7.4): the human picks the tools (and stores or takes the rest in cash), a computer takes an
-   * exclusive tool it lacks (保鑣 first while 黑幫 is about), then cash. Returns the line of what was taken.
+   * The prize counter (§7.4): the halls are arcade games, no cash for anyone. The prizes: the exclusive tools, 保鑣卡,
+   * the original tools 1–8 from the shop's stock, at their value in 點券 (news 景品交換所改裝: 30 % off). The human
+   * picks them; what is left goes back as 點券 at the rate they were bought (a good session ends with more), or is
+   * kept at the hall (存玉／存幣); odd balls are candy. A computer takes an exclusive tool it lacks (保鑣卡 first while
+   * 黑幫 is about), then 點券. Returns the line of what was taken.
    */
   *exchange(g: Game, p: Player, kind: M.MachineKind, left: number, rng: Rng): Flow<string> {
     void rng;
     const per = kind === 'pachinko' ? M.BALLS_PER_POINT : M.MEDALS_PER_POINT;
     let value = Math.floor(left / per);
-    const cashRate = M.CASH_PER_POINT * g.priceIndex * (this.mod('exchange') ? 1.5 : 1);
     const got: string[] = [];
     const take = (id: number): boolean => {
-      const def = toolInfo(id);
+      const def = this.prize(id);
       if (!def || value < def.price) return false;
-      if (id >= 17) { if (p.tools[id - 1] >= 9) return false; p.tools[id - 1] += 1; }
+      if (KB_CARDS_OWN.includes(id)) { if (p.cards.length >= HAND_LIMIT || !g.cards.receive(p, id)) return false; }
+      else if (id >= 17) { if (p.tools[id - 1] >= 9) return false; p.tools[id - 1] += 1; }
       else if (!g.tools.receive(p, id)) return false;
       value -= def.price; got.push(def.name);
+      const had = this.prizes.find(x => x.id === id);
+      if (had) had.n += 1; else this.prizes.push({ id, card: KB_CARDS_OWN.includes(id), n: 1 });
       return true;
     };
     if (g.isHuman(p)) {
-      const options = [...KB_TOOLS.map(t => ({ id: t.id, name: t.name, price: t.price, text: t.text })), ...[8, 2, 1, 3, 4, 7, 5, 6].map(id => ({ id, ...toolInfo(id)!, text: '' }))]
-        .map(o => ({ ...o, have: p.tools[o.id - 1] ?? 0, stock: o.id <= 8 ? g.tools.shopStock[o.id - 1] ?? 0 : 99 }));
-      const a = (yield ask({ t: 'kb-exchange', p: p.id, kind, left, per, value, cashRate, options } as never)) as unknown as { tools?: number[]; store?: boolean } | undefined;
+      const options = [...KB_TOOLS.map(t => t.id), KB_CARD, KB_RAMPAGE, 8, 2, 1, 3, 4, 7, 5, 6].map(id => {
+        const d = this.prize(id)!, card = KB_CARDS_OWN.includes(id), have = card ? p.cards.filter(c => c === id).length : p.tools[id - 1] ?? 0;
+        const stock = id <= 8 ? g.tools.shopStock[id - 1] ?? 0 : 99;
+        return { id, name: d.name, price: d.price, card, have, max: card ? HAND_LIMIT - p.cards.length : Math.min(9 - have, stock), stock };
+      });
+      const a = (yield ask({ t: 'kb-exchange', p: p.id, kind, left, per, value, sale: this.mod('exchange'), options } as never)) as unknown as { tools?: number[]; store?: boolean } | undefined;
       for (const id of Array.isArray(a?.tools) ? a!.tools! : []) take(Number(id));
       if (a?.store && value > 0) {
         const keep = value * per + (left % per);
@@ -673,21 +722,24 @@ export class KabukichoRules implements MapRules {
         value = 0;
       }
     } else {
-      const order = [...(this.s.gang.holder >= 0 || this.s.gang.node ? [T_BODYGUARD] : []), T_KAKUHEN, T_TAXI];
-      for (const id of order) if ((p.tools[id - 1] ?? 0) === 0) take(id);
+      const order = [...(this.s.gang.holder >= 0 || this.s.gang.node ? [KB_CARD] : []), T_KAKUHEN, T_TAXI, KB_RAMPAGE];
+      for (const id of order) if (KB_CARDS_OWN.includes(id) ? !p.cards.includes(id) : (p.tools[id - 1] ?? 0) === 0) take(id);
     }
-    if (value > 0) {
-      const cash = Math.round(value * cashRate);
-      g.gain(p, cash, 1);
-      yield { t: 'pay', from: -1, to: p.id, amount: cash, reason: '景品兌換', quiet: true };
-      got.push(`現金 ${fmt(cash)}元`);
-    }
-    return got.length ? got.join('、') : '什麼都沒換到';
+    const back = value;
+    if (back > 0) { p.points = Math.min(0xffff, p.points + back); got.push(`點券 ${back}`); }
+    else if (value > 0 || left % per) got.push('糖果');
+    return got.length ? got.join('、') : '糖果';
+  }
+
+  /** A prize's name and price in 點券 at the counter (§7.4; news 景品交換所改裝: −30 %). */
+  prize(id: number): { name: string; price: number } | undefined {
+    const d = id === KB_CARD ? { name: '保鑣卡', price: 25 } : id === KB_RAMPAGE ? { name: '暴走卡', price: 80 } : toolInfo(id);
+    return d && { name: d.name, price: this.mod('exchange') ? Math.ceil(d.price * 0.7) : d.price };
   }
 
   // ---------------------------------------------------------------- the exclusive tools (§7.5)
 
-  *useTool(g: Game, p: Player, tool: number, param?: number): Flow<boolean> {
+  *useTool(g: Game, p: Player, tool: number): Flow<boolean> {
     if ((p.tools[tool - 1] ?? 0) <= 0) return false;
     switch (tool) {
       case T_KAKUHEN: case T_TAXI:
@@ -696,28 +748,6 @@ export class KabukichoRules implements MapRules {
         yield { t: 'fx', kind: 'kb-tool', p: p.id, data: { tool } };
         g.stats?.toolUsed(p.id, tool);
         return true;
-      case T_BODYGUARD:
-        yield* g.say(p.id, '保鑣會自動保護你：擋掉一次保護費，或一次對你不利的店內事件。');
-        return false;
-      case T_NEON: {
-        const me = p.id + 1;
-        let ref = param ?? 0;
-        if (!ref) {
-          const spots = [...g.board.lands.filter(l => l.owner === me).map(l => ({ at: 'plot' as const, id: l.id + 2000, label: l.name })),
-            ...g.board.facilities.filter(f => f.owner === me && f.level >= 1 && isKbShop(f.type)).map(f => ({ at: 'plot' as const, id: f.id + 4000, label: `${f.name}${SHOP_NAMES[f.type]}` }))];
-          if (!spots.length) { yield* g.say(p.id, '沒有自己的地或店！'); return false; }
-          const k = Number(yield ask({ t: 'pick-map', p: p.id, title: '霓虹燈箱', spots, cancellable: true }));
-          if (!(k >= 0 && k < spots.length)) return false;
-          ref = spots[k].id;
-        }
-        this.s.neon = this.s.neon.filter(n => n.ref !== ref);
-        this.s.neon.push({ ref, days: 7 });
-        p.tools[tool - 1] -= 1;
-        yield { t: 'fx', kind: 'kb-tool', p: p.id, data: { tool, ref } };
-        yield* g.say(p.id, '霓虹燈箱點亮！7 天內收費 ×1.5');
-        g.stats?.toolUsed(p.id, tool);
-        return true;
-      }
     }
     return false;
   }
@@ -738,10 +768,6 @@ export class KabukichoRules implements MapRules {
       }
     }
     const r = this.stream(0xa1, p.id);
-    if (p.tools[T_NEON - 1] > 0) {
-      const best = g.board.facilities.filter(f => f.owner === p.id + 1 && f.level >= 3 && isKbShop(f.type) && !this.neonOn(f.id + 4000)).sort((a, b) => b.level - a.level)[0];
-      if (best) { yield* g.say(p.id, '使用霓虹燈箱'); return yield* this.useTool(g, p, T_NEON, best.id + 4000); }
-    }
     if (p.tools[T_TAXI - 1] > 0 && (p.traffic & 3) < 2 && r.below(3) === 0) { yield* g.say(p.id, '使用計程車券'); return yield* this.useTool(g, p, T_TAXI); }
     if (p.tools[T_KAKUHEN - 1] > 0 && r.below(3) === 0) { yield* g.say(p.id, '使用確變骰子'); return yield* this.useTool(g, p, T_KAKUHEN); }
     return false;
@@ -896,7 +922,7 @@ export class KabukichoRules implements MapRules {
       }
       case 'kb-n-taxistrike': yield* show(); days('taxistrike', 3); yield* this.result(g, p, c, 'jam', [{ text: '三天內所有人只擲一顆骰子' }]); return true;
       case 'kb-n-blackout': yield* show(); days('blackout', 3); yield* this.result(g, p, c, 'none', [{ text: '三天內小地過路費減半' }]); return true;
-      case 'kb-n-exchange': yield* show(); days('exchange', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內兌換現金 ×1.5' }]); return true;
+      case 'kb-n-exchange': yield* show(); days('exchange', 3); yield* this.result(g, p, c, 'bonus', [{ text: '三天內景品打七折' }]); return true;
       case 'kb-n-ordinance': {
         const h = s.gang.holder; if (h < 0) return false;
         const q = g.players[h], a = Math.min(Math.trunc(s.gang.take / 2), q.cash + q.bank);
@@ -967,9 +993,9 @@ export class KabukichoRules implements MapRules {
       case 'kb-f-fake': yield* show({ amount: 5000 * F }); yield* lose(5000 * F); return true;
       case 'kb-f-photo': yield* show(); p.points = (p.points + 30) & 0xffff; yield { t: 'points', p: p.id, amount: 30 }; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '點券 +30' }]); return true;
       case 'kb-f-lottery': {
-        const t = KB_TOOLS[this.stream(0x707, p.id).below(KB_TOOLS.length)];
-        yield* show(); if (p.tools[t.id - 1] < 9) p.tools[t.id - 1] += 1;
-        yield* this.result(g, p, c, 'gain', [{ p: p.id, text: `得到${t.name}` }]); return true;
+        // The exclusive goods come only from the prize counter (the user 2026-10-18): 50 點券 instead.
+        yield* show({ amount: 50 }); p.points = Math.min(0xffff, p.points + 50);
+        yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '點券 +50' }]); return true;
       }
       case 'kb-f-taxi': {
         const pads = g.board.nodes.filter(n => n.event === EV_PACHINKO || n.event === EV_PACHISLOT);

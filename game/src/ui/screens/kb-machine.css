@@ -170,3 +170,12 @@
 .kbm-r-step.last { white-space: normal; color: #ffe9a6; }
 .kbm-result.skipped .kbm-r-pad { width: 84px; }
 @media (max-width: 480px) { .kbm-r-pad { width: 76px; } .kbm-r-text { font-size: 15px; } .kbm-r-who { font-size: 17px; } }
+
+/* the prizes taken (§7.4): picture, name and what it does */
+.kbm-r-items { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.kbm-r-item { display: flex; align-items: center; gap: 8px; padding: 4px 8px; border-radius: 12px; background: rgba(255,255,255,.92); color: #3a1020; text-align: left; }
+.kbm-r-item img { width: 40px; height: 40px; object-fit: contain; flex: none; }
+.kbm-r-item img.card { width: 26px; border-radius: 3px; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+.kbm-r-item span { display: flex; flex-direction: column; min-width: 0; line-height: 1.25; }
+.kbm-r-item b { font-weight: 400; font-size: 16px; }
+.kbm-r-item small { font-size: 13px; color: #6a3a5a; }

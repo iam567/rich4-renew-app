@@ -12,6 +12,7 @@ import { StockScreen } from './stock-screen';
 import { tycoon } from './tycoon';
 import { askKey, askScreens, type ScreenContext } from './screens/registry';
 import './screens';
+import { itemText, shortHtml } from './screens/item-text';
 import { audio, boardVoice, characterVoice, voiceOf } from './audio';
 import { fitPhrases, phrases, shrinkText } from './text';
 
@@ -100,6 +101,25 @@ export class Hud {
    * pictures to it (CSS vars on the row), and does it again when the layer changes size (rotation). Where height is
    * short (landscape) 取消 becomes the grid's last cell instead of a row of its own.
    */
+  /** A touch long-press on a grid button shows `text` in a bubble at the top of the box, and the tap is not taken. */
+  private longInfo(b: HTMLButtonElement, box: HTMLElement, text: string) {
+    let timer = 0, long = false;
+    b.addEventListener('pointerdown', e => {
+      if (e.pointerType === 'mouse') return;
+      long = false;
+      timer = window.setTimeout(() => {
+        long = true;
+        box.querySelector('.tile-info')?.remove();
+        const tip = el('div', 'tile-info', esc(text));
+        box.append(tip);
+        setTimeout(() => tip.remove(), 2600);
+      }, 420);
+    });
+    const up = () => clearTimeout(timer);
+    b.addEventListener('pointerup', up); b.addEventListener('pointercancel', up); b.addEventListener('pointerleave', up);
+    b.addEventListener('click', e => { if (long) { long = false; e.stopImmediatePropagation(); e.preventDefault(); } }, true);
+  }
+
   private fitTiles(box: HTMLElement, row: HTMLElement, cancel: HTMLElement | null, ratio: number, MAX_H: number) {
     const cancelRow = cancel?.parentElement ?? null;
     if (!row.childElementCount) return;
@@ -354,8 +374,10 @@ export class Hud {
         row.className = `choices tiles ${a.layout}`;
         for (const o of a.options) {
           const pic = o.icon ? this.bank.art(o.icon.archive, o.icon.id, o.icon.frame ?? 0) : null;
-          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail.replace(/^需(?:要研究所)?\s*(\d+)\s*級$/, '需$1級'))}</span>` : ''}${o.detail && a.layout === 'faces' ? `<span class="tile-where">${esc(o.detail)}</span>` : ''}${o.badge ? `<span class="tile-badge">${esc(o.badge)}</span>` : ''}`, o.value, 'tile', o.disabled);
+          const b = button(`<span class="tile-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}</span><span class="tile-name">${esc(o.label)}</span>${o.hint ? `<span class="tile-hint">${shortHtml(o.hint)}</span>` : ''}${o.detail && a.layout === 'tiles' ? `<span class="tile-count">${esc(o.detail)}</span>` : ''}${o.detail && a.layout === 'lab' ? `<span class="tile-need">${esc(o.detail.replace(/^需(?:要研究所)?\s*(\d+)\s*級$/, '需$1級'))}</span>` : ''}${o.detail && a.layout === 'faces' ? `<span class="tile-where">${esc(o.detail)}</span>` : ''}${o.badge ? `<span class="tile-badge">${esc(o.badge)}</span>` : ''}`, o.value, 'tile', o.disabled);
           if (o.detail) b.title = o.detail;
+          // A tool: what it does on hover (title) and on a touch long-press (a bubble over the grid, the tap not taken).
+          if (a.layout === 'tiles' && itemText(o.value)) { b.title = `${o.label}：${itemText(o.value)}`; this.longInfo(b, box, `${o.label}：${itemText(o.value)}`); }
         }
         if (a.cancellable) {
           const c = el('div', 'choices tiles-cancel'); const b = el('button', 'candy ghost', '取消'); b.onclick = () => { audio.ui('no'); done(-1); }; c.append(b); box.append(row, c);

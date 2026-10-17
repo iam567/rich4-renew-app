@@ -81,13 +81,23 @@ export const TYCOON_CARDS: readonly CardDef[] = [
   def(35, '召集卡', 25, 3, 0, 1, '大富豪模式：別的城市隨機一位對手搭飛機來到你所在城市的機場（在路上一回合）'),
   def(36, '通緝卡', 60, 1, 0, 2, '大富豪模式：任選一座城市的一位對手，在他所在城市坐牢五天（每座城市同時只有一張）'),
 ];
-const ALL_CARDS: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
+/**
+ * 歌舞伎町's own cards (docs/rules/21 §4.1, §7.5), outside the pool, only from its prize counter: 37 保鑣卡 (passive),
+ * 38 暴走卡.
+ */
+export const KB_CARDS: readonly CardDef[] = [
+  def(37, '保鑣卡', 25, 0, 0, 0, '歌舞伎町：被黑幫附身的人來收保護費時，保鑣自動出面，免付一次', true),
+  def(38, '暴走卡', 80, 0, 0, 0, '歌舞伎町：這回合走完，馬上再來完整的一回合'),
+];
+/** The tycoon world's deck (its pool and shelf); the lookups below also know 歌舞伎町's card. */
+const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
+const ALL_CARDS: readonly CardDef[] = [...TYCOON_DECK, ...KB_CARDS];
 export const cardDef = (id: number): CardDef | undefined => ALL_CARDS[id - 1];
 /**
  * 大富豪模式's own cards (ids above the original 30): effects that sell or drop a whole hand (魔法屋 變賣所有卡片,
  * 命運 32, 死神) leave them in the hand — only bankruptcy clears them (docs/rules/17 §3.7).
  */
-export const isTycoonCard = (id: number) => id > CARDS.length;
+export const isTycoonCard = (id: number) => id > CARDS.length && id <= TYCOON_DECK.length;
 
 export const HAND_LIMIT = 15;
 export const cardName = (id: number) => ALL_CARDS[id - 1]?.name ?? '';
@@ -129,7 +139,7 @@ export class Cards {
 
   /** New game: fill the pool from the card table (04 §1). */
   init(): void {
-    this.remaining = (this.g.world ? ALL_CARDS : CARDS).map(c => c.supply);
+    this.remaining = (this.g.world ? TYCOON_DECK : CARDS).map(c => c.supply);
     for (const p of this.g.players) p.cards = [];
   }
 
@@ -146,10 +156,12 @@ export class Cards {
 
   /** Add a card to a hand: a full hand of 15 first drops its cheapest card (04 §2.1). No pool check. */
   receive(p: Player, id: number): boolean {
-    if (id < 1 || id > this.remaining.length) return false;
+    // A map's own card (歌舞伎町 37) has no pool: it is in no `remaining` slot.
+    const own = id > this.remaining.length && this.g.rules?.ownCards?.includes(id);
+    if (id < 1 || (id > this.remaining.length && !own)) return false;
     if (p.cards.length >= HAND_LIMIT) this.dropSlot(p, this.cheapestSlot(p));
     p.cards.push(id);
-    this.remaining[id - 1] = (this.remaining[id - 1] - 1) & 0xff;
+    if (!own) this.remaining[id - 1] = (this.remaining[id - 1] - 1) & 0xff;
     return true;
   }
 
@@ -163,7 +175,7 @@ export class Cards {
 
   private dropSlot(p: Player, i: number): number {
     const [id] = p.cards.splice(i, 1);
-    if (id) this.remaining[id - 1] = (this.remaining[id - 1] + 1) & 0xff;
+    if (id && id <= this.remaining.length) this.remaining[id - 1] = (this.remaining[id - 1] + 1) & 0xff;
     return id ?? 0;
   }
 
@@ -381,7 +393,7 @@ export class Cards {
           const f = g.board.facilities[ref - 4001];
           if (f.level === 0) {
             // 大富翁城 (docs/rules/19): only casinos are built there, no type to choose.
-            const only = g.rules?.facilityType?.(f);
+            const only = human && g.rules?.pickFacilityType ? yield* g.rules.pickFacilityType(g, p, f) : g.rules?.facilityType?.(f);
             const type = only !== undefined ? only : human ? yield* this.chooseFacilityType(p, false) : f.owner === me + 1 ? g.rng.rand() % 4 + 1 : 0;
             f.type = Math.max(0, type);
             f.level = 1;
@@ -456,7 +468,7 @@ export class Cards {
         if (human) {
           const options: Option[] = [
             ...q.cards.map(c => ({ label: cardName(c), value: c })),
-            ...q.tools.flatMap((n, i) => (n > 0 ? [{ label: `${TOOL_NAMES[i]} ×${n}`, value: 100 + i + 1 }] : [])),
+            ...q.tools.flatMap((n, i) => (n > 0 ? [{ label: `${TOOL_NAMES[i] ?? g.rules?.extraTools?.find(t => t.id === i + 1)?.name ?? ''} ×${n}`, value: 100 + i + 1 }] : [])),
           ];
           if (!options.length) { yield* this.say(p, `${g.name(t)}沒有卡片和道具`); return false; }
           const a = yield ask({ t: 'choose', p: me, title: `搶奪${g.name(t)}的卡片或道具`, options, cancellable: true });
@@ -470,7 +482,7 @@ export class Cards {
           q.tools[tool - 1] -= 1;
           if (tool <= 8 && g.tools.shopStock.length >= tool) g.tools.shopStock[tool - 1] += 1;
           g.tools.receive(p, tool);
-          hostility = TOOL_PRICES[tool - 1];
+          hostility = TOOL_PRICES[tool - 1] ?? g.rules?.extraTools?.find(t => t.id === tool)?.price ?? 0;
         } else {
           if (!this.consume(q, pick)) return false;
           this.receive(p, pick);
@@ -689,7 +701,8 @@ export class Cards {
         this.consume(p, id);
         return true;
       }
-      default: return false; // passive cards 18-21 (fcn_004420d5)
+      default: // passive cards 18-21 (fcn_004420d5); a map's own card (歌舞伎町's 暴走卡) by the map's rules
+        return this.g.rules?.ownCards?.includes(id) && this.g.rules.playCard ? yield* this.g.rules.playCard(g, p, id, human) : false;
     }
   }
 
@@ -1033,7 +1046,7 @@ export class Cards {
         const d = g.world ? g.world.hooks.aiCardTrip(g, p, id === 31 ? 'airport' : 'station') : -1;
         return d >= 0 && set(d);
       }
-      default: return false; // 5 換屋, 6 轉向: never (fcn_0041e6e3)
+      default: return !!(this.g.rules?.ownCards?.includes(id) && this.g.rules.aiPlayCard?.(g, p, id)); // 5 換屋, 6 轉向: never (fcn_0041e6e3)
     }
   }
 

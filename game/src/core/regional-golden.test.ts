@@ -32,6 +32,9 @@ export function goldenRun(mapId: number, days: number): string {
   for (let r = flow.next(); !r.done && game.daysElapsed < days; r = flow.next()) {
     const s = r.value as { t?: string; kind?: string };
     if (s.t === 'fx' && (s.kind === 'news' || s.kind === 'fate')) boards++;
+    // The lab's line names its owner since 2026-10-18 (「X的Y開發完成！」, the user): the wording only, hashed as before.
+    const say = r.value as { t?: string; text?: string };
+    if (say.t === 'say' && say.text && /開發完成！$/.test(say.text)) { h.update(JSON.stringify({ ...say, text: say.text.replace(/^.+?的(?=[^的]+開發完成！$)/, '') })); continue; }
     h.update(JSON.stringify(r.value));
   }
   // The run must really cover the days and draw news and fate (else the hash proves nothing).

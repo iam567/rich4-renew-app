@@ -69,11 +69,12 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     if (existsSync(join(src, 'maps/remake/casino/props'))) for (const f of readdirSync(join(src, 'maps/remake/casino/props'))) if (f.endsWith('.webp')) copy(`maps/remake/casino/props/${f}`);
   }
   // 歌舞伎町 (docs/rules/21): the shop picker's plates, the 柏青哥 / 拉霸 machines' art and the exclusive tools' icons
-  // (Data#617..620); its shops, houses, NPCs, walkers and pads come with its map file's sprites above.
+  // (Data#617, 618) and cards (Data#607, 608); its shops, houses, NPCs, walkers and pads come with its map file's sprites above.
   for (const dir of ['maps/remake/kabukicho', 'maps/remake/kabukicho/machines']) {
     if (existsSync(join(src, dir))) for (const f of readdirSync(join(src, dir))) if (f.endsWith('.webp')) copy(`${dir}/${f}`);
   }
-  for (const n of [617, 618, 619, 620]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
+  for (const n of [617, 618]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
+  for (const n of [607, 608]) if (existsSync(join(src, `maps/remake/cards/0${n}.webp`))) copy(`maps/remake/cards/0${n}.webp`);
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.
   if (existsSync(join(src, 'maps/remake/stats'))) {
     for (const f of readdirSync(join(src, 'maps/remake/stats'))) if (f.endsWith('.webp')) copy(`maps/remake/stats/${f}`);

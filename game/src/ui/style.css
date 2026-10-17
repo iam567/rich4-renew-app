@@ -329,6 +329,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .cards .tile-pic { width: var(--pw, 58px); height: var(--ph, 90px); }
 .cards .tile-pic img { border-radius: 6px; box-shadow: 0 2px 4px rgba(0,0,0,.3); }
 .tile-name { white-space: nowrap; }
+.tile-hint { font-size: calc(var(--fs, 13px) * .78); line-height: 1.15; color: #7a4a20; white-space: nowrap; text-align: center; }
+.msg.tiles .tile-info { position: absolute; left: 50%; top: 8px; transform: translateX(-50%); z-index: 3; max-width: calc(100% - 24px); padding: 6px 12px; border-radius: 12px;
+  background: #fffbe8; color: #4a2a00; font-size: 15px; line-height: 1.35; box-shadow: 0 4px 10px rgba(0,0,0,.3); pointer-events: none; }
 .tile-count { position: absolute; right: 6px; top: 4px; font-size: 13px; color: #fff; text-shadow: 0 1px 0 #7a4a00, 1px 1px 0 #7a4a00; }
 
 /* right-column layouts (視窗組, 09 §1.2): 0 panel + calendar, 1 panel + small map, 2 compact panel + map + calendar */
@@ -383,6 +386,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .info-tool { position: relative; display: grid; place-items: center; width: calc(56px * var(--k)); height: calc(46px * var(--k)); border-radius: 10px; background: rgba(255,255,255,.85); }
 .info-tool img { width: calc(40px * var(--k)); height: calc(34px * var(--k)); object-fit: contain; }
 .info-tool b { position: absolute; right: 3px; bottom: 0; font-weight: 400; font-size: 12px; color: #5a2d00; }
+.info-tool, .info-card { cursor: pointer; }
+.info-tip { margin-top: calc(6px * var(--k)); font-size: calc(13px * var(--k)); line-height: 1.3; color: #6a3a10; min-height: 1.3em; }
 .info-card { padding: calc(3px * var(--k)) 10px; border-radius: 999px; font-size: calc(14px * var(--k)); color: #5a2d00; background: linear-gradient(#fff8cf, #ffd23f); white-space: nowrap; }
 .info-none { opacity: .7; font-size: 14px; }
 .info-filters { display: flex; gap: 6px; flex-wrap: nowrap; margin-bottom: 8px; }

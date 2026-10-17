@@ -17,8 +17,6 @@ export const MAX_BUYS = 5;
 /** Value at the exchange counter: 25 balls or 5 medals are worth 1 點券 (§7.4). */
 export const BALLS_PER_POINT = 25;
 export const MEDALS_PER_POINT = 5;
-/** Cash for 1 點券 of value: 200 元 × the price index (§7.4). */
-export const CASH_PER_POINT = 200;
 
 const p = (rng: Rng) => rng.rand() / 32768;
 

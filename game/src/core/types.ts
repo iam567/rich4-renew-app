@@ -90,8 +90,8 @@ export interface Player {
 /** One option of a choice question. */
 /** Picture for an option: a frame of an original resource (the screen uses the redrawn one when there is one). */
 export interface OptionIcon { archive: 'Data' | 'Panel' | 'map'; id: number; frame?: number }
-/** `badge`: a small corner tag (大富豪模式's 「限定」 lab tools). */
-export interface Option { label: string; value: number; disabled?: boolean; detail?: string; icon?: OptionIcon; badge?: string }
+/** `badge`: a small corner tag (大富豪模式's 「限定」 lab tools); `hint`: a short effect line under the name in a tool grid. */
+export interface Option { label: string; value: number; disabled?: boolean; detail?: string; icon?: OptionIcon; badge?: string; hint?: string }
 
 /**
  * One choice of a map pick (`pick-map`): `node` a road node (id = node id, e.g. a roadblock on it), `plot` a lot or
