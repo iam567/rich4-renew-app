@@ -72,65 +72,6 @@ function fitShell(shell: HTMLElement) {
 let maps: MapInfo[] = [];
 const mapName = (id: number) => maps.find(m => m.id === id)?.name ?? `地圖 ${id}`;
 
-/**
- * Music / effect / voice volumes in the original's five steps (RICH4.CFG +2 / +3, docs/rules/12 §5), a mute,
- * and in a game the background track (the original's option screen lists the eight tracks, fcn_00410668).
- */
-function soundControls(inGame: boolean): HTMLElement {
-  const box = document.createElement('div');
-  box.className = 'snd-panel';
-  const levels = ['關', '1', '2', '3', '4'];
-  const render = () => {
-    const s = audio.settings, m = audio.music;
-    const row = (label: string, key: 'music' | 'sfx' | 'voice') => `<p>${label}</p><div class="chips">${levels.map((t, i) =>
-      `<button class="chip${s[key] === i ? ' on' : ''}" data-snd="${key}" data-v="${i}">${t}</button>`).join('')}</div>`;
-    box.innerHTML = `${row('音樂', 'music')}${row('音效', 'sfx')}${row('語音', 'voice')}
-      <div class="chips snd-mute"><button class="chip${s.mute ? ' on' : ''}" data-snd="mute">${s.mute ? '已靜音' : '靜音'}</button></div>
-      ${inGame ? `<p>背景音樂</p><div class="chips">${BGM.map((_, i) => `<button class="chip${m?.kind === 'bgm' && m.index === i ? ' on' : ''}" data-bgm="${i + 1}">${i + 1}</button>`).join('')}</div>` : ''}`;
-  };
-  box.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-snd],[data-bgm]');
-    if (!b) return;
-    if (b.dataset.bgm) {
-      audio.ui('error');
-      if (audio.holiday) return;
-      audio.background(Number(b.dataset.bgm));
-    } else if (b.dataset.snd === 'mute') audio.set({ mute: !audio.settings.mute });
-    else {
-      audio.set({ [b.dataset.snd!]: Number(b.dataset.v) });
-      audio.ui('click');
-    }
-    render();
-  });
-  render();
-  return box;
-}
-
-/**
- * 地圖風格: the original ground or one of the redrawn styles. Only styles that exist (for this map in a game,
- * for any map on the title screen) are offered; `onPick` applies the choice at once.
- */
-function groundControls(available: string[], onPick: () => void): HTMLElement {
-  const box = document.createElement('div');
-  box.className = 'snd-panel';
-  const render = () => {
-    const list = GROUND_STYLES.filter(g => !g.id || available.includes(g.id));
-    const cur = list.some(g => g.id === groundStyle()) ? groundStyle() : '';
-    box.innerHTML = `<p>地圖風格</p><div class="chips">${list.map(g =>
-      `<button class="chip${g.id === cur ? ' on' : ''}" data-ground="${g.id}">${g.name}</button>`).join('')}</div>`;
-  };
-  box.addEventListener('click', e => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-ground]');
-    if (!b) return;
-    audio.ui('click');
-    setGroundStyle(b.dataset.ground ?? '');
-    render();
-    onPick();
-  });
-  render();
-  return box;
-}
-
 /** Hover / click sounds of the original's buttons (slot table 0x48231a) on a container. */
 function buttonSounds(root: HTMLElement, sel = 'button') {
   let over: Element | null = null;
@@ -192,42 +133,79 @@ function title() {
 const MINI_GAME_MODES = ['親自玩', '自動結算'];
 const miniGameMode = () => { try { return Number(localStorage.getItem('rich4.minigame') ?? 0) === 1 ? 1 : 0; } catch { return 0; } };
 
-/** Speed, right-column layout and the mini games, kept for every game (RICH4.CFG in the original). */
+/**
+ * Speed, right-column layout and the mini games, kept for every game (RICH4.CFG in the original): the same compact
+ * window as the in-game 系統 (a row per setting, two columns on a landscape phone, one page, no scrolling).
+ */
 function options() {
   const read = (k: string) => { try { return Number(localStorage.getItem(k) ?? 0); } catch { return 0; } };
   const write = (k: string, v: number) => { try { localStorage.setItem(k, String(v)); } catch { /* not kept */ } };
+  const levels = ['關', '1', '2', '3', '4'];
+  type Row = { label: string; opts: string[]; cur: () => number; pick: (i: number) => void; even?: boolean; wide?: boolean; nozh?: boolean };
+  const stored = (label: string, key: string, opts: string[]): Row => ({ label, opts, cur: () => read(key), pick: i => write(key, i) });
+  let grounds: string[] = [];
+  const rows = (): Row[] => {
+    const list: Row[] = [
+      stored('速度', 'rich4.speed', ['慢', '中', '快']),
+      stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
+      stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
+      { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => { write('rich4.orientation', i); void applyOrientation(); } },
+      { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => write('rich4.weather', i) },
+      { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
+        pick: i => void setLang(LANGS[i].id).then(render) },
+    ];
+    if (grounds.length) {
+      const styles = GROUND_STYLES.filter(g => !g.id || grounds.includes(g.id));
+      const short: Record<string, string> = { '': '原版', ghibli: '吉卜力', monopoly: '桌遊', genshin: '原神' };
+      list.push({ label: '地圖', wide: true, opts: styles.map(g => short[g.id] ?? g.name),
+        cur: () => Math.max(0, styles.findIndex(g => g.id === (grounds.includes(groundStyle()) ? groundStyle() : ''))),
+        pick: i => setGroundStyle(styles[i].id) });
+    }
+    for (const [label, key] of [['音樂', 'music'], ['音效', 'sfx'], ['語音', 'voice']] as const) {
+      list.push({ label, opts: levels, even: true, cur: () => audio.settings[key], pick: i => audio.set({ [key]: i }) });
+    }
+    list.push({ label: '靜音', opts: ['開', '關'], cur: () => (audio.settings.mute ? 0 : 1), pick: i => audio.set({ mute: i === 0 }) });
+    return list;
+  };
   const overlay = document.createElement('div');
   overlay.className = 'slots-overlay';
-  const render = () => {
-    const speed = read('rich4.speed'), layout = read('rich4.layout'), mini = read('rich4.minigame');
-    overlay.innerHTML = `<div class="msg sheet"><div class="ribbon">設定</div><div class="sheet-body">
-      <p>遊戲速度</p><div class="chips">${['慢', '中', '快'].map((t, i) => `<button class="chip${i === speed ? ' on' : ''}" data-k="rich4.speed" data-v="${i}">${t}</button>`).join('')}</div>
-      <p>右側顯示</p><div class="chips">${['日曆', '小地圖', '全部'].map((t, i) => `<button class="chip${i === layout ? ' on' : ''}" data-k="rich4.layout" data-v="${i}">${t}</button>`).join('')}</div>
-      <p>小遊戲（原版「動畫過程」）</p><div class="chips">${MINI_GAME_MODES.map((t, i) => `<button class="chip${i === mini ? ' on' : ''}" data-k="rich4.minigame" data-v="${i}">${t}</button>`).join('')}</div>
-      <p>畫面方向（不受手機的方向鎖定影響）</p><div class="chips">${ORIENTATIONS.map((t, i) => `<button class="chip${i === orientationMode() ? ' on' : ''}" data-k="rich4.orientation" data-v="${i}">${t}</button>`).join('')}</div>
-      <p>天氣（各地依真實氣候，每天不同）</p><div class="chips">${WEATHER_MODES.map((t, i) => `<button class="chip${i === weatherMode() ? ' on' : ''}" data-k="rich4.weather" data-v="${i}">${t}</button>`).join('')}</div>
-      <p>語言</p><div class="chips" data-nozh>${LANGS.map(l => `<button class="chip${l.id === lang() ? ' on' : ''}" data-lang="${l.id}">${l.label}</button>`).join('')}</div>
-      </div><div class="choices"><button class="candy ghost" data-close="1">關閉</button></div></div>`;
-    const body = overlay.querySelector('.sheet-body')!;
-    if (grounds.length) body.append(groundControls(grounds, () => undefined));
-    body.append(soundControls(false));
-  };
+  const box = document.createElement('div');
+  box.className = 'msg sheet sys-sheet';
+  const grid = document.createElement('div');
+  grid.className = 'sys-grid';
+  let current: Row[] = [];
+  function render() {
+    current = rows();
+    grid.innerHTML = current.map((r, n) => `<b${r.wide ? ' class="w"' : ''}>${r.label}</b><div class="chips${r.even ? ' even' : ''}${r.wide ? ' w' : ''}"${r.nozh ? ' data-nozh' : ''}>${r.opts.map((o, i) =>
+      `<button class="chip${r.cur() === i ? ' on' : ''}" data-row="${n}" data-v="${i}">${o}</button>`).join('')}</div>`).join('');
+    fit();
+  }
+  /** A short screen: shrink the whole window rather than scroll it. */
+  function fit() {
+    if (!box.isConnected) return;
+    box.style.zoom = '';
+    const os = getComputedStyle(overlay);
+    const room = overlay.clientHeight - parseFloat(os.paddingTop) - parseFloat(os.paddingBottom);
+    const need = box.scrollHeight + parseFloat(getComputedStyle(box).marginTop) + 8;
+    if (need > room && room > 0) box.style.zoom = String(Math.max(0.6, room / need));
+  }
+  box.innerHTML = '<div class="ribbon">設定</div>';
+  const buttons = document.createElement('div');
+  buttons.className = 'choices sys-buttons';
+  buttons.innerHTML = '<button class="candy ghost" data-close="1">關閉</button>';
+  box.append(grid, buttons);
+  overlay.append(box);
   // Styles redrawn for any map (the choice applies to the maps that have it).
-  let grounds: string[] = [];
-  void groundIndex().then(g => { grounds = [...new Set(Object.values(g.maps).flat())]; if (grounds.length && overlay.isConnected) render(); });
+  void groundIndex().then(g => { grounds = [...new Set(Object.values(g.maps).flat())]; if (overlay.isConnected) render(); });
   overlay.onclick = e => {
-    const t = e.target as HTMLElement, c = t.closest<HTMLElement>('[data-k]');
-    const l = t.closest<HTMLElement>('[data-lang]');
-    if (l) { audio.ui('click'); void setLang(l.dataset.lang as 'hant' | 'hans').then(render); return; }
-    if (c) {
-      audio.ui('click'); write(c.dataset.k!, Number(c.dataset.v));
-      if (c.dataset.k === 'rich4.orientation') void applyOrientation();
-      render(); return;
-    }
-    if (t === overlay || t.closest('[data-close]')) { audio.ui('no'); overlay.remove(); }
+    const t = e.target as HTMLElement, c = t.closest<HTMLElement>('[data-row]');
+    if (c) { audio.ui('click'); current[Number(c.dataset.row)].pick(Number(c.dataset.v)); render(); return; }
+    if (t === overlay || t.closest('[data-close]')) { audio.ui('no'); ro.disconnect(); overlay.remove(); }
   };
-  render();
+  const ro = new ResizeObserver(fit);
   app.append(overlay);
+  ro.observe(overlay);
+  render();
 }
 
 function newGame() {

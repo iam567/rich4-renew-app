@@ -248,11 +248,31 @@ button:disabled { opacity: 0.4; cursor: default; }
 .slot-face.out { filter: grayscale(1); opacity: 0.5; }
 .slot-when { font-size: 12px; opacity: 0.75; white-space: nowrap; }
 .slot-empty { font-size: 16px; }
-@media (max-width: 520px) {
-  .slot-row { grid-template-columns: 46px 54px 1fr; }
-  .slot-row .slot-map { display: none; }
-  .slot-when { grid-column: 2 / 4; }
-  .slot-badge { width: 40px; height: 40px; }
+/* Phones: every slot as a compact two-line card (map + saved-at / game date + faces), so all six fit on one page with
+   no scrolling — one column in portrait, two in landscape. */
+@media (max-width: 520px), (max-height: 560px) {
+  .slot-list { overflow: visible; gap: 7px; padding: 2px 2px 6px; margin-bottom: 4px; }
+  .slot-row, .slot-row.empty { grid-template-columns: 34px 44px auto minmax(0, 1fr); grid-template-rows: auto auto;
+    grid-template-areas: "badge map name when" "badge map date faces"; column-gap: 8px; row-gap: 3px; padding: 6px 10px; min-height: 58px; }
+  .slot-row.empty { grid-template-areas: "badge empty empty empty" "badge empty empty empty"; }
+  .slot-row .slot-map { display: block; }
+  .slot-badge { grid-area: badge; width: 34px; height: 34px; font-size: 17px; box-shadow: 0 2px 0 rgba(0,0,0,.25); }
+  .slot-badge.auto { font-size: 9px; }
+  .slot-map { grid-area: map; }
+  .slot-map img { width: 44px; height: 44px; border-radius: 9px; }
+  .slot-main { display: contents; }
+  .slot-mapname { grid-area: name; font-size: 14px; text-align: left; }
+  .slot-faces { grid-area: faces; justify-content: flex-end; flex-wrap: nowrap; overflow: hidden; gap: 3px; min-width: 0; }
+  .slot-face img { width: 26px; height: 26px; border-radius: 7px; border-width: 1.5px; }
+  .slot-date { grid-area: date; display: flex; align-items: baseline; gap: 5px; white-space: nowrap; }
+  .slot-date small { display: inline; font-size: 11px; }
+  .slot-date b { font-size: 15px; }
+  .slot-when { grid-area: when; justify-self: end; font-size: 11px; }
+  .slot-empty { grid-area: empty; font-size: 14px; text-align: left; align-self: center; }
+}
+@media (orientation: landscape) and (max-height: 560px) {
+  .msg.slots { width: min(920px, 100%); max-width: 100%; }
+  .slot-list { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 }
 
 /* setup screen actions */
@@ -575,6 +595,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .sys-grid .chip { flex: 0 1 auto; min-width: 0; padding: 3px 9px; font-size: 13.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-width: 1.5px; }
 .sys-buttons { flex-wrap: nowrap; gap: 8px; }
 .sys-buttons .candy, .sys-buttons .candy.no { flex: 1 1 0; min-width: 0; padding: 7px 6px; font-size: 16px; border-width: 2px; border-radius: 13px; }
+.sys-buttons .candy:only-child { flex: 0 0 auto; min-width: 150px; padding: 7px 28px; }
 .sys-grid .chips.even .chip { flex: 1 1 0; padding: 3px 0; text-align: center; text-overflow: clip; }
 /* A short portrait map area (small phones): tighter rows before the window has to shrink as a whole. */
 @media (orientation: portrait) and (max-height: 760px) {
