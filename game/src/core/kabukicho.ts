@@ -887,9 +887,10 @@ export class KabukichoRules implements MapRules {
     const vals = Array.from({ length: n + 1 }, () => g.rng.rand() % 6 + 1);
     let drop: number;
     if (g.isHuman(p)) {
-      const options = vals.map((v, i) => ({ label: `不要 ${v}・走 ${vals.reduce((a, b) => a + b, 0) - v} 步`, value: i }));
-      const a = Number(yield ask({ t: 'choose', p: p.id, title: `確變骰子：擲出 ${vals.join('、')}，挑一顆不算`, options, cancellable: false }));
-      drop = a >= 0 && a < vals.length ? a : 0;
+      // The dice as faces: the player taps the ones to keep (n of n + 1, screen kb-dice-keep); the other is dropped.
+      const a = (yield ask({ t: 'kb-dice-keep', p: p.id, values: vals, keep: vals.length - 1 } as never)) as unknown;
+      const kept = Array.isArray(a) ? [...new Set(a.map(Number).filter(i => i >= 0 && i < vals.length))] : [];
+      drop = kept.length === vals.length - 1 ? vals.findIndex((_, i) => !kept.includes(i)) : 0;
     } else {
       let best = -Infinity; drop = 0;
       vals.forEach((v, i) => { const s = this.landingScore(g, p, vals.reduce((a, b) => a + b, 0) - v); if (s > best) { best = s; drop = i; } });
@@ -964,13 +965,13 @@ export class KabukichoRules implements MapRules {
         yield* this.board(g, p, c, this.fill(c.text, { amount: 2 * this.rate(list[0]) }));
         const lines: ResultLine[] = [];
         for (const f of list) { const o = g.players[f.owner - 1]; lines.push({ p: o.id, text: `${f.name}居酒屋罰款`, amount: -(yield* this.fine(o, 2 * this.rate(f), '衛生罰款')) }); }
-        yield* this.result(g, p, c, 'fine', lines); return true;
+        yield* this.result(g, p, c, 'fine', lines, { refs: list.map(f => f.id + 4000) }); return true;   // refs: the camera (UI only)
       }
       case 'kb-n-award': {
         const f = shops(11).sort((a, b2) => b2.level - a.level)[0]; if (!f) return false;
         const o = g.players[f.owner - 1], amount = 10000 * F;
         yield* this.board(g, p, c, this.fill(c.text, { owner: g.name(o.id), shop: `${f.name}陪酒店`, amount }));
-        g.gain(o, amount, 0); yield* this.result(g, p, c, 'award', [{ p: o.id, text: '獎金', amount }]); return true;
+        g.gain(o, amount, 0); yield* this.result(g, p, c, 'award', [{ p: o.id, text: '獎金', amount }], { refs: [f.id + 4000] }); return true;
       }
       case 'kb-n-newmachine': yield* show(); days('newmachine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '柏青哥3天易中獎' }]); return true;
       case 'kb-n-setting6': yield* show(); days('setting6', 3); yield* this.result(g, p, c, 'bonus', [{ text: '拉霸3天易中BIG' }]); return true;
@@ -999,7 +1000,7 @@ export class KabukichoRules implements MapRules {
       case 'kb-n-bathclose': {
         const list = shops(12); if (!list.length) return false;
         yield* show(); for (const f of list) s.closed[f.id] = Math.max(s.closed[f.id] ?? 0, 2);
-        yield* this.result(g, p, c, 'fine', list.map(f => ({ p: f.owner - 1, text: `${f.name}泡泡浴停業兩天` }))); return true;
+        yield* this.result(g, p, c, 'fine', list.map(f => ({ p: f.owner - 1, text: `${f.name}泡泡浴停業兩天` })), { refs: list.map(f => f.id + 4000) }); return true;
       }
       case 'kb-n-valentine': yield* show(); days('valentine', 3); yield* this.result(g, p, c, 'bonus', [{ text: '情人酒店3天×2' }]); return true;
       case 'kb-n-subsidy': {

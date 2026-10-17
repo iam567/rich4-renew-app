@@ -24,3 +24,4 @@ import './kb-pachinko';
 import './kb-pachislot';
 import './kb-exchange';   // 景品兌換所
 import './kb-fx';         // incident card, hospital wheel, toasts
+import './kb-dice';       // 確變骰子: tap the dice to keep

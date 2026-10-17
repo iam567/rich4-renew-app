@@ -188,6 +188,17 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(ride.out.some(s => s.t === 'fx' && s.kind === 'kb-taxi-ride')).toBe(true);
     expect(kb.s.taxi[rival.id]).toBe(0);
     expect(drain(kb.rollDice(g, rival) as Generator<unknown, unknown, unknown>).value).toBeUndefined();
+    // 確變骰子 for a human: the dice faces, the kept ones tapped (kb-dice-keep), the other dropped.
+    holder.whoPlays = 1; holder.dice = 2; kb.s.roll[holder.id] = 17;
+    const kk = kb.rollDice(g, holder) as Generator<Step, unknown, unknown>;
+    let r1 = kk.next();
+    while (!r1.done && !(r1.value as { ask?: boolean }).ask) r1 = kk.next();
+    const asked = r1.value as unknown as { t: string; values: number[]; keep: number };
+    expect([asked.t, asked.values.length, asked.keep]).toEqual(['kb-dice-keep', 3, 2]);
+    let r2 = kk.next([0, 2] as never);
+    while (!r2.done) r2 = kk.next();
+    expect(r2.value).toEqual([asked.values[0], asked.values[2]]);
+    holder.whoPlays = 2;
     // 暴走卡
     holder.cards = [KB_RAMPAGE]; holder.placed = true; holder.whoPlays = 2;
     expect(drain(kb.playCard(g, holder, KB_RAMPAGE) as Generator<unknown, unknown, unknown>).value).toBe(true);

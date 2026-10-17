@@ -1,0 +1,28 @@
+/* 確變骰子's choice (kb-dice.ts): big dice to tap, in the casino's cartoon style. 620×340 sideways, 420×520 upright. */
+.kbd-ov { background: rgba(10, 5, 30, .55); }
+.kbd-scene img { position: static; }
+.kbd-scene .kbd-die { position: relative; margin: 0; }
+.kbd-scene { font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; }
+.kbd-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; padding: 10px 14px; border-radius: 24px; color: #fff;
+  background: radial-gradient(120% 80% at 50% 0%, #7a4bf5, #3a14a0); box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffc93c, 0 14px 30px rgba(0,0,0,.5);
+  animation: kbd-pop .35s cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes kbd-pop { from { transform: scale(.6); opacity: 0; } }
+.kbd-title { font-size: 30px; text-shadow: 0 3px 0 #2a0f80; }
+.kbd-hint { font-size: 20px; padding: 2px 14px; border-radius: 14px; background: rgba(255,255,255,.18); }
+.kbd-dice { display: flex; flex-wrap: wrap; justify-content: center; gap: 16px; }
+.kbd-scene.tall .kbd-dice { max-width: 300px; }
+.kbd-scene .kbd-die { width: 120px; height: 120px; padding: 10px; border-radius: 24px; border: 4px solid rgba(255,255,255,.65); cursor: pointer;
+  background: rgba(255,255,255,.14) !important; border: 4px solid rgba(255,255,255,.65) !important; border-radius: 24px !important; padding: 10px !important; box-shadow: 0 6px 0 rgba(0,0,0,.25); transition: transform .12s, background .15s, border-color .15s, box-shadow .15s; -webkit-tap-highlight-color: transparent; }
+.kbd-die img { width: 100%; height: 100%; object-fit: contain; display: block; pointer-events: none; filter: drop-shadow(0 4px 3px rgba(0,0,0,.35)); }
+.kbd-die b { font-size: 60px; color: #fff; }
+.kbd-die:active { transform: scale(.95); }
+.kbd-scene .kbd-die.on { background: rgba(255, 233, 120, .35) !important; border-color: #ffe14a !important; box-shadow: 0 0 0 4px rgba(255,225,74,.5), 0 0 24px 6px rgba(255,225,74,.7), 0 6px 0 rgba(0,0,0,.25); transform: translateY(-4px); }
+.kbd-check { position: absolute; right: -8px; top: -8px; width: 34px; height: 34px; border-radius: 50%; background: #5ad07a; border: 3px solid #fff; font-style: normal; font-size: 20px;
+  line-height: 28px; text-align: center; transform: scale(0); transition: transform .15s cubic-bezier(.3, 1.6, .5, 1); }
+.kbd-die.on .kbd-check { transform: scale(1); }
+.kbd-die.gone { animation: kbd-fly .55s ease-in forwards; pointer-events: none; }
+@keyframes kbd-fly { 30% { filter: grayscale(1); opacity: .7; } to { filter: grayscale(1); opacity: 0; transform: translate(80px, -160px) rotate(220deg) scale(.4); } }
+.kbd-sum { font-size: 26px; text-shadow: 0 2px 0 #2a0f80; }
+.kbd-sum em { font-style: normal; font-size: 40px; color: #ffe14a; }
+.kbd-card.done .kbd-sum em { animation: kbd-bump .35s ease-out; }
+@keyframes kbd-bump { 50% { transform: scale(1.3); display: inline-block; } }
