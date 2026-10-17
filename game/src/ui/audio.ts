@@ -126,8 +126,12 @@ class AudioEngine {
       document.addEventListener('visibilitychange', () => {
         if (!this.ctx) return;
         if (document.hidden) void this.ctx.suspend().catch(() => {});
-        else void this.ctx.resume().catch(() => {});
+        else this.wake();
       });
+      // iOS: coming back from another app (a message, a call) can leave the context 'interrupted' or silently
+      // dead; try at once, and again on the next touch (unlock), rebuilding the context if it won't run.
+      window.addEventListener('pageshow', () => this.wake());
+      window.addEventListener('focus', () => this.wake());
     }
   }
 
@@ -156,11 +160,46 @@ class AudioEngine {
     return ctx;
   }
 
+  /** Back in front: resume, and make the next touch run the full unlock (silent tick, music restart, rebuild). */
+  private wake() {
+    if (!this.ctx || document.hidden) return;
+    this.unlocked = false;
+    void this.ctx.resume().catch(() => {});
+  }
+
+  /**
+   * A context iOS won't bring back (still not running after resume() inside a touch): close it and start a
+   * fresh one. Decoded buffers carry over; the music restarts where it was and looping effects start again.
+   */
+  private rebuild() {
+    const old = this.ctx;
+    if (!old) return;
+    const m = this.musicNow, at = m.state ? this.position() : 0;
+    m.playing = null;
+    this.effects.clear();
+    this.ctx = null; this.out = null; this.master = null;
+    try { void old.close().catch(() => {}); } catch { /* gone */ }
+    this.generation++;
+    const ctx = this.ensure();
+    if (!ctx) return;
+    void ctx.resume().catch(() => {});
+    if (m.state) this.startMusic(m.state, at);
+    for (const id of [...this.loops]) this.sfx(id, true);
+  }
+  /** Bumped when the context is replaced: makers of live nodes (weather, street sounds) rebuild theirs. */
+  generation = 0;
+
   unlock() {
     const first = !this.ctx;
     const ctx = this.ensure();
     if (!ctx) return;
-    if (ctx.state !== 'running') void ctx.resume().catch(() => {});
+    if (ctx.state !== 'running') {
+      const tried = ctx;
+      void ctx.resume().catch(() => {}).then(() => {
+        // Give WebKit a moment; a context that is still suspended/interrupted after a resume in a touch is stuck.
+        setTimeout(() => { if (this.ctx === tried && tried.state !== 'running' && !document.hidden) this.rebuild(); }, 350);
+      });
+    }
     if (first || !this.unlocked) {
       this.unlocked = true;
       // A silent tick starts output on iOS.

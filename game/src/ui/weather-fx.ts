@@ -168,6 +168,8 @@ class WeatherSound {
       return;
     }
     this.idleSince = 0;
+    // The audio context was replaced (iOS, back from another app): the old nodes are dead, build new ones.
+    if (this.nodes && this.nodes.ctx !== audio.ambience()?.ctx) this.nodes = null;
     if (!this.nodes && !this.start()) return;
     this.ramp(level);
   }
