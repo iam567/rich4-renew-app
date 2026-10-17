@@ -13,6 +13,7 @@ import { CHARACTERS } from '../../core/characters';
 import type { MachineKind } from '../../core/modules/kb-machines';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { esc, openScene, type Scene } from './place-scene';
+import { RESULT_MIN_MS } from './event-result';
 import { ASSETS } from '../assets';
 import { audio, Sfx } from '../audio';
 import './kb-machine.css';
@@ -128,7 +129,8 @@ fxScreens['kb-machine-result'] = async (ctx, fx) => {
       ctx.close();
       resolve();
     };
-    const timer = setTimeout(end, (d.skipped ? 1500 : d.human ? 3200 : 2500) * ctx.scale());
+    // The human's own summary stays readable at the fast speed too (as the result boxes, RESULT_MIN_MS).
+    const timer = setTimeout(end, d.human ? Math.max(RESULT_MIN_MS, 3200 * ctx.scale()) : (d.skipped ? 1500 : 2500) * ctx.scale());
     setTimeout(() => { if (!done) layer?.addEventListener('pointerup', end); }, 250);
   });
 };

@@ -4,9 +4,9 @@
  *   is missing), the shop and the incident, then what happens to the visitor and to the owner with their faces. At least
  *   2 s (shorter at the fast game speed), a tap closes it after that; the rules then show the 'event-result' box.
  * - 'kb-hospital-wheel' (§2.2): the 0 / 1 / 2 / 3 天 wheel turning to the drawn days.
- * - small toasts for the rest (未成年謝絕入場, 女性顧客免費, 拉客仔, 店被砸了, 保鑣, 黑幫附身 / 離開, 違反暴力團對策法,
- *   確變骰子, the exclusive tools, 處理事務中): one at a time at the top, gone by themselves. Most come with a 'say'
- *   line of the rules, so the game goes on while they show; 確變骰子 and 違反暴力團對策法 hold the game until read.
+ * - small toasts (違反暴力團對策法, 確變骰子 / 計程車券, an owner made to wait 處理事務中): one at a time at the top, gone
+ *   by themselves; 確變骰子 and 違反暴力團對策法 hold the game until read. The other notices (未成年謝絕入場, 女性顧客免費,
+ *   拉客仔, 店被砸了, 保鑣, 黑幫附身 / 離開) are the rules' own 'say' lines.
  */
 import { CHARACTERS } from '../../core/characters';
 import { isKbShop } from '../../core/modules/kb-data';
@@ -119,16 +119,9 @@ function toast(ctx: ScreenContext, fx: Fx, cls: string, title: string, sub = '',
   return new Promise(r => setTimeout(r, hold ? ms : 250));
 }
 
-fxScreens['kb-refused'] = (ctx, fx) => toast(ctx, fx, 'info', '未成年，謝絕入場', String(fx.data?.shop ?? ''));
-fxScreens['kb-free'] = (ctx, fx) => toast(ctx, fx, 'good', '女性顧客免費！', String(fx.data?.shop ?? ''));
-fxScreens['kb-tout'] = (ctx, fx) => (fx.data?.ok
-  ? toast(ctx, fx, 'bad', '被拉客仔拉進店裡！', String(fx.data?.name ?? ''))
-  : toast(ctx, fx, 'info', '拉客仔搭訕失敗', '沒有店可以去'));
-fxScreens['kb-smash'] = (ctx, fx) => { audio.sfx(Sfx.smallBlast); return toast(ctx, fx, 'bad', '店被砸了！', `${who(ctx, fx.target)}付不出保護費${fx.data?.hit ? '・降一級' : ''}`); };
-fxScreens['kb-bodyguard'] = (ctx, fx) => toast(ctx, fx, 'good', '保鑣出動！', fx.data?.why === 'gang' ? '擋掉了保護費' : `擋下「${String(fx.data?.incident ?? '')}」`);
-fxScreens['kb-gang'] = (ctx, fx) => (fx.data?.on
-  ? toast(ctx, fx, 'gang', '黑幫附身！', '七天內停在對手的地上收保護費')
-  : toast(ctx, fx, 'info', '黑幫離開了'));
+// 未成年謝絕入場, 女性顧客免費, 拉客仔, 店被砸了, 保鑣 and 黑幫附身 / 離開 come with the rules' own 'say' line (or the news
+// board) saying the same: no toast (one would cover the speech cloud of a player near the top of the map).
+fxScreens['kb-smash'] = async () => { audio.sfx(Sfx.smallBlast); };
 fxScreens['kb-gang-arrest'] = (ctx, fx) => {
   audio.sfx(Sfx.police);
   return toast(ctx, fx, 'bad big', '違反暴力團對策法！', '附身結束', `<span class="kbt-line">保護費 <em>${fmt(Number(fx.data?.take) || 0)}元</em> 沒收・坐牢 7 天</span>`, true);
@@ -138,11 +131,12 @@ fxScreens['kb-kakuhen'] = (ctx, fx) => {
   const drop = Number(fx.data?.drop);
   const dice = `<span class="kbt-dice">${vals.map((v, i) => `<i class="${i === drop ? 'drop' : ''}">${v}</i>`).join('')}</span>`;
   const steps = vals.reduce((a, v, i) => a + (i === drop ? 0 : v), 0);
-  return toast(ctx, fx, 'good big', '確變骰子', `${vals[drop] ?? ''} 不算・走 ${steps} 步`, dice, true);
+  // A computer's choice holds the game until read; the human has just chosen it.
+  const p = ctx.game.players[fx.p ?? -1];
+  return toast(ctx, fx, 'good big', '確變骰子', `${vals[drop] ?? ''} 不算・走 ${steps} 步`, dice, !p || !ctx.game.isHuman(p));
 };
-const TOOL_LINE: Record<number, [string, string]> = {
-  17: ['確變骰子', '這回合多擲一顆，挑一顆不算'], 18: ['計程車券', '這回合擲 3 顆骰子'], 20: ['霓虹燈箱點亮！', '7 天內收費 ×1.5'],
-};
+/** The dice tools say nothing else when used (霓虹燈箱 has its 'say' line). */
+const TOOL_LINE: Record<number, [string, string]> = { 17: ['確變骰子', '這回合多擲一顆，挑一顆不算'], 18: ['計程車券', '這回合擲 3 顆骰子'] };
 fxScreens['kb-tool'] = (ctx, fx) => {
   const id = Number(fx.data?.tool), line = TOOL_LINE[id];
   if (!line) return Promise.resolve();
@@ -150,7 +144,5 @@ fxScreens['kb-tool'] = (ctx, fx) => {
   const src = toolIconSrc(ctx, id);
   return toast(ctx, fx, 'good', line[0], line[1], src ? `<img class="kbt-tool" src="${src}" alt="">` : '');
 };
-fxScreens['kb-busy'] = (ctx, fx) => {
-  const n = Number(fx.data?.turns) || 0;
-  return toast(ctx, fx, 'busy', '處理事務中', fx.data?.sitting ? `跳過這回合${n ? `・還剩 ${n} 回合` : ''}` : `${who(ctx, fx.p)}要停 ${n} 回合`);
-};
+// The owner made to wait (no line of its own); the turns it sits out are said by the rules.
+fxScreens['kb-busy'] = (ctx, fx) => (fx.data?.sitting ? Promise.resolve() : toast(ctx, fx, 'busy', '處理事務中', `${who(ctx, fx.p)}要停 ${Number(fx.data?.turns) || 0} 回合`));

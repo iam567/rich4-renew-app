@@ -159,7 +159,7 @@ export class KabukichoRules implements MapRules {
     if (n <= 0) return false;
     this.s.busy[p.id] = n - 1;
     yield { t: 'fx', kind: 'kb-busy', p: p.id, data: { turns: n - 1, sitting: true } };
-    yield* g.say(p.id, `${g.name(p.id)}處理事務中……還剩${n}回合！`);
+    yield* g.say(p.id, `${g.name(p.id)}處理事務中，這回合停下${n > 1 ? `（之後還要停${n - 1}回合）` : ''}！`);
     return true;
   }
 
@@ -346,7 +346,7 @@ export class KabukichoRules implements MapRules {
       }
       if (f && f.owner && f.owner !== p.id + 1 && f.level >= 1 && isKbShop(f.type)) {
         const owner = g.players[f.owner - 1];
-        const mult = yield* g.spin(WheelKind.shopping, g.name(owner.id));
+        const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
         yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
         return true;
       }
@@ -380,7 +380,7 @@ export class KabukichoRules implements MapRules {
     yield { t: 'teleport', p: p.id, node: node.id };
     if (this.s.gang.holder === p.id && f.owner !== p.id + 1) {
       const owner = g.players[f.owner - 1];
-      const mult = yield* g.spin(WheelKind.shopping, g.name(owner.id));
+      const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
       yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
       return;
     }
@@ -454,6 +454,9 @@ export class KabukichoRules implements MapRules {
     return null;
   }
 
+  /** The shopping wheel's title for a shop (「阿土伯的居酒屋」, the screen's ribbon; the original's 「…的購物中心」). */
+  wheelName(g: Game, owner: Player, f: Facility, p: Player): string { return `${g.name(owner.id)}的${shopNameFor(f.type, this.female(p))}`; }
+
   /** A visit to someone else's shop (§2.1). */
   *visitShop(g: Game, p: Player, f: Facility): Flow {
     const owner = g.players[f.owner - 1];
@@ -461,7 +464,7 @@ export class KabukichoRules implements MapRules {
     const female = this.female(p), shop = shopNameFor(f.type, female), where = `${g.name(owner.id)}的${f.name}${shop}`;
     if (this.s.closed[f.id]) { yield* g.say(undefined, `${where}停業中，今天不營業！`); return; }
     if (this.s.gang.holder === p.id) {
-      const mult = yield* g.spin(WheelKind.shopping, g.name(owner.id));
+      const mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
       yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
       return;
     }
@@ -491,7 +494,7 @@ export class KabukichoRules implements MapRules {
       return;
     }
     if (vip) { mult = 1; yield* g.say(p.id, 'VIP會員：不轉盤，只付一倍'); }
-    else mult = yield* g.spin(WheelKind.shopping, g.name(owner.id));
+    else mult = yield* g.spin(WheelKind.shopping, this.wheelName(g, owner, f, p));
     let rate = this.rate(f);
     if (f.tmpState) rate *= 2;
     const k = (f.type === 10 && this.mod('matsuri') ? 2 : 1) * (this.mod('typhoon') ? 0.5 : 1) * (this.neonOn(f.id + 4000) ? 1.5 : 1);
@@ -660,7 +663,7 @@ export class KabukichoRules implements MapRules {
           const spots = [...g.board.lands.filter(l => l.owner === me).map(l => ({ at: 'plot' as const, id: l.id + 2000, label: l.name })),
             ...g.board.facilities.filter(f => f.owner === me && f.level >= 1 && isKbShop(f.type)).map(f => ({ at: 'plot' as const, id: f.id + 4000, label: `${f.name}${SHOP_NAMES[f.type]}` }))];
           if (!spots.length) { yield* g.say(p.id, '沒有自己的地或店！'); return false; }
-          const k = Number(yield ask({ t: 'pick-map', p: p.id, title: '霓虹燈箱：裝在哪裡？', spots, cancellable: true }));
+          const k = Number(yield ask({ t: 'pick-map', p: p.id, title: '霓虹燈箱', spots, cancellable: true }));
           if (!(k >= 0 && k < spots.length)) return false;
           ref = spots[k].id;
         }
@@ -712,7 +715,7 @@ export class KabukichoRules implements MapRules {
     const vals = Array.from({ length: n + 1 }, () => g.rng.rand() % 6 + 1);
     let drop: number;
     if (g.isHuman(p)) {
-      const options = vals.map((v, i) => ({ label: `不要 ${v}`, value: i, detail: `共 ${vals.reduce((a, b) => a + b, 0) - v} 步` }));
+      const options = vals.map((v, i) => ({ label: `不要 ${v}・走 ${vals.reduce((a, b) => a + b, 0) - v} 步`, value: i }));
       const a = Number(yield ask({ t: 'choose', p: p.id, title: `確變骰子：擲出 ${vals.join('、')}，挑一顆不算`, options, cancellable: false }));
       drop = a >= 0 && a < vals.length ? a : 0;
     } else {
