@@ -234,6 +234,28 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(f.owner).toBe(p.id + 1);
   });
 
+  it('情人酒店: 嫁禍卡 works as on other fees — the framed one stays (a child at the park), the visitor goes on free', () => {
+    const g = new Game(settings(61, [0, 4, 9, 11]), board()), kb = kbRules(g)!;
+    for (const q of g.players) { q.placed = true; q.whoPlays = 2; q.cash = 500000; }
+    const [owner, visitor] = g.players;
+    const f = g.board.facilities[0];
+    f.owner = owner.id + 1; f.level = 5; f.type = 13;
+    visitor.cards = [19]; visitor.cash = 100;   // a fee above its cash: the computer always frames…
+    visitor.hostility[2] = 1e9;                  // …the one it hates most: 孫小美, a child (the amusement park)
+    const pays: Step[] = [];
+    const flow = kb.visitShop(g, visitor, f);
+    for (let r = flow.next(); !r.done; r = flow.next()) { const s = r.value as Step; if (s.t === "pay") pays.push(s); }
+    expect(visitor.cards).not.toContain(19);
+    expect(visitor.hotel).toBe(0);
+    const stayer = g.players.find(q => q.hotel > 0)!;
+    expect(stayer).toBeTruthy();
+    expect([stayer.id === visitor.id, stayer.id === owner.id, stayer.facility]).toEqual([false, false, f.id]);
+    expect(stayer.node).toBe(kb.facilityNode(f)!.id);
+    expect(pays.some(s => s.t === 'pay' && s.from === stayer.id && s.to === owner.id)).toBe(true);
+    expect(stayer.id).toBe(2);
+    expect(kb.stayLabel(g, stayer)).toBe('在遊樂場玩');
+  });
+
   it('a saved game plays on the same as the unsaved one', () => {
     const g = new Game(settings(11), board());
     run(g, 60);

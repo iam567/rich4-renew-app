@@ -588,16 +588,40 @@ export class KabukichoRules implements MapRules {
     const amount = rate * days;
     if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, node: p.node, data: { facility: f.id, days, amount } };
     yield* g.say(undefined, `${park ? `遊樂場${days}天` : `休息${days}天`}\n−${fmt(amount)}元`, `${g.name(p.id)}${park ? `在遊樂場玩${days}天` : `在${this.wheelName(g, owner, f, p)}休息${days}天`}，費用${fmt(amount)}元`);
-    const paid = yield* g.collect(p, owner, amount, fee, false);
-    if (paid) f.lastFee = yield* g.transfer(paid.payer, owner.id, paid.amount, 0, fee);
-    if (!days || !p.whoPlays || g.over) return;
-    g.addHostility(p.id, owner.id, 20 * days * g.priceIndex);
-    g.clearStays(p);
-    p.hotel = days - 1 || 0x80;
-    p.facility = f.id;
-    p.monthBadDays += days;
-    yield { t: 'fx', kind: 'enter-hotel', p: p.id, data: { days, facility: f.id, park } };
-    yield* g.insurancePayout(p, 2000 * days * g.priceIndex);
+    // Unlike the original 旅館 (02 §4.3: no passive cards there), here 免費卡 / 嫁禍卡 work as on the other facility
+    // fees (04, the same thresholds and questions; the user 2026-10-18). Framed, the other player is the one who
+    // stays: taken to this hotel (a child: the amusement park) and held the days, paying; the visitor goes on free.
+    let stayer = p, amt = g.godModify(p, amount);
+    if (amt !== amount) yield* g.say(p.id, amt === 0 ? `${fee}免付！` : `${fee}改為${fmt(amt)}元`);
+    if (amt > 0) {
+      g.addHostility(p.id, owner.id, Math.trunc(amt / 100));
+      const r = yield* g.cards.tollPassive(p, owner.id, amt);
+      let payer = r.payer; amt = r.amount;
+      if (payer !== p.id) stayer = g.players[payer];
+      if (amt > 0) {
+        const death = g.objects.deathPayer(g.players[payer]);
+        if (death !== null) { yield* g.say(undefined, `死神顯靈\n由${g.name(death)}賠償`, `死神顯靈，由${g.name(death)}賠償${fee}`); payer = death; }
+        if (payer !== owner.id && payer !== owner.ally - 1) f.lastFee = yield* g.transfer(payer, owner.id, amt, 0, fee);
+      }
+    }
+    if (!days || g.over) return;
+    // Framed onto the owner: nobody stays (the owner does not check in at their own hotel).
+    if (stayer.id === owner.id || !stayer.whoPlays) return;
+    if (stayer !== p) {
+      const n = this.facilityNode(f);
+      if (!n) return;
+      yield* g.say(stayer.id, `被嫁禍！住進${this.minor(stayer) ? '遊樂場' : '情人酒店'}`, `${g.name(stayer.id)}被嫁禍，代替${g.name(p.id)}${this.minor(stayer) ? '去遊樂場玩' : '住進情人酒店'}${days}天`);
+      stayer.lastNode = stayer.node; stayer.node = n.id;
+      yield { t: 'teleport', p: stayer.id, node: n.id };
+    }
+    const kidStay = this.minor(stayer);
+    g.addHostility(stayer.id, owner.id, 20 * days * g.priceIndex);
+    g.clearStays(stayer);
+    stayer.hotel = days - 1 || 0x80;
+    stayer.facility = f.id;
+    stayer.monthBadDays += days;
+    yield { t: 'fx', kind: 'enter-hotel', p: stayer.id, data: { days, facility: f.id, park: kidStay } };
+    yield* g.insurancePayout(stayer, 2000 * days * g.priceIndex);
   }
 
   /** An incident (§2.2–2.6): the card first, then what it does to the visitor and to the owner. */
