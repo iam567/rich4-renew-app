@@ -16,13 +16,11 @@
 .bl-plate i { font-style: normal; color: #ffe14a; }
 .bl-plate.bl-on { background: #ff7a2e; }
 .bl-nurse { z-index: 1; }
-.bl-say { position: absolute; z-index: 4; display: flex; align-items: center; justify-content: center; padding: 8px 18px 10px;
+.bl-say { position: absolute; z-index: 4;
   background: center / 100% 100% no-repeat; }
-.bl-say.prison, .bl-say.bl-cloud { padding: 6px 18px 26px; }
-.bl-say-text { text-align: center; white-space: pre-line; font-size: 19px; line-height: 1.4; color: #101010; }
-.bl-tip { position: absolute; z-index: 5; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  padding: 6px 16px 8px 6px; background: center / 100% 100% no-repeat; color: #101010; font-size: 14px; pointer-events: none; }
-.bl-tip.prison { padding: 16px 6px 4px 10px; }
+.bl-say-text { width: max-content; max-width: 88%; text-align: center; white-space: pre-line; font-size: 19px; line-height: 1.4; color: #101010; }
+.bl-tip { position: absolute; z-index: 5; background: center / 100% 100% no-repeat; color: #101010; font-size: 14px; pointer-events: none; }
+.bl-tip-words { display: flex; flex-direction: column; align-items: center; gap: 1px; width: max-content; max-width: 72%; }
 .bl-tip b { font-size: 16px; font-weight: 700; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .bl-points { position: absolute; z-index: 2; display: flex; align-items: center; justify-content: flex-end; font-size: 20px; font-weight: 700;
   color: #fff; text-shadow: 1px 1px 0 #101010; }
@@ -30,7 +28,6 @@
 .bl-ctl-l { position: absolute; z-index: 6; display: flex; align-items: center; }
 .bl-world { position: absolute; overflow: hidden; }
 .bl-panel { position: absolute; background: linear-gradient(#3a2558, #24163a); border-top: 4px solid #ffbf2e; }
-.bl-say.big { padding: 12px 28px 16px; }
 .bl-say.big .bl-say-text { font-size: 27px; }
 .bl-ctl { position: absolute; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; }
 .bl-help { font-size: 19px; color: #e8dcff; padding: 0 16px; text-align: center; }

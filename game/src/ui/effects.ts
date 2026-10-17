@@ -9,6 +9,10 @@ import { decodeCropped, picSize } from './decode';
 import { memTier } from './mem-tier';
 import { Fireworks, FIREWORKS_MS } from './fireworks';
 import { watch } from './watchdog';
+import { BUBBLE_BODY } from './bubble-text';
+
+/** The speech cloud's body (Data #517.6). */
+const CLOUD_BODY = BUBBLE_BODY['Data/517/6'];
 
 /** Frame delays of the Data.mkf FLC clips in ms, from their headers (`fcn_00450ced` reads header +0x10). */
 const FLC_DELAY: Record<number, number> = {
@@ -233,6 +237,8 @@ export class Effects {
    * map#(27 + character) frame face + 1 at (170, 130), the text at (200, 130) — or, for '@NN', the icon
    * Data#519 frame NN − 1 at (240, 130) — for 1000 ms. The view is centred on the speaker (camera point
    * (220, 260)), so here everything is placed relative to the speaker's feet. A tap ends it early.
+   * The remake centres the face and the words (or the icon) as one row on the cloud's body (bubble-text.ts),
+   * not the original's fixed spots that leave a short line at the body's left and sit low over the tail.
    */
   cloud(at: () => Pt, character: number, face: number, text: string, ms: number, onTap?: (end: () => void) => void): Promise<void> {
     const host = this.host;
@@ -255,17 +261,28 @@ export class Effects {
           ctx.translate(cx, cy); ctx.scale(pop, pop); ctx.translate(-cx, -cy);
           ctx.globalAlpha = Math.min(1, k * 1.5, (ms - (now - start)) / 120);
           this.sprite('Data', 517, 6, cx, cy);
-          this.sprite('map', 27 + character, face + 1, cx - 50 * z, cy, 1, 1.35);
-          if (icon) this.sprite('Data', 519, Number(icon[1]) - 1, cx + 20 * z, cy, 1, 1.4);
+          // The body's centre (the picture's anchor is at (127, 92) of 271×199), the face 40×34 at 1.35×, then a
+          // gap and the words (at most 150 wide) or the icon.
+          const bx = cx + (CLOUD_BODY.cx * 271 - 127) * z, by = cy + (CLOUD_BODY.cy * 199 - 92) * z;
+          const faceW = 54 * z, gap = 8 * z;
+          const size = 17 * z;
+          let w: number;
+          const ic = icon ? this.host.bank.board('Data', 519)?.[Number(icon[1]) - 1] : null;
+          if (icon) w = ic ? ic.w * ic.scale * 1.4 * z : 56 * z;
           else {
-            const size = 17 * z;
             ctx.font = `600 ${size}px "Huninn", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
+            lines ??= wrap(ctx, text, 150 * z);
+            w = Math.max(...lines.map(l => ctx.measureText(l).width));
+          }
+          const left = bx - (faceW + gap + w) / 2;
+          this.sprite('map', 27 + character, face + 1, left + faceW / 2, by, 1, 1.35);
+          if (icon) { if (ic) this.frame(ic, left + faceW + gap + w / 2 - (ic.w / 2 - ic.ax) * ic.scale * 1.4 * z, by - (ic.h / 2 - ic.ay) * ic.scale * 1.4 * z, 1, 1.4); }
+          else if (lines) {
             ctx.fillStyle = '#101010';
             ctx.textBaseline = 'middle';
             ctx.textAlign = 'left';
-            lines ??= wrap(ctx, text, 150 * z);
-            const lh = size * 1.25, top = cy - (lines.length - 1) * lh / 2;
-            const x0 = cx - 22 * z;
+            const lh = size * 1.25, top = by - (lines.length - 1) * lh / 2;
+            const x0 = left + faceW + gap;
             lines.forEach((l, i) => ctx.fillText(l, x0, top + i * lh));
           }
           ctx.restore();
@@ -519,13 +536,15 @@ function keyOut(im: ImageBitmap): HTMLCanvasElement {
 }
 
 /** Breaks a line into pieces at most `max` px wide (CJK text breaks anywhere; '\n' always breaks). */
+const CLOSING = '，。、！？：；）」』】〉》…∼～,.!?:;)';
 function wrap(ctx: CanvasRenderingContext2D, text: string, max: number): string[] {
   const out: string[] = [];
   for (const para of text.split('\n')) {
     if (!para) continue;
     let line = '';
     for (const ch of para) {
-      if (line && ctx.measureText(line + ch).width > max) { out.push(line); line = ''; }
+      // Closing punctuation stays at the end of its line (never starts one).
+      if (line && !CLOSING.includes(ch) && ctx.measureText(line + ch).width > max) { out.push(line); line = ''; }
       line += ch;
     }
     if (line) out.push(line);

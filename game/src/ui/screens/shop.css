@@ -136,7 +136,7 @@
 .shop-bubble.show .shop-bubble-text { animation: shop-say .22s cubic-bezier(.3, 1.5, .5, 1); }
 @keyframes shop-say { from { transform: scale(.7); opacity: 0; } }
 .shop-bubble-bg { left: 0; top: 0; filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .3)); }
-.shop-bubble-text { display: flex; align-items: center; justify-content: center; text-align: center; font-size: 21px; line-height: 1.35; color: #101010; }
+.shop-bubble-text { width: max-content; text-align: center; font-size: 21px; line-height: 1.35; color: #101010; }
 
 /* what an item does: the toy message board (hover / long-press) */
 .shop-canvas > .shop-info.msg { position: absolute; z-index: 5; margin: 0; min-width: 0; max-width: none; max-height: none; padding: 16px 14px 12px;

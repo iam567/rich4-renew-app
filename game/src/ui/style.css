@@ -168,6 +168,8 @@ button:disabled { opacity: 0.4; cursor: default; }
     radial-gradient(circle, #5fb7ff 0 9px, #1a5fc0 10px, transparent 11px) 108px 0 / 24px 24px no-repeat; }
 .msg.ask::after, .msg.sheet::after { display: none; }
 .msg-text { position: relative; font-size: 21px; line-height: 1.45; margin: 4px 6px 14px; text-shadow: 0 2px 0 #0b2160, 1px 1px 0 #0b2160; }
+/* A box with only its words (a notice): as much room under them as over them, the words in the middle of the frame. */
+.msg > .msg-text:last-child { margin-bottom: 10px; }
 .msg-text.small { font-size: 17px; }
 .msg-text .gap { display: block; height: 4px; }
 .ribbon { position: relative; display: inline-flex; align-items: center; gap: 8px; margin: -40px auto 10px; padding: 4px 18px;
@@ -195,6 +197,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .amount { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; }
 .amount input { width: 9em; font: inherit; font-size: 22px; text-align: center; padding: 6px 8px; border-radius: 14px; border: 3px solid #ffbf2e; color: #1b1208; }
 .amount .candy { padding: 6px 10px; font-size: 15px; }
+
+/* words centred on a speech-bubble picture's body (bubble-text.ts: left / top set per picture) */
+.bubble-words { position: absolute; translate: -50% -50%; text-align: center; }
 
 /* speech cloud with the speaker's face (09 §6.3) */
 .cloud { position: relative; display: flex; align-items: center; gap: 12px; max-width: min(480px, 100%); margin-bottom: 18px;
@@ -742,7 +747,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* The message box (.msg) inside a scaled scene (slot machine, magic house …), in scene units: the same blue box, orange
    border, purple ring, dashed inner frame and ribbon title as every dialog. */
-.msg.scene-msg { position: absolute; z-index: 1; box-sizing: border-box; min-width: 0; max-width: none; max-height: none; margin: 0; padding: 20px 12px 12px;
+.msg.scene-msg { position: absolute; z-index: 1; box-sizing: border-box; min-width: 0; max-width: none; max-height: none; margin: 0; padding: 16px 12px;
   border-width: 4px; border-radius: 20px; justify-content: center; gap: 4px;
   box-shadow: 0 0 0 3px #8a3bd1, 0 6px 0 3px #4b1d78, 0 12px 22px rgba(0, 0, 0, .45); }
 .msg.scene-msg::before { inset: 5px; border-radius: 14px; }

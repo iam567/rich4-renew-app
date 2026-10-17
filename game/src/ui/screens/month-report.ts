@@ -13,6 +13,7 @@ import type { Frame } from '../sprites';
 import { fxScreens, type ScreenContext } from './registry';
 import { el, money, openScene, preload, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
+import { centreWords } from '../bubble-text';
 import './month-report.css';
 
 type Fx = Extract<GameEvent, { t: 'fx' }>;
@@ -22,7 +23,7 @@ const LINES = {
   hello: '各位客戶辛苦了！\n又到了每月銀行\n結算的日子。',
   interest: '大富翁銀行將\n根據您的存款，\n加發１０％的儲金利息。',
   unlucky: '本月悲情人物是．．。',
-  cheer: '別灰心，再加油喔！',
+  cheer: '別灰心，\n再加油喔！', // one line in the original: two fit the round balloon's body
   champion: '本月冠軍是．．。',
   others: '其他人還要\n更努力喔！',
 };
@@ -64,11 +65,15 @@ const POSES: Record<number, Pose> = {
   42: { frame: 42, x: 27, y: 64, mouth: { x: 90, y: 134, open: 44, closed: 43 } },
   45: { frame: 45, x: 6, y: 60 },
 };
-/** Speech balloons (fcn_0044ec30): frame at (x, y), the 20 px text centred on the frame's centre + (dx, dy). */
-const BALLOONS: Record<number, { x: number; y: number; dx: number; dy: number }> = {
-  1: { x: 190, y: 10, dx: 0, dy: -30 },
-  3: { x: 190, y: 10, dx: 16, dy: 20 }, // dx 0 in the original: the text touches the round balloon's left edge
-  4: { x: 213, y: 37, dx: 0, dy: 20 },
+/**
+ * Speech balloons (fcn_0044ec30): frame at (x, y). The original centres its 20 px text on the frame's centre +
+ * (0, −30) / (0, 20) / (0, 20); here it is centred on the balloon's body (bubble-text.ts), which the tails of the
+ * round and heart balloons (left) and the box's (down) push off the frame's centre.
+ */
+const BALLOONS: Record<number, { x: number; y: number }> = {
+  1: { x: 190, y: 10 },
+  3: { x: 190, y: 10 },
+  4: { x: 213, y: 37 },
 };
 
 interface View {
@@ -283,7 +288,7 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
         const box = s.box(`mr-balloon f${view.balloon.frame}${pop(`b${view.balloon.frame}:${view.balloon.text}`)}`, b.x, b.y, w, h, '', W);
         if (a) box.style.backgroundImage = `url('${a.src}')`;
         const t = el('div', 'mr-say', view.balloon.text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
-        t.style.left = `${w / 2 + b.dx}px`; t.style.top = `${h / 2 + b.dy}px`;
+        centreWords(t, `Panel/25/${view.balloon.frame}`);
         box.append(t);
       }
       if (P) {
@@ -313,7 +318,10 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       box.innerHTML = `<span class="mr-l l1">存款：</span><span class="mr-v l1">$${money(r.bank)}</span>
         <span class="mr-l l2">利息：</span>${r.loan ? '<span class="mr-v l2 loan">貸款中</span>' : `<span class="mr-v l2">$${money(r.interest)}</span>`}`;
     };
-    /** The stats board (#25.2 centred at (440,405)): 16 px lines at (320, 370 + 18k), figures right-aligned to x 560. */
+    /**
+     * The stats board (#25.2 centred at (440,405)): 16 px lines at (320, 370 + 18k), figures right-aligned to x 560.
+     * The original leaves 獲獎原因： blank (a heading for the lines under it); here it names the reason.
+     */
     const stats = (s: Scene, cx: number, cy: number, k: number, parent: HTMLElement) => {
       const a = ctx.bank.art('Panel', 25, 2);
       const w = (a?.w ?? 278) * k, h = (a?.h ?? 98) * k;
@@ -322,8 +330,8 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       if (a) box.style.backgroundImage = `url('${a.src}')`;
       const u = rep.unluckyStats, c = rep.championStats;
       const lines: [string, string][] = view.stats === 'unlucky' && u
-        ? [['獲獎原因：', ''], ['本月意外損失：', `$${money(u.loss)}`], ['本月意外之財：', `$${money(u.gain)}`], ['本月倒楣天數：', `${u.badDays}天`]]
-        : c ? [['獲獎原因：', ''], ['現金：', `$${money(c.cash)}`], ['存款：', `$${money(c.bank)}`], ['總資產：', `$${money(c.wealth)}`]] : [];
+        ? [['獲獎原因：', '本月最倒楣'], ['本月意外損失：', `$${money(u.loss)}`], ['本月意外之財：', `$${money(u.gain)}`], ['本月倒楣天數：', `${u.badDays}天`]]
+        : c ? [['獲獎原因：', '總資產最多'], ['現金：', `$${money(c.cash)}`], ['存款：', `$${money(c.bank)}`], ['總資產：', `$${money(c.wealth)}`]] : [];
       box.innerHTML = lines.map(([l, v], j) => `<span class="mr-sl" style="top:${(14 + 18 * j) * k}px">${l}</span><span class="mr-sv" style="top:${(14 + 18 * j) * k}px">${v}</span>`).join('');
     };
 

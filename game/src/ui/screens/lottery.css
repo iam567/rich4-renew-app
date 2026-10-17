@@ -4,13 +4,12 @@
 .lt-pool { position: absolute; justify-content: flex-end; padding-right: 2px; filter: drop-shadow(0 1px 0 #3a1a00); }
 .lt-pool-label { position: absolute; font-size: 13px; color: #ffe9a6; text-align: center; letter-spacing: 2px; text-shadow: 0 1px 2px #000; }
 .lt-girl { filter: drop-shadow(0 4px 6px rgba(0,0,0,.4)); }
-.lt-bubble { position: absolute; display: flex; align-items: center; justify-content: center; transform-origin: 0% 55%; }
+.lt-bubble { position: absolute; transform-origin: 0% 55%; }
 .lt-bubble::before { content: ''; position: absolute; inset: 0; background: var(--bub) center / 100% 100% no-repeat; }
 .lt-bubble.flip { transform-origin: 100% 55%; }
 .lt-bubble.flip::before { transform: scaleX(-1); }
-.lt-bubble-text { position: relative; margin-left: 12%; width: 78%; text-align: center; white-space: pre-line;
+.lt-bubble-text { width: max-content; max-width: 72%; text-align: center; white-space: pre-line;
   font-size: 19px; line-height: 1.4; color: #2a1608; }
-.lt-bubble.flip .lt-bubble-text { margin-left: 0; margin-right: 12%; }
 /* the 36-number board: the original's rose marble with gold numbers */
 .lt-board { position: absolute; border-radius: 6px; padding: 0;
   background:
@@ -53,10 +52,10 @@
 .ld-pool span { font-size: 16px; color: #4f35b1; white-space: nowrap; }
 .ld-pool b { font-size: 17px; color: #e0202a; white-space: nowrap; }
 .ld-host, .ld-girl { filter: drop-shadow(0 6px 8px rgba(0,0,0,.45)); }
-.ld-bubble { position: absolute; z-index: 9; display: flex; align-items: center; justify-content: center; padding: 0 30px 6px 10px; text-align: center;
-  white-space: pre-line; font-size: 18px; line-height: 1.35; color: #101010; background: center / 100% 100% no-repeat; }
+.ld-bubble { position: absolute; z-index: 9; background: center / 100% 100% no-repeat; }
+.ld-words { width: max-content; max-width: 150px; white-space: pre-line; font-size: 18px; line-height: 1.35; color: #101010; }
+.ld-words.long { font-size: 16px; line-height: 1.25; }
 .ld-bubble[hidden] { display: none; }
-.ld-bubble.burst { padding: 0 20px; font-size: 20px; color: #5a1a00; }
 .ld-player { position: absolute; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 0 8px 0 6px; border-radius: 12px;
   background: rgba(6, 10, 40, .66); border: 2px solid var(--c); color: #fff; box-shadow: 0 3px 8px rgba(0,0,0,.4); }
 .ld-player.win { background: linear-gradient(90deg, rgba(255, 190, 40, .85), rgba(255, 110, 60, .8)); border-color: #fff; }
@@ -92,9 +91,9 @@
 .ld-num.hit { color: #8a1000; background: radial-gradient(circle at 35% 30%, #fffbe0, #ffd84a 60%, #ff9a2e); box-shadow: 0 0 10px 3px #fff27a; animation: pl-pop .4s both; }
 .ld-date { position: absolute; z-index: 3; display: grid; place-items: center; border-radius: 12px; font-size: 14px; color: #fff; white-space: nowrap;
   background: linear-gradient(#ff7ab0, #d8306a); border: 2px solid #fff; box-shadow: 0 3px 6px rgba(0,0,0,.4); }
-.ld-result { position: absolute; z-index: 8; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px;
-  padding: 10px 24px 18px; text-align: center; white-space: pre-line; background: center / 100% 100% no-repeat; }
-.ld-result.f23 { font-size: 18px; line-height: 1.35; color: #5a1a00; padding: 0 30px 8px; }
+.ld-result { position: absolute; z-index: 8; background: center / 100% 100% no-repeat; }
+.ld-result-words { display: flex; flex-direction: column; align-items: center; gap: 1px; width: max-content; max-width: 76%; white-space: pre-line; }
+.ld-result.f23 .ld-result-words { font-size: 18px; line-height: 1.35; color: #5a1a00; }
 .ld-result b { font-size: 24px; color: #ff0000; letter-spacing: 3px; text-shadow: 1px 1px 0 #400000, 0 0 6px #fff, 0 0 2px #fff; }
 .ld-result .ld-sub { font-size: 14px; color: #5a1a00; }
 .ld-result .ld-wface { width: 38px; height: 38px; }

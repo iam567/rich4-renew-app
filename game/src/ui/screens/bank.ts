@@ -13,6 +13,7 @@ import { daysBetween, format } from '../../core/date';
 import type { Ask, Player } from '../../core/types';
 import { askScreens, type ScreenContext } from './registry';
 import { audio, Sfx, Theme, voiceOf } from '../audio';
+import { centreWords } from '../bubble-text';
 import './bank.css';
 
 type BankAsk = Extract<Ask, { t: 'bank' }>;
@@ -476,10 +477,12 @@ function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
     const ex1 = art(ctx, 'Panel', 23, 19, 0, 0, 'h', exit);
     if (ex1) Object.assign(ex1.style, { left: '0', top: '0', width: '100%', height: '100%' });
     hall.append(exit);
-    // The clerk's heart-shaped speech box (frame 21 at (240,80), text centred on (357,151)).
+    // The clerk's heart-shaped speech box (frame 21 at (240,80); the original centres the text on (357,151), here
+    // on the heart's body, left of its tail: bubble-text.ts).
     const bubble = el('div', 'bk-bubble');
     art(ctx, 'Panel', 23, 21, 0, 0, 'bk-bubble-bg', bubble);
     const words = el('div', 'bk-words');
+    centreWords(words, 'Panel/23/21');
     bubble.append(words);
     hall.append(bubble);
 
@@ -683,7 +686,8 @@ function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
  * The chairman's room fcn_00434492 (09 §7.7): Panel#23.2 full size, 特別融資 on the desk paper, the statistics
  * board (frame 20 at (10,125)) with 客戶存款總額 / 目前融資金額 / 尚可融資金額, the blue buttons 週轉現金 and
  * 歸還款項 (frames 16/17 at (11,305) and (11,362)), EXIT (frames 18/19 at (11,419)) and his speech box
- * (frame 22 at (214,50), text centred on (339,95)). Laid over the hall in the same place.
+ * (frame 22 at (214,50); text centred on (339,95) in the original, here on the box above its tail). Laid over the
+ * hall in the same place.
  */
 function chairmanRoom(ctx: ScreenContext, hallHd: boolean, hall: HTMLElement) {
   const room = el('div', 'bk-hall bk-room');
@@ -722,6 +726,7 @@ function chairmanRoom(ctx: ScreenContext, hallHd: boolean, hall: HTMLElement) {
   const box = el('div', 'bk-cbox');
   art(ctx, 'Panel', 23, 22, 0, 0, 'bk-cbox-bg', box);
   const words = el('div', 'bk-cwords');
+  centreWords(words, 'Panel/23/22');
   box.append(words);
   room.append(box);
   // Right over the hall, under the number pad.

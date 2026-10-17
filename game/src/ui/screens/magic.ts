@@ -11,6 +11,7 @@ import { resultBox } from './event-result';
 import { charColor, el, esc, face, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
 import { phrases } from '../text';
+import { centreWords } from '../bubble-text';
 import './magic.css';
 
 type Choose = Extract<Ask, { t: 'choose' }>;
@@ -149,6 +150,7 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
         const art = ctx.bank.art('Panel', 18, f);
         label = s.box(`mg-label f${f} pl-pop`, x - (art?.ax ?? 71), y - (art?.ay ?? 60), art?.w ?? 142, art?.h ?? 120, `<span>${esc(MAGIC_NAMES[i])}</span>`);
         if (art) label.style.backgroundImage = `url('${art.src}')`;
+        centreWords(label.querySelector('span')!, `Panel/18/${f}`);
         syms.forEach((sy, k) => { sy.img?.classList.toggle('on', k === i); sy.glow.classList.toggle('on', k === i); });
       };
       // The teller (#18.1 at (241,140)); the group appears in her crystal ball at (326,296).

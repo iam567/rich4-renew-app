@@ -123,7 +123,7 @@
 .bk-bubble-bg { left: 0; top: 0; width: 195px; height: 142px; }
 .bk-bubble.talk { animation: bk-talk .35s cubic-bezier(.3, 1.6, .5, 1); }
 @keyframes bk-talk { from { transform: scale(.82); } }
-.bk-words { position: absolute; left: 117px; top: 71px; transform: translate(-50%, -50%); width: 150px; text-align: center;
+.bk-words { position: absolute; width: 150px; text-align: center;
   font-size: 17px; line-height: 22px; color: #2a0a10; text-shadow: 0 0 3px #fff, 0 0 6px #fff; }
 
 /* the chairman's window in the hall, for the bank's controller (blinds open) */
@@ -156,7 +156,7 @@
 .bk-cbox { position: absolute; left: 214px; top: 50px; width: 250px; height: 110px; pointer-events: none; transform-origin: 90% 100%; }
 .bk-cbox-bg { left: 0; top: 0; }
 .bk-cbox.talk { animation: bk-talk .35s cubic-bezier(.3, 1.6, .5, 1); }
-.bk-cwords { position: absolute; left: 125px; top: 45px; transform: translate(-50%, -50%); width: 220px; text-align: center;
+.bk-cwords { position: absolute; width: 220px; text-align: center;
   font-size: 20px; line-height: 25px; color: #101010; }
 
 /* number pad (Panel#21) */

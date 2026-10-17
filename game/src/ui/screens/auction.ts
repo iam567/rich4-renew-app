@@ -14,6 +14,7 @@ import { CITY_NAMES } from '../../core/world';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { charName, el, esc, money, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
+import { centreWords } from '../bubble-text';
 import './auction.css';
 import { chipMode } from '../finale';
 import { FINALE_CHIP } from '../../core/chips';
@@ -121,6 +122,7 @@ class Room {
     const pic = ctx.bank.art('Panel', 26, 2);
     if (pic) box.style.backgroundImage = `url('${pic.src}')`;
     const text = el('div', 'au-say-text');
+    centreWords(text, 'Panel/26/2');
     box.append(text);
     this.say = t => { if (t && t !== this.spoken) { this.spoken = t; void audio.say(t); } this.line = t; text.textContent = t; box.hidden = !t; box.classList.remove('pl-pop'); void box.offsetWidth; box.classList.add('pl-pop'); };
     // A compact card hugging the lot: its name just above the picture, 標價 and the price just under it.
@@ -233,7 +235,10 @@ class Room {
     }
     const s = this.s, y = 80 + this.step * seat.slot;
     this.bubbles.get(seat.p)?.remove();
-    const bub = s.box(`au-bubble${pop ? ' pl-pop' : ''}`, 458, Math.max(0, y - 84), 118, 80, esc(text));
+    const bub = s.box(`au-bubble${pop ? ' pl-pop' : ''}`, 458, Math.max(0, y - 84), 118, 80);
+    const words = el('span', 'au-bubble-text', esc(text));
+    centreWords(words, 'Panel/26/1');
+    bub.append(words);
     const art = this.ctx.bank.art('Panel', 26, 1);
     if (art) bub.style.backgroundImage = `url('${art.src}')`;
     this.bubbles.set(seat.p, bub);

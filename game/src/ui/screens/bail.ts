@@ -9,6 +9,7 @@ import { NPC_NAMES } from '../../core/modules/places';
 import { askScreens, type ScreenContext } from './registry';
 import { charName, el, esc, openScene, type Scene } from './place-scene';
 import { audio, Theme } from '../audio';
+import { centreWords } from '../bubble-text';
 import './bail.css';
 
 type Choose = Extract<Ask, { t: 'choose' }>;
@@ -92,6 +93,7 @@ function bailScreen(ctx: ScreenContext, a: Choose): Promise<number> {
       const pic = ctx.bank.art('Panel', prison ? 63 : 65, prison ? 1 : 2);
       if (pic) box.style.backgroundImage = `url('${pic.src}')`;
       const text = el('div', 'bl-say-text');
+      centreWords(text, prison ? 'Panel/63/1' : 'Panel/65/2');
       box.append(text);
       moveSay = (at, arch, frame) => {
         if (P) return;
@@ -99,6 +101,7 @@ function bailScreen(ctx: ScreenContext, a: Choose): Promise<number> {
         box.classList.add('bl-cloud');
         const art = ctx.bank.art('Panel', arch, frame);
         if (art) box.style.backgroundImage = `url('${art.src}')`;
+        centreWords(text, `Panel/${arch}/${frame}`);
       };
       say = t => { if (!THANKS.includes(t)) void audio.say(t); text.textContent = t; box.classList.remove('pl-pop'); void box.offsetWidth; box.classList.add('pl-pop'); };
       // Points plate (#65.30 at (8,432) / #63.21 at (542,432)), the player's points right-aligned in it.
@@ -128,8 +131,10 @@ function bailScreen(ctx: ScreenContext, a: Choose): Promise<number> {
       if (prison && slotOf(v) >= 4) return;
       const [x, y] = slots[slotOf(v)];
       const [tx, ty] = prison ? [x + 20, y + 120] : [x - 80, y];
-      tip = s.box(`bl-tip pl-pop ${prison ? 'prison' : ''}`, tx, ty, prison ? 100 : 98, 95,
-        `<b>${esc(nameOf(v))}</b><span>保釋點數</span><span>${price(v)}點</span>`);
+      tip = s.box(`bl-tip pl-pop ${prison ? 'prison' : ''}`, tx, ty, prison ? 100 : 98, 95);
+      const words = el('div', 'bl-tip-words', `<b>${esc(nameOf(v))}</b><span>保釋點數</span><span>${price(v)}點</span>`);
+      centreWords(words, prison ? 'Panel/63/2' : 'Panel/65/3');
+      tip.append(words);
       const pic = ctx.bank.art('Panel', prison ? 63 : 65, prison ? 2 : 3);
       if (pic) tip.style.backgroundImage = `url('${pic.src}')`;
     }

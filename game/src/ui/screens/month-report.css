@@ -5,7 +5,7 @@
 .mr-patch { z-index: 1; }
 .mr-flc { position: absolute; z-index: 2; pointer-events: none; }
 .mr-balloon { position: absolute; z-index: 5; background: center / 100% 100% no-repeat; transform-origin: 20% 80%; }
-.mr-say { position: absolute; transform: translate(-50%, -50%); width: max-content; max-width: 280px; text-align: center; white-space: pre-line;
+.mr-say { position: absolute; width: max-content; max-width: 280px; text-align: center; white-space: pre-line;
   font-size: 20px; line-height: 1.35; color: #101010; }
 .mr-scene.portrait .mr-say { font-size: 22px; max-width: 280px; }
 /* deposit plaques: 18 px #101010 at (4,6) / (4,46), figures right-aligned to x 154 */

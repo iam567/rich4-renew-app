@@ -1,10 +1,10 @@
 /* Auction room (Panel #26, bidders Panel #27-#62). */
 .au-scene .pl-stage { background: #3a2a1a; }
 .au-man, .au-girl { filter: drop-shadow(0 6px 8px rgba(0,0,0,.4)); }
-.au-say { position: absolute; z-index: 6; display: flex; align-items: center; justify-content: center; padding: 10px 20px;
+.au-say { position: absolute; z-index: 6;
   background: center / 100% 100% no-repeat; }
 .au-say[hidden] { display: none; }
-.au-say-text { text-align: center; white-space: pre-line; font-size: 18px; line-height: 1.3; color: #101010; }
+.au-say-text { width: max-content; max-width: 84%; text-align: center; white-space: pre-line; font-size: 18px; line-height: 1.3; color: #101010; }
 .au-lot-card { position: absolute; border-radius: 12px; background: rgba(255, 248, 225, .9); border: 3px solid #ffbf2e;
   box-shadow: 0 4px 0 #c97a00, 0 8px 14px rgba(0,0,0,.35); }
 .au-lot { z-index: 1; filter: drop-shadow(0 3px 3px rgba(0,0,0,.3)); }
@@ -27,7 +27,7 @@
 .au-bid.top span { color: #7a1000; text-shadow: none; background: linear-gradient(#fff6a0, #ffc93a); border-color: #fff; box-shadow: 0 2px 0 #b97a00, 0 3px 6px rgba(0,0,0,.4); }
 .au-bid.top.me span { border-color: #2fd8ff; box-shadow: 0 0 0 2px #2fd8ff, 0 3px 6px rgba(0,0,0,.4); }
 .au-who { justify-content: center; font-size: 13px; opacity: .9; }
-.au-bubble { position: absolute; z-index: 5; display: grid; place-items: center; padding: 0 10px 6px 0; font-size: 15px; font-weight: 700; color: #101010; white-space: nowrap; background: center / 100% 100% no-repeat; }
+.au-bubble { position: absolute; z-index: 5; font-size: 15px; font-weight: 700; color: #101010; white-space: nowrap; background: center / 100% 100% no-repeat; }
 .au-buttons { position: absolute; z-index: 7; }
 .au-buttons .au-row { position: relative; width: 100%; height: 100%; }
 .au-buttons:not(.big) .au-btn { position: absolute; left: 0; width: 96px; height: 38px; padding: 0; font-size: 16px; border-radius: 19px; }

@@ -8,6 +8,7 @@ import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { day, month } from '../../core/date';
 import { charColor, charName, el, esc, face, frameSrcs, money, openScene, preload, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
+import { centreWords } from '../bubble-text';
 import './lottery.css';
 
 type LotteryAsk = Extract<Ask, { t: 'lottery' }>;
@@ -55,6 +56,7 @@ class Girl {
     // Absolute URL: a url() inside a custom property resolves against the stylesheet.
     if (pic) this.bubble.style.setProperty('--bub', `url('${new URL(pic.src, location.href).href}')`);
     this.text = el('div', 'lt-bubble-text');
+    centreWords(this.text, 'Panel/12/8', bubble.flip);
     this.bubble.append(this.text);
   }
   say(text: string) {
@@ -220,11 +222,20 @@ async function drawScreen(ctx: ScreenContext, fx: Fx): Promise<void> {
       const poolBox = s.box('ld-pool', 23, 176, 116, 70, `<span>累積獎金</span><b>$${money(pool)}</b>`, view);
       // It is the monthly draw: say so, with the date, on the pedestal above the result window.
       s.box('ld-date pl-pop', 226, 342, 188, 24, `${month(g.date)}月${day(g.date)}日・每月15日開獎`, view);
-      // Speech box #15.22 at (300,47), text centred at (383,117).
+      // Speech box #15.22 at (300,47); the original centres the text at (383,117), here on the heart's body.
       const bubble = s.box('ld-bubble', 300, 47, 187, 140, '', view);
       const bub = ctx.bank.art('Panel', 15, 22);
       if (bub) bubble.style.backgroundImage = `url('${bub.src}')`;
-      const say = (t: string) => { if (t) void audio.say(t); bubble.textContent = t; bubble.hidden = !t; bubble.classList.remove('pl-pop'); void bubble.offsetWidth; bubble.classList.add('pl-pop'); };
+      const words = el('div', 'ld-words');
+      centreWords(words, 'Panel/15/22');
+      bubble.append(words);
+      const say = (t: string) => {
+        if (t) void audio.say(t);
+        words.textContent = t;
+        // Four lines (嗨！/又到了每月/…) in a smaller type, inside the heart's round body.
+        words.classList.toggle('long', t.split('\n').length > 3);
+        bubble.hidden = !t; bubble.classList.remove('pl-pop'); void bubble.offsetWidth; bubble.classList.add('pl-pop');
+      };
       // Player boxes: head #15.(25 + character) and the numbers each one holds (plain text balls: the original's digit font reads 3 as 8).
       const list = P ? s.box('ld-list', 10, 340, 420, 340) : view;
       // With more than four players (大富豪模式, docs/rules/17 §12) only the ticket holders get a box, in a tighter grid.
@@ -270,14 +281,17 @@ async function drawScreen(ctx: ScreenContext, fx: Fx): Promise<void> {
         const card = result(24, 0.74, 0);
         card.innerHTML = `<span class="ld-wface">${face(ctx, g.players[winner].character)}</span><b>${esc(charName(ctx, winner))}</b><span class="ld-sub">獨得 ${money(prize)} 元</span>`;
       };
-      /** Result burst at the top of the stage (#15.24 explosion / #15.23 yellow burst), returned for its text. */
+      /** Result burst at the top of the stage (#15.24 explosion / #15.23 yellow burst); returns its words, centred on the burst's body. */
       const result = (frame: number, k: number, dy: number): HTMLElement => {
         const a = ctx.bank.art('Panel', 15, frame);
         const w = (a?.w ?? 233) * k, h = (a?.h ?? 192) * k;
         stage.querySelector('.ld-result')?.remove();
         const card = s.box(`ld-result f${frame} pl-pop`, 320 - w / 2, 4 + dy, w, h, '', view);
         if (a) card.style.backgroundImage = `url('${a.src}')`;
-        return card;
+        const words = el('div', 'ld-result-words');
+        centreWords(words, `Panel/15/${frame}`);
+        card.append(words);
+        return words;
       };
       const stage = s.stage;
       const missScene = () => {

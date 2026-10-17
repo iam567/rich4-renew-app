@@ -17,6 +17,7 @@ import type { Ask } from '../../core/types';
 import type { Archive } from '../sprites';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { audio, Theme } from '../audio';
+import { centreWords } from '../bubble-text';
 import { fitPhrases, phrases, shrinkText } from '../text';
 import './shop.css';
 
@@ -87,8 +88,8 @@ const PORT: Layout = {
 
 /** Waving arm (frame 3 / 19) relative to the shopkeeper's top-left: both are anchored at (320,240). */
 const ARM: [Pt, Pt] = [{ x: -49, y: 62 }, { x: 0, y: 17 }];
-/** Text area inside the bubble frames 15 / 34 (their round body, without the tail). */
-const BUBBLE_TEXT = [{ x: 18, y: 26, w: 196, h: 168 }, { x: 16, y: 20, w: 166, h: 128 }];
+/** Widest line inside the bubble frames 15 / 34 (their round body, without the tail); centred on it (bubble-text.ts). */
+const BUBBLE_WIDTH = [196, 166];
 
 const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string) => {
   const e = document.createElement(tag);
@@ -255,8 +256,8 @@ class ShopScene {
     const bub = this.img(this.bubbleImg, 'Panel', 10, pg ? 34 : 15, 0, 0);
     place(this.bubble, b.x, b.y, bub?.w, bub?.h);
     this.bubble.style.transform = `scale(${b.k})`;
-    const t = BUBBLE_TEXT[pg];
-    place(this.bubbleText, t.x, t.y, t.w, t.h);
+    this.bubbleText.style.maxWidth = `${BUBBLE_WIDTH[pg]}px`;
+    centreWords(this.bubbleText, `Panel/10/${pg ? 34 : 15}`);
     place(this.infoBoard, L.info.x, L.info.y, L.info.w, L.info.h);
 
     // Tab (13 = to the tool page / 29 = to the card page), EXIT, points box.
