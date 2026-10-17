@@ -907,8 +907,11 @@ export class Game {
 
   // ---------------------------------------------------------------- stopping
 
-  /** Stop event dispatch _rich4_handle_player_land_on_node (docs/rules/01 §7.2, 02 §2, 06 §1). */
-  private *land(p: Player): Flow {
+  /**
+   * Stop event dispatch _rich4_handle_player_land_on_node (docs/rules/01 §7.2, 02 §2, 06 §1). Public for a map's
+   * forced arrivals that count as a stop (歌舞伎町's 拉客仔 and its fate moves: the square, then the gods' effect).
+   */
+  *land(p: Player): Flow {
     const n = this.node(p.node);
     if (p.sleepwalk && n.event !== 0) return;
     if (this.rules?.landSquare && (yield* this.rules.landSquare(this, p, n))) return; // 大富翁城 (docs/rules/19 §4.4)

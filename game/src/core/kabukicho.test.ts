@@ -8,6 +8,7 @@ import { Game } from './game';
 import { EV_PACHINKO, EV_PACHISLOT, KB_MAP, KabukichoRules, kbRules } from './kabukicho';
 import { GANG_AWAY, GANG_SPAWNS, INCIDENTS, INCIDENT_TOTAL, KB_CARD, KB_FATE, KB_NEWS, KB_RAMPAGE, MINORS, TOUT_SPAWNS } from './modules/kb-data';
 import * as M from './modules/kb-machines';
+import { OBJ } from './modules/objects';
 import { Rng } from './rng';
 import { loadGame, saveGame } from './save';
 import type { GameSettings, Step } from './types';
@@ -202,6 +203,24 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(h.players[2].points).toBe(65);
     expect(h.players[2].tools[18]).toBe(0);
     expect((kbRules(h)!.s as unknown as { neon?: unknown }).neon).toBeUndefined();
+  });
+
+  it('dragged in by the 拉客仔 counts as stopping there: 土地公 takes the shop over (after the bill, as on a stop)', () => {
+    const g = new Game(settings(51), board()), kb = kbRules(g)!;
+    const drain = (f: Generator<unknown, unknown, unknown>) => { let r = f.next(); while (!r.done) r = f.next(); };
+    const [p, owner] = g.players;
+    for (const q of g.players) { q.placed = true; q.whoPlays = 2; q.cash = 500000; }
+    for (const f of g.board.facilities) { f.owner = 0; f.level = 0; }
+    const f = g.board.facilities[4];
+    f.owner = owner.id + 1; f.level = 2; f.type = 10;
+    p.node = kb.s.tout.node;
+    const pair = g.objects.slots[(OBJ.EarthGod % 2 ? OBJ.EarthGod + 1 : OBJ.EarthGod - 1) - 1];
+    if (pair.node) g.objects.removeAt(pair.node);
+    drain(g.objects.attach(p, OBJ.EarthGod) as Generator<unknown, unknown, unknown>);
+    expect(g.objects.godType(p)).toBe(OBJ.EarthGod);
+    drain(kb.drag(g, p) as Generator<unknown, unknown, unknown>);
+    expect(p.node).toBe(kb.facilityNode(f)!.id);
+    expect(f.owner).toBe(p.id + 1);
   });
 
   it('a saved game plays on the same as the unsaved one', () => {

@@ -415,13 +415,10 @@ export class KabukichoRules implements MapRules {
     yield* g.say(p.id, `被拉進${shopNameFor(f.type, this.female(p))}！`, `${g.name(p.id)}被拉客仔拉進${f.name}的${shopNameFor(f.type, this.female(p))}`);
     p.lastNode = p.node; p.node = node.id;
     yield { t: 'teleport', p: p.id, node: node.id };
-    if (this.s.gang.holder === p.id && f.owner !== p.id + 1) {
-      const owner = g.players[f.owner - 1];
-      const mult = yield* g.spin(f.type === 13 ? WheelKind.hotel : WheelKind.shopping, this.wheelName(g, owner, f, p));
-      yield* this.protection(g, p, owner, f.id + 4000, this.rate(f) * mult);
-      return;
-    }
-    yield* this.visitShop(g, p, f);
+    // Dragged in counts as stopping there (the user 2026-10-18): the landing exactly as on a stop (Game.land) — a 黑幫
+    // holder's 保護費 or the shop, then the gods' stop effect in the original's order (06 §5.5: 土地公 takes it over,
+    // 天使 builds, 惡魔 demolishes).
+    yield* g.land(p);
   }
 
   // ---------------------------------------------------------------- the shops (§2)
@@ -1108,7 +1105,7 @@ export class KabukichoRules implements MapRules {
         if (!pads.length) return false;
         const n = pads[this.stream(0x7a1, p.id).below(pads.length)];
         yield* show(); p.lastNode = p.node; p.node = n.id; yield { t: 'teleport', p: p.id, node: n.id };
-        yield* this.machine(g, p, n.event === EV_PACHINKO ? 'pachinko' : 'pachislot'); return true;
+        yield* g.land(p); return true;   // stops there (the pad's flow, as on a stop)
       }
       case 'kb-f-lovehotel': {
         if (kid) { yield* show(); yield* this.result(g, p, c, 'none', [{ p: p.id, text: '繞了一圈又回到原地' }]); return true; }
@@ -1117,7 +1114,7 @@ export class KabukichoRules implements MapRules {
         const here = g.node(p.node);
         const f = list.sort((a, b2) => Math.hypot(a.x - here.x, a.y - here.y) - Math.hypot(b2.x - here.x, b2.y - here.y))[0], n = this.facilityNode(f)!;
         yield* show(); p.lastNode = p.node; p.node = n.id; yield { t: 'teleport', p: p.id, node: n.id };
-        yield* this.visitShop(g, p, f); return true;
+        void f; yield* g.land(p); return true;   // stops there, as on a stop: the stay (§2.6), then the gods' effect
       }
       case 'kb-f-lasttrain': {
         yield* show(); const r = yield* misfortune(); if (!r) return true;
