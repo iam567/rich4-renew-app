@@ -141,6 +141,9 @@ function lightImage(w: number, h: number, warm: boolean): HTMLCanvasElement {
 
 // ------------------------------------------------------------------ sound
 
+/** Weather sound levels against the music: the rain/wind bed, and thunder on top of it (master × this). */
+const AMBIENCE = 0.35, THUNDER = 0.55;
+
 /**
  * Rain, wind and thunder made with Web Audio from one buffer of noise (no files): rain = filtered noise, wind =
  * noise through a slowly swept band-pass, thunder = a crack and a low rumble with a falling low-pass. All of it
@@ -173,7 +176,8 @@ class WeatherSound {
     const n = this.nodes;
     if (!n) return;
     const t = n.ctx.currentTime, { rain, wind } = this.want;
-    n.master.gain.setTargetAtTime(level, t, 0.6);
+    // A quiet bed under the music (the user found rain and thunder drowning it out).
+    n.master.gain.setTargetAtTime(level * AMBIENCE, t, 0.6);
     n.rain.gain.setTargetAtTime(rain * 0.42, t, 0.5);
     n.rainLp.frequency.setTargetAtTime(2200 + 4200 * rain, t, 0.5);
     n.wind.gain.setTargetAtTime(wind * 0.5, t, 0.8);
@@ -217,10 +221,10 @@ class WeatherSound {
     lp.frequency.setValueAtTime(900 + 2400 * near, t);
     lp.frequency.exponentialRampToValueAtTime(110, t + dur * 0.7);
     g.gain.setValueAtTime(0.0001, t);
-    g.gain.exponentialRampToValueAtTime(0.5 + 0.7 * near, t + 0.03 + 0.1 * (1 - near));
+    g.gain.exponentialRampToValueAtTime(THUNDER * (0.5 + 0.7 * near), t + 0.03 + 0.1 * (1 - near));
     // Rolling rumble: a few swells while it decays.
-    g.gain.exponentialRampToValueAtTime(0.25 + 0.3 * near, t + 0.5);
-    g.gain.exponentialRampToValueAtTime(0.35 + 0.25 * near, t + 0.9);
+    g.gain.exponentialRampToValueAtTime(THUNDER * (0.25 + 0.3 * near), t + 0.5);
+    g.gain.exponentialRampToValueAtTime(THUNDER * (0.35 + 0.25 * near), t + 0.9);
     g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     src.connect(lp).connect(g).connect(n.master);
     src.start(t, Math.random() * 1.2, dur + 0.1);
