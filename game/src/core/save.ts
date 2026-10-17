@@ -94,7 +94,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   });
   g.rng.reseed(s.game.rng);
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
-  g.forks.afterLoad();
+  g.forks.afterLoad(s.modules.forks);
   if (map) adoptMapNames(g, map);
   if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
   if (s.mapRules !== undefined) g.rules?.loadState?.(plain(s.mapRules));
@@ -190,7 +190,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     });
     g.rng.reseed(c.game.rng);
     for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(c.modules[name] ?? {}));
-    g.forks.afterLoad();
+    g.forks.afterLoad(c.modules.forks);
     if (maps?.[i]) adoptMapNames(g, maps[i]);
   });
   const x = s.world;

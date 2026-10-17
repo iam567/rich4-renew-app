@@ -64,6 +64,13 @@ const NEWS_SOUND: Record<number, number> = { 4: Sfx.alienAttack, 5: Sfx.alienMon
 const PLACE_SOUND: Record<number, number> = { 16: Sfx.roadblock, 17: Sfx.mine, 18: Sfx.dice };
 
 const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+/** The middle of some spots (their bounding box's centre). */
+const middle = (pts: Pt[]): Pt => {
+  const xs = pts.map(p => p.x), ys = pts.map(p => p.y);
+  return { x: (Math.min(...xs) + Math.max(...xs)) / 2, y: (Math.min(...ys) + Math.max(...ys)) / 2 };
+};
+/** Event results about everyone at once (the market, the bank): the camera stays; nobody is visited. */
+const GLOBAL_FX = new Set(['bank-stop', 'stock-up', 'stock-down', 'stock-halt', 'stock-resume', 'company-up', 'company-down']);
 
 /**
  * Clips an fx plays, asked for as soon as the fx comes in: the user's line (and any clip still running) comes
@@ -109,6 +116,31 @@ export class MapDirector {
     const p = this.player(id);
     const n = p?.node ? this.game.node(p.node) : null;
     return n ? { x: n.x, y: n.y } : { x: worldSize(this.game.board) / 2, y: worldSize(this.game.board) / 2 };
+  }
+
+  /**
+   * Where player `id` is for the camera (docs/rules/11 §7.1): where they are drawn, or — out of sight in the
+   * hospital, the prison or a hotel — their square; null when they are not on this map (abroad, another city, out).
+   */
+  private where(id: number): Pt | null {
+    const p = this.player(id), g = this.game;
+    if (!p || !p.placed || (!p.whoPlays && !p.bankrupt) || p.vanish || !g.here(p)) return null;
+    const a = this.view.actorAt(id);
+    if (a?.visible && (a.x || a.y)) return { x: a.x, y: a.y };
+    const n = p.node ? g.node(p.node) : null;
+    return n ? { x: n.x, y: n.y } : null;
+  }
+
+  /** The spots of lots / facilities (refs), those that exist. */
+  private spots(refs: number[]): Pt[] {
+    return refs.map(r => this.view.lotPos(r)).filter((x): x is Pt => !!x);
+  }
+
+  /** The camera on the lots `refs` (ringed until `view.unmark()`), framed or visited (BoardView.showSpots). */
+  private async showLots(refs: number[]) {
+    const v = this.view;
+    for (const r of refs) v.marks.add(r);
+    await v.showSpots(this.spots(refs));
   }
 
   // ---------------------------------------------------------------- lines
@@ -331,9 +363,21 @@ export class MapDirector {
     // [20] (face 2), then 「%s坐牢中\n\n還剩%d天！」 for 1500 ms.
     const stuck = parseStuck(s.text);
     if (stuck) {
+      // The camera on them where they sit it out (docs/rules/11 §7.1): the hospital or the prison (shown there in
+      // the gown / prison clothes while the notice is up), a hotel's square, a sleeper on the road.
+      const v = this.view, at = this.where(p.id), inside = stuck.what === '住院中' || stuck.what === '坐牢中';
+      if (at) {
+        if (p.node) v.markNodes.add(p.node);
+        if (inside && !v.actorAt(p.id)?.visible) { v.setPose(p.id, stuck.what === '住院中' ? 19 : 20); v.show(p.id); }
+        await v.panTo(at.x, at.y);
+      }
       const slot = stuckLament(stuck.what, this.rand2());
-      if (slot !== null) await this.ev(p.id, slot, Face.cry);
+      if (slot !== null) await this.ev(p.id, slot, Face.cry, !!at);
       await this.hud.flash(`${stuck.name}${stuck.what}\n\n還剩${stuck.days}天！`, 1500);
+      if (at) {
+        v.unmark();
+        if (inside && this.game.offRoad(p)) { v.show(p.id, false); v.setPose(p.id, null); }
+      }
       return true;
     }
     // The card announcement already shows "使用X" (09 §7.2).
@@ -359,9 +403,59 @@ export class MapDirector {
 
   async gameover(winner: number) { if (winner >= 0) await this.ev(winner, 24, Face.laugh); }
 
+  /**
+   * A player put somewhere else at once (傳送機, 拉客仔, a taxi, sent to the hospital …): the camera glides to the
+   * square they land on, ringed (docs/rules/11 §7.1); the controller then goes back to the current player.
+   */
+  async teleported(id: number, node: number) {
+    const n = this.game.node(node), at = this.where(id) ?? (n ? { x: n.x, y: n.y } : null);
+    if (!at) return;
+    this.view.markNodes.add(node);
+    await this.view.panTo(at.x, at.y);
+  }
+
+  /** Before a screen of an fx about a place: the camera there (docs/rules/11 §7.1); `after` takes it back. */
+  async locate(s: Fx) {
+    await this.idle();
+    // 歌舞伎町 (21 §4.1): the shop the 黑幫 smashes.
+    if (s.kind === 'kb-smash' && typeof s.data?.ref === 'number') await this.showLots([s.data.ref]);
+    // 歌舞伎町 (21 §2.2): the shop's owner, wherever they are, now 處理事務中.
+    if (s.kind === 'kb-busy' && !s.data?.sitting && s.p !== undefined && s.p !== this.game.current) {
+      const at = this.where(s.p), q = this.player(s.p);
+      if (at && q) { this.view.markNodes.add(q.node); await this.view.panTo(at.x, at.y); }
+    }
+  }
+
+  /**
+   * 魔法屋 (06 §5): the spell falls on its targets next, wherever they are. A spell that shows on the map (stay,
+   * a floor more, turned round, a floor less, their lot auctioned) takes the camera to each target first, their lot
+   * ringed; the spell's own steps follow (sent to the hospital / prison and fate move the camera themselves).
+   */
+  private async magicTargets(s: Fx) {
+    const e = Number(s.data?.magic), v = this.view, g = this.game;
+    if (![3, 5, 7, 9, 11].includes(e)) return;
+    const ids = (Array.isArray(s.data?.targets) ? (s.data.targets as number[]) : []).filter(id => this.where(id));
+    if (!ids.length || (ids.length === 1 && ids[0] === s.p)) return;
+    v.unmark();
+    const pts: Pt[] = [];
+    for (const id of [...ids].sort((a, b) => a - b)) {
+      const q = this.player(id)!, n = g.node(q.node), lot = n && e !== 3 && e !== 7 ? v.lotPos(n.ref) : null;
+      if (lot && (e === 5 || e === 9 || e === 11)) v.marks.add(n!.ref);
+      else if (q.node) v.markNodes.add(q.node);
+      pts.push(this.where(id)!);
+    }
+    const refs = [...v.marks], nodes = [...v.markNodes];
+    await v.showSpots(pts);
+    await sleep(500 * v.pace);
+    // The rings stay while the spell's steps play (the next turn clears them at the latest).
+    setTimeout(() => { for (const r of refs) v.marks.delete(r); for (const n of nodes) v.markNodes.delete(n); }, 2500 * v.pace);
+  }
+
   /** Called after a registered screen showed an fx (card announcement, news, fate). */
   async after(s: Fx) {
     await this.idle();
+    if (s.kind === 'kb-smash' || (s.kind === 'kb-busy' && !s.data?.sitting)) { await sleep(500 * this.view.pace); this.view.unmark(); this.view.refollow(); return; }
+    if (s.kind === 'magic') { await this.magicTargets(s); return; }
     if (s.kind === 'card') {
       const id = Number(s.data?.card);
       if (id && !CARD_OWN_EVENT.has(id)) await this.card(s.p, id - 1, CARD_FACE[id] ?? 0);
@@ -379,7 +473,8 @@ export class MapDirector {
         // (event[3 | 4] after 300 ms) comes after the result box, so the camera stays on the spot until then.
         await this.clipAt(clip[0], at, { bake: clip[1], sound: NEWS_SOUND[id], stay: true });
       } else if (id === 6 || id === 14 || id === 18 || id === 19) {
-        await this.view.panTo(at.x, at.y);
+        // The whole street (land prices, the earthquake) is framed, or visited when it is longer than the screen.
+        await this.showLots(this.street(ref));
         await this.view.flashLots(this.street(ref));
       }
       // The camera stays on the spot for the result box (event-result), which goes back to the player.
@@ -547,11 +642,13 @@ export class MapDirector {
         await this.card(p.id, 8, Face.laugh);
         if (at && !this.game.isHuman(p)) await v.fx.glide({ res: 415, frame: 0, from: this.pos(p.id), to: at, wait: 100 });
         v.freezeLots();
+        await this.showLots(this.street(ref));
         await v.flashLots(this.street(ref));
         v.thawLots();
         if (this.angelTop && at) await this.fireworks(at);
         this.angelTop = false;
         await this.cardResult(s);
+        v.unmark();
         return true;
       }
       case 'devil': {
@@ -570,9 +667,11 @@ export class MapDirector {
         await this.card(p.id, 9, Face.normal);
         if (at && !this.game.isHuman(p)) await v.fx.glide({ res: 415, frame: 0, from: this.pos(p.id), to: at, wait: 100 });
         v.freezeLots();
+        await this.showLots(this.street(ref));
         await v.flashLots(this.street(ref));
         v.thawLots();
         await this.cardResult(s);
+        v.unmark();
         return true;
       }
       case 'blessing': {
@@ -685,11 +784,12 @@ export class MapDirector {
         // A computer's card flies to the other lot (huandika.asm: animate_object(0, user → B, 100)).
         const bAt = v.lotPos(b);
         if (bAt && !this.game.isHuman(p)) await v.fx.glide({ res: 415, frame: 0, from: this.pos(p.id), to: bAt, wait: 100 });
-        const aAt = v.lotPos(a);
-        if (aAt) await v.panTo(aAt.x, aAt.y);
+        // Both lots framed (or visited when far apart) and ringed while they flash.
+        await this.showLots([a, b]);
         await v.flashLots([a, b]);
         await sleep(500);
         if (r.victim >= 0) await this.cardRole(r.victim, card, 2);
+        v.unmark();
         v.refollow();
         await this.cardResult({ ...s, data: { ...s.data, card } });
         return true;
@@ -860,17 +960,30 @@ export class MapDirector {
     this.eventOpen = false;
     const r = s.data as unknown as EventResult, v = this.view, g = this.game;
     if (!r || !Array.isArray(r.lines)) return;
+    // Where it happened (docs/rules/11 §7.1): the lots it hit, else its square, else the hospital / prison of a
+    // release or a longer stay, else the players it names (where they are, the hospital or prison included).
     const node = s.node ? g.node(s.node) : null;
-    let spot: Pt | null = node ? v.lotPos(node.ref) ?? { x: node.x, y: node.y } : null;
+    const refs = (r.refs ?? []).filter(ref => v.lotPos(ref));
+    const lots = this.spots(refs);
+    let spot: Pt | null = node ? v.lotPos(node.ref) ?? { x: node.x, y: node.y } : lots.length ? middle(lots) : null;
+    let place: number | null = null;
     if (!spot && (r.fx === 'release' || r.fx === 'extend')) {
       const n = r.src === 'news' && (r.id === 0 || r.id === 1) ? g.prisonNode() : g.hospitalNode();
-      if (n) spot = { x: n.x, y: n.y };
+      if (n) { spot = { x: n.x, y: n.y }; place = n.id; }
     }
-    const shown = (r.focus ?? []).filter(id => this.player(id)?.whoPlays && v.actorAt(id)?.visible);
-    const at = spot ?? (shown.length === 1 ? this.pos(shown[0]) : null);
+    const named = GLOBAL_FX.has(r.fx) ? [] : r.focus ?? r.lines.map(l => l.p).filter((id): id is number => id !== undefined);
+    const people = [...new Set(named)].filter(id => this.where(id));
+    const shown = people.filter(id => this.player(id)?.whoPlays && v.actorAt(id)?.visible);
+    const pts = lots.length ? lots : spot ? [spot] : people.map(id => this.where(id)!);
+    const at = pts.length ? (pts.length === 1 ? pts[0] : spot ?? middle(pts)) : null;
     const flash = r.fx === 'demolish' || r.fx === 'expropriate';
     if (flash) v.freezeLots();
-    if (at) await v.panTo(at.x, at.y);
+    v.unmark();
+    for (const ref of refs) v.marks.add(ref);
+    if (place) v.markNodes.add(place);
+    // Players named but out of sight (in the hospital, the prison): their squares are ringed.
+    if (!lots.length && !spot) for (const id of people) if (!v.actorAt(id)?.visible) { const q = this.player(id); if (q?.node) v.markNodes.add(q.node); }
+    await v.showSpots(pts);
     if (flash) { await v.flashLots(r.refs ?? []); v.thawLots(); }
     for (const l of r.lines) {
       const who = l.p !== undefined ? g.name(l.p) : '';
@@ -891,6 +1004,7 @@ export class MapDirector {
     else if (r.line === 'loss' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 9 : a >= 5000 * pi ? (this.rand2() ? 9 : 10) : 11, Face.cry);
     else if (r.line === 'free' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 12 : a >= 5000 * pi ? (this.rand2() ? 12 : 13) : 14, Face.laugh);
     else if (r.line === 'cry') { await sleep(300); await this.ev(speaker, this.rand2() ? 3 : 4, Face.cry); }
+    v.unmark();
     v.refollow();
   }
 

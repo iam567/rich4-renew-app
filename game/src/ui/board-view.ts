@@ -93,6 +93,12 @@ export class BoardView {
   /** Steps left shown under the view while someone walks (08 §2.4 item 4). */
   stepsLeft: number | null = null;
   highlight: number | null = null;
+  /**
+   * What an effect is about, ringed on the map while it shows (camera rules, docs/rules/11 §7.1): lots and
+   * facilities by ref (2001.. / 4001..), and squares by node id (a patient's hospital, a prisoner's cell).
+   */
+  readonly marks = new Set<number>();
+  readonly markNodes = new Set<number>();
   current = -1;
   /** Where the camera point sits on the canvas, as a fraction of its height; raised while a dialog covers the bottom. */
   private fy = 0.5;
@@ -729,6 +735,60 @@ export class BoardView {
       if (!this.alive || !this.startGlide(() => ({ x, y }), 450, finish)) { this.cam.x = x; this.cam.y = y; this.keepOnBoard(); finish(); }
     }));
   }
+
+  /** Camera waits by game speed (慢 1 … 快 0.5 of the time). */
+  get pace(): number { return Math.max(0.5, Math.min(1, this.tickMs / 60)); }
+
+  /**
+   * Whether all `pts` show well on the canvas (inside a margin: the top bar, the edges, the lower part where boxes
+   * open) with the camera aimed at `at` (kept on the board as always).
+   */
+  private fitsAt(at: { x: number; y: number }, pts: { x: number; y: number }[]): boolean {
+    const c = this.clampCam(at.x, at.y), { a, b, c: cc, d } = this.basis();
+    const mx = Math.max(36, this.W * 0.1), top = Math.max(70, this.H * 0.16), bottom = Math.max(50, this.H * 0.14);
+    return pts.every(p => {
+      const dx = p.x - c.x, dy = p.y - c.y, u = a * dx + cc * dy, v = b * dx + d * dy;
+      return Math.abs(u) <= this.W / 2 - mx && v >= -this.H * this.fy + top && v <= this.H * (1 - this.fy) - bottom;
+    });
+  }
+
+  /**
+   * The camera goes to where an effect happens (docs/rules/11 §7.1): one spot → centred on it; several that fit
+   * on the screen together (a street, two swapped lots) → on the middle of them; otherwise they are visited in
+   * groups that fit, in order along the longer screen axis, with a short stop at each but the last (the map's
+   * scale is fixed, as in the original, so the view never zooms out for it). Resolves on the last group.
+   */
+  async showSpots(pts: { x: number; y: number }[], dwell = 450): Promise<void> {
+    if (!pts.length) return;
+    const mid = (q: { x: number; y: number }[]) => {
+      let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+      for (const p of q) { x0 = Math.min(x0, p.x); x1 = Math.max(x1, p.x); y0 = Math.min(y0, p.y); y1 = Math.max(y1, p.y); }
+      return { x: (x0 + x1) / 2, y: (y0 + y1) / 2 };
+    };
+    const all = mid(pts);
+    if (pts.length === 1 || this.fitsAt(all, pts)) { await this.panTo(all.x, all.y); return; }
+    // Along the screen axis the spots spread most on.
+    const { a, b, c, d } = this.basis();
+    const u = (p: { x: number; y: number }) => a * p.x + c * p.y, v = (p: { x: number; y: number }) => b * p.x + d * p.y;
+    const spread = (f: (p: { x: number; y: number }) => number) => Math.max(...pts.map(f)) - Math.min(...pts.map(f));
+    const key = spread(u) / this.W >= spread(v) / this.H ? u : v;
+    const order = [...pts].sort((p, q) => key(p) - key(q));
+    const groups: { x: number; y: number }[][] = [];
+    for (const p of order) {
+      const g = groups[groups.length - 1];
+      if (g && this.fitsAt(mid([...g, p]), [...g, p])) g.push(p); else groups.push([p]);
+    }
+    // Many stops (a nationwide list in 大富豪模式) go quicker; never more than six.
+    const stops = groups.slice(0, 6), wait = (stops.length > 3 ? 0.6 : 1) * dwell * this.pace;
+    for (const [i, g] of stops.entries()) {
+      const m = mid(g);
+      await this.panTo(m.x, m.y);
+      if (i < stops.length - 1) await new Promise(r => setTimeout(r, wait));
+    }
+  }
+
+  /** Clears the effect's rings (`marks`, `markNodes`). */
+  unmark() { this.marks.clear(); this.markNodes.clear(); }
 
   /** Turns the view (only while the map may be moved). */
   rotate(by: number) { if (this.canPan) this.rot = (this.rot + by + 8) & 7; }
@@ -1412,6 +1472,8 @@ export class BoardView {
     }
 
     this.fx.draw(add);
+    // The discs of what an effect is about lie on the ground, under whatever stands on them (11 §7.1).
+    for (const sp of this.markSpots()) { const p = visible(sp.x, sp.y, 120); if (p) add(p.y, -1, () => this.markDisc(p.x, p.y, sp.r)); }
     items.sort((x, y) => x.key - y.key);
     // One picture that fails (released, not decodable) must not take the rest of the frame with it.
     for (const it of items) { try { it.draw(); } catch (err) { this.oops('sprite', err); } }
@@ -1422,6 +1484,7 @@ export class BoardView {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
     if (this.street) this.badges();
+    if (this.marks.size || this.markNodes.size) this.drawMarks();
 
     // Picking (09 §7.5): the spots that may be picked glow, drawn over the board so icons do not hide them.
     if (this.picking) {
@@ -1556,6 +1619,57 @@ export class BoardView {
     ctx.ellipse(x, y, 30 * z, 30 * z * K, 0, 0, Math.PI * 2);
     ctx.stroke();
     ctx.restore();
+  }
+
+  /** The lots, facilities and squares of `marks` / `markNodes`: world point, disc radius, pointer height (world px). */
+  private markSpots(): { x: number; y: number; r: number; up: number }[] {
+    const b = this.game.board, spots: { x: number; y: number; r: number; up: number }[] = [];
+    for (const ref of this.marks) {
+      const l = ref > 2000 && ref < 4000 ? b.lands[ref - 2001] : undefined, f = ref > 4000 && ref < 6000 ? b.facilities[ref - 4001] : undefined;
+      if (l) spots.push({ x: l.x, y: l.y, r: 30, up: 34 + 13 * Math.min(5, l.level) });
+      else if (f) spots.push({ x: f.x, y: f.y, r: 52, up: f.level ? 110 : 40 });
+    }
+    for (const id of this.markNodes) {
+      const n = b.nodes.find(m => m.id === id);
+      if (n) spots.push({ x: n.x, y: n.y, r: 34, up: 76 });
+    }
+    return spots;
+  }
+
+  /** A mark's glowing disc on the ground (drawn in the y-sorted pass, under the building standing on it). */
+  private markDisc(x: number, y: number, r0: number) {
+    const ctx = this.ctx, z = this.zoom, pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
+    ctx.save();
+    ctx.shadowColor = '#ffd23f'; ctx.shadowBlur = 14;
+    ctx.lineWidth = 3.5;
+    ctx.fillStyle = `rgba(255, 226, 60, ${0.28 + 0.16 * pulse})`;
+    ctx.strokeStyle = `rgba(255, 246, 160, ${0.8 + 0.2 * pulse})`;
+    const r = (r0 + 4 * pulse) * z;
+    ctx.beginPath();
+    ctx.ellipse(x, y, r, r * K, 0, 0, Math.PI * 2);
+    ctx.fill(); ctx.stroke();
+    ctx.restore();
+  }
+
+  /**
+   * The marks' pointers (docs/rules/11 §7.1): a bouncing golden pointer above each lot, facility or square an
+   * effect is about, drawn over the board so no building hides it (the discs lie on the ground under them).
+   */
+  private drawMarks() {
+    const ctx = this.ctx, z = this.zoom, pulse = 0.5 + 0.5 * Math.sin(performance.now() / 220);
+    for (const sp of this.markSpots()) {
+      const q = this.project(sp.x, sp.y);
+      if (q.x < -120 || q.x > this.W + 120 || q.y < -200 || q.y > this.H + 120) continue;
+      const y = q.y - (sp.up + 8 * pulse) * z;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.45)'; ctx.shadowBlur = 4;
+      ctx.beginPath();
+      ctx.moveTo(q.x, y + 16 * z); ctx.lineTo(q.x - 12 * z, y); ctx.lineTo(q.x + 12 * z, y); ctx.closePath();
+      ctx.fillStyle = 'rgba(255, 214, 40, .98)';
+      ctx.strokeStyle = 'rgba(120, 60, 0, .95)'; ctx.lineWidth = 2;
+      ctx.fill(); ctx.stroke();
+      ctx.restore();
+    }
   }
 
   // ---------- effects (docs/rules/11) ----------

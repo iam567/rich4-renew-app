@@ -899,6 +899,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     }
     switch (s.t) {
       case 'turn':
+        view.unmark();
         view.followActor(s.p);
         // Anyone's turn (a computer's too): the big clips of the tools they hold start loading in idle time.
         warmFor(game.players[s.p]);
@@ -915,7 +916,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       case 'teleport':
         view.place(s.p, s.node);
         view.syncAll(); // the facing on arrival (the exit closest to the old one) shows at once
+        // The camera goes along to where they land (docs/rules/11 §7.1), then back to the one whose turn it is.
+        await director.teleported(s.p, s.node);
         await pause(300);
+        view.unmark();
+        view.refollow();
         break;
       case 'dice':
         view.followActor(s.p);
@@ -998,6 +1003,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           await director.idle();
           // A screen a human plays (the slot machine's lever, a mini game) waits for them; a computer's runs alone.
           const actor = s.p !== undefined && isPlayer(s.p) ? game.players[s.p] : undefined;
+          await director.locate(s);
           wd.setHuman(!!actor && game.isHuman(actor));
           await fxScreens[s.kind](hud.context(shell), s);
           wd.setHuman(false);

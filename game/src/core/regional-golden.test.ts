@@ -6,6 +6,7 @@ import { parseBoard, type RawMap } from './board';
 import { Game } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
+import { Forks } from './modules/forks';
 import type { GameSettings } from './types';
 
 /**
@@ -13,6 +14,11 @@ import type { GameSettings } from './types';
  * touch a normal game. Every map (the eight originals and the five remake cities, which a normal game can also play)
  * runs 200 computer days from a fixed seed; the hash of every step and of the final save must equal the hashes taken
  * before the local events were added (2026-10-16, commit 5cdb6a8 + the working tree then).
+ *
+ * 2026-10-18 the fork choices changed on purpose (docs/rules/14 §2: every real road equally likely, 0..5 instead of
+ * the relative 直走/左轉/右轉), which changes every path and so every hash: `GOLDEN` was taken once then. With the
+ * test hook `Forks.legacy` (the earlier rule) the runs must still give the hashes taken before, bit for bit — the
+ * proof that nothing but the fork choices changed.
  */
 const KEYS: Record<number, string> = { 100: 'tokyo', 101: 'osaka', 102: 'sapporo', 103: 'kyushu', 104: 'okinawa' };
 const mapFile = (id: number) => fileURLToPath(new URL(id >= 100 ? `../../../editor/site/assets/remake/${KEYS[id]}.json` : `../../../editor/site/assets/map-${id}.json`, import.meta.url));
@@ -47,8 +53,15 @@ export function goldenRun(mapId: number, days: number): string {
   return h.digest('hex').slice(0, 16);
 }
 
-/** Hashes taken before the regional events existed. */
+/** Hashes with the fork choices of 2026-10-18 (docs/rules/14 §2). */
 const GOLDEN: Record<number, string> = {
+  0: '1ec7b32d388daaf6', 1: 'f0246854a78ee808', 2: 'bda32fecd5e7d8d1', 3: '3531ca59818d688a', 4: '7e01b1cee5d1146e',
+  5: 'd21d73aecf156451', 6: '3c325285a23ded9b', 7: '80b147d1bcc5e179', 100: '85ddb441591645bf', 101: 'e7b047bbe7fc0067',
+  102: '292bc4eba5631a1f', 103: 'c6d0981b302b83fb', 104: '2e436d9ef29514b5',
+};
+
+/** Hashes taken before the regional events existed, with the earlier fork rule (`Forks.legacy`). */
+const LEGACY: Record<number, string> = {
   0: '897efe927eed0cdc', 1: 'f9fc6f63f125f531', 2: '0ced4144f7a073b8', 3: '2fe8ea37cebb1349', 4: '2eb7120b12b7b482',
   5: 'd86c865fcf563ada', 6: '52dd1728be1481bd', 7: 'b40755b198f271f4', 100: 'f9d23758716ca428', 101: '2910bb8883533e34',
   102: 'c1539c9b48b6f16e', 103: '3017f90d8f361881', 104: 'ae6f0403ac401dbc',
@@ -59,5 +72,13 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
     const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
     if (process.env.RICH4_PRINT_GOLDEN) console.log(JSON.stringify(got));
     for (const id of MAPS) expect(got[id], `map ${id}`).toBe(GOLDEN[id]);
+  }, 120_000);
+
+  it('with the earlier fork rule every map still plays bit for bit as before 2026-10-18', () => {
+    Forks.legacy = true;
+    try {
+      const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
+      for (const id of MAPS) expect(got[id], `map ${id} (legacy forks)`).toBe(LEGACY[id]);
+    } finally { Forks.legacy = false; }
   }, 120_000);
 });
