@@ -134,8 +134,10 @@ export class Forks {
    * Player `p`'s way out of every fork on the road ahead, as it will happen: walks their route from where they
    * stand by their own choices, up to the first fork they would reach a second time (by then they have drawn a new
    * choice there) or `limit` steps. Map fork id → the neighbour they will step to. Forks not on that walk: none.
+   * `ways`, when given, gets each of those forks' number of ways out from the side they arrive on (1 = no real
+   * choice there, e.g. a prison spur passed on the main road).
    */
-  plan(p: number, limit = 600): Map<number, number> {
+  plan(p: number, limit = 600, ways?: Map<number, number>): Map<number, number> {
     const g = this.g, q = g.players[p], out = new Map<number, number>();
     if (!q || !q.placed) return out;
     let at = q.node, from = q.lastNode;
@@ -147,6 +149,7 @@ export class Forks {
         if (out.has(at)) break;
         next = this.follow(p, at, from);
         out.set(at, next);
+        ways?.set(at, openExits(n).filter(x => x !== from).length);
       } else {
         const ways = openExits(n).filter(a => a !== from);
         if (ways.length > 1) break;           // a fork-like square without choices (should not happen): stop

@@ -19,16 +19,18 @@ const state = new WeakMap<Game, Map<number, Shown>>();
 const plans = new WeakMap<Game, { key: string; plan: Map<number, number> }>();
 
 /**
- * Player p's way out of each fork on the road ahead (Forks.plan: their route walked by their own choices up to the
- * first fork met twice) — exactly what will happen, so that is what the arrows show. Recomputed when the player
- * moves or a choice changes.
+ * Player p's way out of each fork on the road ahead where they have a real choice (Forks.plan: their route walked
+ * by their own choices up to the first fork met twice) — exactly what will happen, so that is what the arrows
+ * show. A fork they reach with only one way out (an original map's prison / hospital spur passed on the main road)
+ * gets no arrow (docs/rules/14 §5). Recomputed when the player moves or a choice changes.
  */
-function planOf(game: Game, p: number): Map<number, number> {
+export function arrowsOf(game: Game, p: number): Map<number, number> {
   const q = game.players[p], c = game.forks.choices[p] ?? {};
   const key = `${p}:${q.node}:${q.lastNode}:${q.dir}:${Object.values(c).join('')}`;
   const hit = plans.get(game);
   if (hit && hit.key === key) return hit.plan;
-  const plan = game.forks.plan(p);
+  const ways = new Map<number, number>(), plan = game.forks.plan(p, 600, ways);
+  for (const [id, n] of ways) if (n < 2) plan.delete(id);
   plans.set(game, { key, plan });
   return plan;
 }
@@ -142,7 +144,7 @@ export function drawForkArrows(
   // The arrows of the player whose turn it is (that is also the one moving), in that player's colour.
   const who = game.current, player = game.isPlayerId(who) ? game.players[who] : undefined;
   if (!player || !player.placed || !game.forks) return;
-  const plan = planOf(game, who);
+  const plan = arrowsOf(game, who);
   const rgb = CHARACTERS[player.character]?.color ?? 0xff9a1a;
   const mix = (k: number, t: number) => { const c = (sh: number) => Math.round(((rgb >> sh) & 255) * k + 255 * t); return `rgb(${c(16)}, ${c(8)}, ${c(0)})`; };
   const light = mix(0.55, 0.45), base = mix(1, 0), dark = mix(0.5, 0), outline = mix(0.25, 0);
