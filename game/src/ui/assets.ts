@@ -72,6 +72,8 @@ export interface MapArt {
   decor: MapDecor[];
   /** Draw a notch across both road edges halfway between squares (the remake's own maps), whatever the ground style. */
   stepMarks: boolean;
+  /** Sidewalk paths of the decorative passers-by, each a list of [x, y] map points (歌舞伎町, docs/rules/21 §8.1). */
+  walkers?: [number, number][][];
 }
 
 export interface MapDecor { x: number; y: number; res: number }
@@ -82,8 +84,9 @@ export async function loadMap(id: number): Promise<MapArt> {
   const base = id >= 1000 ? `${ASSETS}/maps/custom/${id}` : `${ASSETS}/maps/map-${id}`;
   const data = entry?.data ? `${ASSETS}/maps/${entry.data}` : `${base}.json`;
   const pic = entry?.image ? `${ASSETS}/maps/${entry.image}` : `${base}.png`;
-  const raw = await json<RawMap & { sprites?: MapSprites; decorations?: MapDecor[]; step_marks?: boolean }>(data);
-  return { board: parseBoard(raw), ground: await image(pic), sprites: raw.sprites ?? {}, decor: raw.decorations ?? [], stepMarks: !!raw.step_marks };
+  const raw = await json<RawMap & { sprites?: MapSprites; decorations?: MapDecor[]; step_marks?: boolean; walkers?: [number, number][][] }>(data);
+  return { board: parseBoard(raw), ground: await image(pic), sprites: raw.sprites ?? {}, decor: raw.decorations ?? [], stepMarks: !!raw.step_marks,
+    ...(raw.walkers?.length ? { walkers: raw.walkers } : {}) };
 }
 
 /**

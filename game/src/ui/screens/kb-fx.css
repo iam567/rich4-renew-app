@@ -1,0 +1,72 @@
+/* 歌舞伎町's announcements (kb-fx.ts): the incident card, the hospital wheel and the toasts, in the casino's cartoon style. */
+
+/* ---------------------------------------------------------------- the incident card (440×540 units, fitted to the map) */
+.kbi-ov { background: rgba(10, 5, 30, .62); }
+.kbi-ov.can-close { cursor: pointer; }
+.kbi-ov.out { opacity: 0; transition: opacity .18s; }
+.kbi-scene { pointer-events: none; }
+.kbi-card { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-radius: 22px; overflow: hidden; color: #fff;
+  background: radial-gradient(120% 70% at 50% 0%, #a2287a 0%, #6a1660 50%, #3a0c46 100%);
+  box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ff4fa3, 0 16px 36px rgba(0, 0, 0, .55); animation: kbi-drop .45s cubic-bezier(.3, 1.35, .5, 1) both; }
+@keyframes kbi-drop { from { transform: translateY(-60px) rotate(-3deg) scale(.9); opacity: 0; } }
+.kbi-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; height: 30px; }
+.kbi-shop { font-size: 19px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffe9a6; text-shadow: 0 2px 0 #2a0830; }
+.kbi-tag { flex: none; padding: 1px 12px; border-radius: 10px; background: #ff2a5a; border: 2px solid #fff; font-size: 15px; }
+.kbi-title { font-size: 34px; line-height: 1.1; text-align: center; color: #ffe14a; text-shadow: 0 3px 0 #6a0030, 2px 2px 0 #6a0030; white-space: nowrap; }
+.kbi-pic { position: relative; flex: none; width: 408px; height: 264px; border-radius: 10px; overflow: hidden; border: 4px solid #fff;
+  background: radial-gradient(circle, #ff8ac0, #8a1a6a); animation: nw-tv .55s .15s cubic-bezier(.2, .9, .3, 1) both; }
+.kbi-plate { position: absolute; left: 50%; top: 50%; width: 150px; transform: translate(-50%, -50%); border-radius: 18px; }
+.kbi-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.kbi-row { display: grid; grid-template-columns: 52px 74px minmax(0, 1fr); align-items: center; gap: 8px; min-height: 66px; padding: 6px 10px 6px 6px; border-radius: 16px;
+  background: rgba(255, 255, 255, .94); color: #3a1020; animation: kbi-row .35s ease-out both; }
+.kbi-row.visitor { animation-delay: .45s; } .kbi-row.owner { animation-delay: .6s; }
+@keyframes kbi-row { from { transform: translateX(24px); opacity: 0; } }
+.kbi-face { width: 52px; height: 52px; border-radius: 50%; overflow: hidden; background: #ffd7e6; }
+.kbi-scene .kbi-face img { position: static; display: block; width: 100%; height: 100%; background: var(--c); }
+.kbi-who { display: flex; flex-direction: column; line-height: 1.15; min-width: 0; }
+.kbi-who i { font-style: normal; font-size: 13px; color: #fff; background: #e5266b; border-radius: 8px; padding: 0 6px; align-self: flex-start; }
+.kbi-row.owner .kbi-who i { background: #3b63d8; }
+.kbi-who b { font-weight: 400; font-size: 17px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.kbi-text { font-size: 18px; line-height: 1.3; }
+.kbi-tap { position: absolute; right: 12px; bottom: 4px; font-size: 13px; opacity: 0; transition: opacity .3s; }
+.kbi-ov.can-close .kbi-tap { opacity: .85; }
+
+/* ---------------------------------------------------------------- the hospital wheel */
+.msg.kbw-box { min-width: 0; padding: 22px 26px 14px; }
+.kbw-box .ribbon { gap: 6px; z-index: 1; }
+.kbw-face { width: 34px; height: 34px; margin-left: -12px; border-radius: 50%; border: 2px solid #fff; background: var(--c); }
+.kbw-wheel { position: relative; width: 190px; height: 190px; margin-top: 6px; }
+.kbw-rotor { width: 100%; height: 100%; display: block; border-radius: 50%; box-shadow: 0 0 0 5px #fff, 0 0 0 9px #2a1250, 0 8px 16px rgba(0,0,0,.4); }
+.kbw-rotor text { font-size: 22px; fill: #2a1250; font-family: inherit; }
+.kbw-pointer { position: absolute; left: 50%; top: -14px; transform: translateX(-50%); width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent;
+  border-top: 26px solid #ff2a5a; filter: drop-shadow(0 2px 0 #fff) drop-shadow(0 3px 3px rgba(0,0,0,.4)); }
+.kbw-res { margin-top: 10px; font-size: 24px; min-height: 1.3em; }
+.kbw-res.good { color: #9af5a4; } .kbw-res.bad { color: #ffd0d0; }
+@media (max-height: 420px) { .kbw-wheel { width: 130px; height: 130px; } .msg.kbw-box { padding-top: 18px; } .kbw-res { font-size: 20px; margin-top: 6px; } }
+
+/* ---------------------------------------------------------------- toasts */
+.kbt { position: fixed; left: 50%; top: 14%; z-index: 70; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px);
+  padding: 6px 18px 6px 6px; border-radius: 18px; border: 3px solid #fff; color: #fff; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.35);
+  background: linear-gradient(#8a5af5, #5a21cf); box-shadow: 0 5px 0 rgba(0,0,0,.25), 0 8px 18px rgba(0,0,0,.4);
+  animation: kbt-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; transition: opacity .3s, translate .3s; font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; }
+.kbt.out { opacity: 0; translate: 0 -12px; }
+@keyframes kbt-pop { from { transform: translateX(-50%) scale(.3); opacity: 0; } }
+.kbt.kbt-good { background: linear-gradient(#5ad07a, #1c8a3a); }
+.kbt.kbt-bad { background: linear-gradient(#ff7a6a, #c8202c); }
+.kbt.kbt-gang { background: linear-gradient(#5a5a6a, #1a1a2a); border-color: #ffd23f; }
+.kbt.kbt-busy { background: linear-gradient(#ffb84a, #d87a00); }
+.kbt-face { width: 38px; height: 38px; flex: none; border-radius: 50%; background: var(--c); border: 2px solid #fff; }
+.kbt-body { display: flex; flex-direction: column; align-items: flex-start; min-width: 0; }
+.kbt-body b { font-weight: 400; font-size: 20px; line-height: 1.2; }
+.kbt-body small { font-size: 13px; opacity: .92; }
+.kbt.kbt-big { padding: 10px 24px 10px 10px; }
+.kbt.kbt-big .kbt-face { width: 52px; height: 52px; }
+.kbt.kbt-big .kbt-body b { font-size: 26px; }
+.kbt-line { font-size: 16px; }
+.kbt-line em { font-style: normal; color: #ffe14a; }
+.kbt-dice { display: flex; gap: 6px; margin: 4px 0 2px; }
+.kbt-dice i { position: relative; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; font-style: normal; font-size: 24px;
+  background: #fff; color: #c8102c; text-shadow: none; box-shadow: 0 3px 0 rgba(0,0,0,.3); }
+.kbt-dice i.drop { opacity: .5; }
+.kbt-dice i.drop::after { content: ''; position: absolute; left: -4px; right: -4px; top: 50%; height: 4px; background: #2a1250; transform: rotate(-35deg); border-radius: 4px; }
+.kbt-tool { width: 30px; height: 30px; object-fit: contain; margin-top: 2px; }

@@ -32,6 +32,8 @@ export interface SaveData {
   modules: Record<string, Record<string, unknown>>;
   /** The statistics ledger (core/stats.ts), when the game kept one; older saves have none. */
   stats?: LedgerData;
+  /** The map's own rules state (歌舞伎町, core/kabukicho.ts); no other map has one. */
+  mapRules?: unknown;
 }
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -55,6 +57,7 @@ export function saveGame(g: Game): SaveData {
     },
     modules,
     ...(g.stats ? { stats: g.stats.save() } : {}),
+    ...(g.rules?.saveState ? { mapRules: plain(g.rules.saveState()) } : {}),
   };
 }
 
@@ -94,6 +97,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   g.forks.afterLoad();
   if (map) adoptMapNames(g, map);
   if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
+  if (s.mapRules !== undefined) g.rules?.loadState?.(plain(s.mapRules));
   return g;
 }
 

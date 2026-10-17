@@ -1,0 +1,63 @@
+/*
+ * 景品兌換所 (kb-exchange.ts, docs/rules/21 §7.4): the counter's art behind a pale board of prize cells, in the casino's
+ * cartoon style. Scene units: portrait 500×960, landscape 1120×540; the buttons are at least 62 units upright and 66
+ * sideways (44 px on the smallest phone).
+ */
+.kbx-scene .pl-stage { background: #5a1238; border-radius: 26px; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ff4fa3, 0 0 0 11px #7a1648, 0 20px 40px rgba(0,0,0,.55); }
+.kbx-root { position: absolute; overflow: hidden; border-radius: 26px; color: #4a1a2a; --ink: #6a1238; }
+.kbx-root * { box-sizing: border-box; }
+.kbx-bg { position: absolute; inset: 0; background-size: cover; background-position: center; }
+.kbx-root.por .kbx-bg { background-position: 6% 50%; }
+.kbx-board { position: absolute; display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; border-radius: 22px;
+  background: rgba(255, 252, 240, .94); border: 4px solid #ffcf3a; box-shadow: 0 0 0 3px #fff, 0 10px 24px rgba(0,0,0,.35); }
+.kbx-root.land .kbx-board { left: 150px; top: 8px; width: 962px; height: 524px; }
+.kbx-root.por .kbx-board { left: 10px; top: 150px; width: 480px; height: 800px; }
+.kbx-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; height: 46px; flex: none; }
+.kbx-title { font-weight: 400; font-size: 28px; color: #fff; padding: 2px 18px; border-radius: 16px; white-space: nowrap;
+  background: linear-gradient(#ff5f8f, #e5266b 55%, #b8104f); border: 3px solid #fff; box-shadow: 0 0 0 2px var(--ink), 0 4px 0 2px var(--ink); text-shadow: 0 2px 0 var(--ink); }
+.kbx-have { display: flex; align-items: center; gap: 4px; font-size: 20px; white-space: nowrap; }
+.kbx-have img { width: 30px; height: 30px; }
+.kbx-have b { font-weight: 400; font-size: 28px; color: #e5266b; }
+.kbx-info { flex: none; min-height: 26px; font-size: 16px; line-height: 1.3; color: #7a4a5a; text-align: center; }
+.kbx-root.por .kbx-info { min-height: 44px; display: flex; align-items: center; justify-content: center; }
+.kbx-grid { flex: 1; min-height: 0; display: grid; gap: 6px; }
+/* a phone held sideways is short: two rows of six; upright: four rows of three */
+.kbx-root.land .kbx-grid { grid-template-columns: repeat(6, minmax(0, 1fr)); grid-template-rows: repeat(2, minmax(0, 1fr)); }
+.kbx-root.por .kbx-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); grid-template-rows: repeat(4, minmax(0, 1fr)); }
+.kbx-cell { display: flex; flex-direction: column; justify-content: space-between; gap: 4px; min-width: 0; min-height: 0; padding: 5px 4px 4px; border-radius: 16px;
+  background: #fff; border: 3px solid #ffd7e6; box-shadow: 0 3px 0 rgba(160, 40, 90, .2); transition: border-color .15s, background .15s; }
+.kbx-cell.picked { border-color: #ff4fa3; background: #fff2f8; }
+.kbx-cell.dim .kbx-top { opacity: .45; }
+.kbx-top { display: flex; align-items: center; gap: 4px; min-width: 0; }
+.kbx-root.land .kbx-top { flex-direction: column; gap: 0; }
+.kbx-root.land .kbx-cell { gap: 2px; padding: 4px 3px 3px; }
+.kbx-root.land .kbx-head { height: 42px; }
+.kbx-root.land .kbx-info { min-height: 22px; font-size: 15px; }
+.kbx-root.land .kbx-icon { height: 36px; }
+.kbx-icon { position: relative; flex: none; width: 44px; height: 42px; }
+.kbx-icon img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.kbx-n { position: absolute; left: -8px; top: -8px; font-weight: 400; font-size: 17px; line-height: 1; padding: 2px 5px; border-radius: 10px; color: #fff;
+  background: #e5266b; border: 2px solid #fff; }
+.kbx-n:empty { display: none; }
+.kbx-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.15; }
+.kbx-root.land .kbx-name { align-items: center; }
+.kbx-name b { font-weight: 400; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #3a1020; }
+.kbx-price { font-size: 15px; color: #e5266b; white-space: nowrap; }
+.kbx-lim { font-size: 12px; color: #9a7a8a; white-space: nowrap; }
+.kbx-step { display: flex; align-items: center; justify-content: space-between; gap: 4px; }
+.kbx-root .candy.kbx-minus, .kbx-root .candy.kbx-plus { position: relative; flex: 1 1 0; min-width: 62px; height: 62px; padding: 0; font-size: 30px; line-height: 1; border-radius: 16px; }
+/* sideways a phone is 360 high: 66 units are its 44 px */
+.kbx-root.land .candy.kbx-minus, .kbx-root.land .candy.kbx-plus { min-width: 66px; height: 66px; }
+.kbx-root .candy.kbx-minus { color: #fff; background: linear-gradient(#8fb6ff, #3b63d8); text-shadow: 0 2px 0 #1a2f80; box-shadow: 0 4px 0 #1a2f80; }
+.kbx-root .candy.kbx-plus { color: #fff; background: linear-gradient(#ff8ac0, #e0287a); text-shadow: 0 2px 0 #8a1048; box-shadow: 0 4px 0 #8a1048; }
+.kbx-foot { flex: none; display: grid; align-items: center; gap: 6px 10px; }
+.kbx-root.land .kbx-foot { grid-template-columns: minmax(0, 1fr) 120px 140px; height: 70px; }
+.kbx-root.por .kbx-foot { grid-template-columns: 1fr 1fr; grid-template-rows: auto 66px; }
+.kbx-root.por .kbx-rest { grid-column: 1 / -1; }
+.kbx-rest { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 0 6px; font-size: 19px; line-height: 1.3; text-align: center; }
+.kbx-rest b { font-weight: 400; font-size: 25px; color: #e5266b; }
+.kbx-rest small { width: 100%; font-size: 13px; color: #9a7a8a; }
+.kbx-root .candy.kbx-store, .kbx-root .candy.kbx-ok { position: relative; height: 66px; padding: 2px 8px; font-size: 22px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.kbx-store small { font-size: 13px; }
+.kbx-root .candy.kbx-store.on { color: #fff; background: linear-gradient(#ffd860, #e09000); text-shadow: 0 2px 0 #8a5000; box-shadow: 0 5px 0 #8a5000; }
+.kbx-root .candy.kbx-ok { font-size: 26px; min-width: 0; }

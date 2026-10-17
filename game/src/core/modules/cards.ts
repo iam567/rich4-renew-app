@@ -539,7 +539,9 @@ export class Cards {
         return true;
       }
       case 22: { // 送神符 §3.22
-        if (!(yield* g.objects.sendAwayGod(p))) return false; // carried bomb, then a bad god (objects module)
+        const sent = yield* g.objects.sendAwayGod(p); // carried bomb, then a bad god (objects module)
+        const gang = g.rules?.sendAway ? yield* g.rules.sendAway(g, p) : false; // 歌舞伎町: 黑幫 too (docs/rules/21 §4.1)
+        if (!sent && !gang) return false;
         yield { t: 'fx', kind: 'send-god', p: me };
         this.consume(p, 22);
         return true;
@@ -547,6 +549,8 @@ export class Cards {
       case 23: { // 請神符 §3.23
         // Not picked by hand: the nearest free god on the screen (fcn_00444d1a over fcn_0040a45c(-1)).
         const node = human ? this.nearestGod(p)?.node ?? 0 : this.aiArg0;
+        // 歌舞伎町 (docs/rules/21 §4.1): 黑幫 on the map is called like a god when it is the nearer (or the chosen) one.
+        if (g.rules?.invite && (yield* g.rules.invite(g, p, human ? undefined : node))) { this.consume(p, 23); return true; }
         const o = g.objects.at(node);
         if (!o || o.owner || !ATTACHABLE(o.type)) { if (human) yield* this.say(p, '附近沒有神明'); return false; }
         this.consume(p, 23);
@@ -955,11 +959,13 @@ export class Cards {
       }
       case 22: { // fcn_0041ff77
         const god = g.objects.godType(p);
-        if (BAD_GODS.includes(god)) return true;
+        if (BAD_GODS.includes(god) || g.rules?.aiSendAway?.(g, p)) return true;
         return god === 0 && p.bomb !== 0 && (g.objects.slots[p.bomb - 1]?.life ?? 0) < 13;
       }
       case 23: { // fcn_0041fff8
         if (GOOD_GODS.includes(g.objects.godType(p))) return false;
+        const gang = g.rules?.aiInvite?.(g, p); // 歌舞伎町: 黑幫 (docs/rules/21 §4.1)
+        if (gang) return set(gang);
         const o = this.nearestGod(p);
         return !!o && GOOD_GODS.includes(o.type) && set(o.node);
       }

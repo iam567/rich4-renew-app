@@ -15,7 +15,7 @@ import { Events } from './modules/events';
 import { Objects } from './modules/objects';
 import { Places } from './modules/places';
 import { Stocks } from './modules/stocks';
-import { Tools } from './modules/tools';
+import { Tools, type ToolDef } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
@@ -134,6 +134,41 @@ export interface MapRules {
   landSquare?(g: Game, p: Player, n: BoardNode): Flow<boolean>;
   /** The computer's remote dice here (the die value, null none); undefined: the original's judgement. */
   aiRemoteDice?(g: Game, p: Player, nodes: number[]): number | null | undefined;
+
+  // ---- 歌舞伎町 (docs/rules/21, core/kabukicho.ts): every hook below is absent on every other map.
+  /** Before the dice: true when the player sits this turn out (a shop owner's 「處理事務中」). */
+  turnHold?(g: Game, p: Player): Flow<boolean>;
+  /** After each step's own handling: the steps left (0 stops the walk). 黑幫's possession and the prison square. */
+  step?(g: Game, p: Player, left: number): Flow<number>;
+  /** After Game.sendTo moved (or kept) a player in the hospital / prison. */
+  afterSend?(g: Game, p: Player, place: 'hospital' | 'prison'): Flow;
+  /** The map's own news / fate decks: true when handled (the original decks are not read). */
+  news?(g: Game, p: Player): Flow<boolean>;
+  fate?(g: Game, p: Player): Flow<boolean>;
+  /** The dice of this turn (the exclusive dice tools); undefined: the original's roll. */
+  rollDice?(g: Game, p: Player): Flow<number[] | undefined>;
+  /** Player p's next node out of fork `at` (after the original's draw gave `next`): a possessed computer avoids the prison. */
+  walkNext?(g: Game, p: number, at: number, from: number, next: number): number;
+  /** The map's own tools (ids above the original's): definitions, use, the computer's use before the original's. */
+  readonly extraTools?: readonly ToolDef[];
+  useTool?(g: Game, p: Player, tool: number, param?: number): Flow<boolean>;
+  aiTools?(g: Game, p: Player): Flow<boolean>;
+  /** A factor on a street toll (news of the day, a 霓虹燈箱 on the street). */
+  tollFactor?(g: Game, land: Land): number;
+  /** Someone was moved by a 傳送機 (no landing; the map may still react, the prison square). */
+  teleported?(g: Game, q: Player): Flow;
+  /**
+   * 黑幫 works like a god (docs/rules/21 §4.1): `possessed` counts it as one (the magic house's 「有神附身者」), 送神符
+   * sends it away (`sendAway`), 請神符 can call it (`invite`, with the computer's choice `aiInvite` / `aiSendAway`).
+   */
+  possessed?(p: Player): boolean;
+  sendAway?(g: Game, p: Player): Flow<boolean>;
+  invite?(g: Game, p: Player, node?: number): Flow<boolean>;
+  aiInvite?(g: Game, p: Player): number | null;
+  aiSendAway?(g: Game, p: Player): boolean;
+  /** The map's own state in a saved game. */
+  saveState?(): unknown;
+  loadState?(s: unknown): void;
 }
 /** Map rules of normal games by map id, registered by the map's module (core/casino-rules.ts: 105 大富翁城). */
 export const MAP_RULES: Record<number, (g: Game) => MapRules> = {};
@@ -161,7 +196,7 @@ export function tick(counter: number): number {
 }
 
 /** Facility level caps by type (ref_00474940). */
-export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), not in the original
+export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
 
@@ -322,7 +357,9 @@ export class Game {
    * this step's rand() then draws again; anywhere else the original rule. Same rand() count as the original.
    */
   walkNext(p: number, at: number, from: number): number {
-    return this.forks.isFork(at) ? this.forks.pass(p, at, from) : this.nextNode(at, from);
+    if (!this.forks.isFork(at)) return this.nextNode(at, from);
+    const next = this.forks.pass(p, at, from);
+    return this.rules?.walkNext ? this.rules.walkNext(this, p, at, from, next) : next; // 歌舞伎町 (docs/rules/21 §4.1)
   }
 
   /**
@@ -493,6 +530,7 @@ export class Game {
     yield* this.say(p.id, `${this.name(p.id)}${place === 'hospital' ? '住院' : '坐牢'}${days}天`);
     yield* this.insurancePayout(p, days * 2000 * this.priceIndex);
     p.monthBadDays += days;
+    if (this.rules?.afterSend) yield* this.rules.afterSend(this, p, place); // 歌舞伎町: 違反暴力團對策法 (docs/rules/21 §4.1)
   }
 
   /** Trip abroad / alien abduction fcn_0040d375 (docs/rules/06 §2.4). */
@@ -708,6 +746,7 @@ export class Game {
       return;
     }
     if (p.sleepwalk) { yield* this.depart(p); return; }
+    if (this.rules?.turnHold && (yield* this.rules.turnHold(this, p))) return; // 歌舞伎町: 處理事務中 (docs/rules/21 §2.2)
     let human = this.isHuman(p);
     if (human) {
       for (;;) {
@@ -803,7 +842,8 @@ export class Game {
     else {
       const forced = this.tools.remoteDice;
       this.tools.remoteDice = 0;
-      const values = forced ? [forced] : Array.from({ length: p.dice }, () => this.rng.rand() % 6 + 1);
+      const own = !forced && this.rules?.rollDice ? yield* this.rules.rollDice(this, p) : undefined; // 歌舞伎町's dice tools
+      const values = forced ? [forced] : own ?? Array.from({ length: p.dice }, () => this.rng.rand() % 6 + 1);
       yield { t: 'dice', p: p.id, values };
       steps = values.reduce((a, b) => a + b, 0);
     }
@@ -838,7 +878,8 @@ export class Game {
       yield { t: 'teleport', p: other.id, node: to.id };
       if (!p.whoPlays) return 0;
     }
-    return yield* this.objects.step(p, left);
+    const rest = yield* this.objects.step(p, left);
+    return this.rules?.step ? yield* this.rules.step(this, p, rest) : rest; // 歌舞伎町: 黑幫 (docs/rules/21 §4.1)
   }
 
   // ---------------------------------------------------------------- stopping
@@ -891,7 +932,7 @@ export class Game {
   private landLimit(): number { return LAND_LIMIT_MONTHS[this.settings.landLimitIndex]; }
 
   /** Ordinary land: buy, build, or pay the street toll (docs/rules/02 §3). */
-  private *landOnLot(p: Player, land: Land): Flow {
+  *landOnLot(p: Player, land: Land): Flow {
     const me = p.id + 1, god = this.objects.godType(p);
     if (land.owner === 0) {
       if (p.sleepwalk || god === 12) return;
@@ -943,6 +984,7 @@ export class Game {
     let base = this.calcToll(land.owner, land.chain ? null : land.name);
     const allyPart = owner.ally ? this.calcToll(owner.ally, land.chain ? null : land.name) : 0;
     if (land.tmpState) base *= 2;
+    if (this.rules?.tollFactor) base = Math.round(base * this.rules.tollFactor(this, land)); // 歌舞伎町 (docs/rules/21 §6, §7.5)
     const total = base + allyPart;
     // The owner's (and ally's) lots of this street, or all their chain stores, flash first when there is more
     // than one, to show the toll is the whole street's (rich4_player_core_actions.asm:550-661, fcn_00451985).
@@ -967,7 +1009,7 @@ export class Game {
    * The payment chain shared by tolls and fees (docs/rules/02 §3.7): payer's god, hostility, passive cards,
    * Death/treasure chest paying instead, and nobody pays oneself or one's ally. Returns null when nothing is paid.
    */
-  private *collect(p: Player, owner: Player, total: number, fee: string, cardsAllowed: boolean): Flow<{ payer: number; amount: number } | null> {
+  *collect(p: Player, owner: Player, total: number, fee: string, cardsAllowed: boolean): Flow<{ payer: number; amount: number } | null> {
     let amount = this.godModify(p, total);
     if (amount !== total) yield* this.say(p.id, amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`);
     if (amount === 0) return null;
@@ -985,7 +1027,7 @@ export class Game {
   }
 
   /** Owner exemptions _rich4_check_pay_toll_to_owner (docs/rules/02 §3.4). Returns true when the fee is due. */
-  private *ownerCollects(owner: Player, tmpState: number, fee: string): Flow<boolean> {
+  *ownerCollects(owner: Player, tmpState: number, fee: string): Flow<boolean> {
     const name = this.name(owner.id);
     const reason =
       tmpState >> 4 && tmpState & 0xf ? `房屋查封中，免收${fee}！`
@@ -1014,7 +1056,7 @@ export class Game {
   }
 
   /** fcn_0040fa61: misfortune gods and Death make investments fail. */
-  private *investmentBlocked(p: Player): Flow<boolean> {
+  *investmentBlocked(p: Player): Flow<boolean> {
     const god = this.objects.godType(p);
     if (god !== 7 && god !== 8 && god !== 15) return false;
     yield* this.say(p.id, `${['', '', '', '', '', '', '', '小衰神', '大衰神', '', '', '', '', '', '', '死神'][god]}顯靈\n\n投資失敗！`);
@@ -1022,7 +1064,7 @@ export class Game {
   }
 
   /** fcn_0040f8be: a fortune god adds one more level for free after paying to buy or build. */
-  private *blessing(p: Player, ref: number): Flow {
+  *blessing(p: Player, ref: number): Flow {
     const god = this.objects.godType(p);
     if (god !== 3 && god !== 4) return;
     const level = this.freeUpgrade(ref);
@@ -1030,13 +1072,13 @@ export class Game {
   }
 
   /** Computer's buy rule fcn_0041d7d4 (docs/rules/02 §12.1). */
-  private aiCanAfford(p: Player, price: number): boolean {
+  aiCanAfford(p: Player, price: number): boolean {
     const reserve = Math.min(Math.trunc(this.fund * 0.05), 7000) * this.priceIndex;
     return p.cash + p.bank - price > reserve;
   }
 
   /** Large plots (docs/rules/02 §4). */
-  private *landOnFacility(p: Player, f: Facility): Flow {
+  *landOnFacility(p: Player, f: Facility): Flow {
     // 大富翁城 (docs/rules/19): its plots are casinos, handled by core/finale.ts.
     if (this.rules?.landOnFacility && (yield* this.rules.landOnFacility(this, p, f))) return;
     const me = p.id + 1, god = this.objects.godType(p);

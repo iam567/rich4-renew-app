@@ -56,7 +56,9 @@ export const TYCOON_TOOLS: readonly ToolDef[] = [
   { id: 15, name: '洲際飛彈', price: 400, supply: 0, tier: 2, aggression: 2, inShop: false },
   { id: 16, name: '時空機', price: 160, supply: 0, tier: 2, aggression: 1, inShop: false },
 ];
-export const toolDef = (id: number): ToolDef | undefined => TOOLS[id - 1] ?? TYCOON_TOOLS[id - 14];
+/** 歌舞伎町's 柏青哥店 / 拉霸店 tools (docs/rules/21 §7.5), registered by core/kabukicho.ts: ids 17–20. */
+export const MAP_TOOLS: ToolDef[] = [];
+export const toolDef = (id: number): ToolDef | undefined => TOOLS[id - 1] ?? TYCOON_TOOLS[id - 14] ?? MAP_TOOLS.find(t => t.id === id);
 export const isTycoonTool = (id: number) => id > TOOLS.length;
 /** A tool's icon: Panel#11.(id+1) for the original 13, Data#614..616 (maps/remake/tools/) for the lab tools. */
 export const toolIcon = (id: number): { archive: 'Panel' | 'Data'; id: number; frame: number } =>
@@ -411,13 +413,14 @@ export class Tools {
   *humanUse(p: Player): Flow {
     for (;;) {
       // The held tools packed in tool order, each with its icon Panel#11.(id+1) and count (09 §7.3).
-      const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : [])].filter(t => p.tools[t.id - 1] > 0)
+      const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : []), ...(this.g.rules?.extraTools ?? [])].filter(t => p.tools[t.id - 1] > 0)
         .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: toolIcon(t.id) }));
       const v = p.traffic;
       if (v === 1 || v === 2) options.push({ label: '下車', value: 99, icon: { archive: 'Panel', id: 11, frame: v === 1 ? 15 : 16 } });
       const a = Number(yield ask({ t: 'choose', p: p.id, title: '道具', options, cancellable: true, layout: 'tiles' }));
       if (a === 99 && (v === 1 || v === 2)) { this.getOff(p); yield { t: 'fx', kind: 'get-off', p: p.id }; return; }
-      if (!(a >= 1 && a <= (this.g.world ? 16 : 13)) || p.tools[a - 1] <= 0) return;
+      const extra = this.g.rules?.extraTools?.some(t => t.id === a) ?? false;
+      if (!(extra || (a >= 1 && a <= (this.g.world ? 16 : 13))) || !(p.tools[a - 1] > 0)) return;
       if (yield* this.use(p, a)) return;
     }
   }
@@ -455,6 +458,7 @@ export class Tools {
       case 15: return yield* this.icbm(p, param);
       case 16: return yield* this.spaceTime(p, param);
     }
+    if (this.g.rules?.useTool) return yield* this.g.rules.useTool(this.g, p, tool, param); // 歌舞伎町 (docs/rules/21 §7.5)
     return false;
   }
 
@@ -736,6 +740,7 @@ export class Tools {
       mover.node = dest; mover.lastNode = way.lastNode; mover.dir = way.dir;
       yield { t: 'teleport', p: src.id, node: dest };
       if (self) this.pending = 'land';
+      else if (src.kind === 'player' && g.rules?.teleported) yield* g.rules.teleported(g, g.players[src.id]); // 歌舞伎町 (21 §4.1)
     }
     this.consume(p, tool);
     yield { t: 'board' };
@@ -833,6 +838,7 @@ export class Tools {
   *aiUse(p: Player): Flow {
     const g = this.g;
     if (!p.whoPlays || g.isHuman(p)) return;
+    if (g.rules?.aiTools && (yield* g.rules.aiTools(g, p))) return; // 歌舞伎町: its tools and the 傳送機 on 黑幫 (21 §4.1, §7.5)
     const list: number[] = [];
     for (let t = 1; t <= (g.world ? 16 : 13); t++) if (t !== 10 && p.tools[t - 1] > 0) list.push(t);
     const n = list.length;

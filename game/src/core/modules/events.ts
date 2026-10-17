@@ -121,6 +121,7 @@ export class Events {
   *fate(p: Player): Flow {
     // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own fate events instead; never in a normal game.
     if (this.g.world && (yield* regionalDraw(this.g, p, 'fate'))) return;
+    if (this.g.rules?.fate && (yield* this.g.rules.fate(this.g, p))) return; // 歌舞伎町's own deck (docs/rules/21 §6)
     const t = this.drawFate(p);
     if (t < 0) return;
     yield* this.applyFate(p, t);
@@ -400,6 +401,7 @@ export class Events {
   *news(p: Player): Flow {
     // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own news events instead; never in a normal game.
     if (this.g.world && (yield* regionalDraw(this.g, p, 'news'))) return;
+    if (this.g.rules?.news && (yield* this.g.rules.news(this.g, p))) return; // 歌舞伎町's own deck (docs/rules/21 §6)
     const ev = this.drawNews();
     if (ev < 0) return;
     yield* this.applyNews(p, ev);

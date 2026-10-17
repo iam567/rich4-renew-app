@@ -18,3 +18,9 @@ import './month-report';
 import './casino';        // 大富翁城's casino (docs/rules/19)
 import './casino-hall';   // its hall picker
 import './finale-start';  // 最終決戰
+import './kb-shop';       // 歌舞伎町's shop picker (docs/rules/21)
+import './kb-machine';    // its 柏青哥店 / 拉霸店 frame and result notice
+import './kb-pachinko';
+import './kb-pachislot';
+import './kb-exchange';   // 景品兌換所
+import './kb-fx';         // incident card, hospital wheel, toasts

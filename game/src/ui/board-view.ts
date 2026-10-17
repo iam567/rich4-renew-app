@@ -17,6 +17,7 @@ import { drawForkArrows } from './fork-arrows';
 import type { TiledGround } from './ground';
 import { GroundCache } from './ground-cache';
 import { casinoSprite } from './casino-sprite'; // 大富翁城 (docs/rules/19)
+import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite, KbStreet } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import { timeout, watch } from './watchdog';
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
 
@@ -105,12 +106,15 @@ export class BoardView {
   private readonly info: InfoBubble;
   /** A redrawn ground style drawn instead of the original (null: the original). */
   private tiled: TiledGround | null = null;
+  /** 歌舞伎町's passers-by and neon (docs/rules/21 §8); null on every other map. */
+  private readonly street: KbStreet | null;
 
   constructor(parent: HTMLElement, readonly game: Game, readonly art: MapArt, readonly bank: SpriteBank) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'board';
     parent.append(this.canvas);
     this.info = new InfoBubble(parent, bank);
+    this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : null;
     // Opaque: every frame covers the whole canvas, so the page need not blend it with what is behind.
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
     const view = this;
@@ -268,6 +272,7 @@ export class BoardView {
   destroy() {
     this.alive = false;
     this.unstick();
+    this.street?.destroy();
     this.ground.dispose();
     this.tiled?.dispose();
     this.tiled = null;
@@ -334,9 +339,12 @@ export class BoardView {
       return true;
     };
     for (const n of b.nodes) {
+      const pad = this.street ? kbPadSprite(g, n.event) : 0;
       if (n.event === 17 || n.event === 18) { if (near(n.x, n.y, 60)) add('map', n.event === 17 ? 9017 : 9018); }
+      else if (pad) { if (near(n.x, n.y, 60)) add('map', pad); }
       else if (n.aux && near(n.x, n.y, 60)) add('map', 24);
     }
+    for (const o of kbFigures(g)) { const n = nodeById(b, o.node); if (near(n.x, n.y)) add('map', o.res); }
     for (const l of b.lands) {
       if (!near(l.x, l.y)) continue;
       const sp = this.landSprite(l);
@@ -353,6 +361,7 @@ export class BoardView {
     for (const ls of b.landscapes) if (ls.resource && near(ls.x, ls.y, 300)) add('map', ls.resource + 38);
     for (const d of this.art.decor ?? []) if (near(d.x, d.y, 90)) add('map', d.res);
     at = 0;
+    for (const res of this.street?.walkerSprites() ?? []) add('map', res);
     for (const o of this.objectSlots()) if (o.type) add('Data', 395 + o.type);
     for (const [id, a] of this.actors) {
       if (id >= g.npcBase) {
@@ -474,7 +483,7 @@ export class BoardView {
   /** The sprite a lot shows now (a building, or the owner's flag on an empty one), as `draw` draws it. */
   private landSprite(l: { level: number; chain: number | boolean; owner: number; facing: number }): { res: number; frame: number; tint?: number } | null {
     const b = this.game.board;
-    if (l.level) return { res: l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1, frame: buildingFrame(l.facing, this.rot) };
+    if (l.level) return { res: kbHouseSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
     if (l.owner) return { res: 25, frame: this.game.players[l.owner - 1]?.character ?? 0 };
     return null;
   }
@@ -482,8 +491,8 @@ export class BoardView {
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
     const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
     if (fa.level) {
-      const casino = casinoSprite(fa); // 大富翁城's casino (docs/rules/19)
-      if (casino) return { res: casino, frame: buildingFrame(0, this.rot) };
+      const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
+      if (own) return { res: own, frame: buildingFrame(0, this.rot) };
       const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
       return { res: stage === 0 ? 87 + i : 104 + inStage * 17 + i, frame: buildingFrame(0, this.rot) };
     }
@@ -1258,6 +1267,13 @@ export class BoardView {
         }
         continue;
       }
+      // 歌舞伎町 (docs/rules/21 §7.1): 柏青哥店 / 拉霸店 have their own pads (map sprites 9019 / 9020, the same size).
+      const pad = this.street ? kbPadSprite(g, n.event) : 0;
+      if (pad) {
+        const p = visible(n.x, n.y, 60);
+        if (p) this.sprite('map', pad, 0, p.x, p.y);
+        continue;
+      }
       if (!n.aux) continue;
       const p = visible(n.x, n.y, 60);
       if (p) this.sprite('map', 24, n.aux - 1, p.x, p.y);
@@ -1281,8 +1297,8 @@ export class BoardView {
       const fr = buildingFrame(l.facing, this.rot);
       if (l.tmpState) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
       if (l.level) {
-        const res = l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1;
-        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
+        const res = kbHouseSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
+        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
       } else if (l.owner) {
         const ch = g.players[l.owner - 1]?.character ?? 0;
         add(p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
@@ -1297,8 +1313,9 @@ export class BoardView {
       if (fa.tmpState) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
-        const res = casinoSprite(fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i); // 大富翁城's casino (docs/rules/19)
-        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
+        // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
+        const res = casinoSprite(fa) ?? kbShopSprite(g, fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
+        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.neon(res, fr, p.x, p.y, fa.id + 4000); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
       } else if (fa.owner) {
         const ch = g.players[fa.owner - 1]?.character ?? 0;
         add(p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
@@ -1309,12 +1326,15 @@ export class BoardView {
       const p = visible(co.x, co.y, 260);
       if (p) add(p.y, Layer.building, () => this.sprite('map', co.resource + 38, buildingFrame(co.facing, this.rot), p.x, p.y, ownerColor(co.controller)));
     }
-    for (const ls of b.landscapes) {
+    for (const [li, ls] of b.landscapes.entries()) {
       if (!ls.resource) continue;
       const p = visible(ls.x, ls.y, 300);
       // Landscapes keep their own outline colour (09 §3.4); a magenta placeholder is drawn as a dark line.
-      if (p) add(p.y, Layer.building, () => this.sprite('map', ls.resource + 38, buildingFrame(ls.facing, this.rot), p.x, p.y,
-        this.bank.placeholderOutline('map', ls.resource + 38) ? 0x202020 : undefined));
+      if (p) add(p.y, Layer.building, () => {
+        const res = ls.resource + 38, fr = buildingFrame(ls.facing, this.rot);
+        this.sprite('map', res, fr, p.x, p.y, this.bank.placeholderOutline('map', res) ? 0x202020 : undefined);
+        this.neon(res, fr, p.x, p.y, 8000 + li);
+      });
     }
 
     // Decorations (plants; the remake's own maps): sorted with the buildings, the season from the calendar.
@@ -1327,6 +1347,27 @@ export class BoardView {
           const n = this.bank.board('map', d.res)?.length ?? 0;
           if (n) this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y);
         });
+      }
+    }
+
+    // 歌舞伎町 (docs/rules/21 §4): 黑幫 and 拉客仔 stand on their road squares like the gods; the passers-by (§8.1)
+    // walk the sidewalks, sorted with the buildings and under the figures (never picked).
+    if (this.street) {
+      const fr = buildingFrame(0, this.rot);
+      for (const o of kbFigures(g)) {
+        const n = nodeById(b, o.node), p = visible(n.x, n.y);
+        if (p) add(p.y, Layer.building, () => this.sprite('map', o.res, fr, p.x, p.y));
+      }
+      this.street.advance();
+      this.street.beginFrame();
+      for (const w of this.street.walkersToDraw((dx, dy) => ({ x: a * dx + c * dy, y: bb * dx + d * dy }))) {
+        const p = visible(w.x, w.y, 60);
+        if (!p) continue;
+        add(p.y, Layer.building, w.flip ? () => {
+          this.ctx.save(); this.ctx.translate(p.x, 0); this.ctx.scale(-1, 1);
+          this.sprite('map', w.res, w.frame, 0, p.y);
+          this.ctx.restore();
+        } : () => this.sprite('map', w.res, w.frame, p.x, p.y));
       }
     }
 
@@ -1377,6 +1418,7 @@ export class BoardView {
       try { this.overWorld(ctx, this.W, this.H, this.dpr, this.zoom); } catch (err) { this.oops('weather', err); }
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
+    if (this.street) this.badges();
 
     // Picking (09 §7.5): the spots that may be picked glow, drawn over the board so icons do not hide them.
     if (this.picking) {
@@ -1431,6 +1473,46 @@ export class BoardView {
       });
     }
     this.overlay?.();
+  }
+
+  /** 歌舞伎町's neon (docs/rules/21 §8.2) over a landmark, shop or house just drawn at (sx, sy). */
+  private neon(res: number, frame: number, sx: number, sy: number, id: number) {
+    if (!this.street || !KbStreet.glows(res)) return;
+    const f = this.bank.board('map', res)?.[frame];
+    if (!f) return;
+    const s = this.zoom * f.scale;
+    this.street.glow(this.ctx, f.img, id, sx - f.ax * s, sy - f.ay * s, f.w * s, f.h * s);
+  }
+
+  /** 歌舞伎町's signs over the heads (docs/rules/21 §2.2 「處理事務中」, §4.1 「黑幫附身」): small rounded tags. */
+  private badges() {
+    const g = this.game, ctx = this.ctx, z = this.zoom;
+    const fs = Math.max(11, Math.min(15, 11 * z));
+    for (const p of g.players) {
+      const list = kbBadges(g, p.id), a = this.actors.get(p.id);
+      if (!list.length || !a?.visible || g.offRoad(p)) continue;
+      const w = this.at(a), q = this.project(w.x, w.y);
+      // Above the head, and above a carried bomb's count.
+      let y = q.y - ((p.bomb ? 78 : 64) * z) - fs * 0.4;
+      ctx.save();
+      ctx.font = `800 ${fs}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (const t of list) {
+        const tw = ctx.measureText(t.text).width, h = fs + 6, bw = tw + 12, x0 = q.x - bw / 2, y0 = y - h;
+        ctx.beginPath();
+        ctx.roundRect(x0, y0, bw, h, h / 2);
+        ctx.fillStyle = t.kind === 'gang' ? 'rgba(28, 24, 30, .92)' : 'rgba(64, 82, 212, .92)';
+        ctx.fill();
+        ctx.lineWidth = 1.5;
+        ctx.strokeStyle = t.kind === 'gang' ? '#ffd84a' : '#fff';
+        ctx.stroke();
+        ctx.fillStyle = t.kind === 'gang' ? '#ffd84a' : '#fff';
+        ctx.fillText(t.text, q.x, y0 + h / 2 + 0.5);
+        y = y0 - 3;
+      }
+      ctx.restore();
+    }
   }
 
   /** map#26 diamond ORed into the ground: red for a surcharge, blue for a seizure (08 §3.2). */

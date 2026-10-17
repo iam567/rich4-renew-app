@@ -294,7 +294,7 @@ export class Places {
         case 6: return (q.traffic & 3) === 0;
         case 7: return (q.traffic & 3) === 1;
         case 8: return (q.traffic & 3) === 2;
-        case 9: return q.god !== 0;
+        case 9: return q.god !== 0 || !!g.rules?.possessed?.(q); // 歌舞伎町: 黑幫 counts as a god (docs/rules/21 §4.1)
         case 10: return !CHARACTERS[q.character].female;
         default: return CHARACTERS[q.character].female;
       }
@@ -359,7 +359,9 @@ export class Places {
         if (ref > 4000) {
           const f = g.board.facilities[ref - 4001];
           if (f.level === 0) {
-            if (g.isHuman(q)) f.type = Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: q.id, price: 0 })) || 0));
+            const only = g.rules?.facilityType?.(f); // 歌舞伎町 (docs/rules/21): a shop, no type to choose
+            if (only !== undefined) f.type = only;
+            else if (g.isHuman(q)) f.type = Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: q.id, price: 0 })) || 0));
             else f.type = f.owner === q.id + 1 ? g.rng.below(4) + 1 : 0;
             f.level = 1;
           } else if (f.level < FACILITY_MAX[f.type]) f.level += 1;

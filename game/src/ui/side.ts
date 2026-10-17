@@ -3,6 +3,7 @@
  * the calendar. Both are laid out in original pixels (200×280 and 200×200) and scaled as a whole.
  */
 import { blindsTag, chipMode } from './finale';
+import { kbPanelTags } from './kabukicho'; // 歌舞伎町's signs (docs/rules/21)
 import { CHARACTERS } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
@@ -73,6 +74,7 @@ export class PlayerPanel {
       <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
       ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
+      ${kbPanelTags(g, p)}
       ${g.world ? g.world.hooks.overlordTitles(p).map((t, i) => `<div class="pp-overlord" style="--i:${i}">${t}</div>`).join('') : ''}
       ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
         <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}

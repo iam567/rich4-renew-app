@@ -1,0 +1,7 @@
+/* 歌舞伎町's shop picker (kb-shop.ts): the facility picker's row (style.css .msg.fac, casino-hall.css), the plates as icons. */
+/* (more specific than style.css .candy.cell img) */
+.kb-shop .fac-pic img.kb-plate { display: block; width: 62px; height: 67px; object-fit: cover; border-radius: 14px; box-shadow: 0 0 0 3px #fff, 0 3px 6px rgba(0,0,0,.35);
+  pointer-events: none; -webkit-user-drag: none; }
+.kb-shop .fac-pic { height: 76px; }
+.kb-shop .ch-rule { min-height: 2.8em; }
+@media (max-width: 480px) { .kb-shop .fac-pic img.kb-plate { width: 46px; height: 50px; border-radius: 10px; } .kb-shop .fac-pic { height: 56px; } .kb-shop .fac-name { font-size: 12px; letter-spacing: -0.5px; } }
