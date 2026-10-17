@@ -10,7 +10,7 @@ import { loadMap, mapList, type MapInfo } from './assets';
 import { BoardView } from './board-view';
 import { Hud } from './hud';
 import { GoButton, Toolbar } from './controls';
-import { Calendar, PlayerPanel } from './side';
+import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
@@ -483,7 +483,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const panelBox = document.createElement('div'), calBox = document.createElement('div'), mapBox = document.createElement('div');
   panelBox.className = 'pp-box'; calBox.className = 'cal-box'; mapBox.className = 'mm-box';
   panelBox.append(panel.el); calBox.append(calendar.el);
-  side.append(panelBox, mapBox, calBox);
+  // Portrait's corner under the right-hand widget (side.ts SideToday, style.css): the other widget small + today.
+  const today = new SideToday(game), todayBox = document.createElement('div');
+  todayBox.className = 'st-box';
+  todayBox.append(today.el);
+  side.append(panelBox, mapBox, calBox, todayBox);
   shell.append(toolbar.el, stage, side);
   finaleToolbar(toolbar.el, game); // 大富翁城: no stock market
   app.append(shell);
@@ -497,6 +501,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // The redrawn style's preview when there is one (the original picture is then never decoded).
   const minimap = new Minimap(game, bank, view, firstGround?.preview ?? art.ground);
   mapBox.append(minimap.el);
+  // The small map shows in 日曆 mode too once the screen turns portrait (and grows / shrinks with the layout):
+  // drawn again whenever its box changes size, not only on the HUD's refresh.
+  new ResizeObserver(() => { if (mapBox.clientWidth) minimap.update(); }).observe(mapBox);
   // Another style chosen in 系統.
   const applyGround = async () => {
     const want = groundStyles.includes(groundStyle()) ? groundStyle() : '';
@@ -517,7 +524,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     results: (winner: number) => (ty ? tycoonEnding(hud.context(shell), ty.world, winner, () => Promise.resolve(false))
       : showResults(bank!, shell, gameResults(game, winner), { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, game.players.filter(p => p.human).map(p => p.character), game.settings.mapId) })) };
   const baseRefresh = hud.refresh.bind(hud);
-  hud.refresh = () => { baseRefresh(); if (layout !== 0) minimap.update(); };
+  hud.refresh = () => { baseRefresh(); today.update(); if (layout !== 0 || shell.classList.contains('portrait')) minimap.update(); };
   // 視窗組 (RICH4.CFG +5): what the right column shows; kept between games.
   const LAYOUTS = ['日曆', '小地圖', '全部'];
   let layout = 0;

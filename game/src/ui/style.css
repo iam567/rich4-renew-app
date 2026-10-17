@@ -59,6 +59,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game.portrait .toolbar { grid-column: 1; }
 .game.portrait .stage { grid-column: 1; grid-row: 2; }
 .game.portrait .side { grid-column: 1; grid-row: 3; flex-direction: row; }
+.st-box { display: none; }
 .board { width: 100%; height: 100%; display: block; touch-action: none; }
 
 /* toolbar: a candy bar with the redrawn icons */
@@ -81,7 +82,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* player panel and calendar: laid out in original pixels, scaled as a whole */
 .pp-box { width: calc(200px * var(--pu)); height: calc(280px * var(--pu)); flex: none; }
 .cal-box { width: calc(200px * var(--pu)); height: calc(200px * var(--pu)); flex: none; }
-.pp, .cal { position: relative; width: 200px; height: 280px; transform: scale(var(--pu)); transform-origin: 0 0; color: #1b1208; user-select: none; }
+.pp, .cal { position: relative; width: 200px; height: 280px; transform: scale(var(--s, var(--pu))); transform-origin: 0 0; color: #1b1208; user-select: none; }
 .cal { height: 200px; }
 .pp-bg, .cal-bg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 .pp-face { position: absolute; left: 6px; top: 6px; width: 68px; height: 68px; border-radius: 16px; overflow: hidden;
@@ -340,22 +341,52 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game.layout-1 .mm-box, .game.layout-2 .mm-box { display: block; }
 .game.layout-2 .pp-box { height: calc(80px * var(--pu)); }
 .game.layout-2 .side { overflow: hidden; }
-.game.portrait.layout-2 .side { display: grid; grid-template-columns: auto auto; grid-template-rows: auto auto; justify-content: start; }
-.game.portrait.layout-2 .pp-box { grid-column: 1; grid-row: 1; }
-.game.portrait.layout-2 .mm-box { grid-column: 1; grid-row: 2; }
-.game.portrait.layout-2 .cal-box { grid-column: 2; grid-row: 1 / 3; }
+/* Portrait: the panel (200×280) and a 200×280 column beside it; the corner left under that column's 200×200 widget
+   (200×80) holds the other widget at 80×80 and today's card (side.ts SideToday) — 全部 already shows both widgets,
+   so its card takes the whole corner. Landscape is the original column, unchanged. */
+.game.portrait .side { position: relative; display: block; }
+.game.portrait .side > * { position: absolute; left: 0; top: 0; }
+.game.portrait .cal-box, .game.portrait .mm-box { left: calc(200px * var(--pu)); }
+.game.portrait .st-box { display: block; left: calc(280px * var(--pu)); top: calc(200px * var(--pu)); width: calc(120px * var(--pu)); height: calc(80px * var(--pu)); }
+.game.portrait.layout-0 .mm-box, .game.portrait.layout-1 .cal-box { display: block; top: calc(200px * var(--pu)); width: calc(80px * var(--pu)); height: calc(80px * var(--pu));
+  --s: calc(var(--pu) * .4); }
+.game.portrait.layout-2 .mm-box { left: 0; top: calc(80px * var(--pu)); }
+.game.portrait.layout-2 .st-box { left: calc(200px * var(--pu)); width: calc(200px * var(--pu)); }
+.game.portrait.layout-0 .mm-rot { display: none; }
 .pp.compact { height: 80px; }
 .pp-face.small { width: 62px; height: 62px; left: 8px; top: 9px; border-width: 3px; border-radius: 14px; }
 .pp-cname { position: absolute; left: 78px; width: 116px; top: 6px; text-align: center; font-size: 18px; line-height: 22px; }
 .pp-cbar { position: absolute; left: 86px; top: 29px; width: 106px; height: 4px; border-radius: 2px; background: var(--c); box-shadow: 1px 1px 0 #101010; }
 .pp-cl { position: absolute; left: 84px; font-size: 11px; color: #4a3010; }
 .pp-cv { position: absolute; right: 8px; font-size: 14px; line-height: 16px; }
-.mm { position: relative; width: 200px; height: 200px; transform: scale(var(--pu)); transform-origin: 0 0; overflow: hidden;
+.mm { position: relative; width: 200px; height: 200px; transform: scale(var(--s, var(--pu))); transform-origin: 0 0; overflow: hidden;
   background: #0b2427; border-top: 2px solid #ffd25a; }
 .mm-canvas { width: 200px; height: 200px; display: block; cursor: crosshair; }
 .mm-rot { position: absolute; top: 3px; width: 22px; height: 22px; padding: 3px; border-radius: 50%; color: #5a2d00;
   background: linear-gradient(#fff6c2, #ffd23f); border: 2px solid #fff; box-shadow: 0 2px 0 #c98a00; }
 .mm-rot svg { width: 100%; height: 100%; display: block; }
+/* Today's card (portrait corner, side.ts SideToday): 120×80 original px (200×80 in 全部), parchment like the panel. */
+.st { position: relative; width: 120px; height: 80px; transform: scale(var(--pu)); transform-origin: 0 0; box-sizing: border-box; margin: 0;
+  display: grid; grid-template-columns: 40px 1fr; grid-template-rows: 1fr auto auto auto 1fr; grid-template-areas: "wx ." "wx date" "wx wd" "wx price" "wx .";
+  column-gap: 2px; padding: 4px 5px 4px 3px; border: 2px solid #c98a2a; border-radius: 10px; color: #2a1d10; user-select: none;
+  background: linear-gradient(#fffaf0, #f4dfa8); box-shadow: inset 0 0 0 1.5px #fff6d8, 0 2px 0 rgba(0, 0, 0, .35); }
+.game.portrait.layout-2 .st { width: 200px; grid-template-columns: 76px 1fr; padding: 4px 10px 4px 6px; }
+.st.nowx { grid-template-columns: 1fr; grid-template-areas: "." "date" "wd" "price" "."; text-align: center; }
+.st-wx { grid-area: wx; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; }
+.st-wx svg { width: 38px; height: 38px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .25)); }
+.st-wx span { margin-top: -3px; padding: 0 5px; border-radius: 7px; background: #fff; border: 1.5px solid #2a1d10;
+  font-size: 10px; line-height: 13px; font-weight: 700; white-space: nowrap; }
+.st-date { grid-area: date; font-size: 15px; line-height: 18px; font-weight: 700; white-space: nowrap; }
+.st-wd { grid-area: wd; font-size: 12px; line-height: 15px; white-space: nowrap; }
+.st-wd.red { color: #e01010; }
+.st-price { grid-area: price; margin-top: 2px; font-size: 10px; line-height: 13px; color: #4a3010; white-space: nowrap; }
+.st-price b { font-size: 13px; color: #b3261e; }
+.game.portrait.layout-2 .st-wx svg { width: 50px; height: 50px; }
+.game.portrait.layout-2 .st-wx span { font-size: 12px; line-height: 15px; padding: 0 8px; }
+.game.portrait.layout-2 .st-date { font-size: 20px; line-height: 23px; }
+.game.portrait.layout-2 .st-wd { font-size: 14px; line-height: 17px; }
+.game.portrait.layout-2 .st-price { font-size: 12px; line-height: 15px; }
+.game.portrait.layout-2 .st-price b { font-size: 15px; }
 
 /* 查詢 (09 §7.10): over the whole game screen (Hud full layer), everything on one page; long lists in pages (info.ts). */
 .msg.sheet.wide { width: min(760px, 100%); max-width: min(760px, 100%); }

@@ -160,3 +160,31 @@ export class Calendar {
       <div class="cal-year">${year(d)}</div><div class="cal-month">${m}月</div>${body}${wxBox}`;
   }
 }
+
+/**
+ * Portrait only (the remake's addition): the 200×80 corner under the right-hand widget otherwise stays empty, so
+ * it holds the other widget at 80×80 (style.css) and this card beside it — today's date, weekday, weather and the
+ * price index, in the panel's parchment look. 全部 shows both widgets already, and the card takes the whole corner.
+ * Rewritten only when one of its values changes (it follows the HUD's refresh, never a frame loop).
+ */
+export class SideToday {
+  readonly el: HTMLElement;
+  private last = '';
+
+  constructor(readonly game: Game) {
+    this.el = document.createElement('div');
+    this.el.className = 'st';
+  }
+
+  update() {
+    const g = this.game, d = g.date, w = weekday(d);
+    const wx = weatherMode() === 2 ? null : todayWeather(g);
+    const html = `${wx ? `<div class="st-wx" data-wx="${wx.kind}" title="今日天氣：${WEATHER_NAME[wx.kind]}">${weatherIcon(wx.kind)}<span>${WEATHER_NAME[wx.kind]}</span></div>` : ''}
+      <div class="st-date">${month(d)}月${day(d)}日</div><div class="st-wd${w === 0 ? ' red' : ''}">${WEEKDAYS[w]}</div>
+      <div class="st-price">物價指數 <b>${g.priceIndex}</b></div>`;
+    if (html === this.last) return;
+    this.last = html;
+    this.el.classList.toggle('nowx', !wx);
+    this.el.innerHTML = html;
+  }
+}
