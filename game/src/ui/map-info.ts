@@ -18,7 +18,7 @@ type Pt = { x: number; y: number };
 
 const HOUSE = ['空  地', '平  房', '店  舖', '商  場', '商業大樓', '摩天大樓'];
 const LEVEL = ['０級', '一級', '二級', '三級', '四級', '五級'];
-const FACILITY = ['公  園', '旅  館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館']; // 5..9 大富翁城's halls (docs/rules/19)
+const FACILITY = ['公  園', '旅  館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館', '居酒屋', '陪酒店', '泡泡浴', '情人酒店']; // 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21)
 /** What an event square does (the remake's addition). */
 const EVENT_TEXT: Record<number, string> = {
   2: '停留時播報一則新聞', 3: '停留時抽一張命運', 4: '入獄的人在這裡服刑', 5: '住院的人在這裡休養',

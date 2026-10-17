@@ -13,7 +13,7 @@ import './finale-ending.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const money = (n: number) => Math.trunc(n).toLocaleString('en-US');
-const FAC = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館'];
+const FAC = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館', '居酒屋', '陪酒店', '泡泡浴', '情人酒店'];
 
 /** Shows the finale's results when the world ended in 大富翁城; resolves at once otherwise. */
 export function finaleResults(ctx: ScreenContext, w: World, winner: number): Promise<void> {

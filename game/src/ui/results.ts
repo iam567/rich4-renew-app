@@ -24,7 +24,7 @@ const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 export const money = (n: number) => Math.trunc(n).toLocaleString('en-US');
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`;
 /** Facility types (02 §4, 大富翁城's halls 5..9). */
-export const FACILITY_NAMES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館'];
+export const FACILITY_NAMES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館', '居酒屋', '陪酒店', '泡泡浴', '情人酒店'];
 const toolName = (id: number) => TOOLS.find(t => t.id === id)?.name ?? `道具${id}`;
 
 const icon = (name: StatIcon, cls = 'rs-ic') => `<img class="${cls}" src="${statIcon(name)}" alt="" onerror="this.remove()">`;

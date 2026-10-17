@@ -15,7 +15,7 @@ import { shrinkText } from './text';
 const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const LAND_STAGES = ['空　地', '平　房', '店　舖', '商　場', '商業大樓', '摩天大樓'];
-const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館']; // 5..9 大富翁城's halls (docs/rules/19)
+const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館', '居酒屋', '陪酒店', '泡泡浴', '情人酒店']; // 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21)
 const FILTERS = ['全部', '住宅區', '商業區', '房屋', '連鎖店'];
 const PAGES = ['資產', '地產', '股票'];
 
