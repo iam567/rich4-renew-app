@@ -172,6 +172,21 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(owner.cash).toBe(before);
     expect(owner.cards).not.toContain(KB_CARD);
     expect(r.out.some(s => s.t === 'fx' && s.kind === 'kb-bodyguard')).toBe(true);
+    // 計程車券: five dice this turn
+    kb.s.roll[holder.id] = 18;
+    expect((drain(kb.rollDice(g, holder) as Generator<unknown, unknown, unknown>).value as number[]).length).toBe(5);
+    // …or put on a rival: their next throw is five dice; a second one is refused and kept.
+    const rival = g.players[2];
+    rival.placed = true; rival.whoPlays = 2; holder.tools[17] = 2;
+    expect(drain(kb.useTool(g, holder, 18, rival.id) as Generator<unknown, unknown, unknown>).value).toBe(true);
+    expect([holder.tools[17], kb.s.taxi[rival.id]]).toEqual([1, 1]);
+    expect(drain(kb.useTool(g, holder, 18, rival.id) as Generator<unknown, unknown, unknown>).value).toBe(false);
+    expect(holder.tools[17]).toBe(1);
+    const ride = drain(kb.rollDice(g, rival) as Generator<unknown, unknown, unknown>);
+    expect((ride.value as number[]).length).toBe(5);
+    expect(ride.out.some(s => s.t === 'fx' && s.kind === 'kb-taxi-ride')).toBe(true);
+    expect(kb.s.taxi[rival.id]).toBe(0);
+    expect(drain(kb.rollDice(g, rival) as Generator<unknown, unknown, unknown>).value).toBeUndefined();
     // 暴走卡
     holder.cards = [KB_RAMPAGE]; holder.placed = true; holder.whoPlays = 2;
     expect(drain(kb.playCard(g, holder, KB_RAMPAGE) as Generator<unknown, unknown, unknown>).value).toBe(true);

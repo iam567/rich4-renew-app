@@ -214,20 +214,22 @@ fxScreens['kb-kakuhen'] = (ctx, fx) => {
       <div class="kba-line">${vals[drop] ?? ''} 不算・走 <em>${steps}</em> 步</div></div>`, 2400, !p || !ctx.game.isHuman(p));
 };
 
-/** 計程車券 used: a cartoon taxi pulls up and honks, the player hops in, and it zooms off with three dice. */
-function taxiScene(ctx: ScreenContext, fx: Fx): Promise<void> {
-  const taxi = ctx.bank.art('map', 1901, 2);
+/** 計程車券 used: a cartoon taxi pulls up and honks, the player hops in, and it zooms off with five dice. */
+function taxiScene(ctx: ScreenContext, fx: Fx, banner: string): Promise<void> {
+  const taxi = ctx.bank.art('map', 1901, 2), rider = fx.target ?? fx.p;
   audio.sfx(Sfx.car);
   return stage(ctx, 'taxi', [560, 300], `<div class="kba-road">
       <div class="kba-taxi">${taxi ? `<img src="${taxi.src}" alt="">` : '<span class="kba-taxi-box"></span>'}<span class="kba-honk">叭叭！</span></div>
-      <div class="kba-rider">${faceImg(ctx, fx.p, 'kba-face')}</div>
-      <div class="kba-three">${die(6, 'a')}${die(5, 'b')}${die(4, 'c')}</div>
-      <div class="kba-banner">計程車券：這回合擲 3 顆骰子！</div></div>`, 2300);
+      <div class="kba-rider">${faceImg(ctx, rider, 'kba-face')}</div>
+      <div class="kba-three">${die(6, 'a')}${die(5, 'b')}${die(4, 'c')}${die(3, 'd')}${die(6, 'e')}</div>
+      <div class="kba-banner">${esc(banner)}</div></div>`, 2300);
 }
+/** A rival's taxi comes for its rider: just before their forced five-dice throw. */
+fxScreens['kb-taxi-ride'] = (ctx, fx) => taxiScene(ctx, fx, `${who(ctx, fx.p)}：計程車來了，擲 5 顆骰子！`);
 
 fxScreens['kb-tool'] = (ctx, fx) => {
   const id = Number(fx.data?.tool);
-  if (id === 18) return taxiScene(ctx, fx);
+  if (id === 18) return taxiScene(ctx, fx, fx.target !== undefined && fx.target !== fx.p ? `${who(ctx, fx.target)}被塞上了計程車！下回合擲 5 顆骰子` : '計程車券：這回合擲 5 顆骰子！');
   if (id !== 17) return Promise.resolve();
   audio.sfx(Sfx.cardUse);
   const src = toolIconSrc(ctx, id);

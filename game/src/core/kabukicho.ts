@@ -56,6 +56,8 @@ export interface KbState {
   mods: Record<string, number>;
   /** VIP card (fate): the next shop visit has no incident and pays ×1. */
   vip: number[];
+  /** 計程車券 put on a rival: their next throw is five dice (1 pending), by player. */
+  taxi: number[];
   /** 暴走卡: extra turns still to take right after this one, by player. */
   extra: number[];
   /** The dice tool used this turn (17 確變骰子, 18 計程車券), by player. */
@@ -86,7 +88,7 @@ export class KabukichoRules implements MapRules {
     const n = g.players.length;
     this.s = {
       busy: new Array(n).fill(0), gang: { node: 0, holder: -1, days: 0, take: 0, back: 0 }, tout: { node: 0, gone: 0 },
-      closed: {}, mods: {}, extra: new Array(n).fill(0), vip: new Array(n).fill(0), roll: new Array(n).fill(0),
+      closed: {}, mods: {}, taxi: new Array(n).fill(0), extra: new Array(n).fill(0), vip: new Array(n).fill(0), roll: new Array(n).fill(0),
       news: { deck: [], next: 0 }, fate: { deck: [], next: 0 }, tama: new Array(n).fill(0), medals: new Array(n).fill(0), draws: 0,
     };
     // The exclusive tools need room in every player's tool counts (ids 17, 18; 19 and 20 were 保鑣 and 霓虹燈箱).
@@ -739,15 +741,42 @@ export class KabukichoRules implements MapRules {
 
   // ---------------------------------------------------------------- the exclusive tools (§7.5)
 
-  *useTool(g: Game, p: Player, tool: number): Flow<boolean> {
+  *useTool(g: Game, p: Player, tool: number, param?: number): Flow<boolean> {
     if ((p.tools[tool - 1] ?? 0) <= 0) return false;
+    const taxiBound = (this.s.taxi?.[p.id] ?? 0) > 0;
     switch (tool) {
-      case T_KAKUHEN: case T_TAXI:
-        if (this.s.roll[p.id]) return false;
+      case T_KAKUHEN:
+        if (this.s.roll[p.id] || taxiBound) { if (taxiBound) yield* g.say(p.id, '這回合已經被塞上計程車了！'); return false; }
         this.s.roll[p.id] = tool; p.tools[tool - 1] -= 1;
         yield { t: 'fx', kind: 'kb-tool', p: p.id, data: { tool } };
         g.stats?.toolUsed(p.id, tool);
         return true;
+      case T_TAXI: {
+        if (this.mod('taxistrike')) { yield* g.say(p.id, '計程車大罷工中，叫不到車！'); return false; }
+        // Yourself (this throw) or anyone else on the road (their next throw), §7.5.
+        let who = param ?? -1;
+        if (who < 0) {
+          const cands = g.players.filter(q => q.whoPlays && q.placed && !g.offRoad(q)).map(q => q.id);
+          if (g.isHuman(p)) who = Number(yield ask({ t: 'pick-player', p: p.id, title: '計程車券：給誰坐？（自己這回合，或對手下回合擲 5 顆骰子）', players: cands, cancellable: true }));
+          else who = p.id;
+          if (!cands.includes(who)) return false;
+        }
+        const q = g.players[who];
+        if (!q) return false;
+        if (q.id === p.id) {
+          if (this.s.roll[p.id] || taxiBound) return false;
+          this.s.roll[p.id] = tool;
+        } else {
+          if (g.offRoad(q) || !q.whoPlays) return false;
+          if ((this.s.taxi[q.id] ?? 0) > 0) { yield* g.say(p.id, `${g.name(q.id)}已經被塞上計程車了！`); return false; }
+          this.s.taxi[q.id] = 1;
+        }
+        p.tools[tool - 1] -= 1;
+        yield { t: 'fx', kind: 'kb-tool', p: p.id, target: q.id, data: { tool } };
+        if (q.id !== p.id) yield* g.say(p.id, `${g.name(q.id)}被塞上了計程車！\n下回合擲 5 顆骰子`);
+        g.stats?.toolUsed(p.id, tool);
+        return true;
+      }
     }
     return false;
   }
@@ -768,17 +797,94 @@ export class KabukichoRules implements MapRules {
       }
     }
     const r = this.stream(0xa1, p.id);
-    if (p.tools[T_TAXI - 1] > 0 && (p.traffic & 3) < 2 && r.below(3) === 0) { yield* g.say(p.id, '使用計程車券'); return yield* this.useTool(g, p, T_TAXI); }
+    if (p.tools[T_TAXI - 1] > 0 && !this.mod('taxistrike')) {
+      if (!(this.s.taxi[p.id] > 0) && this.taxiWorth(g, p)) { yield* g.say(p.id, '使用計程車券'); return yield* this.useTool(g, p, T_TAXI, p.id); }
+      const q = this.taxiVictim(g, p);
+      if (q) { yield* g.say(p.id, `使用計程車券：送${g.name(q.id)}一程`); return yield* this.useTool(g, p, T_TAXI, q.id); }
+    }
     if (p.tools[T_KAKUHEN - 1] > 0 && r.below(3) === 0) { yield* g.say(p.id, '使用確變骰子'); return yield* this.useTool(g, p, T_KAKUHEN); }
     return false;
   }
 
-  /** The dice of a turn with 確變骰子 (one more die, one dropped) or 計程車券 (3 dice); news 計程車大罷工: 1 die. */
+  /**
+   * Whether a computer takes the taxi (5 dice, 5–30 steps, §7.5): good squares 15–30 steps ahead (a plot to buy or
+   * build on with the cash for it, its own shops, the two pads) outnumber those its own dice reach (up to 6 a die), or
+   * the near stretch is a rival's expensive street to cross (two built rival plots of level 3+ within 12).
+   */
+  taxiWorth(g: Game, p: Player): boolean {
+    if (this.s.roll[p.id]) return false;
+    const me = p.id + 1, F = g.priceIndex;
+    const good = (n: BoardNode): boolean => {
+      if (n.event === EV_PACHINKO || n.event === EV_PACHISLOT) return true;
+      const l = landOf(g.board, n), f = facilityOf(g.board, n);
+      if (l) return (!l.owner && p.cash > l.price * F * 2) || (l.owner === me && l.level < 5 && p.cash > 5000 * F);
+      if (f) return (!f.owner && p.cash > f.price * F * 2) || f.owner === me;
+      return false;
+    };
+    const bad = (n: BoardNode): boolean => {
+      const l = landOf(g.board, n), f = facilityOf(g.board, n);
+      return !!((l && l.owner && l.owner !== me && l.level >= 3) || (f && f.owner && f.owner !== me && f.level >= 3));
+    };
+    let near = 0, nearBad = 0, far = 0;
+    const reach = 6 * Math.max(1, p.dice || 1);
+    this.ahead(g, p, 30, (n, d) => {
+      if (d <= reach && good(n)) near++;
+      if (d <= 12 && bad(n)) nearBad++;
+      if (d >= 15 && good(n)) far++;
+    });
+    return (p.traffic & 3) < 2 && (far > near || nearBad >= 2);
+  }
+
+  /**
+   * A rival the computer sends off by taxi (5 dice next turn): one standing just before a stretch of the computer's
+   * own big plots would rather stop there — so the taxi goes to a rival whose 15–30 steps ahead hold more of the
+   * computer's level-3+ plots than their next 2–12 do (more chances to land on them), the richest such rival.
+   */
+  taxiVictim(g: Game, p: Player): Player | undefined {
+    const me = p.id + 1;
+    const mine = (n: BoardNode) => {
+      const l = landOf(g.board, n), f = facilityOf(g.board, n);
+      return !!((l && l.owner === me && l.level >= 3) || (f && f.owner === me && f.level >= 3));
+    };
+    const cands = g.players.filter(q => q.id !== p.id && q.whoPlays && q.placed && !g.offRoad(q) && !(this.s.taxi[q.id] > 0) && this.s.gang.holder !== q.id);
+    let best: Player | undefined, bestW = -1;
+    for (const q of cands) {
+      let near = 0, far = 0;
+      this.ahead(g, q, 30, (n, d) => { if (mine(n)) { if (d >= 15) far++; else if (d >= 2 && d <= 12) near++; } });
+      if (far >= 2 && far > near && g.wealth(q) > bestW) { best = q; bestW = g.wealth(q); }
+    }
+    return best;
+  }
+
+  /** The squares along the road ahead of `q` (no turning back) up to `max` steps, with their distance. */
+  ahead(g: Game, q: Player, max: number, see: (n: BoardNode, d: number) => void) {
+    let front = [{ at: q.node, from: q.lastNode }];
+    const seen = new Set<number>([q.node]);
+    for (let d = 1; d <= max && front.length; d++) {
+      const next: { at: number; from: number }[] = [];
+      for (const { at, from } of front) for (const id of g.node(at).adjacent) {
+        if (!id || id === from || seen.has(id)) continue;
+        seen.add(id); next.push({ at: id, from: at }); see(g.node(id), d);
+      }
+      front = next;
+    }
+  }
+
+  /**
+   * The dice of a turn: 計程車券 (5 dice, on oneself this turn or put on by a rival for this one), 確變骰子 (one more
+   * die, one dropped); news 計程車大罷工: 1 die (a taxi put on someone waits for the strike to end).
+   */
   *rollDice(g: Game, p: Player): Flow<number[] | undefined> {
+    const strike = this.mod('taxistrike');
+    if (!strike && (this.s.taxi?.[p.id] ?? 0) > 0) {
+      this.s.taxi[p.id] = 0;
+      yield { t: 'fx', kind: 'kb-taxi-ride', p: p.id };
+      return Array.from({ length: 5 }, () => g.rng.rand() % 6 + 1);
+    }
     const t = this.s.roll[p.id];
-    if (!t && !this.mod('taxistrike')) return undefined;
+    if (!t && !strike) return undefined;
     this.s.roll[p.id] = 0;
-    if (t === T_TAXI) return Array.from({ length: 3 }, () => g.rng.rand() % 6 + 1);
+    if (t === T_TAXI && !strike) return Array.from({ length: 5 }, () => g.rng.rand() % 6 + 1);
     const n = this.mod('taxistrike') ? 1 : p.dice;
     if (t !== T_KAKUHEN) return Array.from({ length: n }, () => g.rng.rand() % 6 + 1);
     const vals = Array.from({ length: n + 1 }, () => g.rng.rand() % 6 + 1);

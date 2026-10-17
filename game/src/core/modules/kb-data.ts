@@ -95,7 +95,7 @@ export const GANG_PRISON_DAYS = 7;
 /** The exclusive tools of the 柏青哥店 / 拉霸店 counter (§7.5): ids 17–20 (14–16 are 大富豪模式's). */
 export const KB_TOOLS = [
   { id: 17, name: '確變骰子', price: 25, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合多擲一顆骰子，擲完挑一顆不算', short: '多擲一顆\n挑一顆不算' },
-  { id: 18, name: '計程車券', price: 20, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '這回合擲 3 顆骰子（像開汽車一回合）', short: '這回合\n擲 3 顆骰子' },
+  { id: 18, name: '計程車券', price: 20, supply: 0, tier: 2 as const, aggression: 0 as const, inShop: false, text: '擲骰前用：自己這回合擲 5 顆骰子，或塞給一位對手，他下回合一定擲 5 顆', short: '自己或對手\n擲 5 顆骰子' },
 ];
 /**
  * 保鑣卡 (§4.1, the user 2026-10-18; was the tool 保鑣 19): a card, passive like 免費卡, only on this map: when a 黑幫

@@ -917,7 +917,8 @@ export class BoardView {
     // The first throw must not find its pictures still loading (it used to skip the whole animation).
     const spr = this.spriteOf(id);
     // …but never waits for them for long (a picture that does not come must not stop the game).
-    await watch('view.dice sprites', timeout(Promise.all([spr && this.bank.boardReady('Data', spr.res), this.bank.boardReady('Panel', 3 + Math.min(3, values.length), DICE_SCALE), this.bank.boardReady('Panel', 3, DICE_SCALE)]), 3000, null));
+    await watch('view.dice sprites', timeout(Promise.all([spr && this.bank.boardReady('Data', spr.res), this.bank.boardReady('Panel', 3 + Math.min(3, values.length), DICE_SCALE), this.bank.boardReady('Panel', 3, DICE_SCALE),
+      values.length > 3 && this.bank.boardReady('Panel', values.length, DICE_SCALE)]), 3000, null));
     const fpd = this.fpd(id);
     if (fpd) {
       a.phase = 2; a.anim = 0;
@@ -927,6 +928,9 @@ export class BoardView {
     }
     a.phase = 0; a.anim = 0;
     const tumble = this.bank.board('Panel', 3 + Math.min(3, values.length), DICE_SCALE);
+    // 4 or 5 dice (歌舞伎町's 確變骰子 on a car, 計程車券): the 3-dice throw and a 1- or 2-dice throw in a second row.
+    const ROW2: [number, number] = [24, 66];
+    const tumble2 = values.length > 3 ? this.bank.board('Panel', 3 + Math.min(2, values.length - 3), DICE_SCALE) : null;
     const faces = this.bank.board('Panel', 3, DICE_SCALE);
     const sd = screenDir(a.dir, this.rot), [tx, ty] = DICE_T[sd];
     // Top-left of the 189×285 box in original view pixels, relative to the view centre (220, 260).
@@ -947,6 +951,7 @@ export class BoardView {
         // fcn_00419572: the tumble FLC sounds slot 2 (Effect#10) at frame 30 (flags 0x1e000000)…
         if (i >= 29 && !sounded) { sounded = true; audio.sfx(Sfx.dice); }
         box(tumble[i], 0, 0);
+        if (tumble2?.length) box(tumble2[Math.min(tumble2.length - 1, i)], ...ROW2);
       };
       await wait(frameMs * n);
       if (!sounded) audio.sfx(Sfx.dice);
@@ -954,7 +959,8 @@ export class BoardView {
     // …and again when it has stopped.
     audio.sfx(Sfx.dice);
     if (faces?.length) {
-      this.overlay = () => values.forEach((v, i) => { const f = faces[i * 6 + v - 1]; if (f) box(f, 85, 145); });
+      // The faces' three places (Panel#3); a 4th and 5th die (歌舞伎町's 計程車券) in a second row below the first two.
+      this.overlay = () => values.forEach((v, i) => { const f = faces[(i % 3) * 6 + v - 1]; if (f) box(f, 85 + (i >= 3 ? ROW2[0] : 0), 145 + (i >= 3 ? ROW2[1] : 0)); });
     }
     // The faces stay long enough to read even at the doubled speeds.
     await wait(Math.max(400, 1000 * this.tickMs / 120));
@@ -1514,12 +1520,12 @@ export class BoardView {
         const tw = ctx.measureText(t.text).width, h = fs + 6, bw = tw + 12, x0 = q.x - bw / 2, y0 = y - h;
         ctx.beginPath();
         ctx.roundRect(x0, y0, bw, h, h / 2);
-        ctx.fillStyle = t.kind === 'gang' ? 'rgba(28, 24, 30, .92)' : 'rgba(64, 82, 212, .92)';
+        ctx.fillStyle = t.kind === 'gang' ? 'rgba(28, 24, 30, .92)' : t.kind === 'taxi' ? 'rgba(255, 196, 0, .95)' : 'rgba(64, 82, 212, .92)';
         ctx.fill();
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = t.kind === 'gang' ? '#ffd84a' : '#fff';
         ctx.stroke();
-        ctx.fillStyle = t.kind === 'gang' ? '#ffd84a' : '#fff';
+        ctx.fillStyle = t.kind === 'gang' ? '#ffd84a' : t.kind === 'taxi' ? '#2a1a00' : '#fff';
         ctx.fillText(t.text, q.x, y0 + h / 2 + 0.5);
         y = y0 - 3;
       }

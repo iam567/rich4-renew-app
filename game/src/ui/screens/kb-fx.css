@@ -153,10 +153,11 @@
 @keyframes kba-honk { 60% { transform: scale(1.2); } to { transform: scale(1); } }
 .kba-rider { position: absolute; left: 60px; top: 150px; animation: kba-hop calc(.5s * var(--k)) calc(1s * var(--k)) ease-in forwards; }
 @keyframes kba-hop { 50% { transform: translate(90px, -60px); } to { transform: translate(190px, -10px) scale(.4); opacity: 0; } }
-.kba-three { position: absolute; left: 0; right: 0; top: 20px; display: flex; justify-content: center; gap: 12px; }
+.kba-three { position: absolute; left: 0; right: 0; top: 18px; display: flex; justify-content: center; gap: 10px; }
 .kba-three .kba-die { width: 58px; height: 58px; padding: 7px; gap: 2px; animation: kba-land calc(.45s * var(--k)) both; }
 .kba-three .kba-die b { width: 10px; height: 10px; }
-.kba-three .a { animation-delay: calc(1.5s * var(--k)); } .kba-three .b { animation-delay: calc(1.62s * var(--k)); } .kba-three .c { animation-delay: calc(1.74s * var(--k)); }
+.kba-three .a { animation-delay: calc(1.3s * var(--k)); } .kba-three .b { animation-delay: calc(1.4s * var(--k)); } .kba-three .c { animation-delay: calc(1.5s * var(--k)); }
+.kba-three .d { animation-delay: calc(1.6s * var(--k)); } .kba-three .e { animation-delay: calc(1.7s * var(--k)); }
 .kba-banner { position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); white-space: nowrap; padding: 4px 18px; border-radius: 16px; border: 3px solid #fff;
   background: linear-gradient(#ff7aa8, #e5266b); font-size: 24px; text-shadow: 0 2px 0 #8a1048; animation: kba-in calc(.3s * var(--k)) calc(.9s * var(--k)) both; }
 .kba-banner.big { font-size: 34px; bottom: 22px; background: linear-gradient(#ffb03a, #e5400b); text-shadow: 0 3px 0 #7a1a00; animation: kba-slam calc(.4s * var(--k)) calc(.25s * var(--k)) cubic-bezier(.3, 1.6, .5, 1) both; }

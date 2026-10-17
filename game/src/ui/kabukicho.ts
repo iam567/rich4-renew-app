@@ -103,10 +103,11 @@ export function kbFigures(game: Game): { node: number; res: number }[] {
 }
 
 /** The signs over a player's head (§2.2 「處理事務中」, §4.1 「黑幫附身」). */
-export function kbBadges(game: Game, pid: number): { text: string; kind: 'busy' | 'gang' }[] {
+export function kbBadges(game: Game, pid: number): { text: string; kind: 'busy' | 'gang' | 'taxi' }[] {
   const kb = kbRules(game);
   if (!kb) return [];
-  const out: { text: string; kind: 'busy' | 'gang' }[] = [];
+  const out: { text: string; kind: 'busy' | 'gang' | 'taxi' }[] = [];
+  if ((kb.s.taxi?.[pid] ?? 0) > 0) out.push({ text: '計程車', kind: 'taxi' }); // 計程車券 put on them: 5 dice next throw
   if (kb.s.gang.holder === pid) out.push({ text: '黑幫附身', kind: 'gang' });
   if ((kb.s.busy[pid] ?? 0) > 0) out.push({ text: '處理事務中', kind: 'busy' });
   return out;
