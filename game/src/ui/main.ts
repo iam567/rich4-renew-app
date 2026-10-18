@@ -14,7 +14,7 @@ import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
-import { AUTO_SLOT, pickSlot, readSlot, writeSlot } from './saves';
+import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeSlot } from './saves';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
 import { audio, BGM, Sfx, Theme } from './audio';
@@ -834,10 +834,10 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       view.followActor(s.p);
       hud.refresh();
       if (s.t === 'turn') {
-        // Auto-save into slot 0 when a human's turn opens, before the dice (one per turn).
+        // Auto-save when a human's turn opens, before the dice (one per turn): slot 0, or 大富豪模式's own automatic slot.
         turnSave = ty ? (saveWorld(ty.world) as unknown as SaveData) : saveGame(game);
         const key = `${game.daysElapsed}:${game.current}`;
-        if (key !== lastAuto) { lastAuto = key; writeSlot(AUTO_SLOT, turnSave).catch(() => hud.note('自動存檔失敗')); }
+        if (key !== lastAuto) { lastAuto = key; writeSlot(ty ? TYCOON_AUTO_SLOT : AUTO_SLOT, turnSave).catch(() => hud.note('自動存檔失敗')); }
         const p = game.players[s.p];
         wd.setHuman(true);
         // The human decides: the map may be dragged, turned and tapped for information (09 §1.4).

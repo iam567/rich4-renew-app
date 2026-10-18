@@ -4,9 +4,14 @@ import type { SaveData } from '../core/save';
 import type { SpriteBank } from './sprites';
 import { audio } from './audio';
 
-export const SLOTS = 6;
+export const SLOTS = 7;
 /** Slot 0 is the automatic save, as SAVE0.DAT in the original. */
 export const AUTO_SLOT = 0;
+/** 大富豪模式 saves itself into its own slot, so a world never overwrites a normal game's automatic save. */
+export const TYCOON_AUTO_SLOT = 6;
+const isAuto = (i: number) => i === AUTO_SLOT || i === TYCOON_AUTO_SLOT;
+/** A 大富豪 world's save (core/save.ts WorldSaveData) in a slot: its date, current city and twelve players. */
+type AnySave = SaveData & { kind?: 'tycoon'; world?: { date: number; current: number }; cities?: { game: { date: number } }[] };
 
 const DB = 'rich4', STORE = 'saves';
 
@@ -56,19 +61,29 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
     // Save / load slots (rich4_ui_save_load.asm): hover Effect#0, a slot confirms (#2), cancel #4.
     const done = (v: number) => { audio.ui(v >= 0 ? 'yes' : 'no'); overlay.remove(); resolve(v); };
     for (let i = mode === 'save' ? 1 : 0; i < SLOTS; i++) {
-      const s = saves[i];
+      if (mode === 'save' && isAuto(i)) continue;   // automatic slots are not written by hand
+      const s = saves[i] as AnySave | undefined;
       const b = document.createElement('button');
       b.className = `slot-row${s ? '' : ' empty'}`;
       b.disabled = mode === 'load' && !s;
-      const badge = `<span class="slot-badge${i === AUTO_SLOT ? ' auto' : ''}">${i === AUTO_SLOT ? 'AUTO' : i}</span>`;
-      if (s) {
-        const d = s.game.date, y = d >>> 16, m = (d >>> 8) & 0xff, dd = d & 0xff;
+      const badge = `<span class="slot-badge${isAuto(i) ? ' auto' : ''}">${isAuto(i) ? 'AUTO' : i}</span>`;
+      const tycoon = s?.kind === 'tycoon';
+      // A slot that can't be read as a game (damaged, or from a newer version) shows as such instead of breaking the list.
+      let filled = '';
+      if (s) try {
+        const d = tycoon ? s.world!.date : s.game.date, y = d >>> 16, m = (d >>> 8) & 0xff, dd = d & 0xff;
         const when = new Date(s.savedAt).toLocaleString('zh-Hant', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const thumb = s.settings.mapId < 8 ? art('Data', 520, 2 + s.settings.mapId) : '';
-        b.innerHTML = `${badge}<span class="slot-date"><small>${y}</small><b>${m}/${dd}</b></span>
+        const thumb = !tycoon && s.settings.mapId < 8 ? art('Data', 520, 2 + s.settings.mapId) : '';
+        const name = tycoon ? `大富豪模式・${mapName(s.settings.mapId)}` : mapName(s.settings.mapId);
+        // 12 players in a world: the human's face first, the rest still standing, so the row stays one line.
+        const faces = tycoon ? [...s.players.filter(p => p.human), ...s.players.filter(p => !p.human && !p.bankrupt)].slice(0, 6) : s.players;
+        filled = `${badge}<span class="slot-date"><small>${y}</small><b>${m}/${dd}</b></span>
           <span class="slot-map">${thumb || mapThumb(s.settings.mapId) ? `<img src="${thumb || mapThumb(s.settings.mapId)}" alt="">` : ''}</span>
-          <span class="slot-main"><b class="slot-mapname">${mapName(s.settings.mapId)}</b><span class="slot-faces">${s.players.map(p => `<span class="slot-face${p.bankrupt ? ' out' : ''}" title="${CHARACTERS[p.character].name}">${art('Data', 2, p.character) ? `<img src="${art('Data', 2, p.character)}" alt="">` : CHARACTERS[p.character].name}</span>`).join('')}</span></span>
+          <span class="slot-main"><b class="slot-mapname">${name}</b><span class="slot-faces">${faces.map(p => `<span class="slot-face${p.bankrupt ? ' out' : ''}" title="${CHARACTERS[p.character].name}">${art('Data', 2, p.character) ? `<img src="${art('Data', 2, p.character)}" alt="">` : CHARACTERS[p.character].name}</span>`).join('')}</span></span>
           <span class="slot-when">${when}</span>`;
+      } catch { filled = `${badge}<span class="slot-empty">（存檔無法顯示）</span>`; }
+      if (s) {
+        b.innerHTML = filled;
       } else {
         b.innerHTML = `${badge}<span class="slot-empty">${mode === 'save' ? '空白檔位 · 點這裡存檔' : '（空）'}</span>`;
       }
