@@ -122,6 +122,20 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(w.cities[4].tools.cardShelf()).not.toContain(34);
   });
 
+  it('the computer buys from the same shelf, at most one of each card (no buying again and again)', () => {
+    const { w, g } = world();
+    const ai = w.players[1];
+    ai.map = 0; ai.placed = true; ai.human = false;
+    ai.node = g.board.nodes.find(n => n.event === 15)!.id;
+    for (let k = 0; k < 10; k++) {
+      ai.points = 9000; ai.cards = [];
+      const flow = g.tools.shop(ai);
+      for (let r = flow.next(); !r.done; r = flow.next()) { /* the computer asks nothing */ }
+      expect(new Set(ai.cards).size).toBe(ai.cards.length);
+      expect(ai.cards.length).toBeGreaterThan(0);
+    }
+  });
+
   it('a card sold goes back to the nationwide pool, never above its copies', () => {
     const { g, me } = world();
     me.cards = [1, 1];

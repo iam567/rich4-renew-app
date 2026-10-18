@@ -8,6 +8,7 @@ import { pack } from './date';
 import { saveGame } from './save';
 import { REMAKE_CARD_SUPPLY } from './modules/cards';
 import { Forks } from './modules/forks';
+import { REMAKE_AI_ONE_CARD } from './modules/tools';
 import type { GameSettings } from './types';
 
 /**
@@ -55,11 +56,22 @@ export function goldenRun(mapId: number, days: number): string {
 }
 
 /**
- * Hashes with the remake's copies per card (REMAKE_CARD_SUPPLY, the user 2026-10-19; docs/rules/04 §1): every map's
- * pool differs from day one, so every hash changed. With the original copies every map gives the hashes below
- * (CARD_POOL), checked by the second test.
+ * Hashes with the computer buying at most one copy of each card per shop visit (REMAKE_AI_ONE_CARD, the user
+ * 2026-10-19; docs/rules/05 §10.2). Every map but 5 and 100 東京 changed (a computer bought a second copy there);
+ * with it off every map gives the hashes below (CARD_SUPPLY), checked by the second test.
  */
 const GOLDEN: Record<number, string> = {
+  0: 'e4d97f7dcf97b2a1', 1: '839e37c9749bdfed', 2: '8029ac451da73f4a', 3: '3847d9339f293381', 4: 'dacacfce21273218',
+  5: 'b23b5f88b3913d53', 6: '4717d843c10d42cc', 7: 'fbc0eec86fe619b4', 100: 'cff54e1e7cf1b3a3', 101: '67bd4827025f8489',
+  102: 'f6ff562ee131cd4e', 103: '5d85c5989bca43fa', 104: '47f91258b25626f2',
+};
+
+/**
+ * Hashes with the remake's copies per card (REMAKE_CARD_SUPPLY, the user 2026-10-19; docs/rules/04 §1): every map's
+ * pool differs from day one, so every hash changed. With the original copies every map gives the hashes below
+ * (CARD_POOL), checked by the third test.
+ */
+const CARD_SUPPLY: Record<number, string> = {
   0: '3ee254372c8f6c42', 1: '9e27482c05e1ecf1', 2: 'c835a5214aa866fb', 3: '9ca87d7996071b2d', 4: 'a999b750a731a053',
   5: 'b23b5f88b3913d53', 6: '2634aa66c04ebef6', 7: '6a487ce7b1ea11ea', 100: 'cff54e1e7cf1b3a3', 101: '740ca5fbd2abeb5a',
   102: '6e7c3c5ff1d8ca5e', 103: '46fc42cc85c4c9c3', 104: '53cd9bcad31bbfa7',
@@ -123,43 +135,51 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
     for (const id of MAPS) expect(got[id], `map ${id}`).toBe(GOLDEN[id]);
   }, 120_000);
 
+  it('with the computer buying as in the original every map plays as with the remake copies per card', () => {
+    REMAKE_AI_ONE_CARD.on = false;
+    try {
+      const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
+      for (const id of MAPS) expect(got[id], `map ${id} (computer buys every copy)`).toBe(CARD_SUPPLY[id]);
+    } finally { REMAKE_AI_ONE_CARD.on = true; }
+  }, 120_000);
+
   it('with the original copies per card every map plays as with the card pool fix', () => {
-    REMAKE_CARD_SUPPLY.on = false;
+    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (original copies)`).toBe(CARD_POOL[id]);
-    } finally { REMAKE_CARD_SUPPLY.on = true; }
+    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; }
   }, 120_000);
 
   it('with the card pool wrapping as in the original every map plays as with the free floors', () => {
-    REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false;
+    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (card pool wraps)`).toBe(FREE_BUILD[id]);
-    } finally { REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; }
+    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; }
   }, 120_000);
 
   it('with the free floors on large plots off every map plays as with the hotel rules', () => {
-    REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_FREE_BUILD.on = false;
+    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (free floors on large plots off)`).toBe(HOTEL[id]);
-    } finally { REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the hotel rules off (and the free floors on large plots) every map plays as with the fork rule alone', () => {
-    REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (hotel rules off)`).toBe(FORKS_ONLY[id]);
-    } finally { REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the earlier fork rule (and the remake rules above off) every map still plays bit for bit as before 2026-10-18', () => {
-    Forks.legacy = true; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    Forks.legacy = true; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (legacy forks)`).toBe(LEGACY[id]);
-    } finally { Forks.legacy = false; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { Forks.legacy = false; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 });

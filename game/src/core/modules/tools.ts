@@ -105,6 +105,11 @@ const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
 /** 通緝卡: one per city even in 大富豪模式's unlimited shop (17 §3.5, §3.10). */
 const WANTED_CARD = 36;
 const shopAlways = (id: number) => TYCOON_SHOP_ALWAYS.includes(id);
+/**
+ * The computer buys at most one copy of each card per shop visit, in both modes (the user 2026-10-19; docs/rules/05
+ * §10.2): off, the original's one candidate per remaining copy (the golden test checks it).
+ */
+export const REMAKE_AI_ONE_CARD = { on: true };
 /** Hand limit for buying cards (05 §8.4, the card module's HAND_LIMIT). */
 const HAND_LIMIT = 15;
 
@@ -1226,14 +1231,17 @@ export class Tools {
     const P = p.points;
     if (P === 0) return;
     let bc = P >> 1, bt = P - (P >> 1);
-    // 5. Cards: one candidate per remaining copy, most expensive first (stable sort; Watcom qsort order 推测).
-    // 大富豪模式 (17 §3.10): one candidate per card — the always-stocked ones, the 通緝卡 while its city's copy is
-    // in, the others while the nationwide pool has one.
+    // 5. Cards: one candidate per remaining copy, most expensive first (stable sort; Watcom qsort order 推测); the
+    // remake: one per card (REMAKE_AI_ONE_CARD).
+    // 大富豪模式 (17 §3.10, the user 2026-10-19): the computer sees the same shelf as the human and buys at most one of
+    // each card on it — the always-stocked cards too (buying again and again is the human's alone).
     const cands: number[] = [];
     const inShop = (id: number) => (!g.world ? g.cards.remaining[id - 1] > 0 : id === WANTED_CARD ? (g.cards.wanted ?? 1) > 0 : shopAlways(id) || g.cards.remaining[id - 1] > 0);
+    const shelf = g.world ? new Set(this.cardShelf()) : null;
     g.cards.remaining.forEach((n, i) => {
       const [, price, f7] = CARD_INFO[i] ?? ['', 0, 0];
-      if (g.world) n = inShop(i + 1) ? 1 : 0;
+      if (shelf) n = shelf.has(i + 1) ? 1 : 0;
+      else if (REMAKE_AI_ONE_CARD.on) n = Math.min(n, 1);
       if (price <= bc && !hated(f7)) for (let k = 0; k < n; k++) cands.push(i + 1);
     });
     cands.sort((a, b) => cardPrice(b) - cardPrice(a));

@@ -292,6 +292,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     w.players.forEach((p, i) => Object.assign(p, keep[i]));
     w.settings.maps.push(FINALE_MAP);
     w.cities.push(g);
+    w.syncWanted(); // the city's own 通緝卡 flag (Cards.wanted), as a loaded world sets it
     // Chips have fixed prices (19 §2.3): the city's price index stays 1 (the world's goes on for the frozen cities).
     Object.assign(g, { date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: 1 });
     // The eight plots: the casino's plot price and level cost (× the price index where it is used, as every price),
