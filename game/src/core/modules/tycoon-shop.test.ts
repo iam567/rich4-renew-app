@@ -49,16 +49,21 @@ describe.skipIf(!have)('大富豪模式 shop without stock (17 §3.10)', () => {
     expect(g.tools.cardShelf()).not.toContain(36);
   });
 
-  it('a bought card or tool stays on the shelf; the pool and the stock never go below 0', () => {
+  it('every card and tool is on the shelf even with no stock, each cell once per visit; pool and stock never below 0', () => {
     const { g, me } = world();
     me.points = 2000; me.cards = []; me.tools = me.tools.map(() => 0);
     g.tools.shopStock.fill(0);
     g.cards.remaining.fill(0);
     const asks = shop(g, me, [{ buy: 'card', index: 2 }, { buy: 'card', index: 2 }, { buy: 'tool', index: 7 }, { buy: 'tool', index: 7 }, null]);
-    expect(me.cards).toEqual([3, 3]);
-    expect(me.tools[7]).toBe(2);
-    expect(asks.at(-1)!.cards[2]).toBe(3);
-    expect(asks.at(-1)!.tools[7]).toBe(8);
+    // The second purchase of the same cell is refused (the user 2026-10-19: no buying the same thing again and again).
+    expect(me.cards).toEqual([3]);
+    expect(me.tools[7]).toBe(1);
+    expect(asks[0].cards[2]).toBe(3);
+    expect(asks[0].tools[7]).toBe(8);
+    expect(asks.at(-1)!.cards[2]).toBe(0);
+    expect(asks.at(-1)!.tools[7]).toBe(0);
+    // Next visit: everything is back on the shelf.
+    expect(g.tools.cardShelf()).toContain(3);
     expect(Math.min(...g.cards.remaining)).toBe(0);
     expect(Math.min(...g.tools.shopStock)).toBe(0);
   });

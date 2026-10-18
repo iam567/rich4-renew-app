@@ -1174,14 +1174,15 @@ export class Tools {
         this.shopCard(p, id);
         g.stats?.cardBought(p.id, id, price);
         if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
-        // A bought cell is sold out for this visit; 大富豪模式's shelf never runs out (but the one 通緝卡 does).
-        if (!g.world || id === WANTED_CARD) cards[a.index] = 0;
+        // A bought cell is sold out for this visit, 大富豪模式 too (the user 2026-10-19: its shelf has every card, never
+        // out of stock between visits, but each cell is bought once per visit — no buying the same card again and again).
+        cards[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('buy' in a && a.buy === 'tool') {
         const id = tools[a.index] ?? 0, price = id ? TOOLS[id - 1].price : 0;
         if (!id || p.points < price || p.tools[id - 1] >= MAX_HELD) continue;
         this.buyTool(p, id);
-        if (!g.world) tools[a.index] = 0;
+        tools[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('sell' in a && a.sell === 'card') {
         if (!p.cards[a.index]) continue;
