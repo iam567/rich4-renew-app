@@ -137,6 +137,11 @@
   opacity: 0; transition: opacity .2s; pointer-events: none; font-family: "Arial Rounded MT Bold", "Huninn", sans-serif; }
 .kbm-mach.gogo .kbs-gogo { opacity: 1; animation: kbs-gogo .5s ease-in-out infinite alternate; }
 @keyframes kbs-gogo { to { transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 0 32px 14px rgba(255, 220, 60, .9); } }
+.kbs-mode { position: absolute; left: 50%; top: 22.6%; z-index: 3; transform: translate(-50%, -50%); padding: 1px 14px; border-radius: 14px; font-size: 24px; line-height: 1.25;
+  white-space: nowrap; pointer-events: none; opacity: 0; transition: opacity .2s; border: 3px solid #fff; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,.45); }
+.kbs-mode.chance { opacity: 1; background: linear-gradient(#ffe36a, #ff9f1c); color: #6a1a00; text-shadow: none; box-shadow: 0 0 16px 6px rgba(255, 210, 60, .9); animation: kbp-blink .45s steps(2) infinite; }
+.kbs-mode.high { opacity: 1; background: linear-gradient(#c58aff, #7a2ad8); box-shadow: 0 0 14px 4px rgba(190, 120, 255, .85); }
+.kbm-banner.kbs-bn.chance { background: linear-gradient(#fff36a, #ffb21c); color: #6a1a00; }
 .kbs-lamps { position: absolute; left: 6%; right: 6%; top: 28.6%; height: 4.2%; border-radius: 99px; z-index: 2; pointer-events: none; opacity: 0; }
 .kbm-mach.gogo .kbs-lamps { opacity: 1; animation: kbs-lamps .3s steps(2) infinite; }
 @keyframes kbs-lamps { 0% { box-shadow: 0 0 20px 6px rgba(255, 60, 120, .9); } 100% { box-shadow: 0 0 20px 6px rgba(255, 230, 60, .9); } }

@@ -3,7 +3,7 @@
  * pachislot, played with 點券. The human plays them on the screens (ui/screens/kb-pachinko.ts, kb-pachislot.ts) driving
  * the same machine objects with the same random stream; a computer's whole session is resolved at once (`aiSession`).
  * The numbers are the design's (editor/kabukicho_sim.py measured them): pachinko pays about 0.94 per ball at the
- * nails' sweet spot (0.81 off it), pachislot 0.970 per game; a session is at most 400 balls / 40 games (≈ 60 s).
+ * nails' sweet spot (0.81 off it), pachislot about 0.97 per game (chance roles and 高確率 included); a session is at most 400 balls / 100 games.
  */
 import type { Rng } from '../rng';
 
@@ -86,14 +86,31 @@ export class Pachinko {
 // ------------------------------------------------------------------ pachislot (§7.3)
 
 export type Role = 'none' | 'replay' | 'bell' | 'cherry' | 'suika' | 'BIG' | 'REG';
+/**
+ * The normal-time lottery (the user 2026-10-18, a Japanese pachislot's feel): small roles, rare bonuses of their own;
+ * most bonuses come from the chance roles and the 高確率 mode below. BIG pays 54, REG 20; about 0.987 per game.
+ */
 export const SLOT_TABLE: { role: Role; p: number; pay: number }[] = [
-  { role: 'replay', p: 1 / 7.3, pay: 3 }, { role: 'bell', p: 1 / 8, pay: 7 }, { role: 'cherry', p: 1 / 40, pay: 4 },
-  { role: 'suika', p: 1 / 80, pay: 6 }, { role: 'BIG', p: 1 / 150, pay: 180 }, { role: 'REG', p: 1 / 300, pay: 75 },
+  { role: 'replay', p: 1 / 7.3, pay: 3 }, { role: 'bell', p: 1 / 8, pay: 6 }, { role: 'cherry', p: 1 / 60, pay: 2 },
+  { role: 'suika', p: 1 / 120, pay: 4 }, { role: 'BIG', p: 1 / 600, pay: 54 }, { role: 'REG', p: 1 / 900, pay: 20 },
 ];
-export const SLOT_CAP = 40;
+/** A chance role (チャンス！): the next game wins a bonus with this chance (西瓜 1/3, 櫻桃 1/2). */
+export const CHANCE_NEXT: Partial<Record<Role, number>> = { suika: 1 / 3, cherry: 1 / 2 };
+/** After any bonus: 高確率 for 10 games, each a bonus 1 time in 4 (a bonus inside them does not restart the count). */
+export const HIGH_GAMES = 10;
+export const HIGH_BONUS = 0.25;
+/** A bonus drawn by a chance or in 高確率 is a BIG two times in three. */
+export const BIG_SHARE = 2 / 3;
+export const SLOT_CAP = 100;
 export const SLOT_BET = 3;
+/** The BIG chance of the normal lottery; news 「全台設定6」 makes it 1.5× for three days. */
+export const SLOT_BIG = 1 / 600;
+export const SLOT_BIG_BOOST = 1 / 400;
 
-/** One pachislot machine for one visit. A bonus that was not lined up is kept for the next game (持ち越し). */
+/**
+ * One pachislot machine for one visit. A bonus that was not lined up is kept for the next game (持ち越し). A 櫻桃 /
+ * 西瓜 makes the next game a チャンス (`chance`); a lined-up bonus starts 高確率 (`high` games left).
+ */
 export class Pachislot {
   medals = 0;
   bought = 0;
@@ -102,9 +119,15 @@ export class Pachislot {
   reg = 0;
   /** A bonus flag waiting to be lined up (light 目押し: the human stops the reels near the 7s). */
   pending: Role | null = null;
+  /** The chance role of the last game (its next game may win a bonus), or null. */
+  chance: Role | null = null;
+  /** 高確率 games left. */
+  high = 0;
+  /** The pending bonus was drawn in 高確率 (it does not restart the count). */
+  private inHigh = false;
 
-  /** `big`: the BIG chance (news 「全台設定6」 makes it 1/100 for three days). */
-  constructor(readonly rng: Rng, readonly maxBuys: number, readonly bigChance = 1 / 150) {}
+  /** `bigChance`: the normal lottery's BIG chance (news 「全台設定6」: SLOT_BIG_BOOST for three days). */
+  constructor(readonly rng: Rng, readonly maxBuys: number, readonly bigChance = SLOT_BIG) {}
 
   get done(): boolean { return this.games >= SLOT_CAP || (this.medals < SLOT_BET && this.bought >= this.maxBuys); }
 
@@ -114,15 +137,42 @@ export class Pachislot {
     return true;
   }
 
-  /** Starts a game: the internal lottery (the stops only line it up). Returns the role drawn, or null when it cannot. */
+  /** A bonus drawn by a chance or in 高確率: BIG or REG. */
+  private bonus(inHigh: boolean): Role { const b: Role = p(this.rng) < BIG_SHARE ? 'BIG' : 'REG'; this.pending = b; this.inHigh = inHigh; return b; }
+
+  /**
+   * Starts a game: the internal lottery (the stops only line it up). Returns the role drawn, or null when it cannot.
+   * A kept bonus comes back first; then 高確率 (a bonus 1 in 4), then a チャンス (西瓜 1/3, 櫻桃 1/2), then the
+   * normal table (a small role in 高確率 / after a chance that missed).
+   */
   start(): Role | null {
     if (this.done) return null;
     if (this.medals < SLOT_BET && !this.buy()) return null;
     this.medals -= SLOT_BET; this.games += 1;
     if (this.pending) return this.pending;
+    const chance = this.chance;
+    this.chance = null;
+    let bonusOk = true;
+    if (this.high > 0) {
+      this.high -= 1;
+      if (p(this.rng) < HIGH_BONUS) return this.bonus(true);
+      bonusOk = false;
+    } else if (chance) {
+      if (p(this.rng) < (CHANCE_NEXT[chance] ?? 0)) return this.bonus(false);
+      bonusOk = false;
+    }
     const r = p(this.rng);
     let acc = 0;
-    for (const e of SLOT_TABLE) { acc += e.role === 'BIG' ? this.bigChance : e.p; if (r < acc) { if (e.role === 'BIG' || e.role === 'REG') this.pending = e.role; return e.role; } }
+    for (const e of SLOT_TABLE) {
+      const bonus = e.role === 'BIG' || e.role === 'REG';
+      acc += e.role === 'BIG' ? this.bigChance : e.p;
+      if (r < acc) {
+        if (bonus && !bonusOk) return 'none';
+        if (bonus) { this.pending = e.role; this.inHigh = false; }
+        if ((e.role === 'cherry' || e.role === 'suika') && bonusOk) this.chance = e.role;
+        return e.role;
+      }
+    }
     return 'none';
   }
 
@@ -132,6 +182,9 @@ export class Pachislot {
       if (!lined) return 0;
       this.pending = null;
       if (role === 'BIG') this.big += 1; else this.reg += 1;
+      // 高確率 for the next 10 games, not restarted by a bonus inside them.
+      if (!this.inHigh) this.high = HIGH_GAMES;
+      this.inHigh = false;
     }
     const pay = SLOT_TABLE.find(e => e.role === role)?.pay ?? 0;
     this.medals += pay;
@@ -169,13 +222,14 @@ export function aiSession(rng: Rng, kind: MachineKind, buys: number, boost = fal
     }
     return { kind, buys: m.bought, left: m.balls, a: m.firstHits, b: m.hits, played: m.fired };
   }
-  const m = new Pachislot(rng, buys, boost ? 1 / 100 : 1 / 150);
+  const m = new Pachislot(rng, buys, boost ? SLOT_BIG_BOOST : SLOT_BIG);
   m.buy();
   while (!m.done) {
     const role = m.start();
     if (!role) break;
     m.settle(role, true);
-    if ((role === 'BIG' || role === 'REG') && m.medals >= m.bought * MEDALS_PER_BUY * 1.5) break;
+    // 收手 once 1.5× ahead after a bonus, but never inside 高確率 or a チャンス.
+    if (m.big + m.reg > 0 && m.high === 0 && !m.chance && m.medals >= m.bought * MEDALS_PER_BUY * 1.5) break;
   }
   return { kind, buys: m.bought, left: m.medals, a: m.big, b: m.reg, played: m.games };
 }

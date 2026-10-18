@@ -47,8 +47,8 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
 
   it('tables add up: the incident chances and the decks', () => {
     for (const [shop, total] of Object.entries(INCIDENT_TOTAL)) expect(INCIDENTS.filter(i => i.shop === Number(shop)).reduce((a, i) => a + i.w, 0)).toBe(total);
-    expect(KB_NEWS).toHaveLength(24);
-    expect(KB_FATE).toHaveLength(24);
+    expect(KB_NEWS).toHaveLength(25);
+    expect(KB_FATE).toHaveLength(26);
   });
 
   it('the machines pay a little under 1 and end within a session', () => {
@@ -304,5 +304,76 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     drain(kb.step(g, p, 0) as Generator<unknown, unknown, unknown>);                  // stopping on it
     expect(kb.s.gang.holder).toBe(0);
     expect(kb.s.gang.days).toBe(7);
+  });
+  it('prison (2026-10-18): a fate arrest jails a child like a grown-up; 免罪卡 cancels it; the raid takes grown-ups only', () => {
+    const g = new Game(settings(51, [9, 0, 4, 11]), board()), kb = kbRules(g)!;
+    const drain = (f: Generator<unknown, unknown, unknown>) => { let r = f.next(); const out: Step[] = []; while (!r.done) { out.push(r.value as Step); r = f.next(); } return out; };
+    for (const q of g.players) { q.placed = true; q.whoPlays = 2; q.god = 0; q.cards = []; }
+    const kid = g.players[0];
+    const fight = KB_FATE.find(c => c.id === 'kb-f-fight')!;
+    drain(kb.runFate(g, kid, fight) as Generator<unknown, unknown, unknown>);
+    expect(kid.prison).toBe(5);
+    expect(kid.stay).toBe(0);
+    const adult = g.players[1];
+    adult.cards = [21];
+    drain(kb.runFate(g, adult, KB_FATE.find(c => c.id === 'kb-f-casino')!) as Generator<unknown, unknown, unknown>);
+    expect(adult.prison).toBe(0);
+    expect(adult.cards).not.toContain(21);
+    const raid = KB_NEWS.find(c => c.id === 'kb-n-raid')!;
+    for (const q of g.players) { q.prison = 0; q.hospital = 0; }
+    drain(kb.runNews(g, g.players[2], raid) as Generator<unknown, unknown, unknown>);
+    expect(g.players.filter(q => q.prison).length).toBeGreaterThan(0);
+    for (const q of g.players) if (MINORS.has(q.character)) expect(q.prison).toBe(0);
+  });
+
+  it('a god\'s waiver says why: 大財神附身，消費免付！', () => {
+    const g = new Game(settings(52), board()), kb = kbRules(g)!;
+    const p = g.players[0];
+    const god = (t: number) => { (g.objects as unknown as { godType: (q: unknown) => number }).godType = () => t; };
+    god(2); expect(kb.godFeeText(g, p, '消費', 6000, 0)).toBe('大財神附身，消費免付！');
+    god(1); expect(kb.godFeeText(g, p, '消費', 6000, 3000)).toBe('小財神附身，消費減半\n3,000元');
+    god(6); expect(kb.godFeeText(g, p, '住宿費', 6000, 12000)).toBe('大窮神附身，住宿費加倍\n12,000元');
+  });
+
+  it('計程車券 for a human: picked on the map like a missile — oneself and every rival on the road glow', () => {
+    const g = new Game(settings(53), board()), kb = kbRules(g)!;
+    const [me, a, b, c] = g.players;
+    for (const q of g.players) { q.placed = true; q.whoPlays = 2; }
+    me.whoPlays = 1; me.tools[17] = 1; b.hospital = 3;
+    const flow = kb.useTool(g, me, 18) as Generator<Step, unknown, unknown>;
+    let r = flow.next();
+    while (!r.done && !(r.value as { ask?: boolean }).ask) r = flow.next();
+    const asked = r.value as unknown as { t: string; spots: { at: string; id: number }[]; cancellable: boolean };
+    expect(asked.t).toBe('pick-map');
+    expect(asked.cancellable).toBe(true);
+    expect(asked.spots.every(x => x.at === 'actor')).toBe(true);
+    expect(asked.spots.map(x => x.id).sort()).toEqual([me.id, a.id, c.id].sort());
+    r = flow.next(asked.spots.findIndex(x => x.id === c.id) as never);
+    while (!r.done) r = flow.next();
+    expect(r.value).toBe(true);
+    expect(kb.s.taxi[c.id]).toBe(1);
+  });
+
+  it('pachislot (2026-10-18): チャンス after 西瓜 / 櫻桃, 高確率 10 games after a bonus, 100 games, a little under 1', () => {
+    expect(M.SLOT_CAP).toBe(100);
+    const m = new M.Pachislot(new Rng(5), 1e9);
+    let bet = 0, paid = 0, chances = 0, chanceWins = 0, high = 0, highWins = 0;
+    for (let i = 0; i < 300000; i++) {
+      m.games = 0; m.medals = 1e6;
+      const wasChance = !!m.chance, wasHigh = m.high > 0;
+      const before = m.high;
+      const role = m.start()!;
+      const bonus = role === 'BIG' || role === 'REG';
+      if (wasChance) { chances++; if (bonus) chanceWins++; }
+      if (wasHigh) { high++; if (bonus) highWins++; expect(m.high).toBe(before - 1); }
+      bet += M.SLOT_BET; paid += m.settle(role, true);
+      if (bonus && !wasHigh) expect(m.high).toBe(M.HIGH_GAMES);
+    }
+    expect(chanceWins / chances).toBeGreaterThan(0.38);
+    expect(chanceWins / chances).toBeLessThan(0.5);
+    expect(highWins / high).toBeGreaterThan(0.2);
+    expect(highWins / high).toBeLessThan(0.3);
+    expect(paid / bet).toBeGreaterThan(0.95);
+    expect(paid / bet).toBeLessThan(1);
   });
 });

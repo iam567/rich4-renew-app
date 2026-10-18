@@ -783,7 +783,7 @@ export class Stocks {
   private *collect(p: Player, ownerId: number, total: number, fee: string): Flow<{ payer: number; amount: number } | null> {
     const g = this.g;
     let amount = g.godModify(p, total);
-    if (amount !== total) yield* g.say(p.id, amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`);
+    if (amount !== total) yield* g.say(p.id, g.rules?.godFeeText?.(g, p, fee, total, amount) ?? (amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`));
     if (amount === 0) return null;
     const r = yield* g.cards.tollPassive(p, ownerId, amount);
     let payer = r.payer;

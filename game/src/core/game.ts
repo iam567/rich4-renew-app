@@ -163,6 +163,11 @@ export interface MapRules {
   readonly hotelType?: number;
   /** What a staying player is said to be doing instead of 住宿中 (歌舞伎町: a child taken to the amusement park, §3). */
   stayLabel?(g: Game, p: Player): string | undefined;
+  /**
+   * The bubble when a god changes a payment (歌舞伎町, docs/rules/21 §2: the reason first, 「大財神附身，消費免付！」);
+   * without it the original's 「…免付！」 / 「…改為N元」.
+   */
+  godFeeText?(g: Game, p: Player, fee: string, total: number, amount: number): string;
   /** This map's own cards, outside the pool (歌舞伎町's 37 保鑣卡, 38 暴走卡): they can be held. */
   readonly ownCards?: readonly number[];
   /** Plays one of `ownCards` that is not passive (暴走卡); false: nothing happened, the card is kept. */
@@ -1045,7 +1050,7 @@ export class Game {
    */
   *collect(p: Player, owner: Player, total: number, fee: string, cardsAllowed: boolean): Flow<{ payer: number; amount: number } | null> {
     let amount = this.godModify(p, total);
-    if (amount !== total) yield* this.say(p.id, amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`);
+    if (amount !== total) yield* this.say(p.id, this.rules?.godFeeText?.(this, p, fee, total, amount) ?? (amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`));
     if (amount === 0) return null;
     this.addHostility(p.id, owner.id, Math.trunc(amount / 100));
     let payer = p.id;
@@ -1203,7 +1208,7 @@ export class Game {
    */
   *hotelPay(p: Player, owner: Player, f: Facility, total: number, fee: string): Flow<Player | null> {
     let amount = this.godModify(p, total), stayer: Player | null = p;
-    if (amount !== total) yield* this.say(p.id, amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`);
+    if (amount !== total) yield* this.say(p.id, this.rules?.godFeeText?.(this, p, fee, total, amount) ?? (amount === 0 ? `${fee}免付！` : `${fee}改為${amount}元`));
     if (amount <= 0) return stayer;
     this.addHostility(p.id, owner.id, Math.trunc(amount / 100));
     const r = yield* this.cards.tollPassive(p, owner.id, amount);

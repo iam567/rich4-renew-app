@@ -30,10 +30,10 @@ export interface Incident { id: string; shop: number; w: number; title: string; 
 
 export const INCIDENTS: Incident[] = [
   // 居酒屋 (§2.3): 15 %
-  { id: 'poison', shop: 10, w: 50, title: '食物中毒', visitor: '免單・住院轉盤', owner: '罰3R・停1回合', pic: 'kb-i-izakaya-poison', bad: true },
+  { id: 'poison', shop: 10, w: 50, title: '食物中毒', visitor: '住院轉盤 0–3 天', owner: '罰3R・停1回合', pic: 'kb-i-izakaya-poison', bad: true },
   { id: 'drunk', shop: 10, w: 30, title: '急性酒精中毒', visitor: '付帳・住院轉盤', owner: '收帳單', pic: 'kb-i-izakaya-drunk', alcohol: true, bad: true },
-  { id: 'dash', shop: 10, w: 20, title: '喝霸王酒', visitor: '想跑：一半被抓付×2', owner: '抓到收×2', pic: 'kb-i-izakaya-dash', alcohol: true },
-  { id: 'tv', shop: 10, w: 30, title: '美食節目採訪', visitor: '付帳・上電視', owner: '收帳單＋4R', pic: 'kb-i-izakaya-tv' },
+  { id: 'dash', shop: 10, w: 20, title: '喝霸王酒', visitor: '一半跑掉；被抓：付×2・坐牢2天', owner: '抓到收×2', pic: 'kb-i-izakaya-dash', alcohol: true },
+  { id: 'tv', shop: 10, w: 30, title: '美食節目採訪', visitor: '付帳', owner: '收帳單＋宣傳費4R', pic: 'kb-i-izakaya-tv' },
   { id: 'treat', shop: 10, w: 20, title: '隔壁桌請客', visitor: '免單', owner: '收帳單', pic: 'kb-i-izakaya-treat', alcohol: true },
   // 陪酒店 (§2.4): 25 %
   { id: 'ripoff', shop: 11, w: 60, title: '敲竹槓被檢舉', visitor: '只付正常帳單', owner: '罰4R・停1回合', pic: 'kb-i-club-ripoff', gendered: true },
@@ -43,11 +43,11 @@ export const INCIDENTS: Incident[] = [
   { id: 'cdrunk', shop: 11, w: 30, title: '急性酒精中毒', visitor: '付帳・住院轉盤', owner: '收帳單', pic: 'kb-i-club-drunk', alcohol: true, bad: true, gendered: true },
   { id: 'late', shop: 11, w: 30, title: '超時營業', visitor: '免單', owner: '罰3R・停業3天', pic: 'kb-i-club-late', gendered: true },
   // 泡泡浴 (§2.5): 35 %
-  { id: 'slip', shop: 12, w: 80, title: '浴室滑倒', visitor: '住院轉盤・賠償＋2R', owner: '賠2R', pic: 'kb-i-bath-slip', bad: true },
+  { id: 'slip', shop: 12, w: 80, title: '浴室滑倒', visitor: '住院轉盤 0–3 天', owner: '罰2R', pic: 'kb-i-bath-slip', bad: true },
   { id: 'locker', shop: 12, w: 70, title: '置物櫃被撬', visitor: '現金 −10%', owner: '—', pic: 'kb-i-bath-locker', bad: true },
-  { id: 'vip', shop: 12, w: 60, title: '貴賓招待', visitor: '付帳・＋30點券', owner: '收帳單', pic: 'kb-i-bath-vip' },
+  { id: 'vip', shop: 12, w: 60, title: '貴賓招待', visitor: '免單・＋30點券', owner: '招待，不收錢', pic: 'kb-i-bath-vip' },
   { id: 'licence', shop: 12, w: 70, title: '無照營業', visitor: '免單', owner: '罰4R・降級・停1回合', pic: 'kb-i-bath-licence' },
-  { id: 'extend', shop: 12, w: 70, title: '延長服務', visitor: '帳單×2（女客免費）', owner: '收帳單', pic: 'kb-i-bath-extend', bad: true },
+  { id: 'extend', shop: 12, w: 70, title: '延長服務', visitor: '帳單×2（女客：當作沒事件）', owner: '收帳單', pic: 'kb-i-bath-extend', bad: true },
 ];
 /** The incident chance of each shop (‰ of visits, §2). */
 export const INCIDENT_TOTAL: Record<number, number> = { 10: 150, 11: 250, 12: 350 };
@@ -140,9 +140,11 @@ export const KB_NEWS: KbCard[] = [
   N('kb-n-taxistrike', 0, '路況報導', '計程車大罷工', '計程車罷工！／3天只擲1顆骰子'),
   N('kb-n-blackout', 0, '政府公告', '霓虹燈節電令', '霓虹燈節電令！／3天過路費減半'),
   N('kb-n-exchange', 1, '娛樂新聞', '景品交換所改裝', '景品所改裝！／景品3天七折'),
-  N('kb-n-ordinance', 0, '政府公告', '暴力團排除條例', '暴排條例上路！／附身者交出一半保護費'),
+  N('kb-n-ordinance', 0, '政府公告', '暴力團排除條例', '暴排條例上路！／黑幫附身者被抓'),
   N('kb-n-hostweek', 1, '娛樂新聞', '陪酒店週年慶', '陪酒店週年慶！／3天女客免費'),
   N('kb-n-stocks', 1, '財經新聞', '娛樂概念股大漲', '娛樂股大漲！／{stock}漲停2天'),
+  // 2026-10-18 (the user: prison as often as hospital): the retired 地下賭場 raid picture; the grown-ups there are taken in.
+  N('kb-n-raid', 0, '社會新聞', '地下賭場被抄', '地下賭場被抄！／在場的人坐牢2天'),
 ];
 
 /** `kid`: the child-safe text (§3) where the adult one does not fit a child; the effect is the same unless noted. */
@@ -155,15 +157,15 @@ export const KB_FATE: KbCard[] = [
   F('kb-f-kaiju', 0, '被怪獸頭嚇到', '被怪獸頭嚇到！／手機摔壞了'),
   F('kb-f-parttime', 1, '打工領薪水', '居酒屋打工！／薪水＋{amount}元', '發傳單！／零用錢＋{amount}元'),
   F('kb-f-gang', 2, '黑幫收小弟', '黑幫收小弟！／黑幫附身'),
-  F('kb-f-trouble', 0, '店裡有人鬧事', '店裡有人鬧事！／店降一級'),
-  F('kb-f-fake', 0, '買到假名牌', '買到假名牌！／−{amount}元', '買到假玩具！／−{amount}元'),
+  F('kb-f-trouble', 0, '在店裡鬧事', '在店裡鬧事！／被抓坐牢2天', '在店裡大吵大鬧！／被抓坐牢2天'),
+  F('kb-f-fake', 0, '賣假名牌', '賣假名牌被抓！／坐牢3天', '賣假玩具被抓！／坐牢3天'),
   F('kb-f-photo', 1, '被街拍', '上了雜誌！／＋30點券'),
   F('kb-f-lottery', 1, '抽中特獎', '抽中特獎！／＋{amount}點券', '抽中特獎！／＋{amount}點券'),
   F('kb-f-taxi', 2, '被載到柏青哥店', '被載到柏青哥店！', '公車坐過站！／到柏青哥店'),
   F('kb-f-lovehotel', 0, '主題房生日派對', '主題房生日派對！／住進情人酒店', '迷路了！／繞了一圈'),
   F('kb-f-lasttrain', 0, '錯過末班車', '錯過末班車！／網咖過夜・停一回合', '下課太晚！／等家人・停一回合'),
   F('kb-f-slip', 0, '巷子裡滑倒', '巷子裡滑倒！／住院轉盤'),
-  F('kb-f-fight', 0, '喝醉打架', '喝醉打架！／拘留2天', '跟人吵架！／禁足2回合'),
+  F('kb-f-fight', 0, '酒後打架', '酒後打架被捕！／坐牢5天', '跟人打架被抓！／坐牢5天'),
   F('kb-f-referral', 1, '介紹客人', '介紹客人！／對手各付{amount}元', '幫店發傳單！／對手各付{amount}元'),
   F('kb-f-sign', 0, '招牌被吹落', '招牌被吹落！／一塊地降一級'),
   F('kb-f-vip', 1, 'VIP會員卡', 'VIP會員卡！／下次進店只付一倍', '兒童會員卡！／下次進店只付一倍'),
@@ -171,8 +173,12 @@ export const KB_FATE: KbCard[] = [
   F('kb-f-flyers', 1, '發傳單', '發傳單！／點券＋現金'),
   F('kb-f-gift', 1, '收到禮物', '{host}送你禮物！／＋1張卡片', '阿姨送你糖果！／＋1張卡片'),
   F('kb-f-skimming', 0, '信用卡被盜刷', '信用卡被盜刷！', '零用錢被盜領！'),
+  // 2026-10-18 (the user: prison as often as hospital): two of the retired 地下賭場 pictures, a gambling arrest and a card cheat.
+  F('kb-f-casino', 0, '賭博現行犯', '賭博現行犯！／坐牢3天', '偷溜進賭場被抓！／坐牢3天'),
+  F('kb-f-cheat', 0, '牌局出千', '牌局出千被抓！／坐牢4天', '玩牌作弊被抓！／坐牢4天'),
 ];
-export const KB_CARDS = [...KB_NEWS, ...KB_FATE];
+/** Board ids keep the first 24 + 24 in place; the cards added later follow them (news, then fate). */
+export const KB_CARDS = [...KB_NEWS.slice(0, 24), ...KB_FATE.slice(0, 24), ...KB_NEWS.slice(24), ...KB_FATE.slice(24)];
 /** Board ids of these cards (the news / fate box): 2000 + index (1000.. are 大富豪模式's local events). */
 export const KB_ID_BASE = 2000;
 export const kbCardById = (id: number): KbCard | undefined => (id >= KB_ID_BASE ? KB_CARDS[id - KB_ID_BASE] : undefined);

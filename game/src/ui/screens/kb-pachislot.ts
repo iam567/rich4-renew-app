@@ -7,11 +7,12 @@
  * BIG / REG light the 「GOGO」 lamp: the player stops each reel with its 7 (red for BIG, blue for REG) within ±4
  * symbols of the line (a light 目押し); a miss keeps the bonus for the next game (`settle(role, false)`, 持ち越し) and
  * turns on the 目押し補助 arrows that light when a press would line the 7 up. A lined-up bonus plays a few seconds of
- * celebration while its medals pour in. 「買幣」 buys 50 medals for 10 點券; 「收手」 ends it any time; it ends by
- * itself after 40 games or with no medals and no buys left.
+ * celebration while its medals pour in. A 西瓜 / 櫻桃 lights 「チャンス！」 (the next game wins a bonus 1/3 / 1/2); after a
+ * bonus the 「高確率」 lamp counts its 10 games down (a bonus 1 in 4 each). 「買幣」 buys 50 medals for 10 點券; 「收手」
+ * ends it any time; it ends by itself after 100 games or with no medals and no buys left.
  */
 import { Rng } from '../../core/rng';
-import { BUY_POINTS, MEDALS_PER_BUY, Pachislot, SLOT_BET, SLOT_CAP, type Role } from '../../core/modules/kb-machines';
+import { BUY_POINTS, HIGH_GAMES, MEDALS_PER_BUY, Pachislot, SLOT_BET, SLOT_BIG, SLOT_BIG_BOOST, SLOT_CAP, type Role } from '../../core/modules/kb-machines';
 import { banner, countUp, fmt, games, headHtml, MACH, openMachine, preloadArt, statsHtml, wait, type KbMachineAsk, type MachineAnswer } from './kb-machine';
 import type { ScreenContext } from './registry';
 import type { Scene } from './place-scene';
@@ -51,13 +52,13 @@ class PachislotPage {
   assist = false;
   /** Medals already in m.medals but still pouring in on screen. */
   hidden = 0;
-  msg = '按「開始」，再按三個「停」';
+  msg = 'チャンス：西瓜・櫻桃／BONUS後高確率10回';
   resolve!: (a: MachineAnswer) => void;
   private last = 0;
   private looping = false;
 
   constructor(readonly ctx: ScreenContext, readonly ask: KbMachineAsk) {
-    this.m = new Pachislot(new Rng(ask.seed), ask.maxBuys, ask.boost ? 1 / 100 : 1 / 150);
+    this.m = new Pachislot(new Rng(ask.seed), ask.maxBuys, ask.boost ? SLOT_BIG_BOOST : SLOT_BIG);
     this.m.buy();
     this.m.medals += ask.stored;
   }
@@ -78,7 +79,7 @@ class PachislotPage {
     const { head, mach, panel } = this.parts;
     head.innerHTML = headHtml('pachislot', '拉霸');
     const strip = (r: number) => Array.from({ length: ITEMS }, (_, k) => `<img src="${MACH(SYM_ART[STRIPS[r][mod(k - 2)]])}" alt="" draggable="false">`).join('');
-    mach.insertAdjacentHTML('beforeend', `<div class="kbs-lamps"></div><div class="kbs-gogo">GOGO!</div>
+    mach.insertAdjacentHTML('beforeend', `<div class="kbs-lamps"></div><div class="kbs-gogo">GOGO!</div><div class="kbs-mode"></div>
       ${[0, 1, 2].map(r => `<div class="kbs-win" data-r="${r}"><div class="kbs-strip" style="height:${(ITEMS / 3) * 100}%">${strip(r)}</div><i class="kbs-aid">▶</i></div>`).join('')}
       <i class="kbs-line"></i>
       ${[0, 1, 2].map(r => `<button class="kbs-hit kbs-stop-art" data-r="${r}" aria-label="停 ${r + 1}"></button>`).join('')}
@@ -143,6 +144,10 @@ class PachislotPage {
     mach.classList.toggle('gogo', this.gogo);
     mach.classList.toggle('assist', this.assist && this.gogo);
     panel.querySelector('.kbs-lamp')!.classList.toggle('on', this.gogo);
+    // チャンス (the next game may win a bonus) / 高確率 N 回 (the games left), on the machine.
+    const mode = mach.querySelector<HTMLElement>('.kbs-mode')!, chance = !!m.chance && !m.pending && !this.spinning, high = m.high > 0 && !this.busy;
+    mode.className = `kbs-mode${chance ? ' chance' : high ? ' high' : ''}`;
+    mode.textContent = chance ? 'チャンス！' : high ? `高確率 ${m.high} 回` : '';
     panel.querySelector('.kbm-msg')!.textContent = this.msg;
     const idle = !this.spinning && !this.busy && !this.ending;
     panel.querySelector<HTMLButtonElement>('.kbs-start')!.disabled = !idle || m.done || m.medals < SLOT_BET;
@@ -242,6 +247,7 @@ class PachislotPage {
       const start = this.hidden;
       await countUp(ms, t => { this.hidden = start - Math.round(pay * t); this.update(); });
       this.parts.mach.classList.remove('kbs-win-bonus');
+      if (m.high === HIGH_GAMES) this.msg = `高確率 ${HIGH_GAMES} 回！每局 1/4 中 BONUS`;
     } else if (bonus) {
       this.assist = true;
       audio.ui('error');
@@ -250,8 +256,14 @@ class PachislotPage {
       audio.sfx(role === 'replay' ? Sfx.couponFlip : Sfx.points);
       this.parts.mach.querySelector('.kbs-pay')!.textContent = `+${pay}`;
       this.msg = role === 'replay' ? 'Replay：免費再一局' : `${ROLE_NAME[role]} +${pay} 枚`;
+      if (m.chance) {
+        // 西瓜 / 櫻桃: a chance for the next game (1/3, 1/2).
+        this.msg = `${ROLE_NAME[role]}！チャンス：下一局${role === 'cherry' ? '1/2' : '1/3'}中BONUS`;
+        audio.sfx(Sfx.fireworks);
+        void banner(this.parts.mach, '<b>チャンス！</b>', 'kbs-bn chance', 900);
+      }
       this.update();
-      await wait(250);
+      await wait(m.chance ? 600 : 250);
     } else this.msg = '沒中';
     this.hidden = 0;
     this.busy = false;
