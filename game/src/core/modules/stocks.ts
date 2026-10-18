@@ -129,6 +129,8 @@ export function trendOf(s: Stock): Trend {
 
 /** Facility level caps by type (ref_00474940), copied from the core to avoid an import cycle. */
 const FACILITY_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19)
+/** The same with 10..13 歌舞伎町's shops (docs/rules/21), as the core's FACILITY_MAX_LEVEL (REMAKE_FREE_BUILD). */
+const FACILITY_TOP = [...FACILITY_MAX, 5, 5, 5, 5];
 /** Fee names by company category (ref_0047528e → ref_0047517c, 02 §6). */
 const FEE_NAME: Record<number, string> = { 1: '旅遊費', 3: '電腦費', 4: '保險費', 5: '修車費', 6: '加油費', 11: '工程費', 12: '過路費' };
 
@@ -720,12 +722,14 @@ export class Stocks {
     } else if (c.category === 11) {
       const ref = yield* this.pickBuilding(p, '選擇免費加蓋的地產');
       if (!ref) return;
-      const first = g.freeUpgrade(ref);
+      const first = yield* this.freeFloor(p, ref);
       let level = first;
       if (first >= 0 && !(first & 0x80)) { const second = g.freeUpgrade(ref); if (second >= 0) level = second; }
       // core_actions:1810-1861: the robot crew Data#553; when the first floor topped it out, the owner's event[15]
       // and fireworks (only the first call's 0x80 is tested, so a top reached by the second floor stays quiet).
-      if (level >= 0) { yield { t: 'fx', kind: 'free-upgrade', p: p.id, data: { ref, level: level & 0x7f, top: first >= 0 && (first & 0x80) !== 0, own: true } }; yield { t: 'board' }; }
+      // The remake (REMAKE_FREE_BUILD): fireworks whenever the floors top it out.
+      const top = level >= 0 && (level & 0x80) !== 0 && ((first & 0x80) !== 0 || g.remakeFreeBuild);
+      if (level >= 0) { yield { t: 'fx', kind: 'free-upgrade', p: p.id, data: { ref, level: level & 0x7f, top, own: true } }; yield { t: 'board' }; }
     }
   }
 
@@ -760,7 +764,7 @@ export class Stocks {
       }
       case 11: {
         const ref = yield* this.pickBuilding(p, '選擇要加蓋的地產');
-        const level = ref ? g.freeUpgrade(ref) : -1;
+        const level = ref ? yield* this.freeFloor(p, ref) : -1;
         if (ref && level >= 0) {
           // core_actions:2014-2043: the robot crew Data#553, fireworks at the top, no line.
           yield { t: 'fx', kind: 'free-upgrade', p: p.id, data: { ref, level: level & 0x7f, top: (level & 0x80) !== 0, own: false } };
@@ -794,25 +798,42 @@ export class Stocks {
     return { payer, amount };
   }
 
-  /** Properties the player can have built up for free: own lots below the top and built facilities below their cap. */
+  /**
+   * Properties the player can have built up for free: own lots below the top and own large plots — an empty one
+   * (built first) or a facility below its type's top, on every map (REMAKE_FREE_BUILD; off: built facilities of the
+   * original types and 大富翁城's halls only).
+   */
   upgradableRefs(p: Player): number[] {
-    const me = p.id + 1, refs: number[] = [];
+    const me = p.id + 1, refs: number[] = [], all = this.g.remakeFreeBuild;
     this.g.board.lands.forEach((l, i) => { if (l.owner === me && (l.chain ? l.level < 1 : l.level < 5)) refs.push(2001 + i); });
-    this.g.board.facilities.forEach((f, i) => { if (f.owner === me && f.level >= 1 && f.level < FACILITY_MAX[f.type]) refs.push(4001 + i); });
+    this.g.board.facilities.forEach((f, i) => {
+      if (f.owner === me && (all ? f.level === 0 || f.level < FACILITY_TOP[f.type] : f.level >= 1 && f.level < FACILITY_MAX[f.type])) refs.push(4001 + i);
+    });
     return refs;
   }
 
+  /** One free floor (fcn_0040b110): an empty large plot is built first (the facility type asked as for 機器工人). */
+  private *freeFloor(p: Player, ref: number): Flow<number> {
+    const f = ref > 4000 && ref < 6000 ? this.g.board.facilities[ref - 4001] : undefined;
+    if (f && f.level === 0 && this.g.remakeFreeBuild) return yield* this.g.buildEmptyPlot(p, f);
+    return this.g.freeUpgrade(ref);
+  }
+
   /**
-   * Building target for the construction company: human picks a node, computer fcn_0040b455 (推测: the property
-   * whose toll/fee at its current level is highest, like the robot worker's fcn_00421ba6). Returns the ref or 0.
+   * Building target for the construction company, from `upgradableRefs` for both (the original lets a human pick any
+   * lot or large plot, select flags 0x2090086, and the computer's fcn_0040b455 takes its own lots and large plots,
+   * empty ones too): a human taps one, the computer takes the one whose toll/fee at its current level is highest
+   * (the original rates a large plot by its price +0x22, docs/rules/02 §5). Returns the ref or 0.
    */
   private *pickBuilding(p: Player, title: string): Flow<number> {
     const g = this.g;
     const refs = this.upgradableRefs(p);
     if (!refs.length) return 0;
     if (g.isHuman(p)) {
-      const nodes = g.board.nodes.filter(n => refs.includes(n.ref)).map(n => n.id);
-      const id = Number(yield ask({ t: 'pick-node', p: p.id, title, nodes, cancellable: true }));
+      // One choice per property, glowing on the building itself (lots and large plots alike, as for 機器工人).
+      const at = new Map<number, number>();
+      for (const n of g.board.nodes) if (refs.includes(n.ref) && !at.has(n.ref)) at.set(n.ref, n.id);
+      const id = Number(yield ask({ t: 'pick-node', p: p.id, title, nodes: [...at.values()], cancellable: true, plot: true }));
       const node = id > 0 ? g.board.nodes.find(n => n.id === id) : undefined;
       return node && refs.includes(node.ref) ? node.ref : 0;
     }

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from '../board';
 import { addDays, pack, weekday, type PackedDate } from '../date';
 import type { Flow } from '../flow';
-import { Game } from '../game';
+import { Game, REMAKE_FREE_BUILD } from '../game';
 import type { Answer, GameSettings, Step } from '../types';
 import { adjustPrice, formatPrice, STOCK_TABLE, Trend, trendOf } from './stocks';
 
@@ -356,8 +356,12 @@ describe.skipIf(!haveMaps)('stocks on the original maps', () => {
     // The first floor tops it out: line 15 and fireworks (only the first call's 0x80 counts, core_actions:1838).
     lot.level = 4;
     expect(upgrade(drive(st.landOnCompany(boss, nissan)).steps).data).toMatchObject({ level: 5, top: true, own: true });
+    // Topped out by the second floor: quiet in the original; the remake's fireworks (REMAKE_FREE_BUILD).
     lot.level = 3;
-    expect(upgrade(drive(st.landOnCompany(boss, nissan)).steps).data).toMatchObject({ level: 5, top: false });
+    expect(upgrade(drive(st.landOnCompany(boss, nissan)).steps).data).toMatchObject({ level: 5, top: true });
+    lot.level = 3;
+    REMAKE_FREE_BUILD.on = false;
+    try { expect(upgrade(drive(st.landOnCompany(boss, nissan)).steps).data).toMatchObject({ level: 5, top: false }); } finally { REMAKE_FREE_BUILD.on = true; }
     lot.level = 3;
     const own = g.board.lands[5];
     own.owner = visitor.id + 1; own.level = 0;

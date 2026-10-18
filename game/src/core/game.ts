@@ -226,6 +226,15 @@ export function tick(counter: number): number {
  */
 export const REMAKE_HOTEL = { on: true };
 
+/**
+ * The construction company's free floors on the remake's terms (the user 2026-10-18; docs/rules/02 §5): own large plots
+ * can be picked too — an empty one is built first (the facility-type picker, as for 機器工人) — on every map, each type
+ * up to its own top, with fireworks whenever the floors top a property out. `on: false` plays the remake's earlier
+ * rule (own lots and built facilities of the original types only; fireworks only when the first floor tops it out);
+ * the golden test proves that nothing else changed.
+ */
+export const REMAKE_FREE_BUILD = { on: true };
+
 export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
@@ -513,6 +522,21 @@ export class Game {
       return f.level | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
     }
     return -1;
+  }
+
+  /**
+   * Free building on an empty large plot (fcn_0040b110 at level 0, docs/rules/05 §3.8; 機器工人, the construction
+   * company): the facility type first — a human's picker (this map's own on 歌舞伎町 / 大富翁城), a computer's own plot
+   * rand() % 4 + 1 (the map's default type here), someone else's type 0 — then level 1. Returns 1, | 0x80 when that
+   * is already the type's top.
+   */
+  *buildEmptyPlot(p: Player, f: Facility): Flow<number> {
+    const only = this.isHuman(p) && this.rules?.pickFacilityType ? yield* this.rules.pickFacilityType(this, p, f) : this.rules?.facilityType?.(f);
+    f.type = only !== undefined ? only : this.isHuman(p)
+      ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
+      : f.owner === p.id + 1 ? this.rng.rand() % 4 + 1 : 0;
+    f.level = 1;
+    return 1 | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
   }
 
   /**
@@ -1251,6 +1275,8 @@ export class Game {
 
   /** Whether the remake's hotel rules are on (REMAKE_HOTEL; read by the modules, which cannot import it). */
   get remakeHotel(): boolean { return REMAKE_HOTEL.on; }
+  /** Whether the construction company also builds on large plots (REMAKE_FREE_BUILD; read by the stock module). */
+  get remakeFreeBuild(): boolean { return REMAKE_FREE_BUILD.on; }
   /** A hotel of this map (the original 旅館, 歌舞伎町's 情人酒店). */
   isHotel(f: Facility): boolean { return f.type === 1 || f.type === this.rules?.hotelType; }
 

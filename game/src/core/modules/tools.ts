@@ -660,17 +660,10 @@ export class Tools {
     let level = -1;
     if (ref > 4000) {
       const f = g.board.facilities[ref - 4001];
-      if (f.level === 0) {
-        // An empty large plot: choose the facility type first (human dialog; a computer's own plot rand() % 4 + 1).
-        // 大富翁城 (docs/rules/19): only casinos are built there, no type to choose.
-        // A human on a map with its own facilities gets that map's picker (歌舞伎町, 大富翁城).
-        const only = g.isHuman(p) && g.rules?.pickFacilityType ? yield* g.rules.pickFacilityType(g, p, f) : g.rules?.facilityType?.(f);
-        f.type = only !== undefined ? only : g.isHuman(p)
-          ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
-          : f.owner === p.id + 1 ? g.rng.rand() % 4 + 1 : 0;
-        f.level = 1;
-        level = 1 | (f.level >= FACILITY_MAX[f.type] ? 0x80 : 0);
-      } else level = g.freeUpgrade(ref);
+      // An empty large plot: choose the facility type first (human dialog, or that map's own picker on 歌舞伎町 /
+      // 大富翁城; a computer's own plot rand() % 4 + 1), then level 1.
+      if (f.level === 0) level = yield* g.buildEmptyPlot(p, f);
+      else level = g.freeUpgrade(ref);
     } else level = g.freeUpgrade(ref);
     // 超級工人 (17 §3.6): a second free level, when there is room.
     // 大富翁城 (docs/rules/19 §3.6): 機器工人 +2, 超級工人 to the top.
