@@ -227,6 +227,13 @@ export function tick(counter: number): number {
 export const REMAKE_HOTEL = { on: true };
 
 /**
+ * The card pool doesn't wrap below 0 (the user 2026-10-18; docs/rules/04 §2.1): the original keeps each card's copies in
+ * a byte, so a card handed out when none is left wraps to 255 and then fills the whole 128-slot draw pool (every
+ * shelf and draw became 均富卡). `on: false` plays the original's byte (the golden test checks it).
+ */
+export const REMAKE_CARD_POOL = { on: true };
+
+/**
  * The construction company's free floors on the remake's terms (the user 2026-10-18; docs/rules/02 §5): own large plots
  * can be picked too — an empty one is built first (the facility-type picker, as for 機器工人) — on every map, each type
  * up to its own top, with fireworks whenever the floors top a property out. `on: false` plays the remake's earlier

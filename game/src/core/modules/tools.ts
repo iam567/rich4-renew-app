@@ -814,6 +814,8 @@ export class Tools {
     let fork = false;
     for (let i = 0; i < n; i++) {
       const node = g.node(at);
+      // No square to start from (a piece just placed or teleported has no way in, lastNode 0): the route ends here.
+      if (!node) break;
       if (node.adjacent.filter((a, j) => a && a !== from && !(node.oneWay & (8 >> j))).length >= 2) fork = true;
       const next = g.peekNext(p, at, from);
       from = at; at = next;

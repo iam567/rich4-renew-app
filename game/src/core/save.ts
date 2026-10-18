@@ -38,6 +38,12 @@ export interface SaveData {
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
 
+/** A pool slot that wrapped below 0 in an older save (255, 254 …: see Cards.receive) means none left. */
+function repairCardPool(g: { cards: { remaining: number[] } }) {
+  const r = g.cards.remaining;
+  for (let i = 0; i < r.length; i++) if (r[i] > 100) r[i] = 0;
+}
+
 export function saveGame(g: Game): SaveData {
   const modules: SaveData['modules'] = {};
   for (const name of MODULES) {
@@ -94,6 +100,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   });
   g.rng.reseed(s.game.rng);
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
+  repairCardPool(g);
   g.forks.afterLoad(s.modules.forks);
   if (map) adoptMapNames(g, map);
   if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
@@ -190,6 +197,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     });
     g.rng.reseed(c.game.rng);
     for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(c.modules[name] ?? {}));
+    repairCardPool(g);
     g.forks.afterLoad(c.modules.forks);
     if (maps?.[i]) adoptMapNames(g, maps[i]);
   });

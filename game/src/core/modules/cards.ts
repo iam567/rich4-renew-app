@@ -10,7 +10,7 @@ import type { BoardNode, Facility, Land } from '../board';
 import { CHARACTERS } from '../characters';
 import { addMonths } from '../date';
 import { ask, type Flow } from '../flow';
-import type { Game } from '../game';
+import { REMAKE_CARD_POOL, type Game } from '../game';
 import { LAND_LIMIT_MONTHS, type Option, type PickSpot, type Player } from '../types';
 import { OBJECT_NAMES } from './objects';
 import { NPC_NAMES, type Npc } from './places';
@@ -161,7 +161,13 @@ export class Cards {
     if (id < 1 || (id > this.remaining.length && !own)) return false;
     if (p.cards.length >= HAND_LIMIT) this.dropSlot(p, this.cheapestSlot(p));
     p.cards.push(id);
-    if (!own) this.remaining[id - 1] = (this.remaining[id - 1] - 1) & 0xff;
+    // The original keeps the copies in a byte and lets it wrap (0 − 1 = 255); a card handed out when its pool is empty
+    // (a god's or event's gift) then fills the whole 128-slot draw pool with that card — every shelf and draw became
+    // 均富卡. The remake stops at 0 (and save.ts repairs wrapped pools in older saves).
+    if (!own) {
+      if (!REMAKE_CARD_POOL.on) this.remaining[id - 1] = (this.remaining[id - 1] - 1) & 0xff;
+      else if (this.remaining[id - 1] > 0) this.remaining[id - 1] -= 1;
+    }
     return true;
   }
 

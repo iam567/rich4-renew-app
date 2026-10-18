@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
-import { Game, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
+import { Game, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
 import { Forks } from './modules/forks';
@@ -54,13 +54,25 @@ export function goldenRun(mapId: number, days: number): string {
 }
 
 /**
+ * Hashes with the card pool that stops at 0 (REMAKE_CARD_POOL, 2026-10-19; docs/rules/04 §2.1): the original's byte
+ * wrapped a card handed out when none was left to 255 copies, which then filled the whole draw pool (the user's
+ * shelves and draws were all 均富卡). Two maps hit it in these runs: 3 and 100 東京. With it off every map gives the
+ * hashes below (FREE_BUILD), checked by the second test.
+ */
+const GOLDEN: Record<number, string> = {
+  0: 'ff64da19cc51dc47', 1: 'f0246854a78ee808', 2: 'e3fcb95c703f1d06', 3: '402fe158a58989ee', 4: '7e01b1cee5d1146e',
+  5: 'd21d73aecf156451', 6: '3c325285a23ded9b', 7: '8f129350179c3558', 100: '4d0f94de316caeff', 101: 'b5bc53d6150f8a55',
+  102: '33d99b88ea6f0bc5', 103: 'fc429a45646aaf27', 104: '2e436d9ef29514b5',
+};
+
+/**
  * Hashes with the construction company's free floors on large plots too (REMAKE_FREE_BUILD, the user 2026-10-18;
  * docs/rules/02 §5): with them off every map gives the hashes below (HOTEL), checked by the second test. Four maps
  * changed: 2 (day 193), 100 東京 (days 152, 187) and 101 大阪 (days 73, 124) only in the fireworks flag of a floor
  * that topped a property out on the second step (everything else bit for bit); 102 札幌 from day 17, where the
  * computer's free floors went on an empty large plot (#4005) instead of its level-2 facility.
  */
-const GOLDEN: Record<number, string> = {
+const FREE_BUILD: Record<number, string> = {
   0: 'ff64da19cc51dc47', 1: 'f0246854a78ee808', 2: 'e3fcb95c703f1d06', 3: '3531ca59818d688a', 4: '7e01b1cee5d1146e',
   5: 'd21d73aecf156451', 6: '3c325285a23ded9b', 7: '8f129350179c3558', 100: '886c4fd637afada1', 101: 'b5bc53d6150f8a55',
   102: '33d99b88ea6f0bc5', 103: 'fc429a45646aaf27', 104: '2e436d9ef29514b5',
@@ -99,27 +111,35 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
     for (const id of MAPS) expect(got[id], `map ${id}`).toBe(GOLDEN[id]);
   }, 120_000);
 
+  it('with the card pool wrapping as in the original every map plays as with the free floors', () => {
+    REMAKE_CARD_POOL.on = false;
+    try {
+      const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
+      for (const id of MAPS) expect(got[id], `map ${id} (card pool wraps)`).toBe(FREE_BUILD[id]);
+    } finally { REMAKE_CARD_POOL.on = true; }
+  }, 120_000);
+
   it('with the free floors on large plots off every map plays as with the hotel rules', () => {
-    REMAKE_FREE_BUILD.on = false;
+    REMAKE_CARD_POOL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (free floors on large plots off)`).toBe(HOTEL[id]);
-    } finally { REMAKE_FREE_BUILD.on = true; }
+    } finally { REMAKE_CARD_POOL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the hotel rules off (and the free floors on large plots) every map plays as with the fork rule alone', () => {
-    REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (hotel rules off)`).toBe(FORKS_ONLY[id]);
-    } finally { REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the earlier fork rule (and the remake rules above off) every map still plays bit for bit as before 2026-10-18', () => {
-    Forks.legacy = true; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    Forks.legacy = true; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (legacy forks)`).toBe(LEGACY[id]);
-    } finally { Forks.legacy = false; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { Forks.legacy = false; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 });
