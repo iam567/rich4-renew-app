@@ -548,6 +548,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     const v = w.players[0], b = w.players[3];
     Object.assign(f, { owner: b.id + 1, level: 4, type: HALLS[2] });
     b.hospital = 3; b.cash = 10_000_000;
+    v.cards = []; b.cards = []; // no 免費卡 / 嫁禍卡 in hand: this checks the plain fee and slot amounts
     const cash0 = v.cash + v.bank, bank0 = b.cash + b.bank;
     w.mask(5);
     const steps = drain(w.finale.visit(g, v, f));

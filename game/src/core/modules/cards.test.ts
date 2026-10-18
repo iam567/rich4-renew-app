@@ -6,7 +6,7 @@ import { pack } from '../date';
 import type { Flow } from '../flow';
 import { Game } from '../game';
 import type { Answer, Ask, GameEvent, GameSettings, PickSpot } from '../types';
-import { CARDS, HAND_LIMIT } from './cards';
+import { CARDS, HAND_LIMIT, REMAKE_SUPPLY } from './cards';
 
 const mapFile = (id: number) => fileURLToPath(new URL(`../../../../editor/site/assets/map-${id}.json`, import.meta.url));
 const haveMaps = existsSync(mapFile(1));
@@ -62,6 +62,7 @@ describe('card table', () => {
   it('has 30 cards and 100 copies', () => {
     expect(CARDS).toHaveLength(30);
     expect(CARDS.reduce((s, c) => s + c.supply, 0)).toBe(100);
+    expect(CARDS.reduce((s, c) => s + (REMAKE_SUPPLY[c.id] ?? c.supply), 0)).toBe(102); // the remake's copies (04 §1)
     expect(CARDS.filter(c => c.passive).map(c => c.id)).toEqual([18, 19, 20, 21]);
   });
 });

@@ -89,6 +89,14 @@ export const KB_CARDS: readonly CardDef[] = [
   def(37, '保鑣卡', 25, 0, 0, 0, '歌舞伎町：被黑幫附身的人來收保護費時，保鑣自動出面，免付一次', true),
   def(38, '暴走卡', 80, 0, 0, 0, '歌舞伎町：這回合走完，馬上再來完整的一回合'),
 ];
+/**
+ * The remake's copies per card at a new game (the user 2026-10-19; docs/rules/04 §1): 均富 1→2, 購地 4→5, 換地 4→3,
+ * 換屋 4→3, 轉向 3→6, 改建 8→4, 搶奪 4→3, 停留 4→6, 復仇 4→2, 免費 4→5, 免罪 4→5, 送神符 3→4, 請神符 3→4 (102 in all). `CardDef.supply` keeps
+ * the original's numbers; REMAKE_CARD_SUPPLY off plays them (the golden test checks it).
+ */
+export const REMAKE_SUPPLY: Readonly<Record<number, number>> = { 1: 2, 3: 5, 4: 3, 5: 3, 6: 6, 7: 4, 13: 3, 14: 6, 18: 2, 20: 5, 21: 5, 22: 4, 23: 4 };
+export const REMAKE_CARD_SUPPLY = { on: true };
+
 /** The tycoon world's deck (its pool and shelf); the lookups below also know 歌舞伎町's card. */
 const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
 const ALL_CARDS: readonly CardDef[] = [...TYCOON_DECK, ...KB_CARDS];
@@ -139,7 +147,7 @@ export class Cards {
 
   /** New game: fill the pool from the card table (04 §1). */
   init(): void {
-    this.remaining = (this.g.world ? TYCOON_DECK : CARDS).map(c => c.supply);
+    this.remaining = (this.g.world ? TYCOON_DECK : CARDS).map(c => (REMAKE_CARD_SUPPLY.on ? REMAKE_SUPPLY[c.id] ?? c.supply : c.supply));
     for (const p of this.g.players) p.cards = [];
   }
 
