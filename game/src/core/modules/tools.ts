@@ -13,6 +13,7 @@ import { ask } from '../flow';
 import type { Game } from '../game';
 import { CHARACTERS } from '../characters';
 import type { Option, PickSpot, Player } from '../types';
+import { deckSupply, TYCOON_SHOP_ALWAYS } from './cards';
 import { OBJECT_NAMES } from './objects';
 
 export interface ToolDef {
@@ -103,6 +104,7 @@ const CARD_INFO: readonly [name: string, price: number, f7: number][] = [
 const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
 /** 通緝卡: one per city even in 大富豪模式's unlimited shop (17 §3.5, §3.10). */
 const WANTED_CARD = 36;
+const shopAlways = (id: number) => TYCOON_SHOP_ALWAYS.includes(id);
 /** Hand limit for buying cards (05 §8.4, the card module's HAND_LIMIT). */
 const HAND_LIMIT = 15;
 
@@ -1088,12 +1090,14 @@ export class Tools {
 
   /**
    * Card shelf of rand() % 10 + 6 cards drawn by the remaining copies, without replacement (05 §8.3). 大富豪模式
-   * (17 §3.10): no stock, every card on the shelf, except the 通緝卡 while its city's one copy is out.
+   * (17 §3.10, the user 2026-10-19): 轉向卡, 停留卡 and the mode's own cards (TYCOON_SHOP_ALWAYS) are always on the
+   * shelf first, then the 通緝卡 while its city's copy is in, then the same 6–15 cells drawn from the nationwide pool.
    */
   cardShelf(): number[] {
     const g = this.g;
-    if (g.world) return g.cards.remaining.map((_, i) => i + 1).filter(id => id !== WANTED_CARD || g.cards.remaining[id - 1] > 0);
+    const always = g.world ? [...TYCOON_SHOP_ALWAYS, ...((g.cards.wanted ?? 1) > 0 ? [WANTED_CARD] : [])] : [];
     const copies = [...g.cards.remaining];
+    if (g.world) for (const id of [...TYCOON_SHOP_ALWAYS, WANTED_CARD]) if (id <= copies.length) copies[id - 1] = 0;
     const n = g.rng.below(10) + 6, shelf: number[] = [];
     for (let i = 0; i < n; i++) {
       const total = copies.reduce((a, b) => a + b, 0);
@@ -1104,7 +1108,7 @@ export class Tools {
         r -= copies[id];
       }
     }
-    return shelf;
+    return [...always, ...shelf];
   }
 
   /** Tool shelf: tools 1..8 still in stock, one cell each (05 §8.3); 大富豪模式 all eight, never out (17 §3.10). */
@@ -1116,13 +1120,13 @@ export class Tools {
   private unlimited(tool: number) { if (this.g.world && tool >= 1 && tool <= 8 && this.shopStock[tool - 1] <= 0) this.shopStock[tool - 1] = 1; }
 
   /**
-   * A card bought at the shop goes from the pool to the hand (_rich4_receive_card). 大富豪模式 (17 §3.10): the shop
-   * has no stock, so a card whose copies are all out leaves the pool at 0 instead of wrapping round.
+   * A card bought at the shop goes from the pool to the hand (_rich4_receive_card). 大富豪模式 (17 §3.10): the
+   * always-stocked cards and the 通緝卡 are not taken from the nationwide pool.
    */
   private shopCard(p: Player, id: number) {
     const pool = this.g.cards.remaining, had = pool[id - 1];
     this.g.cards.receive(p, id);
-    if (this.g.world && !(had > 0)) pool[id - 1] = had ?? 0;
+    if (this.g.world && (shopAlways(id) || id === WANTED_CARD) && id <= pool.length) pool[id - 1] = had ?? 0;
   }
 
   /** _rich4_player_buy_tool: receive first, then pay (the UI already refused a full stack). */
@@ -1150,7 +1154,9 @@ export class Tools {
     const id = p.cards[slot];
     if (!id) return 0;
     p.cards.splice(slot, 1);
-    if (this.g.cards.remaining.length >= id) this.g.cards.remaining[id - 1] += 1;
+    // 大富豪模式: back to the nationwide pool, never above its copies (five cities at most); the 通緝卡 has none.
+    const pool = this.g.cards.remaining, cap = this.g.world ? deckSupply(true)[id - 1] * 5 : Infinity;
+    if (pool.length >= id && !(this.g.world && id === WANTED_CARD)) pool[id - 1] = Math.min(pool[id - 1] + 1, cap);
     const pts = sellPrice(cardPrice(id));
     p.points = (p.points + pts) & 0xffff;
     return pts;
@@ -1165,7 +1171,7 @@ export class Tools {
     const g = this.g;
     const cards = this.cardShelf(), tools = this.toolShelf();
     for (;;) {
-      const a = (yield ask({ t: 'shop', p: p.id, cards: [...cards], tools: [...tools], points: p.points })) as unknown as ShopAnswer;
+      const a = (yield ask({ t: 'shop', p: p.id, cards: [...cards], tools: [...tools], points: p.points, ...(g.world ? { always: [...TYCOON_SHOP_ALWAYS] } : {}) })) as unknown as ShopAnswer;
       if (!a || typeof a !== 'object') break;
       if ('buy' in a && a.buy === 'card') {
         const id = cards[a.index] ?? 0, price = cardPrice(id);
@@ -1174,15 +1180,15 @@ export class Tools {
         this.shopCard(p, id);
         g.stats?.cardBought(p.id, id, price);
         if (g.world && id === 36) g.world.hooks.wantedTaken(g, p);
-        // A bought cell is sold out for this visit, 大富豪模式 too (the user 2026-10-19: its shelf has every card, never
-        // out of stock between visits, but each cell is bought once per visit — no buying the same card again and again).
-        cards[a.index] = 0;
+        // A bought cell is sold out for this visit; 大富豪模式's always-stocked cards are bought as often as wanted.
+        if (!g.world || !shopAlways(id)) cards[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('buy' in a && a.buy === 'tool') {
         const id = tools[a.index] ?? 0, price = id ? TOOLS[id - 1].price : 0;
         if (!id || p.points < price || p.tools[id - 1] >= MAX_HELD) continue;
         this.buyTool(p, id);
-        tools[a.index] = 0;
+        // 大富豪模式 (the user 2026-10-19): tools are bought as often as wanted, up to the stack of 9.
+        if (!g.world) tools[a.index] = 0;
         turnover.buy += price * 10;
       } else if ('sell' in a && a.sell === 'card') {
         if (!p.cards[a.index]) continue;
@@ -1221,18 +1227,20 @@ export class Tools {
     if (P === 0) return;
     let bc = P >> 1, bt = P - (P >> 1);
     // 5. Cards: one candidate per remaining copy, most expensive first (stable sort; Watcom qsort order 推测).
-    // 大富豪模式 (17 §3.10): no stock — one candidate per card, the 通緝卡 only while its city's copy is in.
+    // 大富豪模式 (17 §3.10): one candidate per card — the always-stocked ones, the 通緝卡 while its city's copy is
+    // in, the others while the nationwide pool has one.
     const cands: number[] = [];
+    const inShop = (id: number) => (!g.world ? g.cards.remaining[id - 1] > 0 : id === WANTED_CARD ? (g.cards.wanted ?? 1) > 0 : shopAlways(id) || g.cards.remaining[id - 1] > 0);
     g.cards.remaining.forEach((n, i) => {
       const [, price, f7] = CARD_INFO[i] ?? ['', 0, 0];
-      if (g.world) n = i + 1 === WANTED_CARD ? n : 1;
+      if (g.world) n = inShop(i + 1) ? 1 : 0;
       if (price <= bc && !hated(f7)) for (let k = 0; k < n; k++) cands.push(i + 1);
     });
     cands.sort((a, b) => cardPrice(b) - cardPrice(a));
     for (const id of cands) {
       if (p.cards.length >= 15) break;
       const price = cardPrice(id);
-      if (price > bc || p.points < price || !(g.world && id !== WANTED_CARD || g.cards.remaining[id - 1] > 0)) continue;
+      if (price > bc || p.points < price || !inShop(id)) continue;
       p.points = (p.points - price) & 0xffff;
       this.shopCard(p, id);
       g.stats?.cardBought(p.id, id, price);

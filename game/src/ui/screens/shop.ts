@@ -249,9 +249,9 @@ class ShopScene {
     this.img(this.arm, 'Panel', 10, 3 + pg * 16, ARM[pg].x, ARM[pg].y);
 
     // Bubble.
-    // 大富豪模式's 36 cards fill the shelf's whole width (two columns): her bubble moves off the shelf, beside it
-    // (landscape) or under her face (portrait), so no card is hidden while she talks.
-    const wide = pg === 0 && this.ask.cards.length > 15;
+    // On the card page her bubble moves off the shelf, beside it (landscape) or under her face (portrait), so no card
+    // is hidden while she talks (the long 大富豪模式 shelf fills the shelf's whole width).
+    const wide = pg === 0;
     const b = wide ? (L === PORT ? { x: 232, y: 296, k: 0.85 } : { x: 232, y: 12, k: 0.85 }) : L.bubble[pg];
     const bub = this.img(this.bubbleImg, 'Panel', 10, pg ? 34 : 15, 0, 0);
     place(this.bubble, b.x, b.y, bub?.w, bub?.h);
@@ -317,8 +317,9 @@ class ShopScene {
           const price = cardPrice(id), poor = a.points < price;
           row.classList.toggle('poor', poor);
           row.classList.toggle('full', full);
+          row.classList.toggle('always', !!a.always?.includes(id)); // 大富豪模式: always in stock (17 §3.10)
           row.innerHTML = `<span class="nm">${esc(cardName(id))}</span><span class="pr">$${price}</span>`;
-          row.title = `${cardName(id)}　$${price}\n${(cardDef(id)?.text ?? "")}`;
+          row.title = `${cardName(id)}　$${price}${a.always?.includes(id) ? '（常備，可一直買）' : ''}\n${(cardDef(id)?.text ?? "")}`;
           this.press(row, () => this.buy('card', i), () => this.cardInfo(id, price));
         }
         this.rows.append(row);

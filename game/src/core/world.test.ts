@@ -473,16 +473,16 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(r.cards).toEqual([]);
     // One per city: bought in 大阪's shop, 大阪 cannot sell another until that copy is used (here by someone else).
     w.syncWanted();
-    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 1, 1, 1, 1]);
+    expect(w.cities.map(c => c.cards.wanted)).toEqual([1, 1, 1, 1, 1]);
     const osaka = w.cities[1];
     me.cards = []; osaka.cards.receive(me, 36); w.wantedTaken(osaka, me);
-    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 0, 1, 1, 1]);
+    expect(w.cities.map(c => c.cards.wanted)).toEqual([1, 0, 1, 1, 1]);
     for (let k = 0; k < 300; k++) expect(osaka.tools.cardShelf()).not.toContain(36);
     const saved = loadWorld(JSON.parse(JSON.stringify(saveWorld(w))) as WorldSaveData);
     expect(saved.wantedFrom[0]).toEqual([1]);
     me.cards = []; q.cards = [36]; q.prison = 0;     // handed on (搶奪 / 生日), then used by q
     w.wantedUsed(q);
-    expect(w.cities.map(c => c.cards.remaining[35])).toEqual([1, 1, 1, 1, 1]);
+    expect(w.cities.map(c => c.cards.wanted)).toEqual([1, 1, 1, 1, 1]);
   });
 
   it('獨裁卡 sends everyone else on the city\'s squares away, spread with the city cap; hospital and prison stay', () => {

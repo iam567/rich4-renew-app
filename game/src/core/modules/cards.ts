@@ -99,6 +99,15 @@ export const REMAKE_CARD_SUPPLY = { on: true };
 
 /** The tycoon world's deck (its pool and shelf); the lookups below also know 歌舞伎町's card. */
 const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
+/** Copies per card at a new game (the remake's numbers), index = id - 1: the tycoon deck's fixed shelf weights. */
+export const deckSupply = (tycoon: boolean): number[] =>
+  (tycoon ? TYCOON_DECK : CARDS).map(c => (REMAKE_CARD_SUPPLY.on ? REMAKE_SUPPLY[c.id] ?? c.supply : c.supply));
+/**
+ * 大富豪模式's card shop (17 §3.10, the user 2026-10-19): always on the shelf and bought as often as wanted, never
+ * taken from the pool — 轉向卡, 停留卡 and the mode's own cards but the 獨裁卡 (one per map: 5 in the nationwide pool)
+ * and the 通緝卡 (one per city).
+ */
+export const TYCOON_SHOP_ALWAYS: readonly number[] = [6, 14, 31, 32, 33, 35];
 const ALL_CARDS: readonly CardDef[] = [...TYCOON_DECK, ...KB_CARDS];
 export const cardDef = (id: number): CardDef | undefined => ALL_CARDS[id - 1];
 /**
@@ -139,6 +148,11 @@ interface Walker { node: number; lastNode: number; dir: number }
 export class Cards {
   /** Copies left in the pool by card id - 1 (04 §2.1). */
   remaining: number[] = [];
+  /**
+   * 大富豪模式: this city's one 通緝卡 is in (1) or out (0) (17 §3.5, World.syncWanted) — kept apart from `remaining`,
+   * which the five cities share as one nationwide pool (17 §3.10). Not on a normal game (its saves stay as before).
+   */
+  declare wanted?: number;
   /** AI parameters ref_0048be58[0] and [1] (04 §5.2). */
   aiArg0 = 0;
   aiArg1 = 0;
@@ -147,7 +161,7 @@ export class Cards {
 
   /** New game: fill the pool from the card table (04 §1). */
   init(): void {
-    this.remaining = (this.g.world ? TYCOON_DECK : CARDS).map(c => (REMAKE_CARD_SUPPLY.on ? REMAKE_SUPPLY[c.id] ?? c.supply : c.supply));
+    this.remaining = deckSupply(!!this.g.world);
     for (const p of this.g.players) p.cards = [];
   }
 

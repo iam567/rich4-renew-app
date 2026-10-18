@@ -17,6 +17,7 @@ import { daysBetween, day as dayOf, nextDay, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
 import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs/rules/19)
 import { Game, type WorldHooks } from './game';
+import { deckSupply } from './modules/cards';
 import { TYCOON_LABS } from './modules/tools';
 import { Rng, daySeed } from './rng';
 import { ledgerOf, type Ledger } from './stats';
@@ -312,12 +313,28 @@ export class World implements WorldHooks {
       return g;
     });
     this.players.forEach((p, i) => { p.tools = [...tools![i]]; });
+    this.sharePool();
     // Start (17 §1): everyone to a random city, as evenly as twelve over five goes (3, 3, 2, 2, 2).
     const order = this.shuffle(this.players.map(p => p.id));
     const cityOrder = this.shuffle(this.cities.map((_, i) => i));
     order.forEach((id, k) => { this.players[id].map = cityOrder[k % cityOrder.length]; });
     for (const p of this.players) this.visit(p);
     this.mask(this.view());
+  }
+
+  /**
+   * One nationwide card pool (17 §3.10, the user 2026-10-19): the five cities share one `remaining`, each card's copies
+   * × the number of cities (均富卡 2 × 5 = 10 …), so a card bought or drawn in 東京 is gone in 大阪 too. A loaded save
+   * links its cities' copies again ('saved'), a save from before adds the cities' own pools up ('merge'). The 通緝卡
+   * stays one per city (Cards.wanted); 大富翁城 keeps its own pool (its casino rules empty some slots).
+   */
+  sharePool(how: 'new' | 'saved' | 'merge' = 'new'): void {
+    const cities = this.cities.filter(c => c.settings.mapId !== FINALE_MAP);
+    const pool = how === 'saved' ? [...cities[0].cards.remaining]
+      : how === 'merge' ? deckSupply(true).map((_, i) => cities.reduce((a, c) => a + (c.cards.remaining[i] ?? 0), 0))
+      : deckSupply(true).map(n => n * cities.length);
+    pool[WANTED - 1] = 0;
+    for (const c of cities) c.cards.remaining = pool;
   }
 
   // ---------------------------------------------------------------- queries
@@ -734,7 +751,7 @@ export class World implements WorldHooks {
       this.wantedFrom[q.id].pop();
       out -= 1;
     }
-    this.cities.forEach((c, i) => { if (c.cards.remaining.length >= WANTED) c.cards.remaining[WANTED - 1] = this.wantedFrom.some(l => l?.includes(i)) ? 0 : 1; });
+    this.cities.forEach((c, i) => { c.cards.wanted = this.wantedFrom.some(l => l?.includes(i)) ? 0 : 1; });
   }
 
   /**

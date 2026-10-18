@@ -118,7 +118,8 @@ export type Ask =
    * Answer: { buy: 'card' | 'tool', index } (shelf position), { sell: 'card', index } (hand position),
    * { sell: 'tool', id }, or -1 to leave.
    */
-  | { t: 'shop'; p: number; cards: number[]; tools: number[]; points: number }
+  /** `always`: 大富豪模式's always-stocked cards, bought again and again (17 §3.10); not on a normal game's shop. */
+  | { t: 'shop'; p: number; cards: number[]; tools: number[]; points: number; always?: number[] }
   /**
    * A mini game played by the human (06 §7, 13-mini-games.md): `game` is the tile type, 6 企鵝挖寶, 7 射氣球,
    * 8 喜從天降. Answer: the points it earned (the original's return value).

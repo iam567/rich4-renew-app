@@ -126,6 +126,8 @@ export interface WorldSaveData {
     date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number; rng: number;
     landed: boolean[]; log: TickerLine[]; fallen: World['fallen']; history: World['history']; visited: number[][];
     lastTrip?: number[]; lastFrom?: number[]; wantedFrom?: number[][]; overlords?: number[];
+    /** The cities share one card pool (17 §3.10); older saves kept one per city. */
+    sharedPool?: boolean;
     /** 大富翁城, the finale (docs/rules/19): set once it has started (the sixth city is in `cities` then). */
     finale?: FinaleState;
   };
@@ -167,7 +169,7 @@ export function saveWorld(w: World): WorldSaveData {
     world: {
       date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex,
       current: w.current, rng: w.rng.seed, landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
-      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords],
+      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords], sharedPool: true,
       ...(w.finale.active ? { finale: w.finale.save() } : {}),
     },
     ...(ledgerOf(w.players) ? { stats: ledgerOf(w.players)!.save() } : {}),
@@ -209,6 +211,10 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
   });
   w.rng.reseed(x.rng);
   w.finale.restore(x.finale);
+  // One nationwide card pool (17 §3.10): the cities' saved copies are the same array again (an older save's own pools
+  // are added up); each city's 通緝卡 follows wantedFrom.
+  w.sharePool(x.sharedPool ? 'saved' : 'merge');
+  w.syncWanted();
   w.resumeAtTurn = true;
   w.mask(w.view());
   if (s.stats) attachLedger(w.players, Ledger.load(s.stats, w.players.length));
