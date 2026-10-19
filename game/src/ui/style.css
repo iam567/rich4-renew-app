@@ -508,12 +508,18 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: linear-gradient(#fff07a, #ffbf2e); border: 3px solid #fff; box-shadow: 0 3px 0 #c97a00; }
 .title-note { position: absolute; left: max(12px, env(safe-area-inset-left)); right: max(12px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); color: #fff;
   font-size: 12px; line-height: 1.4; text-align: right; text-shadow: 0 1px 2px #003; opacity: .85; }
+/* The version in the bottom-right corner (the user 2026-10-19); the note keeps clear of it. */
+.title-ver { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); padding: 1px 8px;
+  border-radius: 999px; font-size: 12px; line-height: 1.4; color: #fff; background: rgba(0, 20, 80, .45); text-shadow: 0 1px 2px #003; opacity: .9;
+  font-variant-numeric: tabular-nums; pointer-events: none; }
+.title-note { right: calc(max(12px, env(safe-area-inset-right)) + 64px); }
 /* Portrait phones: the landscape art would cut the logo off, so they get the redraw composed for 9:19.5 (Data#9001). */
 /* The note wraps to two lines there: centred and balanced, the buttons kept above it (also with the home-bar inset). */
 @media (max-aspect-ratio: 2/3) {
   .title { background-image: var(--title-bg-tall, var(--title-bg, none)); background-position: center 40%; }
-  .title-buttons { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 52px); }
-  .title-note { text-align: center; text-wrap: balance; text-shadow: 0 1px 2px #003, 0 0 6px rgba(0, 20, 80, .7); }
+  .title-buttons { bottom: calc(max(8px, env(safe-area-inset-bottom)) + 72px); }
+  .title-note { right: max(12px, env(safe-area-inset-right)); bottom: calc(max(8px, env(safe-area-inset-bottom)) + 22px); text-align: center; text-wrap: balance;
+    text-shadow: 0 1px 2px #003, 0 0 6px rgba(0, 20, 80, .7); }
 }
 .chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .chip { padding: 5px 12px; border-radius: 999px; font-family: inherit; font-size: 15px; color: #c8d4f0; background: rgba(255,255,255,.14); border: 2px solid rgba(255,255,255,.25); }
