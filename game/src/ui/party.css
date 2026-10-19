@@ -75,3 +75,6 @@
 .pt-clock[hidden], .pt-unauto[hidden] { display: none; }
 .pt-unauto { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 15; font-size: 15px; padding: 6px 18px; }
 .pt-out { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(0, 0, 0, .55); }
+.pt-note { font-size: 13px; color: #fff3b0; text-align: center; margin: 0; }
+.pt-spin { width: 34px; height: 34px; margin: 10px auto; border-radius: 50%; border: 4px solid rgba(255, 255, 255, .3); border-top-color: #ffe14a; animation: pt-spin .9s linear infinite; }
+@keyframes pt-spin { to { transform: rotate(360deg); } }

@@ -11,6 +11,7 @@ import type { MapInfo } from './assets';
 import { audio } from './audio';
 import { Lobby, myRegion, Room, type RoomInfo, type StartMsg } from './party-net';
 import { inlineChat } from './party-chat';
+import { checkNetwork } from './party-check';
 import type { SpriteBank } from './sprites';
 import './party.css';
 
@@ -183,6 +184,21 @@ export function openParty(d: PartyDeps): void {
     if (a === 'join') { audio.ui('click'); join(); }
     if (a === 'find') { audio.ui('click'); find(); }
   };
-  home();
-  box.onclick = menu;
+  // First of all: can this phone play online (party-check.ts)?
+  async function check() {
+    show('派對模式', '<p class="pt-lead">檢查網路環境中…</p><div class="pt-spin"></div>');
+    box.onclick = null;
+    const r = await checkNetwork();
+    if (!overlay.isConnected) return;
+    if (r.ok) { home(r.note ? `<p class="pt-note">${esc(r.note)}</p>` : ''); box.onclick = menu; return; }
+    audio.ui('error');
+    show(r.title, `<p class="pt-lead">${esc(r.text).replace(/\n/g, '<br>')}</p>
+      <div class="choices"><button class="candy ghost" data-a="back">返回</button>${r.retry ? '<button class="candy yes" data-a="retry">重新檢查</button>' : ''}</div>`);
+    box.onclick = e => {
+      const a = (e.target as HTMLElement).closest<HTMLElement>('[data-a]')?.dataset.a;
+      if (a === 'back') { audio.ui('no'); leave(); d.back(); }
+      if (a === 'retry') { audio.ui('click'); void check(); }
+    };
+  }
+  void check();
 }
