@@ -426,8 +426,16 @@ fxScreens['icbm-launch'] = async (ctx, s) => {
   // The full-screen flight onto the target (icbm-flight.ts), then the news line.
   const d = (s.data ?? {}) as { text?: string; from?: string; city?: string; target?: string; mapId?: number; x?: number; y?: number; size?: number };
   await icbmFlight(ctx, d);
+};
+
+/** 洲際飛彈 has hit (own city or another): 命中！ and everyone it hurt, each with a puzzled 「？？？」 (the user 2026-10-19). */
+fxScreens['icbm-hit'] = async (ctx, s) => {
+  const d = (s.data ?? {}) as { victims?: number[]; text?: string };
+  const lines = ['？？？', '？？', '欸？？', '？！', '咦？？', '蛤？？'];
+  const who = (d.victims ?? []).map(id => ctx.game.players[id]).filter(Boolean);
   const ic = ctx.bank.art('Data', 615, 0);
-  await banner(ctx, 'icbm', `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">命中！</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 1600);
+  const faces = who.map((q, k) => { const f = ctx.bank.art('Data', 2, q.character); return `<div class="ih-who" style="--k:${k}"><span class="ih-say">${esc(lines[(q.id * 3 + k) % lines.length])}</span><span class="ih-face">${f ? `<img src="${f.src}" alt="">` : ''}</span><b>${esc(CHARACTERS[q.character].name)}</b></div>`; }).join('');
+  await banner(ctx, `icbm hit${who.length > 4 ? ' many' : ''}`, `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">命中！</div>${d.text ? `<div class="dc-sub">${phrases(d.text)}</div>` : ''}${faces ? `<div class="ih-row">${faces}</div>` : '<div class="dc-sub">沒有炸到任何人</div>'}`, who.length ? 2600 : 1400);
 };
 
 /** 時空機 to another city: a swirl of light around the gadget, then the new city. */

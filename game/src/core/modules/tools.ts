@@ -494,8 +494,11 @@ export class Tools {
       const at = this.position(target);
       if (!at) return false;
       this.consume(p, 15);
+      const before = this.holdings();
       yield { t: 'fx', kind: 'nuke', p: p.id, data: { x: at.x, y: at.y, icbm: true } };
       yield* this.blast(p, at.x, at.y, VIEW_HALF, true);
+      const hurt = this.hurtSince(before);
+      if (hurt.length) yield { t: 'fx', kind: 'icbm-hit', p: p.id, data: { victims: hurt } };
       return true;
     }
     this.consume(p, 15);
@@ -504,6 +507,18 @@ export class Tools {
   }
 
   /** Another city's nuclear blast (洲際飛彈 from elsewhere): the nuke's damage around (x, y). */
+  /** What each player has in this city a blast can take: building levels and lots, and whether in hospital. */
+  holdings(): { lv: number[]; lots: number[]; hosp: boolean[] } {
+    const g = this.g, n = g.players.length, lv = new Array(n).fill(0), lots = new Array(n).fill(0);
+    for (const l of [...g.board.lands, ...g.board.facilities]) if (l.owner && l.owner <= n) { lv[l.owner - 1] += l.level; lots[l.owner - 1] += 1; }
+    return { lv, lots, hosp: g.players.map(q => q.hospital > 0) };
+  }
+  /** The players a blast hurt (buildings or lots gone, or sent to hospital): for 洲際飛彈's 「？？？」 (the user 2026-10-19). */
+  hurtSince(before: { lv: number[]; lots: number[]; hosp: boolean[] }): number[] {
+    const now = this.holdings();
+    return this.g.players.filter(q => !q.bankrupt && (now.lv[q.id] < before.lv[q.id] || now.lots[q.id] < before.lots[q.id] || (now.hosp[q.id] && !before.hosp[q.id]))).map(q => q.id);
+  }
+
   *nukeAt(p: Player, x: number, y: number): Flow {
     yield { t: 'fx', kind: 'nuke', p: p.id, data: { x, y, icbm: true } };
     yield* this.blast(p, x, y, VIEW_HALF, true);

@@ -894,7 +894,11 @@ export class World implements WorldHooks {
     this.ticker(city, text, 'icbm', p.id, { important: true });
     const h = this.human();
     if (h && this.view() === city && g.world!.index !== city) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, data: { text, icon: 'icbm' } };
+    const before = c.tools.holdings();
     yield* this.across(city, c.tools.nukeAt(p, at.x, at.y));
+    // Those it hit, each with a 「？？？」 (the user 2026-10-19).
+    const hurt = c.tools.hurtSince(before);
+    yield { t: 'fx', kind: 'icbm-hit', p: p.id, data: { victims: hurt, text, city: this.cityName(city) } };
   }
 
   /** The computer's 洲際飛彈: the rivals' building cluster hurting it most, away from its own (-1 none). */

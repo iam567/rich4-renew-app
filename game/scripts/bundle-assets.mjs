@@ -53,7 +53,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   // The tycoon cards' art (Data#601..606), the lab tools' icons (Data#614..616) and the 在路上 animation layers.
   const cards = [601, 602, 603, 604, 605, 606, 609].map(n => `cards/0${n}.webp`), tools = [614, 615, 616].map(n => `tools/0${n}.webp`);
-  for (const f of [...cards, ...tools, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {
+  const shots = [1, 2, 3, 4].map(n => `icbm/shot-${n}.webp`); // 洲際飛彈's flight (ui/icbm-flight.ts)
+  for (const f of [...cards, ...tools, ...shots, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {
     if (existsSync(join(src, `maps/remake/${f}`))) copy(`maps/remake/${f}`);
   }
   // 大富翁城 (docs/rules/19): the five halls' sprites (map/1601..1645, read at run time) and the casino screens' art.
