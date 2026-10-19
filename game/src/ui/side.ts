@@ -26,7 +26,7 @@ const SEASON = [3, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3];
 const BANDS = [97, 155, 213];
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
-/** A long name (派對模式's own names, up to 8 characters) gets smaller to stay on its line; the characters' are unchanged. */
+/** A long name (派對模式's own names, up to 7 characters) gets smaller to stay on its line; the characters' are unchanged. */
 const fit = (name: string, width: number, size: number) => { const n = [...name].length, px = Math.min(size, Math.floor(width / Math.max(1, n))); return px < size ? ` style="font-size:${px}px"` : ''; };
 
 export class PlayerPanel {

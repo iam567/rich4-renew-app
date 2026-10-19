@@ -29,7 +29,7 @@ const roomId = (code: string) => `${PREFIX}room-${code}`;
 export interface Member { id: string; name: string; character: number; region?: string; nick?: string }
 
 /** A nickname as kept and shown: no markup characters, trimmed, at most NICK_MAX characters. */
-export const NICK_MAX = 8;
+export const NICK_MAX = 7;
 export const cleanNick = (s: unknown) => [...String(s ?? '').replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim()].slice(0, NICK_MAX).join('');
 /** The member's shown name: the nickname, else the character's. */
 const named = (m: Member) => { m.nick = cleanNick(m.nick) || undefined; m.name = m.nick || CHARACTERS[m.character]?.name || '玩家'; return m; };
