@@ -596,7 +596,7 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(normal.tools.receive(normal.players[0], 14)).toBe(false);
   });
 
-  it('超級工人 builds two levels; 洲際飛彈 nukes a lot in another city; 時空機 crosses at once to another city\'s airport and ends the turn', () => {
+  it('超級工人 builds two levels; 洲際飛彈 nukes a lot in another city; 時空機 crosses at once to a random square of another city (its god along) and ends the turn', () => {
     const w = new World(settings(94, 0), boards());
     const me = w.players[0], q = w.players[3], g = w.cities[0];
     const put = (x: typeof me, city: number) => { x.map = city; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = w.cities[city].board.nodes.find(n => n.event === 0 && n.ref === 0)!.id; };
@@ -617,9 +617,11 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(me.tools[14]).toBe(0);
     expect(w.log.some(l => l.kind === 'icbm' && l.map === 1)).toBe(true);
     expect(w.icbmTargets(me, 1).every(o => typeof o.value === 'number')).toBe(true);
-    // 時空機 from the turn menu: 九州's airport at once, no dice, no 在路上.
+    // 時空機 from the turn menu: a random square of 九州 at once, no dice, no 在路上; the 土地公 attached goes along.
     me.tools[15] = 1;
     w.mask(0);
+    Object.assign(g.objects.slots[11], { node: 0, owner: me.id + 1, life: 4 }); me.god = 12;
+    const luck = me.luckBad;
     const f = g.playerTurn(me);
     const asked: string[] = [];
     let r = f.next();
@@ -629,15 +631,21 @@ describe.skipIf(!have)('大富豪模式 world', () => {
         asked.push(s.t);
         if (s.t === 'turn') r = f.next(asked.length === 1 ? { action: 'tool' } : { dice: 1 });
         else if (s.t === 'choose' && s.title === '道具') r = f.next(16);
+        else if (s.t === 'pick-map') r = f.next(s.spots.findIndex(x => x.at === 'actor' && x.id === me.id));   // oneself
         else if (s.t === 'choose') r = f.next(3);
         else r = f.next(undefined);
       } else r = f.next();
     }
-    expect(asked).toEqual(['turn', 'choose', 'choose']);
+    expect(asked).toEqual(['turn', 'choose', 'pick-map', 'choose']);
     expect(me.map).toBe(3);
     expect(me.trip).toBeUndefined();
-    expect(w.cities[3].board.nodes.find(n => n.id === me.node)?.event).toBe(18);
+    expect(w.cities[3].board.nodes.find(n => n.id === me.node)?.adjacent.some(Boolean)).toBe(true);   // a road square there
     expect(me.tools[15]).toBe(0);
+    expect(me.god).toBe(12);
+    expect(w.cities[3].objects.slots[11]).toMatchObject({ owner: me.id + 1, life: 4, node: 0 });
+    expect(g.objects.slots[11].owner).toBe(0);
+    expect(me.luckBad).toBe(luck);
+    expect(w.cities[3].objects.godType(me)).toBe(12);
   });
 
   it('a bankruptcy auction is bid on by every living player of the world, after the turn', () => {

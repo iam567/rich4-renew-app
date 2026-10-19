@@ -278,4 +278,35 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(v.cities[0].cards.remaining).toHaveLength(39);
     expect(v.cities[0].cards.remaining[COPY_CARD - 1]).toBe(20);
   });
+
+  it('時空機 sends a thing on the road (a god, a mine) or a rival to a random square of another city', () => {
+    const { w, g, me } = world();
+    const q = w.players[1];
+    for (const x of [me, q]) { x.map = 0; x.placed = true; x.whoPlays = x.human ? 1 : 2; x.prison = x.hospital = x.hotel = x.vanish = 0; }
+    q.human = false; w.landed[q.id] = true; w.landed[me.id] = true;
+    q.node = g.board.nodes.find(n => n.adjacent.some(Boolean) && n.id !== me.node)!.id;
+    w.mask(0);
+    const road = g.board.nodes.filter(n => n.adjacent.some(Boolean) && !g.objects.at(n.id) && n.id !== me.node && n.id !== q.node).map(n => n.id);
+    // a 小惡魔 (slot 10) and a mine on the road here
+    for (const c of w.cities) for (const o of c.objects.slots) if (o.type === 10 || o.type === 17) Object.assign(o, { node: 0, owner: 0 });
+    Object.assign(g.objects.slots[9], { node: road[0], owner: 0 });
+    const mine = g.objects.slots.findIndex(o => o.type === 17); Object.assign(g.objects.slots[mine], { node: road[1], owner: 0 });
+    const tools = g.tools as unknown as { use(p: unknown, t: number): Flow<boolean> };
+    const send = (pick: (s: { spots: { at: string; id: number }[] }) => number, city: number) => {
+      me.tools[15] = 1;
+      const f = tools.use(me, 16);
+      for (let r = f.next(); !r.done; ) { const s = r.value as Step & { t: string; spots?: { at: string; id: number }[] }; r = f.next(('ask' in s ? (s.t === 'pick-map' ? pick(s as never) : s.t === 'choose' ? city : undefined) : undefined) as never); }
+      return me.tools[15] === 0;
+    };
+    expect(send(s => s.spots.findIndex(x => x.at === 'node' && x.id === road[0]), 2)).toBe(true);
+    expect(g.objects.slots[9].node).toBe(0);
+    expect(w.cities[2].objects.slots[9].node).toBeGreaterThan(0);
+    expect(send(s => s.spots.findIndex(x => x.at === 'node' && x.id === road[1]), 3)).toBe(true);
+    expect(w.cities[3].objects.slots.some(o => o.type === 17 && o.node > 0)).toBe(true);
+    expect(g.objects.slots[mine].node).toBe(0);
+    expect(send(s => s.spots.findIndex(x => x.at === 'actor' && x.id === q.id), 4)).toBe(true);
+    expect(q.map).toBe(4);
+    expect(w.cities[4].board.nodes.find(n => n.id === q.node)?.adjacent.some(Boolean)).toBe(true);
+    expect(me.map).toBe(0);
+  });
 });

@@ -79,7 +79,9 @@ export interface WorldHooks {
   aiIcbm(p: Player): number;
   /** 時空機 (17 §3.6): the cities to cross to, the crossing, the computer's city (-1 none). */
   spaceTimeCities(p: Player): Option[];
-  spaceTime(g: Game, p: Player, city: number): Flow;
+  spaceTime(g: Game, p: Player, city: number, by?: Player): Flow;
+  /** 時空機: the object lying on `node` of g to a random free square of `city`; false when it cannot go there. */
+  spaceTimeObject(g: Game, p: Player, node: number, city: number): Flow<boolean>;
   aiSpaceTime(g: Game, p: Player): number;
   /** 城市霸主 (17 §3.8): released the same day instead of a stay in this city's hospital / prison; true when so. */
   overlordRelease(g: Game, p: Player, place: 'hospital' | 'prison'): Flow<boolean>;

@@ -154,6 +154,40 @@ export class Objects {
     if (id) this.remove(id);
   }
 
+  /**
+   * 時空機 (大富豪模式, the user 2026-10-19): p's god goes with p to the city of `to` — the same slot there (slots are
+   * fixed by type), its days left kept, the luck values unchanged. False when that city's god is with someone else (then
+   * it stays and leaves p as on any trip). Its pair appears here as when a god leaves.
+   */
+  carryGod(p: Player, to: Objects): boolean {
+    const id = p.god, o = this.slots[id - 1], d = to.slots[id - 1];
+    if (!id || !o || !d || (d.owner && d.owner !== p.id + 1)) return false;
+    const life = o.life;
+    const luck = [p.luckBad, p.luckMoney, p.luckFate];
+    this.remove(id);                                   // takes the luck off and frees the slot here
+    [p.luckBad, p.luckMoney, p.luckFate] = luck;       // …but it stays on p
+    Object.assign(d, { node: 0, owner: p.id + 1, life });
+    p.god = id;
+    return true;
+  }
+
+  /**
+   * 時空機 (大富豪模式, the user 2026-10-19): the object lying on `node` moves to `dest` in the city of `to` — a god,
+   * the dog, a gift … into the same slot there (slots are fixed by type), a roadblock / mine / bomb into a free slot of
+   * its kind. False when that slot is taken there (the same god already out in that city).
+   */
+  sendAway(node: number, to: Objects, dest: number): boolean {
+    const i = this.slots.findIndex(o => o.node === node && !o.owner);
+    if (i < 0) return false;
+    const o = this.slots[i];
+    const j = i < 16 ? i : to.slots.findIndex((d, k) => k >= 16 && d.type === o.type && !d.node && !d.owner);
+    const d = to.slots[j];
+    if (!d || d.node || d.owner) return false;
+    Object.assign(d, { node: dest, life: o.life, owner: 0, dir: o.dir });
+    Object.assign(o, { node: 0, life: 0, owner: 0 });
+    return true;
+  }
+
   /** Remove a player's attached god and carried bomb (bankruptcy, 02 §9.3). */
   detachAll(p: Player): void {
     if (p.god) this.remove(p.god);

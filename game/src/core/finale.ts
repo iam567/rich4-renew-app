@@ -428,6 +428,7 @@ export class Finale extends CasinoRules implements WorldHooks {
   }
   spaceTimeCities(): Option[] { return []; }
   *spaceTime(): Flow { /* no crossing */ }
+  *spaceTimeObject(): Flow<boolean> { return false; }
   aiSpaceTime(): number { return -1; }
   *overlordRelease(): Flow<boolean> { return false; }
   overlordTitles(): string[] { return []; }

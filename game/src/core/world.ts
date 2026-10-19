@@ -18,6 +18,7 @@ import { ask, type Flow } from './flow';
 import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs/rules/19)
 import { Game, type WorldHooks } from './game';
 import { deckSupply } from './modules/cards';
+import { OBJECT_NAMES } from './modules/objects';
 import { TYCOON_LABS } from './modules/tools';
 import { Rng, daySeed } from './rng';
 import { ledgerOf, type Ledger } from './stats';
@@ -907,18 +908,44 @@ export class World implements WorldHooks {
     return this.cities.map((_, i) => ({ label: this.cityName(i), value: i, disabled: i === here, detail: i === here ? '現在所在' : `地價×${(LAND_INDEX[this.mapId(i)] ?? 1).toFixed(1)}・${this.population(i)}人` })).filter(o => o.value !== here);
   }
 
-  /** 時空機 across the country: at once on the other city's airport; gods and a carried bomb stay behind (as a trip). */
-  *spaceTime(g: Game, p: Player, city: number): Flow {
-    const from = g.world!.index, node = this.travelNodes(city, 'airport')[0] ?? this.travelNodes(city)[0] ?? this.cities[city].board.nodes[0];
-    const text = `${this.name(p.id)}用時空機瞬間來到${this.cityName(city)}`;
+  /**
+   * 時空機's crossing (17 §3.6; the user 2026-10-19): to a random square of the city's roads (the world's stream), the
+   * god attached going along (土地公 from 東京 takes lots in 沖繩); a carried bomb is left behind as on any trip.
+   */
+  *spaceTime(g: Game, p: Player, city: number, by?: Player): Flow {
+    const from = p.map ?? g.world!.index, dc = this.cities[city];
+    const road = dc.board.nodes.filter(n => n.adjacent.some(Boolean) && !n.noDrop);
+    const node = road.length ? road[this.rng.below(road.length)] : (this.travelNodes(city, 'airport')[0] ?? dc.board.nodes[0]);
+    const text = by && by !== p ? `${this.name(by.id)}用時空機把${this.name(p.id)}送到${this.cityName(city)}` : `${this.name(p.id)}用時空機瞬間來到${this.cityName(city)}`;
+    if (p.human && by && by !== p) yield { t: 'fx', kind: 'tycoon-notice', p: by.id, target: p.id, data: { text, icon: 'travel' } };
     yield { t: 'fx', kind: 'space-time', p: p.id, node: p.node, data: { city: this.cityName(city), text } };
-    g.objects.detachAll(p);
+    const god = p.god ? OBJECT_NAMES[g.objects.godType(p) - 1] : '';
+    const carried = !!p.god && g.objects.carryGod(p, dc.objects);
+    if (p.bomb) g.objects.remove(p.bomb);
+    if (!carried) g.objects.detachAll(p);
+    if (carried) this.ticker(city, `${god}跟著${this.name(p.id)}一起來到${this.cityName(city)}`, 'travel', p.id);
     this.lastTrip[p.id] = this.daysElapsed;
     this.lastFrom[p.id] = from;
     this.relocate(p, city, node);
     this.ticker(from, text, 'travel', p.id);
     yield { t: 'board' };
     yield { t: 'world-sync' };
+  }
+
+  /** 時空機 (the user 2026-10-19): a god, a mine, a gift … on g's road to a random free road square of `city`. */
+  *spaceTimeObject(g: Game, p: Player, node: number, city: number): Flow<boolean> {
+    const dc = this.cities[city], o = g.objects.at(node);
+    if (!o || city === g.world!.index) return false;
+    const free = dc.board.nodes.filter(n => n.adjacent.some(Boolean) && !n.noDrop && !dc.objects.at(n.id) && !dc.occupants(n.id).length);
+    if (!free.length) return false;
+    const dest = free[this.rng.below(free.length)].id, name = OBJECT_NAMES[o.type - 1] ?? '物品';
+    if (!g.objects.sendAway(node, dc.objects, dest)) return false;
+    const text = `${this.name(p.id)}用時空機把${name}送到${this.cityName(city)}`;
+    yield { t: 'fx', kind: 'space-time', p: p.id, node, data: { city: this.cityName(city), text, object: o.type } };
+    this.ticker(g.world!.index, text, 'travel', p.id);
+    if (this.view() === city) this.ticker(city, `${name}從${this.cityName(g.world!.index)}被送來了`, 'travel', p.id);
+    yield { t: 'board' };
+    return true;
   }
 
   /** The computer's crossing: its own travel judgement with a free ticket (-1 stays). */

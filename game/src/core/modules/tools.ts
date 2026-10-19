@@ -508,20 +508,16 @@ export class Tools {
   }
 
   /**
-   * 時空機 (大富豪模式, 17 §3.6): either the 傳送機 in this city, or at once to another city's airport (no fare, no
-   * turn 在路上; the turn ends there). Param: a node for the teleporter, 100000 + city for the crossing.
+   * 時空機 (大富豪模式, 17 §3.6): either the 傳送機 in this city, or at once to a random square of another city (no
+   * fare, no turn 在路上; the turn ends there; the god goes along). Param: a node for the teleporter, 100000 + city.
    */
   private *spaceTime(p: Player, param?: number): Flow<boolean> {
     const g = this.g, w = g.world;
     if (!w) return false;
     let a = param;
-    if (a === undefined) {
-      const options: Option[] = [{ label: '本城傳送', value: -2, detail: '和傳送機一樣' }, ...w.hooks.spaceTimeCities(p)];
-      a = Number(yield ask({ t: 'choose', p: p.id, title: '時空機', text: '在本城當傳送機用，或立刻穿越到另一座城市的機場', options, cancellable: true }));
-      if (a === -2) return yield* this.teleporter(p, undefined, 16);
-      if (!(a >= 0)) return false;
-      a += 100000;
-    }
+    // A human (the user 2026-10-19): tap anything on the road (oneself, a rival, a god, a mine …), then send it to a
+    // chosen square here or to a random square of another city (teleporter, tool 16).
+    if (a === undefined) return yield* this.teleporter(p, undefined, 16);
     if (a < 100000) return yield* this.teleporter(p, a, 16);
     const city = a - 100000;
     if (city === w.index || !w.hooks.spaceTimeCities(p).some(o => o.value === city && !o.disabled)) return false;
@@ -710,6 +706,25 @@ export class Tools {
       const k = Number(yield ask({ t: 'pick-map', p: p.id, title: `使用${toolDef(tool)!.name}`, spots, cancellable: true, onScreen: true }));
       if (!(k >= 0 && k < sources.length)) return false;
       src = sources[k];
+      // 時空機 (大富豪模式): a person or a thing on the road may also go to another city, to a random square there.
+      if (tool === 16 && g.world && (src.kind === 'player' || src.kind === 'object')) {
+        const w = g.world, what = src.kind === 'player' ? g.name(src.id) : OBJECT_NAMES[(g.objects.at(src.node)?.type ?? 1) - 1];
+        const options: Option[] = [{ label: '本城（點選位置）', value: -2 }, ...w.hooks.spaceTimeCities(p)];
+        const c = Number(yield ask({ t: 'choose', p: p.id, title: `把${what}傳送到哪裡？`, text: `本城：點選位置・別的城市：隨機一格${src.kind === 'player' ? '（附身的神明一起去）' : ''}`, options, cancellable: true }));
+        if (c >= 0) {
+          if (!w.hooks.spaceTimeCities(p).some(o => o.value === c && !o.disabled)) return false;
+          if (src.kind === 'object') {
+            if (!(yield* w.hooks.spaceTimeObject(g, p, src.node, c))) { yield* g.say(p.id, '那座城市放不下了'); return false; }
+            this.consume(p, tool);
+            return true;
+          }
+          const q = g.players[src.id];
+          this.consume(p, tool);
+          yield* w.hooks.spaceTime(g, q, c, p);
+          return true;
+        }
+        if (c !== -2) return false;
+      }
       const targets = src.kind === 'land'
         ? view.filter(n => { const r = g.node(n).ref; const l = r > 2000 && r < 4000 ? g.board.lands[r - 2001] : null; return !!l && !l.owner && !l.level; })
         : src.kind === 'facility'
