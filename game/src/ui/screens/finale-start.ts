@@ -9,6 +9,9 @@ import { fxScreens } from './registry';
 import { esc, face, openScene } from './place-scene';
 import { audio, Sfx } from '../audio';
 import { ASSETS } from '../assets';
+import { drawFinaleCard } from '../finale-card';
+import { saveImage, shareImage } from '../share';
+import { format } from '../../core/date';
 import './finale-start.css';
 
 fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
@@ -51,8 +54,28 @@ fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
         `贏錢上限 Lv1 ${n((caps[1] ?? 10000) / chip)} … Lv5 ${n((caps[5] ?? 80000) / chip)} 籌碼`,
       ].map(t => `<span class="ph">${t}</span>`).join('')}</div>
       ${sold}
-      <button class="candy yes fs-go">前往大富翁城</button>`);
+      <div class="fs-acts"><button class="candy ghost fs-save">儲存到相簿</button><button class="candy yes fs-go">前往大富翁城</button><button class="candy ghost fs-share">分享</button></div>
+      <div class="fs-toast"></div>`);
     sc.stage.querySelector<HTMLButtonElement>('.fs-go')!.onclick = e => { e.stopPropagation(); finish(); };
+    // 儲存到相簿 / 分享 (the user 2026-10-19): this page as one picture (finale-card.ts).
+    let busy = false, toastTimer = 0;
+    const toast = (t: string) => { const el = sc.stage.querySelector<HTMLElement>('.fs-toast')!; el.textContent = t; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove('show'), 2200); };
+    const act = (share: boolean) => async (e: Event) => {
+      e.stopPropagation();
+      if (busy) return;
+      busy = true; audio.ui('click');
+      try {
+        const canvas = await drawFinaleCard({ vals, chips, human: human?.id, characterOf: p => ctx.game.players[p]?.character ?? 0, faceSrc: c => ctx.bank.art('Data', 2, c)?.src, date: format(ctx.game.date) });
+        const name = `rich4-finale-${Date.now()}`;
+        if (!share) toast((await saveImage(canvas, name)) === 'saved' ? '已儲存到相簿' : '已下載圖片');
+        else if ((await shareImage(canvas, name, '大富翁4・最終決戰！只剩 4 人，全體前往大富翁城')) === 'downloaded') toast('已下載圖片');
+      } catch (err) {
+        toast(/DENIED|權限/.test(String((err as Error)?.message ?? err)) ? '沒有相簿權限，請到設定開啟' : '無法完成，請再試一次');
+      }
+      busy = false;
+    };
+    sc.stage.querySelector<HTMLButtonElement>('.fs-save')!.onclick = act(false);
+    sc.stage.querySelector<HTMLButtonElement>('.fs-share')!.onclick = act(true);
   });
   let over = false;
   const finish = () => { if (over) return; over = true; audio.ui('yes'); s.close(); done(); };

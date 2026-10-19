@@ -29,7 +29,13 @@
 .fs-sold { position: relative; font-size: 13px; line-height: 1.4; text-align: center; color: #3a1a00; padding: 4px 14px; border-radius: 14px;
   background: #fff3c2; border: 3px solid #ff5050; animation: pl-pop .4s 2.2s cubic-bezier(.3, 1.6, .5, 1) both; }
 .fs-sold b { font-weight: 400; color: #c8202c; }
-.fs-root .fs-go { position: relative; margin-top: auto; font-size: 20px; padding: 6px 40px; animation: pl-pop .4s 2.4s cubic-bezier(.3, 1.6, .5, 1) both; }
+.fs-acts { position: relative; margin-top: auto; display: flex; align-items: center; justify-content: center; gap: 10px; animation: pl-pop .4s 2.4s cubic-bezier(.3, 1.6, .5, 1) both; }
+.fs-root .fs-go { position: relative; font-size: 20px; padding: 6px 30px; }
+.fs-root .fs-acts > .candy { position: relative; inset: auto; }
+.fs-root .fs-save, .fs-root .fs-share { font-size: 14px; padding: 5px 12px; white-space: nowrap; }
+.fs-toast { position: absolute; left: 50%; bottom: 70px; transform: translateX(-50%); padding: 6px 16px; border-radius: 999px; background: rgba(0,0,0,.75); color: #fff; font-size: 14px;
+  opacity: 0; transition: opacity .2s; pointer-events: none; white-space: nowrap; }
+.fs-toast.show { opacity: 1; }
 .fs-root.por .fs-title { font-size: 52px; margin-top: 24px; }
 .fs-root.por .fs-lines { font-size: 11px; }
 .fs-root.por .fs-face { width: 40px; height: 40px; }

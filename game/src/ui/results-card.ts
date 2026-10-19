@@ -16,12 +16,12 @@ export const statIcon = (name: StatIcon) => `${ASSETS}/maps/remake/stats/${name}
 
 
 const W = 1080;
-const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+export const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const money = (n: number) => Math.trunc(n).toLocaleString('en-US');
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`;
 
-function round(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
+export function round(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   c.beginPath();
   c.moveTo(x + r, y);
   c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r);
@@ -29,7 +29,7 @@ function round(c: CanvasRenderingContext2D, x: number, y: number, w: number, h: 
   c.closePath();
 }
 
-function text(c: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'left', shadow = true, maxW?: number) {
+export function text(c: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'left', shadow = true, maxW?: number) {
   c.font = `${size}px ${FONT}`;
   c.textAlign = align;
   c.textBaseline = 'middle';
@@ -39,13 +39,13 @@ function text(c: CanvasRenderingContext2D, s: string, x: number, y: number, size
 }
 
 /** The face as the screen shows it (the redrawn one when there is one), else the original portrait. */
-async function faceImage(character: number, src?: string): Promise<HTMLImageElement | null> {
+export async function faceImage(character: number, src?: string): Promise<HTMLImageElement | null> {
   try { return src ? await image(src) : await portrait(character); } catch {
     try { return await portrait(character); } catch { return null; }
   }
 }
 
-function drawFace(c: CanvasRenderingContext2D, img: HTMLImageElement | null, character: number, x: number, y: number, r: number, grey = false) {
+export function drawFace(c: CanvasRenderingContext2D, img: HTMLImageElement | null, character: number, x: number, y: number, r: number, grey = false) {
   c.save();
   c.beginPath(); c.arc(x, y, r, 0, Math.PI * 2); c.closePath();
   c.fillStyle = '#fff'; c.fill();
