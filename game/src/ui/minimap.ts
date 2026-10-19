@@ -91,7 +91,9 @@ export class Minimap {
     // Players' heads.
     for (const p of g.players) {
       if (!p.placed || p.bankrupt || g.offRoad(p)) continue;
-      const n = g.node(p.node), cx = n.x * K, cy = n.y * K, r = 7;
+      const n = g.node(p.node);
+      if (!n) continue; // 大富豪模式: still on another city's square (summoned, arriving)
+      const cx = n.x * K, cy = n.y * K, r = 7;
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath();
       ctx.fillStyle = hex(CHARACTERS[p.character].color); ctx.fill();
@@ -104,8 +106,9 @@ export class Minimap {
     }
     // The current actor: a white 30×30 frame; the spot being looked at: red.
     const cur = g.isPlayerId(g.current) ? g.players[g.current] : null;
-    if (cur?.placed) {
-      const n = g.node(cur.node);
+    const curNode = cur?.placed ? g.node(cur.node) : undefined;
+    if (curNode) {
+      const n = curNode;
       ctx.strokeStyle = '#fff'; ctx.lineWidth = 1.2;
       ctx.strokeRect(n.x * K - 15, n.y * K - 15, 30, 30);
     }

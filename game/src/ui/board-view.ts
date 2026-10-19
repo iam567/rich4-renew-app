@@ -834,16 +834,20 @@ export class BoardView {
     for (const p of this.game.players) {
       const a = this.actor(p.id);
       if (a.phase) continue;
-      a.visible = p.placed && (!this.game.offRoad(p) || p.bankrupt);
-      if (p.placed && p.node) { const n = nodeById(this.game.board, p.node); a.x = n.x; a.y = n.y; }
+      // 大富豪模式: a player still standing on another city's square (one arriving, summoned, deported) is not drawn
+      // here until the rules put them on this map — that square may not exist on it.
+      const n = p.placed && p.node ? nodeById(this.game.board, p.node) : undefined;
+      a.visible = !!n && p.placed && (!this.game.offRoad(p) || p.bankrupt);
+      if (n) { a.x = n.x; a.y = n.y; }
       // A standing player faces the way the rules say (a turn-around card turns them at once).
       a.dir = p.dir;
     }
     for (const [i, npc] of this.npcs()) {
       const a = this.actor(i);
       if (a.phase) continue;
-      a.visible = npc.where === 0 && npc.node > 0;
-      if (a.visible) { const n = nodeById(this.game.board, npc.node); a.x = n.x; a.y = n.y; a.dir = npc.dir; }
+      const n = npc.where === 0 && npc.node > 0 ? nodeById(this.game.board, npc.node) : undefined;
+      a.visible = !!n;
+      if (n) { a.x = n.x; a.y = n.y; a.dir = npc.dir; }
     }
   }
 
@@ -858,6 +862,7 @@ export class BoardView {
     // A walk still running ends where it is (whoever waits on it goes on).
     const m = this.movers.get(id);
     if (m) { this.movers.delete(id); m.done(); }
+    if (!n) { a.visible = false; return; } // a square of another city (大富豪模式)
     a.x = n.x; a.y = n.y; a.phase = 0; a.anim = 0; a.visible = true;
     this.pose.delete(id);
   }
@@ -1119,7 +1124,7 @@ export class BoardView {
     if (pose !== undefined && phase === 0) return { res: B + pose, frozen: false };
     if (phase === 3) return { res: B + 12, frozen: false };
     // Node status bit 31 is the water route: the character rides a speedboat there (08 §1.2).
-    const water = p.node ? nodeById(this.game.board, p.node).noDrop : false;
+    const water = p.node ? nodeById(this.game.board, p.node)?.noDrop ?? false : false;
     let slot: number;
     if (p.sleepwalk) slot = phase === 1 ? 17 : phase === 2 ? 2 : 16;
     else if (water) slot = 13 + (phase === 1 ? 1 : phase === 2 ? 2 : 0);

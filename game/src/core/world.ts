@@ -663,7 +663,8 @@ export class World implements WorldHooks {
 
   /**
    * 召集卡 (17 §3.5): a random rival from another city flies to this city — one turn 在路上, then they start from this
-   * city's airport, as after any flight. No fare; 免罪卡 does not apply (it is no punishment).
+   * city's airport, as after any flight. No fare. A 免罪卡 in the rival's hand turns it down once (the user
+   * 2026-10-19), used up as against 通緝卡; the 召集卡 is spent all the same.
    */
   *summon(g: Game, p: Player): Flow {
     const list = this.summonable(g, p);
@@ -675,6 +676,13 @@ export class World implements WorldHooks {
     if (q.human) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'summon' } };
     this.ticker(here, text, 'summon', p.id);
     g.addHostility(q.id, p.id, 50 * this.priceIndex);
+    if (q.cards.includes(21)) {
+      const fc = this.cities[from], no = `${this.name(q.id)}使用免罪卡，拒絕了${this.name(p.id)}的召集！`;
+      yield* this.across(from, (function* () { fc.cards.consume(q, 21); yield { t: 'fx', kind: 'card', p: q.id, data: { card: 21 } } as GameEvent; })());
+      if (p.human || q.human) yield { t: 'fx', kind: 'tycoon-notice', p: q.id, target: p.id, data: { text: no, icon: 'summon' } };
+      this.ticker(from, no, 'summon', q.id);
+      return;
+    }
     yield* this.across(from, this.leave(this.cities[from], q, this.option(here, q), 'airport', false, `（被${this.name(p.id)}召集）`, q.node));
   }
 

@@ -812,6 +812,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     answer = undefined;
     if (r.done) break;
     const s = r.value;
+    // One event a screen cannot show (say, a player still on another city's square) is skipped and logged; it must
+    // never stop the game (the user lost games to that: 小財神's payers, a summoned rival).
+    try {
     await losses.before(s);
     wd.beat('ask' in s ? `ask:${s.t}` : s.t === 'fx' ? `fx:${s.kind}` : s.t);
     if (!('ask' in s) && (s.t === 'step' || s.t === 'actor-step')) {
@@ -928,7 +931,6 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       wd.setHuman(false);
       continue;
     }
-    try {
     switch (s.t) {
       case 'turn':
         view.unmark();
@@ -1104,7 +1106,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     }
     } catch (e) {
       // A screen that fails on one event (say, a player in another city) must not stop the game: the rules go on.
-      console.error('event', s, e);
+      console.error('event', JSON.stringify(s).slice(0, 300), (e as Error)?.stack ?? e);
       view.highlight = null;
       hud.note('（畫面略過一個事件）');
     }

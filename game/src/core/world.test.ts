@@ -449,6 +449,31 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(me.cards).toEqual([35]);
   });
 
+  it('召集卡: a 免罪卡 in the rival\'s hand turns it down once (used up); the 召集卡 is spent all the same', () => {
+    const w = new World(settings(82, 0), boards());
+    const me = w.players[0], g = w.cities[0], q = w.players[5];
+    const put = (x: typeof me, city: number) => { x.map = city; x.trip = undefined; x.whoPlays = x.human ? 1 : 2; w.landed[x.id] = true; x.prison = x.hospital = x.hotel = x.vanish = 0; x.node = w.cities[city].board.nodes.find(n => n.event === 0 && n.ref === 0)!.id; };
+    for (const x of w.players) put(x, x.id === 0 ? 0 : 2);
+    for (const x of w.players.slice(1)) if (x !== q) x.hospital = 3;     // only q can be summoned
+    w.mask(0);
+    const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
+    q.cards = [21, 21]; me.cards = [35];
+    w.drain(0, cards.play(me, 35, true));
+    expect(me.cards).toEqual([]);
+    expect(q.cards).toEqual([21]);
+    expect(q.trip).toBeUndefined();
+    expect(q.map).toBe(2);
+    expect(w.log.some(l => /使用免罪卡，拒絕了/.test(l.text))).toBe(true);
+    // The second time it holds one more: turned down again; then none left, and off it goes.
+    me.cards = [35];
+    w.drain(0, cards.play(me, 35, true));
+    expect(q.cards).toEqual([]);
+    expect(q.trip).toBeUndefined();
+    me.cards = [35];
+    w.drain(0, cards.play(me, 35, true));
+    expect(q.trip).toEqual({ to: 0, via: 'airport' });
+  });
+
   it('通緝卡 jails any rival anywhere for 5 days in their city; 免罪卡 saves; one copy per city at a time', () => {
     const w = new World(settings(84, 0), boards());
     const me = w.players[0], q = w.players[4], r = w.players[5], g = w.cities[0];
