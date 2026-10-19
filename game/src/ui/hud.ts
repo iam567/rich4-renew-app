@@ -57,10 +57,13 @@ export class Hud {
   }
 
   /** What the full screens (screens/registry.ts) get to work with. */
-  context(shell: HTMLElement): ScreenContext {
+  context(shell: HTMLElement, question = false): ScreenContext {
+    // Each screen closes only what it opened (hide(node)); a question's boxes wait under a box that covers them.
+    let mine: HTMLElement | undefined;
     return {
       game: this.game, bank: this.bank, area: this.area, shell,
-      open: (node, full) => this.show(node, full), close: () => this.hide(), scale: this.scale,
+      open: (node, full) => { mine = node; if (question) node.dataset.keep = '1'; this.show(node, full); },
+      close: () => { if (mine) this.hide(mine); }, scale: this.scale,
       flash: (text, ms) => this.flash(text, ms),
     };
   }
@@ -73,8 +76,23 @@ export class Hud {
    */
   private fullLayer: HTMLElement | null = null;
 
-  private show(node: HTMLElement, full = false) {
+  /**
+   * Questions still waiting for their answer that another box covered (a tap on the toolbar's 「請在自己的回合使用」,
+   * 查詢 …): shown again when that box closes. Only questions (`data-keep`) wait here; a notice is gone once covered.
+   */
+  private under: { node: HTMLElement; full: boolean }[] = [];
+  private shown(): { node: HTMLElement; full: boolean } | null {
+    const a = this.layer.firstElementChild as HTMLElement | null;
+    if (a) return { node: a, full: false };
+    const b = this.fullLayer?.firstElementChild as HTMLElement | null;
+    return b ? { node: b, full: true } : null;
+  }
+
+  private show(node: HTMLElement, full = false, restoring = false) {
     if (full && this.shell && !this.fullLayer) { this.fullLayer = el('div', 'ui-layer full'); this.shell.append(this.fullLayer); }
+    const now = this.shown();
+    if (!restoring && now && now.node !== node && now.node.dataset.keep) this.under.push(now);
+    this.under = this.under.filter(u => u.node !== node);
     const target = full && this.fullLayer ? this.fullLayer : this.layer;
     const other = target === this.layer ? this.fullLayer : this.layer;
     if (other) { other.classList.remove('show'); other.replaceChildren(); }
@@ -90,9 +108,22 @@ export class Hud {
       this.onModal(area.height ? (box.top - area.top) / area.height : null);
     });
   }
-  private hide() {
+  /**
+   * Clears the dialog layers. With `node`: only while that node is what they show — a screen closing late (its own
+   * timer, a tap that came in as the next one opened) must not take the next screen away with it: the game then
+   * waited on a question nobody could see (the user, fast taps after a card, 2026-10-19).
+   */
+  private hide(node?: HTMLElement) {
+    if (node && node.parentElement !== this.layer && (!this.fullLayer || node.parentElement !== this.fullLayer)) {
+      this.under = this.under.filter(u => u.node !== node); // answered while covered: it does not come back
+      return;
+    }
     for (const l of [this.layer, this.fullLayer]) { l?.classList.remove('show'); l?.replaceChildren(); }
     this.onModal(null);
+    // A question the closed box covered comes back.
+    const back = node ? this.under.pop() : undefined;
+    if (!node) this.under = [];
+    if (back) this.show(back.node, back.full, true);
   }
 
   /**
@@ -294,7 +325,7 @@ export class Hud {
         done = true;
         this.layer.removeEventListener('pointerup', tap);
         if (voice !== undefined) audio.stopVoice();
-        this.hide();
+        this.hide(node);
         resolve();
       };
       const tap = () => end();
@@ -330,11 +361,12 @@ export class Hud {
   /** Ask a human player (not the turn itself: that is the GO button). */
   ask(a: Exclude<Ask, { t: 'turn' }>): Promise<unknown> {
     const screen = askScreens[askKey(a)];
-    if (screen) return screen(this.context(this.shell ?? this.area), a);
+    if (screen) return screen(this.context(this.shell ?? this.area, true), a);
     const who = this.game.players[a.p], ch = CHARACTERS[who?.character ?? 0];
     return new Promise(resolve => {
       const box = el('div', 'msg ask');
-      const done = (v: unknown) => { this.hide(); resolve(v); };
+      box.dataset.keep = '1'; // a question: it waits under a box that covers it (show / hide)
+      const done = (v: unknown) => { this.hide(box); resolve(v); };
       const head = (title: string) => `<div class="ribbon"><span class="ribbon-face">${this.portrait(ch.id)}</span>${esc(title)}</div>`;
       const row = el('div', 'choices');
       // YES / confirm Effect#2, NO / cancel #4, other choices click #1, mouse hover #0 (rich4_ui_yesno.asm).
@@ -507,7 +539,7 @@ export class Hud {
       const row = el('div', 'choices');
       for (const b of [...buttons, { label: '關閉', kind: 'ghost', value: '' }]) {
         const btn = el('button', `candy ${b.kind ?? 'opt'}`, b.label);
-        btn.onclick = () => { audio.ui(b.value ? 'click' : 'no'); this.hide(); resolve(b.value); };
+        btn.onclick = () => { audio.ui(b.value ? 'click' : 'no'); this.hide(box); resolve(b.value); };
         row.append(btn);
       }
       box.append(row);
@@ -525,7 +557,7 @@ export class Hud {
       const row = el('div', 'choices sys-buttons');
       for (const b of [...buttons, { label: '關閉', kind: 'ghost', value: '' }]) {
         const btn = el('button', `candy ${b.kind ?? 'opt'}`, b.label);
-        btn.onclick = () => { audio.ui(b.value ? 'click' : 'no'); this.hide(); resolve(b.value); };
+        btn.onclick = () => { audio.ui(b.value ? 'click' : 'no'); this.hide(box); resolve(b.value); };
         row.append(btn);
       }
       box.append(node, row);
@@ -551,7 +583,7 @@ export class Hud {
       const box = el('div', 'msg sheet wide', `<div class="ribbon">${esc(title)}</div>`);
       const row = el('div', 'choices sheet-close');
       const btn = el('button', 'candy ghost', '關閉');
-      btn.onclick = () => { audio.ui('no'); this.hide(); resolve(); };
+      btn.onclick = () => { audio.ui('no'); this.hide(box); resolve(); };
       row.append(btn);
       box.append(node, row);
       this.show(box, true);
