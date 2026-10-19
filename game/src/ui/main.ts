@@ -6,7 +6,7 @@ import { Game, SPEED } from '../core/game';
 import { nodeById } from '../core/board';
 import { loadGame, saveGame, type SaveData } from '../core/save';
 import type { Answer, GameSettings } from '../core/types';
-import { loadMap, mapList, type MapInfo } from './assets';
+import { ASSETS, loadMap, mapList, type MapInfo } from './assets';
 import { BoardView } from './board-view';
 import { Hud } from './hud';
 import { GoButton, Toolbar } from './controls';
@@ -14,6 +14,8 @@ import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
+import { openParty } from './party';
+import type { Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
@@ -135,16 +137,19 @@ function title() {
     const k = n?.hd ? PLATE[1] / PLATE[normal] : 1;
     return `<button class="title-btn" style="--k:${k.toFixed(3)}" data-act="${key}" aria-label="${label}">${n ? `<img class="n" src="${n.src}" alt="">` : ''}${h ? `<img class="h" src="${h.src}" alt="">` : ''}${n ? '' : `<span>${label}</span>`}</button>`;
   };
+  // 派對模式 (v0.5.0): its own redrawn button (maps/remake/title/party*.webp, tools/tycoon-art/party_button.py).
+  const party = `<button class="title-btn party" data-act="party" aria-label="派對模式"><img class="n" src="${ASSETS}/maps/remake/title/party.webp" alt=""><img class="h" src="${ASSETS}/maps/remake/title/party-hover.webp" alt=""></button>`;
   // The title plays MIDI01 (rich4_ui_main.asm:483); buttons have the hover / click sounds.
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
-    <div class="title-buttons">${btn('start', 1, '開始遊戲')}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
+    <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
     <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div>
     <div class="title-ver">v${__APP_VERSION__}</div></div>`;
   buttonSounds(app.querySelector('.title-buttons')!, '.title-btn');
   app.onclick = async e => {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
     if (act === 'start') newGame();
+    if (act === 'party') openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} });
     if (act === 'load') {
       const slot = await pickSlot(app, 'load', mapName, bank, thumbOf);
       if (slot >= 0) resume(slot);
@@ -403,9 +408,9 @@ let session = 0;
 let currentView: BoardView | null = null;
 let currentWeather: WeatherFx | null = null;
 
-function start(settings: GameSettings) {
+function start(settings: GameSettings, room?: Room) {
   // Every game keeps the statistics ledger (core/stats.ts) for the results screen.
-  begin(settings.mapId, board => { const g = new Game(settings, board); attachLedger(g.players); return g; }, false);
+  begin(settings.mapId, board => { const g = new Game(settings, board); attachLedger(g.players); return g; }, false, undefined, room);
 }
 
 /** Maps cleared and characters beaten in this run of games (docs/rules/20 §5; memory only, like the original's tables). */
@@ -462,7 +467,8 @@ function bootScreen(name: string, thumb: string, what: string, sub = ''): Loadin
   return boot;
 }
 
-async function begin(mapId: number, make: (board: import('../core/board').Board) => Game, loaded: boolean, ty?: { world: World; flow: ReturnType<World['run']> }) {
+/** `room`: 派對模式 (party-net.ts) — the other phones' seats wait for their answers, this phone's answers are sent. */
+async function begin(mapId: number, make: (board: import('../core/board').Board) => Game, loaded: boolean, ty?: { world: World; flow: ReturnType<World['run']> }, room?: Room) {
   const me = ++session;
   currentView?.destroy();
   currentView = null;
@@ -608,6 +614,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   toolbar.onAction = async key => {
     const turn = answerTurn;
     const needTurn = () => { if (!turn) hud.flash('請在自己的回合使用', 1000); return !!turn; };
+    // 派對模式: no loading another game, no 托管 (both would change this phone's game alone).
+    if (room && (key === 'load' || key === 'autopilot')) { hud.flash(key === 'load' ? '派對模式不能讀取進度' : '派對模式不能托管', 1200); return; }
     switch (key) {
       case 'save': {
         if (!turnSave) { hud.flash('請在自己的回合開始時存檔', 1200); return; }
@@ -817,8 +825,22 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     chat: chat ? l => chat.push(l) : undefined, mapIndex: () => ty?.world.view() ?? 0 });
   const flow = ty ? ty.flow : game.run();
   let answer: Answer = undefined;
+  // 派對模式: the game's questions are numbered; this phone sends its seats' answers, waits for the others'.
+  let askSeq = 0, sendSeq = -1, warnedDesync = false;
+  const waiting = document.createElement('div');
+  waiting.className = 'pt-waiting'; waiting.hidden = true;
+  if (room) {
+    stage.append(waiting);
+    room.onStatus = t => { if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true; };
+  }
+  const digest = () => {
+    let h = game.rng.seed >>> 0;
+    for (const p of game.players) for (const v of [p.cash, p.bank, p.node, p.points, p.cards.length]) h = (Math.imul(h ^ v, 0x01000193) >>> 0);
+    return h;
+  };
   for (;;) {
-    if (me !== session) { stopWatch(); return; }
+    if (me !== session) { stopWatch(); room?.close(); return; }
+    if (room && sendSeq >= 0) { room.answer(sendSeq, answer); sendSeq = -1; }
     const r = flow.next(answer);
     answer = undefined;
     if (r.done) break;
@@ -853,6 +875,20 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       await director.idle();
       view.followActor(s.p);
       hud.refresh();
+      if (room) {
+        const seq = askSeq++;
+        if (s.t === 'turn' && !room.digest(seq, digest()) && !warnedDesync) { warnedDesync = true; void hud.flash('和房主的遊戲不同步了\n請把這局截圖給開發者', 2600); }
+        if (!room.mine.has(s.p)) {
+          // Another phone's player decides: wait for the answer.
+          waiting.textContent = `等待 ${nameOf(s.p)} 操作…`; waiting.hidden = false;
+          wd.setHuman(true);
+          answer = (await room.wait(seq)) as Answer;
+          wd.setHuman(false);
+          waiting.hidden = true;
+          continue;
+        }
+        sendSeq = seq;
+      }
       if (s.t === 'turn') {
         // Auto-save when a human's turn opens, before the dice (one per turn): slot 0, or 大富豪模式's own automatic slot.
         turnSave = ty ? (saveWorld(ty.world) as unknown as SaveData) : saveGame(game);

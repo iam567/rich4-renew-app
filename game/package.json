@@ -1,7 +1,7 @@
 {
   "name": "rich4-remake",
   "private": true,
-  "version": "0.4.5",
+  "version": "0.5.0",
   "type": "module",
   "description": "High-resolution remake of Rich4 (大富翁4) following the original rules; assets come from the player's own copy.",
   "license": "GPL-3.0-or-later",
@@ -29,6 +29,7 @@
     "@capacitor/screen-orientation": "7.0.4",
     "@capacitor/share": "7.0.4",
     "@fontsource/huninn": "5.3.1",
-    "opencc-js": "1.4.2"
+    "opencc-js": "1.4.2",
+    "peerjs": "1.5.5"
   }
 }
