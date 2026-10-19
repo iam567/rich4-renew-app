@@ -309,4 +309,30 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(w.cities[4].board.nodes.find(n => n.id === q.node)?.adjacent.some(Boolean)).toBe(true);
     expect(me.map).toBe(0);
   });
+
+  it('roaming Death: 6+ bankrupt → each month with none out, one appears in a random city; stopping on it attaches it', () => {
+    const { w } = world();
+    const roam = () => { const f = (w as unknown as { roamingDeath(): Flow }).roamingDeath(); for (let r = f.next(); !r.done; r = f.next()) { /* notices */ } };
+    const out = () => w.cities.filter(c => c.objects.deathOut()).length;
+    for (const c of w.cities) for (const o of c.objects.slots) if (o.type === 15) Object.assign(o, { node: 0, owner: 0, life: 0 });
+    for (const q of w.players.slice(1, 6)) q.bankrupt = true;      // 5: not yet
+    roam();
+    expect(out()).toBe(0);
+    w.players[6].bankrupt = true;                                   // 6
+    roam();
+    expect(out()).toBe(1);
+    roam();                                                         // one is out: no second
+    expect(out()).toBe(1);
+    // someone stops on it: it attaches (13 days)
+    const c = w.cities.find(x => x.objects.deathOut())!, slot = c.objects.slots.find(o => o.type === 15 && o.node)!;
+    const q = w.players[7];
+    q.map = w.cities.indexOf(c); q.placed = true; q.whoPlays = 2; q.node = slot.node; q.god = 0;
+    const f = c.objects.step(q, 0); for (let r = f.next(); !r.done; r = f.next()) { /* effects */ }
+    expect(c.objects.godType(q)).toBe(15);
+    // gone again (detached): the next month brings another
+    c.objects.detachAll(q);
+    expect(out()).toBe(0);
+    roam();
+    expect(out()).toBe(1);
+  });
 });

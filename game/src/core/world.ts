@@ -1353,6 +1353,7 @@ export class World implements WorldHooks {
         c.monthsElapsed += 1;
       }
       this.monthsElapsed += 1;
+      yield* this.roamingDeath();
       this.history.push({ day: this.daysElapsed, wealth: this.players.map(p => (p.bankrupt ? 0 : this.wealth(p))) });
     }
     for (const c of this.cities) {
@@ -1362,6 +1363,27 @@ export class World implements WorldHooks {
       }
     }
     yield { t: 'board' };
+  }
+
+  /**
+   * The roaming Death (17 §7, the user 2026-10-19): once six or more players are bankrupt (before 大富翁城), each new
+   * month with no Death out in any city puts one on a random free road square of a random city; when it has left the
+   * one it attached to, the next month brings another. Stopping on it, it attaches as any god (13 days, its usual
+   * effects); 時空機 can send it to another city.
+   */
+  private *roamingDeath(): Flow {
+    if (this.finale.active || this.players.filter(p => p.bankrupt).length < 6) return;
+    const cities = this.cities.map((c, i) => ({ c, i })).filter(({ i }) => this.finale.runs(i) && this.mapId(i) !== FINALE_MAP);
+    if (!cities.length || cities.some(({ c }) => c.objects.deathOut())) return;
+    const { c, i } = cities[this.rng.below(cities.length)];
+    const free = c.board.nodes.filter(n => n.adjacent.some(Boolean) && !n.noDrop && !c.objects.at(n.id) && !c.occupants(n.id).length);
+    if (!free.length) return;
+    const node = free[this.rng.below(free.length)];
+    if (!c.objects.putDeath(node.id)) return;
+    const text = `死神出現在${this.cityName(i)}了！小心別停在祂的格子上`;
+    this.ticker(i, text, 'news');
+    if (this.view() === i) yield { t: 'board' };
+    yield { t: 'fx', kind: 'tycoon-notice', p: -1, data: { text, icon: 'death' } };
   }
 
   /** Price index (02 §1) over the whole world; only ever rises. */

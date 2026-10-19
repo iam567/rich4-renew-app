@@ -331,6 +331,11 @@ export class Objects {
     yield { t: 'board' };
   }
 
+  /** Whether a Death is out in this city (on the road or attached). */
+  deathOut(): boolean { return this.slots.some(o => o.type === OBJ.Death && (o.node || o.owner)); }
+  /** 大富豪模式's roaming Death: put one on `node` (its slot free). Returns false when none could be put. */
+  putDeath(node: number): boolean { return this.put(OBJ.Death, node) > 0; }
+
   /** Death from a surrender (06 §5.3, _rich4_call_god_of_death_entry). Only one Death is kept (bug decision #9). */
   *callDeath(target: Player): Flow {
     const death = this.slots[DEATH_SLOT - 1];
@@ -498,6 +503,9 @@ export class Objects {
         yield* this.say(p, '得到５００點券！');
         return 0;
       case OBJ.Death:
+        // 大富豪模式's roaming Death (17 §7, the user 2026-10-19): stopping on it, it attaches as any god. (The original
+        // only calls it from a surrender, never on the road.)
+        if (g.world) yield* this.attach(p, id);
         return 0;
       case OBJ.Mine:
         this.remove(id);
