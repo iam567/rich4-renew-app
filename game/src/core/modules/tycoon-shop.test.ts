@@ -335,4 +335,31 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     roam();
     expect(out()).toBe(1);
   });
+
+  it('money short (大富豪): shares then the cheapest lots go at half value before bankruptcy; a loan due is put off once', () => {
+    const { w, g } = world();
+    const q = w.players[2];
+    q.cash = 0; q.bank = 0; q.whoPlays = 2;
+    const mine = g.board.lands.slice(0, 3);
+    mine.forEach((l, k) => { l.owner = q.id + 1; l.level = k; });
+    const value = (l: typeof mine[number]) => Math.trunc((l.price + l.level * l.perLevel) * g.priceIndex / 2);
+    const need = value(mine[0]) + 1;                      // one lot is not enough, two are
+    const f = g.transfer(q.id, -1, need, 0, '測試');
+    for (let r = f.next(); !r.done; r = f.next()) { /* events */ }
+    expect(q.bankrupt).toBeFalsy();
+    expect(mine.filter(l => l.owner === q.id + 1)).toHaveLength(1);
+    expect(q.cash + q.bank).toBe(value(mine[0]) + value(mine[1]) - need);
+    // nothing left to sell: bankrupt as before
+    const f2 = g.transfer(q.id, -1, 10_000_000, 0, '測試');
+    for (let r = f2.next(); !r.done; r = f2.next()) { /* events */ }
+    expect(q.bankrupt).toBe(true);
+    // a loan due without the money: put off 30 days (+10%), the second time collected
+    const r2 = w.players[3];
+    Object.assign(r2, { whoPlays: 2, cash: 0, bank: 100, loan: 1000, loanDue: g.date, loanRenewed: undefined });
+    g.board.lands.forEach(l => { if (l.owner === r2.id + 1) l.owner = 0; });
+    const t1 = g.turnStart(r2); for (let r = t1.next(); !r.done; r = t1.next()) { /* say */ }
+    expect(r2.loan).toBe(1100);
+    expect(r2.loanRenewed).toBe(true);
+    expect(r2.bankrupt).toBeFalsy();
+  });
 });

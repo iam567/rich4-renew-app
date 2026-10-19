@@ -469,6 +469,7 @@ export class Game {
       let need = amount;
       const a = Math.min(p[first], need); p[first] -= a; need -= a;
       const b = Math.min(p[second], need); p[second] -= b; need -= b;
+      if (need > 0 && this.canRaise()) { yield* this.raiseCash(p, need); const c = Math.min(p.bank, need); p.bank -= c; need -= c; }
       if (need > 0) {
         amount -= need;
         p.cash = 0; p.bank = 0;
@@ -504,7 +505,44 @@ export class Game {
   *forcedDebit(p: Player, amount: number): Flow {
     p.bank -= amount;
     if (p.bank < 0) { p.cash += p.bank; p.bank = 0; }
+    if (p.cash < 0 && this.canRaise()) { const owe = -p.cash; p.cash = 0; yield* this.raiseCash(p, owe); const c = Math.min(p.bank, owe); p.bank -= c; p.cash = c - owe; }
     if (p.cash < 0) { p.cash = 0; yield* this.bankrupt(p); }
+  }
+
+  /** 大富豪模式 outside 大富翁城 (chips there): a player short of money sells before going bankrupt (raiseCash). */
+  private canRaise(): boolean { return !!this.world && !this.rules?.noLoans; }
+
+  /**
+   * 大富豪模式 (the user 2026-10-19: games ended too soon; the original has no selling before bankruptcy, 02 §9.3): short
+   * of `need` for a payment, every share is sold (into the deposit), then lots and facilities in any city go back to
+   * the bank at half their value, the cheapest first, until it is covered. Bankruptcy only when nothing is left.
+   */
+  private *raiseCash(p: Player, need: number): Flow<number> {
+    let got = 0;
+    for (const m of this.markets()) for (let slot = 0; slot < 12 && got < need; slot++) {
+      const n = m.holdings[p.id]?.[slot]?.shares ?? 0;
+      if (n > 0) got += m.sell(p, slot, n, true);
+    }
+    if (got) yield* this.say(p.id, `${this.name(p.id)}資金不足，賣出股票還債（${got.toLocaleString('en-US')}元）`);
+    if (got >= need) return got;
+    const me = p.id + 1, PI = this.priceIndex;
+    const plots = this.boards().flatMap(b => [
+      ...b.lands.filter(l => l.owner === me).map(l => ({ o: l as { owner: number; expire: number }, name: l.name, v: Math.trunc((l.price + l.level * l.perLevel) * PI / 2) })),
+      ...b.facilities.filter(f => f.owner === me).map(f => ({ o: f as { owner: number; expire: number }, name: f.name, v: Math.trunc((f.price + f.level * (f.fees[0] ?? 0)) * PI / 2) })),
+    ]).sort((x, y) => x.v - y.v);
+    const sold: string[] = [];
+    let money = 0;
+    for (const x of plots) {
+      if (got >= need) break;
+      x.o.owner = 0; x.o.expire = 0;
+      p.bank += x.v; got += x.v; money += x.v;
+      sold.push(x.name);
+    }
+    if (sold.length) {
+      yield { t: 'board' };
+      yield* this.say(p.id, `${this.name(p.id)}資金不足，把${sold.length > 2 ? `${sold.slice(0, 2).join('、')}等${sold.length}處` : sold.join('、')}地產半價賣給銀行（${money.toLocaleString('en-US')}元）`);
+    }
+    return got;
   }
 
   /** Insurance payout fcn_0044ba63 (docs/rules/06 §2.3): from the first insurance company into cash. */
@@ -754,10 +792,18 @@ export class Game {
     if (p.loanDue) {
       const d = daysBetween(this.date, p.loanDue);
       if (d >= 1 && d <= 3 && this.isHuman(p)) yield* this.say(p.id, d === 3 ? '您向銀行借貸的貸款即將到期，請不要忘記喔！' : `距貸款到期日還剩${d}天！`);
-      if (d <= 0) {
+      if (d <= 0 && this.world && !p.loanRenewed && p.cash + p.bank < p.loan) {
+        // 大富豪模式 (the user 2026-10-19: loans ended too many games): short at the due date, the bank puts it off once,
+        // 30 days, the loan 10% more; then it is collected as in the original.
+        p.loan = Math.trunc(p.loan * 1.1);
+        p.loanDue = addDays(this.date, 30);
+        p.loanRenewed = true;
+        yield* this.say(p.id, '貸款到期，存款不足：銀行同意展期30天（加收10%）');
+      } else if (d <= 0) {
         yield* this.say(p.id, '貸款到期日強制執行！');
         yield* this.forcedDebit(p, p.loan);
         p.loan = 0; p.loanDue = 0;
+        if (this.world) p.loanRenewed = undefined;
         if (!p.whoPlays) return;
       }
     }
@@ -1401,17 +1447,24 @@ export class Game {
       yield { t: 'bank', p: p.id };
       return;
     }
-    const ch = CHARACTERS[p.character];
+    const ch = CHARACTERS[p.character], money = p.cash + p.bank;
+    // 大富豪模式 (the user 2026-10-19: computers borrowed against their land and went bankrupt at the due date): it repays
+    // as soon as it can, borrows only when short, and never more than the money it already has.
+    const tycoon = !!this.world;
     if (p.loan) {
       const d = daysBetween(this.date, p.loanDue);
-      if (2 * p.loan < p.bank || (d <= 6 && p.cash + p.bank >= 1.1 * p.loan)) {
+      if (tycoon ? money >= 1.2 * p.loan : 2 * p.loan < p.bank || (d <= 6 && p.cash + p.bank >= 1.1 * p.loan)) {
         yield* this.forcedDebit(p, p.loan);
         p.loan = 0; // the original leaves the due date in place here
+        if (tycoon) { p.loanDue = 0; p.loanRenewed = undefined; }
       }
     } else if (this.rng.below(10) !== 0 && p.cash + p.bank >= 30000) {
       // enough money: no loan
+    } else if (tycoon && money >= 20000 * this.priceIndex) {
+      // 大富豪模式: not short of money: no loan
     } else if (!p.noLoan && ch.loanRatio) {
-      const loan = Math.trunc((ch.loanRatio * wealth) / 100);
+      let loan = Math.trunc((ch.loanRatio * wealth) / 100);
+      if (tycoon) loan = Math.min(loan, Math.max(10000 * this.priceIndex, money));
       if (loan > 0) { p.loan = loan; p.bank += loan; this.setLoanDue(p); }
     }
     yield { t: 'bank', p: p.id };

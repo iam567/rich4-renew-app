@@ -40,6 +40,8 @@ export interface Player {
   loan: number;
   specialFinance: number;
   loanDue: PackedDate;
+  /** 大富豪模式: the loan's due date was put off once already (a second time it is collected). */
+  loanRenewed?: boolean;
   points: number;
   /** Day counters use the original convention: N = days left, 0x80 = ends at the next turn start. */
   hotel: number;
