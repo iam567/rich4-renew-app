@@ -330,9 +330,12 @@ export class World implements WorldHooks {
    */
   sharePool(how: 'new' | 'saved' | 'merge' = 'new'): void {
     const cities = this.cities.filter(c => c.settings.mapId !== FINALE_MAP);
+    const fresh = deckSupply(true).map(n => n * cities.length);
     const pool = how === 'saved' ? [...cities[0].cards.remaining]
       : how === 'merge' ? deckSupply(true).map((_, i) => cities.reduce((a, c) => a + (c.cards.remaining[i] ?? 0), 0))
-      : deckSupply(true).map(n => n * cities.length);
+      : fresh;
+    // A save from before a card was added (複製卡, 39): its copies join the pool.
+    for (let i = pool.length; i < fresh.length; i++) pool.push(fresh[i]);
     if (how !== 'saved') pool[WANTED - 1] = 0; // unused (Cards.wanted); a used copy may count up there, kept as saved
     for (const c of cities) c.cards.remaining = pool;
   }

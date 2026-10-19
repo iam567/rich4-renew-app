@@ -7,7 +7,7 @@ import { day, month, year } from '../core/date';
 import type { Game } from '../core/game';
 import { TOOLS, TYCOON_TOOLS } from '../core/modules/tools';
 import { itemIconSrc, itemText } from './screens/item-text';
-import { cardName } from '../core/modules/cards';
+import { cardName, handStacks, stackOf } from '../core/modules/cards';
 import type { SpriteBank } from './sprites';
 import { tycoon } from './tycoon';
 import { shrinkText } from './text';
@@ -147,7 +147,8 @@ export class InfoScreen {
       const src = itemIconSrc(this.bank, t.id);
       return `<span class="info-tool" data-tool="${t.id}" title="${t.name}">${src ? `<img src="${src}" alt="">` : t.name}<b>×${p.tools[t.id - 1]}</b></span>`;
     }).join('') || '<span class="info-none">沒有道具</span>';
-    const cards = p.cards.map(id => `<span class="info-card" data-card="${id}" title="${cardName(id)}">${cardName(id)}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
+    // 大富豪模式: a slot holds up to 3 of a card (「停留卡×3」).
+    const cards = handStacks(p.cards, stackOf(g)).map(st => `<span class="info-card" data-card="${st.id}" title="${cardName(st.id)}">${cardName(st.id)}${st.n > 1 ? `<b>×${st.n}</b>` : ''}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
     // Two blocks (the figures; 道具 and 卡片): on a small screen that cannot hold both, one at a time (fit()).
     return `<div class="info-blk"><div class="info-grid">
         ${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}

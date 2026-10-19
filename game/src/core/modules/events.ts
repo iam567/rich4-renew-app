@@ -11,7 +11,7 @@ import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
 import type { Rng } from '../rng';
 import type { Player } from '../types';
-import { cardName, cardPrice, isTycoonCard } from './cards';
+import { cardName, cardPrice, handStacks, isTycoonCard, stackOf } from './cards';
 import { regionalDraw } from './regional-events'; // 大富豪模式 local news / fate (docs/rules/18)
 
 /** Card points and tools selling the fate entry 32 needs (04 §4.4, 05 §2.4); used when the modules provide them. */
@@ -352,12 +352,14 @@ export class Events {
       if (g.isHuman(p)) {
         const a = yield ask({
           t: 'choose', p: p.id, title: `向${g.name(q.id)}收一張卡片`, cancellable: false, // fortune.asm ref_004659c9
-          options: q.cards.map((id, k) => ({ label: CARD_NAMES[id - 1] ?? (cardName(id) || `卡片${id}`), value: k })),
+          // 大富豪模式: one option a slot (「停留卡 ×3」), the copy taken from it.
+          options: handStacks(q.cards, stackOf(g)).map(st => { const nm = CARD_NAMES[st.id - 1] ?? (cardName(st.id) || `卡片${st.id}`); return { label: st.n > 1 ? `${nm} ×${st.n}` : nm, value: st.first }; }),
         });
         i = typeof a === 'number' && a >= 0 && a < q.cards.length ? a : 0;
       } else i = g.rng.below(q.cards.length);
       const [id] = q.cards.splice(i, 1);
-      g.cards.receive(p, id);
+      // A human with a full hand may let it go: then it goes back to the pool.
+      if (!(yield* g.cards.take(p, id)) && g.cards.remaining.length >= id) g.cards.remaining[id - 1] += 1;
       yield { t: 'fx', kind: 'card-taken', p: p.id, target: q.id, data: { card: id, last: k === givers.length - 1 } };
       got.push([q.id, id]);
     }

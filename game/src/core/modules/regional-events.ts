@@ -295,7 +295,7 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
       for (let k = 0; k < (fx.n ?? 1); k++) {
         const ids = fx.id ? [fx.id] : cardPool(g);
         const id = ids.length ? ids[rng.below(ids.length)] : 0;
-        if (!id || !g.cards.receive(p, id)) continue;
+        if (!id || !(yield* g.cards.take(p, id))) continue;
         got.push(id);
         yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id } };
       }
@@ -517,7 +517,7 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
         const ids = cardPool(g);
         if (!ids.length) break;
         const id = ids[rng.below(ids.length)];
-        if (g.cards.receive(q, id)) lines.push({ p: q.id, text: `得到${cardName(id)}` });
+        if (yield* g.cards.take(q, id)) lines.push({ p: q.id, text: `得到${cardName(id)}` });
       }
       yield* result(g, p, e, 'birthday', lines, { focus: who.map(q => q.id) });
       return;

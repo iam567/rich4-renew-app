@@ -9,6 +9,7 @@ import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type Board, type RawMap } from '../board';
 import { pack } from '../date';
+import type { Flow } from '../flow';
 import type { Ask, Step } from '../types';
 import { applyOverlay, TYCOON_MAPS, World, type TycoonOverlay } from '../world';
 
@@ -170,5 +171,111 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(me.hospital).toBe(0);
     expect(ai.cards).toEqual([]); // the 嫁禍卡 went to someone here instead
     expect(local.hospital).toBeGreaterThan(0);
+  });
+
+  it('stacked hand (the user 2026-10-19): 3 of a card to a slot, a 4th opens another; 15 slots; a full hand drops a lone cheap card', async () => {
+    const { handSlots, handStacks, handRoom } = await import('./cards');
+    const hand = [14, 14, 14, 14, 6, 6, 1, 21, 21, 21, 21, 21, 21, 21];
+    expect(handStacks(hand, 3).map(s => [s.id, s.n])).toEqual([[14, 3], [14, 1], [6, 2], [1, 1], [21, 3], [21, 3], [21, 1]]);
+    expect(handSlots(hand, 3)).toBe(7);
+    expect(handSlots(hand, 1)).toBe(14);
+    const { g, me } = world();
+    // 15 slots full: 14 slots of 3 停留卡… and one lone 均富卡
+    me.cards = [...Array.from({ length: 13 }, () => [14, 14, 14]).flat(), 6, 6, 1];
+    expect(handSlots(me.cards, 3)).toBe(15);
+    expect(handRoom(me.cards, 6, 3)).toBe(true);    // the 轉向卡 slot has room for a third
+    expect(handRoom(me.cards, 20, 3)).toBe(false);  // a new card needs a slot
+    g.cards.receive(me, 6);
+    expect(me.cards.filter(c => c === 6)).toHaveLength(3);
+    expect(me.cards).toContain(1);
+    g.cards.receive(me, 20);                          // full: the card alone in its slot goes (that frees a slot)
+    expect(handSlots(me.cards, 3)).toBe(15);
+    expect(me.cards).toContain(20);
+    expect(me.cards).not.toContain(1);                // the only card alone in its slot
+    // The shop: a full hand still takes one more of a card with room in its slot.
+    me.points = 5000; g.tools.shopStock.fill(0);
+    const asks = shop(g, me, [{ buy: 'card', index: 0 }, null]);     // 轉向卡: its slot is full (3) → no room
+    expect(asks.length).toBeGreaterThan(0);
+    expect(me.cards.filter(c => c === 6)).toHaveLength(3);
+  });
+
+  it('stacked hands: 搶奪卡 takes one copy (×3 → ×2); 小衰神 loses one card, not a slot; 大衰神 half the cards', () => {
+    const { w, g, me } = world();
+    const q = w.players[1];
+    for (const x of [me, q]) { x.map = 0; x.placed = true; x.whoPlays = x.human ? 1 : 2; x.prison = x.hospital = x.hotel = x.vanish = 0; }
+    q.human = false;
+    q.node = me.node;
+    w.mask(0);
+    // 搶奪卡: the human takes a 停留卡 from q's stack of three
+    q.cards = [14, 14, 14, 6]; me.cards = [13];
+    const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
+    const f = cards.play(me, 13, true);
+    for (let r = f.next(); !r.done; ) {
+      const s = r.value as Step & { t: string; title?: string; spots?: { id: number }[] };
+      let a: unknown;
+      if ('ask' in s) a = s.t === 'pick-map' ? s.spots!.findIndex(x => x.id === q.id) : s.t === 'choose' ? 14 : undefined;
+      r = f.next(a as never);
+    }
+    expect(q.cards.filter(c => c === 14)).toHaveLength(2);
+    expect(q.cards).toHaveLength(3);
+    expect(me.cards).toEqual([14]);
+    // 小衰神 (slot 7): one card goes, whatever stack it was in
+    q.cards = [14, 14, 14, 21, 21, 21, 1];
+    const f2 = g.objects.attach(q, 7); for (let r = f2.next(); !r.done; r = f2.next()) { /* computer */ }
+    expect(q.cards).toHaveLength(6);
+    // 大衰神 (slot 8): half the cards (⌊7/2⌋ = 3), counted by card, not by slot
+    q.cards = [14, 14, 14, 21, 21, 21, 1];
+    const f3 = g.objects.attach(q, 8); for (let r = f3.next(); !r.done; r = f3.next()) { /* computer */ }
+    expect(q.cards).toHaveLength(4);
+  });
+
+  it('stacks merge by themselves: 停留卡×3 + ×1 less one is one slot of ×3', async () => {
+    const { handStacks } = await import('./cards');
+    const hand = [14, 14, 14, 14];
+    hand.splice(hand.indexOf(14), 1);
+    expect(handStacks(hand, 3).map(s => [s.id, s.n])).toEqual([[14, 3]]);
+  });
+
+  it('複製卡 (39): copies any card or tool once and is gone; never on the shelf; the owner\'s gift may be one; old pools get its copies', async () => {
+    const { COPY_CARD } = await import('./cards');
+    const { w, g, me } = world();
+    expect(g.cards.remaining[COPY_CARD - 1]).toBe(20);            // 4 a map × 5
+    for (let k = 0; k < 30; k++) expect(g.tools.cardShelf()).not.toContain(COPY_CARD);
+    const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
+    const use = (answers: unknown[]) => { const f = cards.play(me, COPY_CARD, true); let r = f.next(); while (!r.done) r = f.next(('ask' in (r.value as object) ? answers.shift() : undefined) as never); return r.value; };
+    // a card held: 獨裁卡, from nowhere (the pool keeps its count)
+    me.tools = me.tools.map(() => 0);
+    me.cards = [COPY_CARD, 34]; const before = g.cards.remaining[33];
+    expect(use([34])).toBe(true);                                  // cards only: no 卡片／道具 question
+    expect(me.cards).toEqual([34, 34]);
+    expect(g.cards.remaining[33]).toBe(before);
+    // a card not held cannot be copied
+    me.cards = [COPY_CARD, 6];
+    expect(use([34])).toBe(false);
+    expect(me.cards).toEqual([COPY_CARD, 6]);
+    // a tool held: 洲際飛彈 (15)
+    me.cards = [COPY_CARD]; me.tools[14] = 1;
+    expect(use([15])).toBe(true);
+    expect(me.tools[14]).toBe(2);
+    expect(me.cards).toEqual([]);
+    // nothing to copy: kept
+    me.cards = [COPY_CARD]; me.tools = me.tools.map(() => 0);
+    expect(use([])).toBe(false);
+    expect(me.cards).toEqual([COPY_CARD]);
+    // a tool already held 9 times: not copied, the card kept
+    me.cards = [COPY_CARD]; me.tools[7] = 9;
+    expect(use([8])).toBe(false);
+    expect(me.cards).toEqual([COPY_CARD]);
+    // the owner's gift draws it among the others (its copies only)
+    g.cards.remaining.fill(0); g.cards.remaining[COPY_CARD - 1] = 3;
+    expect(g.cards.drawId(true)).toBe(COPY_CARD);
+    expect(g.cards.drawId(false)).toBe(0);
+    // a save from before the card: the pool gets its 20 copies
+    const { saveWorld, loadWorld } = await import('../save');
+    const sv = saveWorld(w);
+    for (const c of sv.cities) (c.modules.cards as { remaining: number[] }).remaining = (c.modules.cards as { remaining: number[] }).remaining.slice(0, 36);
+    const v = loadWorld(sv);
+    expect(v.cities[0].cards.remaining).toHaveLength(39);
+    expect(v.cities[0].cards.remaining[COPY_CARD - 1]).toBe(20);
   });
 });

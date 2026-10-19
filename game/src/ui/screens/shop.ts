@@ -11,7 +11,7 @@
  * The engine asks one `shop` question per action; the scene stays up between them and is taken down on leaving.
  */
 import { CHARACTERS } from '../../core/characters';
-import { cardDef, HAND_LIMIT, cardName, cardPrice } from '../../core/modules/cards';
+import { cardDef, HAND_LIMIT, cardName, cardPrice, handRoom, handSlots, handStacks, stackOf } from '../../core/modules/cards';
 import { MAX_HELD, TOOLS, sellPrice, type ShopAnswer } from '../../core/modules/tools';
 import type { Ask } from '../../core/types';
 import type { Archive } from '../sprites';
@@ -272,7 +272,7 @@ class ShopScene {
     place(this.label, L.label.x, L.label.y, L.label.w, 36);
     const ch = CHARACTERS[me.character];
     const face = this.art('Data', 2, ch.id);
-    const used = pg === 0 ? `${me.cards.length}/${HAND_LIMIT}` : `${me.tools.filter(Boolean).length} 種`;
+    const used = pg === 0 ? `${handSlots(me.cards, stackOf(this.ctx.game))}/${HAND_LIMIT}` : `${me.tools.filter(Boolean).length} 種`;
     this.label.title = '點背包裡的東西即可賣出，得九折點券';
     this.label.innerHTML = `${face ? `<img src="${face.src}" alt="">` : ''}<b>${esc(ch.name)}</b><span>${pg === 0 ? '卡片' : '道具'}</span><span class="n">${used}</span><span class="s">9折收購</span>`;
     this.hint.hidden = !L.hint;
@@ -301,7 +301,7 @@ class ShopScene {
     this.img(this.shelfImg, 'Panel', 10, 1 + pg * 16, 0, 0);
     this.rows.replaceChildren(pg === 0 ? place(el('div', 'shop-face card'), 10, 66, 202, 386) : place(el('div', 'shop-face tool'), 14, 80, 194, 367));
     if (pg === 0) {
-      const full = me.cards.length >= HAND_LIMIT;
+      const stack = stackOf(this.ctx.game), full = (id: number) => !handRoom(me.cards, id, stack);
       // 大富豪模式's shelf has every card (05 §8.3, 17 §3.10): more than the 15 rows that fit, so two columns of shorter
       // rows in the same list area, every card on the one page.
       const many = a.cards.length > 15, per = Math.ceil(a.cards.length / 2), step = many ? Math.min(25, Math.floor(378 / per)) : 25;
@@ -316,7 +316,7 @@ class ShopScene {
         } else {
           const price = cardPrice(id), poor = a.points < price;
           row.classList.toggle('poor', poor);
-          row.classList.toggle('full', full);
+          row.classList.toggle('full', full(id));
           row.classList.toggle('always', !!a.always?.includes(id)); // 大富豪模式: always in stock (17 §3.10)
           row.innerHTML = `<span class="nm">${esc(cardName(id))}</span><span class="pr">$${price}</span>`;
           row.title = `${cardName(id)}　$${price}${a.always?.includes(id) ? '（常備，可一直買）' : ''}\n${(cardDef(id)?.text ?? "")}`;
@@ -363,13 +363,15 @@ class ShopScene {
     const arrived = this.arrived;
     this.arrived = null;
     if (pg === 0) {
-      me.cards.forEach((id, i) => {
-        const c = cell(i), pic = this.art('Data', 570 + id), get = sellPrice(cardPrice(id));
+      // 大富豪模式: one cell a slot, 「×3」 on a stack; a tap sells one copy of it.
+      const stacks = handStacks(me.cards, stackOf(this.ctx.game));
+      stacks.forEach((st, k) => {
+        const id = st.id, c = cell(k), pic = this.art('Data', 570 + id), get = sellPrice(cardPrice(id));
         c.classList.add('card');
-        c.innerHTML = `${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<span class="nm">${esc(cardName(id))}</span><span class="pr">+${get}</span>`;
+        c.innerHTML = `${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<span class="nm">${esc(cardName(id))}</span><span class="pr">+${get}</span>${st.n > 1 ? `<span class="shop-x">×${st.n}</span>` : ''}`;
         c.title = `賣出 ${cardName(id)}：得 ${get} 點券`;
-        if (arrived?.kind === 'card' && arrived.id === id && i === me.cards.length - 1) c.classList.add('pop');
-        this.press(c, () => this.sell({ sell: 'card', index: i }, get, c), () => this.cardInfo(id, cardPrice(id), true));
+        if (arrived?.kind === 'card' && arrived.id === id && !stacks.slice(k + 1).some(x => x.id === id)) c.classList.add('pop');
+        this.press(c, () => this.sell({ sell: 'card', index: st.first }, get, c), () => this.cardInfo(id, cardPrice(id), true));
         this.cells.append(c);
       });
       if (!me.cards.length) this.cells.append(place(el('div', 'shop-empty bag', '沒有卡片'), 7, 63, 396, 52));
@@ -420,7 +422,7 @@ class ShopScene {
     const price = kind === 'card' ? cardPrice(id) : TOOLS[id - 1].price;
     // Refusals in the original order: points first, then the full hand / stack (rich4_shop.asm:1312-1354, 1480-1543).
     if (a.points < price) { this.say(lines.poor, 2000, true); return; }
-    if (kind === 'card' ? me.cards.length >= HAND_LIMIT : me.tools[id - 1] >= MAX_HELD) { this.say(lines.full, 2000, true); return; }
+    if (kind === 'card' ? !handRoom(me.cards, id, stackOf(this.ctx.game)) : me.tools[id - 1] >= MAX_HELD) { this.say(lines.full, 2000, true); return; }
     this.arrived = { kind, id };
     this.floatText(`−${price}`, 'minus');
     this.hop();

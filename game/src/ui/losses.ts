@@ -2,7 +2,7 @@
  * Loss notices (the remake's, docs/rules/15 §4.1): when a human player loses cards or tools in any way — 小衰神 /
  * 大衰神, 死神, 搶奪卡, the robber, fate and news, the magic house, a birthday, a full hand — a box lists exactly
  * what went (icon, name, ×count), in the same box as the news and fate results. A computer's losses get a line in
- * the log (and in 大富豪模式's chat box).
+ * the log (and in 大富豪模式's chat box), and the box too when a bad god (小衰神 / 大衰神 / 死神) took them.
  *
  * Presentation only: it compares the players' hands between the steps the flow yields and never touches the
  * game. What a player gives up themselves (a card or tool used, a sale at the shop, getting on or off a vehicle,
@@ -11,7 +11,7 @@
  */
 import type { Game } from '../core/game';
 import type { Player, Step } from '../core/types';
-import { cardName } from '../core/modules/cards';
+import { cardName, HAND_LIMIT, handSlots, stackOf } from '../core/modules/cards';
 import { toolDef, toolIcon } from '../core/modules/tools';
 import { MAGIC_NAMES } from '../core/modules/places';
 import { OBJECT_NAMES } from '../core/modules/objects';
@@ -161,7 +161,7 @@ export class LossNotices {
       if (!cards.length && !tools.length) continue;
       const c = [...this.causes].reverse().find(x => this.n - x.at <= CAUSE_REACH && (x.who === 'all' || x.who.has(p.id)));
       // A full hand: a new card pushed the cheapest out (04 §4.1).
-      const full = !c && cards.length === 1 && !tools.length && p.cards.length >= 15 && [...now.cards].some(([id, k]) => k > (before.cards.get(id) ?? 0));
+      const full = !c && cards.length === 1 && !tools.length && handSlots(p.cards, stackOf(g)) >= HAND_LIMIT && [...now.cards].some(([id, k]) => k > (before.cards.get(id) ?? 0));
       // A computer's change (or a human's on autopilot, played by the computer) counts only with an event that takes
       // things: its own sales at the shop and some of its uses are silent.
       if (!g.isHuman(p) && !c && !full) continue;
@@ -206,9 +206,12 @@ export class LossNotices {
     const list = items.map(i => `${i.name}${i.n > 1 ? `×${i.n}` : ''}`).join('、');
     const text = `${this.name(l.p)}${l.cause ? `（${l.cause}）` : ''}失去${list}`;
     this.o.note?.(text);
+    // A computer's losses go to the chat box; but a bad god's (小衰神 / 大衰神 / 死神) on a rival shows its box too,
+    // as the human's would (the user 2026-10-19: the cards a rival lost to 衰神 were never shown).
+    const god = /^(小衰神|大衰神|死神)附身$/.test(l.cause);
     if (!p.human) {
       if (this.o.chat) this.o.chat({ day: g.daysElapsed, map: this.o.mapIndex?.() ?? 0, text, p: l.p, kind: 'loss' });
-      return;
+      if (!god) return;
     }
     const ctx = this.ctx();
     const chips = items.map(i => {

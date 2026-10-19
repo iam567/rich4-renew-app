@@ -109,6 +109,9 @@
 .shop-cell.card .nm { left: 33px; top: 8px; width: 42px; text-align: center; font-size: 13px; line-height: 1; white-space: nowrap; letter-spacing: -.6px; }
 .shop-cell.card .pr { left: 35px; top: 27px; width: 38px; height: 16px; line-height: 16px; text-align: center; font-size: 13px; color: #4a2a00;
   text-shadow: none; font-weight: 700; border-radius: 8px; background: linear-gradient(180deg, #ffe98a, #f6b93a); box-shadow: 0 1px 0 rgba(0, 0, 0, .35); }
+/* 大富豪模式: a slot of up to 3 of the same card, its count on the picture's corner */
+.shop-cell.card .shop-x { left: 15px; top: 30px; padding: 0 4px; border-radius: 7px; font-size: 12px; line-height: 15px; font-weight: 900; color: #fff;
+  background: #e2459a; border: 1px solid #fff; box-shadow: 0 1px 2px rgba(0, 0, 0, .5); }
 .shop-cell.tool .ic { left: 50%; top: 21px; transform: translate(-50%, -50%); max-width: 42px; max-height: 36px; object-fit: contain;
   filter: drop-shadow(0 2px 1px rgba(0, 0, 0, .45)); }
 .shop-cell.tool .n { right: 5px; bottom: 2px; font-size: 15px; }

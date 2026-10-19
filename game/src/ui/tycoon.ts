@@ -53,8 +53,9 @@ export async function registerSprites(bank: SpriteBank): Promise<void> {
       if (r.ok) out[`map/${id}`] = { dir: `remake/sprites/${id}`, frames: await r.json() };
     } catch { /* drawn as nothing */ }
   }));
-  // The tycoon cards 31..36 (17 §3.5) as Data#601..606, after the original cards Data#571..600 (maps/remake/cards/).
-  for (const id of [601, 602, 603, 604, 605, 606]) out[`Data/0${id}`] = { dir: 'remake/cards', frames: [{ file: `0${id}.webp`, width: 660, height: 1024, anchor_x: 0, anchor_y: 0 }] };
+  // The tycoon cards 31..36 (17 §3.5) as Data#601..606, after the original cards Data#571..600 (maps/remake/cards/);
+  // 複製卡 (39) as Data#609.
+  for (const id of [601, 602, 603, 604, 605, 606, 609]) out[`Data/0${id}`] = { dir: 'remake/cards', frames: [{ file: `0${id}.webp`, width: 660, height: 1024, anchor_x: 0, anchor_y: 0 }] };
   // 大富豪模式's lab tools 14-16 (17 §3.6) as Data#614..616 (maps/remake/tools/), in the size of the Panel#11 icons.
   for (const [id, w, h] of [[614, 480, 438], [615, 480, 471], [616, 480, 465]]) out[`Data/0${id}`] = { dir: 'remake/tools', frames: [{ file: `0${id}.webp`, width: w, height: h, anchor_x: 0, anchor_y: 0 }] };
   bank.addMapSprites(out);

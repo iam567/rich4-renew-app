@@ -97,8 +97,17 @@ export const KB_CARDS: readonly CardDef[] = [
 export const REMAKE_SUPPLY: Readonly<Record<number, number>> = { 1: 2, 3: 5, 4: 3, 5: 3, 6: 6, 7: 4, 13: 3, 14: 6, 18: 2, 20: 5, 21: 5, 22: 4, 23: 4 };
 export const REMAKE_CARD_SUPPLY = { on: true };
 
-/** The tycoon world's deck (its pool and shelf); the lookups below also know 歌舞伎町's card. */
-const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS];
+/**
+ * 複製卡 (大富豪模式, the user 2026-10-19): copies any card or tool once, then it is gone. 4 a map (20 in the
+ * nationwide pool), worth 100; never on the shop's shelf — only the owner's gift at their own shop may be one.
+ */
+export const COPY_CARD = 39;
+const COPY_DEF = def(COPY_CARD, '複製卡', 100, 4, 0, 0, '大富豪模式：從自己手上的卡片或道具中任選一樣，再複製一份，用完就消失（卡片商店買不到，董事長在自家商店才可能拿到）');
+/**
+ * The tycoon world's deck (its pool and shelf), index = id - 1: the original 30, the mode's 31–36, 歌舞伎町's 37–38
+ * (no copies here) and 39 複製卡.
+ */
+const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS, ...KB_CARDS, COPY_DEF];
 /** Copies per card at a new game (the remake's numbers), index = id - 1: the tycoon deck's fixed shelf weights. */
 export const deckSupply = (tycoon: boolean): number[] =>
   (tycoon ? TYCOON_DECK : CARDS).map(c => (REMAKE_CARD_SUPPLY.on ? REMAKE_SUPPLY[c.id] ?? c.supply : c.supply));
@@ -108,15 +117,35 @@ export const deckSupply = (tycoon: boolean): number[] =>
  * and the 通緝卡 (one per city).
  */
 export const TYCOON_SHOP_ALWAYS: readonly number[] = [6, 14, 31, 32, 33, 35];
-const ALL_CARDS: readonly CardDef[] = [...TYCOON_DECK, ...KB_CARDS];
+const ALL_CARDS: readonly CardDef[] = TYCOON_DECK;
 export const cardDef = (id: number): CardDef | undefined => ALL_CARDS[id - 1];
 /**
  * 大富豪模式's own cards (ids above the original 30): effects that sell or drop a whole hand (魔法屋 變賣所有卡片,
  * 命運 32, 死神) leave them in the hand — only bankruptcy clears them (docs/rules/17 §3.7).
  */
-export const isTycoonCard = (id: number) => id > CARDS.length && id <= TYCOON_DECK.length;
+export const isTycoonCard = (id: number) => (id > CARDS.length && id <= CARDS.length + TYCOON_CARDS.length) || id === COPY_CARD;
 
 export const HAND_LIMIT = 15;
+/**
+ * 大富豪模式 (the user 2026-10-19): a hand slot holds up to 3 of the same card — a 4th starts another slot, so the 15
+ * slots hold up to 45 cards (「停留卡×3、停留卡×1、轉向卡×2 …」). A normal game: one card a slot, as the original.
+ */
+export const TYCOON_STACK = 3;
+export const stackOf = (g: { world?: unknown }) => (g.world ? TYCOON_STACK : 1);
+/** The hand's slots in order: each card's copies `stack` to a slot; `first` is the index of a copy in the hand. */
+export function handStacks(cards: readonly number[], stack: number): { id: number; n: number; first: number }[] {
+  const out: { id: number; n: number; first: number }[] = [], open = new Map<number, { id: number; n: number; first: number }>();
+  cards.forEach((id, i) => {
+    const s = open.get(id);
+    if (s && s.n < stack) s.n += 1;
+    else { const t = { id, n: 1, first: i }; out.push(t); open.set(id, t); }
+  });
+  return out;
+}
+export const handSlots = (cards: readonly number[], stack: number) => (stack === 1 ? cards.length : handStacks(cards, stack).length);
+/** Whether one more `id` fits: a free slot, or (stacking) a slot of that card not yet full. */
+export const handRoom = (cards: readonly number[], id: number, stack: number) =>
+  handSlots(cards, stack) < HAND_LIMIT || (stack > 1 && cards.filter(c => c === id).length % stack !== 0);
 export const cardName = (id: number) => ALL_CARDS[id - 1]?.name ?? '';
 export const cardPrice = (id: number) => ALL_CARDS[id - 1]?.price ?? 0;
 
@@ -176,12 +205,26 @@ export class Cards {
     return best;
   }
 
-  /** Add a card to a hand: a full hand of 15 first drops its cheapest card (04 §2.1). No pool check. */
+  /** Room in p's hand for one more `id` (大富豪模式: 3 of a card to a slot, HAND_LIMIT slots). */
+  room(p: Player, id: number): boolean { return handRoom(p.cards, id, stackOf(this.g)); }
+
+  /**
+   * Add a card to a hand: a full hand of 15 first drops its cheapest card (04 §2.1). No pool check. 大富豪模式: until
+   * there is room — the cheapest card alone in its slot first (dropping it frees the slot), else the cheapest.
+   */
   receive(p: Player, id: number): boolean {
     // A map's own card (歌舞伎町 37) has no pool: it is in no `remaining` slot.
     const own = id > this.remaining.length && this.g.rules?.ownCards?.includes(id);
     if (id < 1 || (id > this.remaining.length && !own)) return false;
-    if (p.cards.length >= HAND_LIMIT) this.dropSlot(p, this.cheapestSlot(p));
+    const stack = stackOf(this.g);
+    while (p.cards.length && !this.room(p, id)) {
+      let slot = this.cheapestSlot(p);
+      if (stack > 1) {
+        let price = 10000;
+        p.cards.forEach((c, i) => { if (p.cards.filter(x => x === c).length % stack === 1 && cardPrice(c) < price) { price = cardPrice(c); slot = i; } });
+      }
+      this.dropSlot(p, slot);
+    }
     p.cards.push(id);
     // The original keeps the copies in a byte and lets it wrap (0 − 1 = 255); a card handed out when its pool is empty
     // (a god's or event's gift) then fills the whole 128-slot draw pool with that card — every shelf and draw became
@@ -208,17 +251,44 @@ export class Cards {
   }
 
   /** One card drawn weighted by the pool (04 §4.1); returns 0 without drawing when the pool is empty. */
-  drawId(): number {
-    const pool: number[] = [];
-    for (let i = 0; i < CARDS.length; i++) for (let k = 0; k < this.remaining[i] && pool.length < 128; k++) pool.push(i + 1);
+  drawId(withCopy = false): number {
+    // The original's 128-entry pool; 大富豪模式's nationwide pool (×5) would only ever give the first few cards in it,
+    // so there every copy counts. `withCopy`: the owner's gift at their shop may also be a 複製卡.
+    const cap = this.g.world ? Infinity : 128, pool: number[] = [];
+    const ids = [...Array.from({ length: CARDS.length }, (_, i) => i + 1), ...(withCopy && this.g.world ? [COPY_CARD] : [])];
+    for (const id of ids) for (let k = 0; k < (this.remaining[id - 1] ?? 0) && pool.length < cap; k++) pool.push(id);
     return pool.length ? pool[this.g.rng.below(pool.length)] : 0;
   }
 
   /** Card tile, holidays, lab …: one card drawn weighted by the pool (06 §1 t=13). Returns the id or 0. */
-  *receiveRandom(p: Player): Flow<number> {
-    const id = this.drawId();
-    if (id) this.receive(p, id);
+  *receiveRandom(p: Player, withCopy = false): Flow<number> {
+    const id = this.drawId(withCopy);
+    if (id && !(yield* this.take(p, id))) return 0;
     return id;
+  }
+
+  /**
+   * A card into p's hand, as `receive`; but a human with a full hand chooses (the user 2026-10-19): which card of the
+   * hand goes back to the pool, or not to keep the new one (false: the caller puts it where it belongs). A computer
+   * still drops its cheapest card (04 §2.1). 大富豪模式: dropping one of a stack may not free a slot — asked again.
+   */
+  *take(p: Player, id: number): Flow<boolean> {
+    const g = this.g;
+    if (this.room(p, id) || !g.isHuman(p) || !p.cards.length) return this.receive(p, id);
+    let asked = 0;
+    while (!this.room(p, id) && p.cards.length) {
+      const icon = (c: number) => ({ archive: 'Data' as const, id: 570 + c });
+      const options: Option[] = [
+        { label: `不要${cardName(id)}`, value: -2, icon: icon(id), badge: '新', detail: '新拿到的這張不要了' },
+        ...handStacks(p.cards, stackOf(g)).map(st => ({ label: cardName(st.id), value: st.first, icon: icon(st.id), detail: cardDef(st.id)?.text, ...(st.n > 1 ? { badge: `×${st.n}` } : {}) })),
+      ];
+      // Once more when the card dropped came off a stack (its slot still taken).
+      const again = asked++ > 0;
+      const a = yield ask({ t: 'choose', p: p.id, title: '卡片欄已滿', text: again ? `還是放不下${cardName(id)}（那一格還有卡）：再丟一張？` : `得到${cardName(id)}：要丟掉哪一張？`, options, cancellable: false, layout: 'cards' });
+      if (typeof a !== 'number' || a < 0 || a >= p.cards.length) return false;
+      this.dropSlot(p, a);
+    }
+    return this.receive(p, id);
   }
 
   /** Sell or drop every card of a player (死神, bankruptcy 02 §9.3 with `all`): no points. */
@@ -278,7 +348,8 @@ export class Cards {
         yield ask({ t: 'choose', p: p.id, title: '使用卡片', text: '沒有卡片', options: [], cancellable: true, layout: 'cards' });
         return;
       }
-      const options: Option[] = p.cards.map((id, i) => ({ label: cardName(id), value: i, detail: cardDef(id)?.text, icon: { archive: 'Data', id: 570 + id } }));
+      // 大富豪模式: one tile a slot, 「×3」 on a stack (its first copy is the one used).
+      const options: Option[] = handStacks(p.cards, stackOf(this.g)).map(st => ({ label: cardName(st.id), value: st.first, detail: cardDef(st.id)?.text, icon: { archive: 'Data', id: 570 + st.id }, ...(st.n > 1 ? { badge: `×${st.n}` } : {}) }));
       const a = yield ask({ t: 'choose', p: p.id, title: '使用卡片', options, cancellable: true, layout: 'cards' });
       if (typeof a !== 'number' || a < 0 || a >= p.cards.length) return;
       const id = p.cards[a];
@@ -495,7 +566,8 @@ export class Cards {
         let pick: number;
         if (human) {
           const options: Option[] = [
-            ...q.cards.map(c => ({ label: cardName(c), value: c })),
+            ...(stackOf(g) > 1 ? [...new Set(q.cards)].map(c => { const n = q.cards.filter(x => x === c).length; return { label: n > 1 ? `${cardName(c)} ×${n}` : cardName(c), value: c }; })
+              : q.cards.map(c => ({ label: cardName(c), value: c }))),
             ...q.tools.flatMap((n, i) => (n > 0 ? [{ label: `${TOOL_NAMES[i] ?? g.rules?.extraTools?.find(t => t.id === i + 1)?.name ?? ''} ×${n}`, value: 100 + i + 1 }] : [])),
           ];
           if (!options.length) { yield* this.say(p, `${g.name(t)}沒有卡片和道具`); return false; }
@@ -513,7 +585,7 @@ export class Cards {
           hostility = TOOL_PRICES[tool - 1] ?? g.rules?.extraTools?.find(t => t.id === tool)?.price ?? 0;
         } else {
           if (!this.consume(q, pick)) return false;
-          this.receive(p, pick);
+          yield* this.take(p, pick); // a human with a full hand may let it go (it stays in the pool)
           hostility = cardPrice(pick);
         }
         g.addHostility(t, me, hostility);
@@ -720,6 +792,50 @@ export class Cards {
         g.world.hooks.wantedUsed(p);
         g.addHostility(t, me, 150 * pi);
         yield* g.world.hooks.wanted(g, p, q);
+        return true;
+      }
+      case COPY_CARD: { // 複製卡 (大富豪模式, the user 2026-10-19): one more of any card or tool, from nowhere
+        if (!g.world) return false;
+        let pick = human ? -1 : this.aiArg0;
+        if (human) {
+          // Only what p already holds (the user 2026-10-19): a card of the hand (not 複製卡 itself), a tool held (under 9).
+          const heldCards = [...new Set(p.cards.filter(c => c !== COPY_CARD))];
+          const heldTools = Array.from({ length: 16 }, (_, i) => i + 1).filter(t => p.tools[t - 1] > 0);
+          if (!heldCards.length && !heldTools.length) { yield* this.say(p, '沒有可以複製的卡片或道具'); return false; }
+          const kind = heldCards.length && heldTools.length
+            ? yield ask({ t: 'choose', p: me, title: '複製卡：複製什麼？', options: [{ label: '卡片', value: 1 }, { label: '道具', value: 2 }], cancellable: true })
+            : heldCards.length ? 1 : 2;
+          if (kind === 1) {
+            const ids = heldCards;
+            const a = yield ask({ t: 'choose', p: me, title: '複製哪一張卡片？', options: ids.map(c => ({ label: cardName(c), value: c, detail: cardDef(c)?.text, icon: { archive: 'Data', id: 570 + c } })), cancellable: true, layout: 'cards' });
+            pick = typeof a === 'number' && ids.includes(a) ? a : -1;
+          } else if (kind === 2) {
+            // The tool grid with the pictures (as the 道具 menu); the held count on each.
+            const ids = heldTools;
+            const icon = (t: number) => (t > 13 ? { archive: 'Data' as const, id: 600 + t } : { archive: 'Panel' as const, id: 11, frame: t + 1 });
+            const a = yield ask({ t: 'choose', p: me, title: '複製哪一樣道具？', options: ids.map(t => ({ label: TOOL_NAMES[t - 1], value: t, icon: icon(t), disabled: p.tools[t - 1] >= 9, detail: `×${p.tools[t - 1]}` })), cancellable: true, layout: 'tiles' });
+            pick = typeof a === 'number' && a >= 1 && a <= 16 ? 100 + a : -1;
+          }
+        }
+        if (pick < 0) return false;
+        if (pick > 100 ? !(p.tools[pick - 101] > 0) : !p.cards.includes(pick)) return false; // only what is held
+        if (pick > 100) {
+          const t = pick - 100;
+          if (p.tools[t - 1] >= 9) { if (human) yield* this.say(p, `${TOOL_NAMES[t - 1]}已經有9個了`); return false; }
+          this.consume(p, COPY_CARD);
+          p.tools[t - 1] += 1;
+          yield { t: 'fx', kind: 'tool-received', p: me, data: { tool: t } };
+          yield* this.say(p, `複製了${TOOL_NAMES[t - 1]}`);
+          return true;
+        }
+        this.consume(p, COPY_CARD);
+        // A copy from nowhere: the pool keeps its count.
+        const had = this.remaining[pick - 1];
+        if (yield* this.take(p, pick)) {
+          if (had !== undefined) this.remaining[pick - 1] = had;
+          yield { t: 'fx', kind: 'card-received', p: me, data: { card: pick } };
+          yield* this.say(p, `複製了${cardName(pick)}`);
+        }
         return true;
       }
       case 31: case 32: { // 飛行卡 / 電車卡 (大富豪模式, 17 §3.5)
@@ -1072,6 +1188,13 @@ export class Cards {
       }
       case 34: return !!g.world && g.world.hooks.aiDictate(g, p);
       case 35: return !!g.world && g.world.hooks.aiSummon(g, p);
+      case COPY_CARD: { // the dearest other card in its hand, else a 遙控骰子
+        if (!g.world) return false;
+        const best = p.cards.filter(c => c !== COPY_CARD).sort((a, b) => cardPrice(b) - cardPrice(a))[0];
+        if (best) return set(best);
+        const tool = [15, 16, 14, 13, 8, 9, 7].find(t => p.tools[t - 1] > 0 && p.tools[t - 1] < 9); // a held tool, dearest kind first
+        return tool ? set(100 + tool) : false;
+      }
       case 36: { const t = g.world ? g.world.hooks.aiWanted(g, p) : -1; return t >= 0 && set(t); }
       case 31: case 32: { // 大富豪模式: the computer's own travel evaluation with a free ticket (17 §3.5)
         const d = g.world ? g.world.hooks.aiCardTrip(g, p, id === 31 ? 'airport' : 'station') : -1;

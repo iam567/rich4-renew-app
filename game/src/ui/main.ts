@@ -155,6 +155,14 @@ function title() {
 
 /** 動畫過程 (RICH4.CFG +1) as far as the remake goes: play the mini games, or take the automatic 50..69 points. */
 const MINI_GAME_MODES = ['親自玩', '自動結算'];
+/**
+ * 自動買地 (the user 2026-10-19), both modes: a human's 「是否買下此地？」/「是否升級？」 on a lot or a large plot is
+ * answered yes at once (the rules only ask when the cash is there). Building on an empty large plot of one's own still
+ * asks which facility (a choice, not a yes).
+ */
+const AUTO_BUY_KEY = 'rich4.autobuy', AUTO_BUY_MODES = ['關', '開'];
+const AUTO_BUY_KINDS = new Set(['buy-land', 'upgrade-land', 'buy-facility', 'upgrade-facility']);
+const autoBuy = () => { try { return localStorage.getItem(AUTO_BUY_KEY) === '1'; } catch { return false; } };
 const miniGameMode = () => { try { return Number(localStorage.getItem('rich4.minigame') ?? 0) === 1 ? 1 : 0; } catch { return 0; } };
 
 /**
@@ -173,6 +181,7 @@ function options() {
       stored('速度', 'rich4.speed', ['慢', '中', '快']),
       stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
       stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
+      stored('自動買地', AUTO_BUY_KEY, AUTO_BUY_MODES),
       { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => { write('rich4.orientation', i); void applyOrientation(); } },
       { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => write('rich4.weather', i) },
       // 歌舞伎町's living street (docs/rules/21 §8): kept for every game, used on that map only.
@@ -644,6 +653,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
             for (const c of ty?.world.cities ?? [game]) c.animation = i === 0;
             try { localStorage.setItem('rich4.minigame', String(i)); } catch { /* not kept */ }
           } },
+          { label: '自動買地', opts: AUTO_BUY_MODES, cur: () => (autoBuy() ? 1 : 0), pick: i => { try { localStorage.setItem(AUTO_BUY_KEY, String(i)); } catch { /* not kept */ } } },
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
           // 歌舞伎町's living street (docs/rules/21 §8).
@@ -874,6 +884,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         turnSave = null;
         continue;
       }
+      if (s.t === 'yesno' && s.kind && AUTO_BUY_KINDS.has(s.kind) && autoBuy()) { answer = true as Answer; continue; } // 自動買地
       if (s.t === 'pick-node' || s.t === 'pick-map') {
         // Pick on the map itself, as the original does (09 §7.5, 04 §2.4).
         const hint = document.createElement('div');

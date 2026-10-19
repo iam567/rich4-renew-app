@@ -13,7 +13,7 @@ import { ask } from '../flow';
 import type { Game } from '../game';
 import { CHARACTERS } from '../characters';
 import type { Option, PickSpot, Player } from '../types';
-import { deckSupply, TYCOON_SHOP_ALWAYS } from './cards';
+import { COPY_CARD, deckSupply, TYCOON_SHOP_ALWAYS } from './cards';
 import { OBJECT_NAMES } from './objects';
 
 export interface ToolDef {
@@ -100,6 +100,7 @@ const CARD_INFO: readonly [name: string, price: number, f7: number][] = [
   ['查稅卡', 35, 1], ['漲價卡', 35, 0], ['查封卡', 35, 1], ['同盟卡', 40, 0], ['烏龜卡', 70, 0],
   ['飛行卡', 20, 0], ['電車卡', 10, 0], ['遣返卡', 15, 1], ['獨裁卡', 300, 2], ['召集卡', 25, 1], ['通緝卡', 60, 2], // 大富豪模式 only (cards.ts TYCOON_CARDS)
   ['保鑣卡', 25, 0], ['暴走卡', 80, 0], // 歌舞伎町 only (cards.ts KB_CARDS)
+  ['複製卡', 100, 0], // 大富豪模式: never on the shelf, the owner's gift only (cards.ts COPY_CARD)
 ];
 const cardPrice = (id: number) => CARD_INFO[id - 1]?.[1] ?? 0;
 /** 通緝卡: one per city even in 大富豪模式's unlimited shop (17 §3.5, §3.10). */
@@ -110,8 +111,6 @@ const shopAlways = (id: number) => TYCOON_SHOP_ALWAYS.includes(id);
  * §10.2): off, the original's one candidate per remaining copy (the golden test checks it).
  */
 export const REMAKE_AI_ONE_CARD = { on: true };
-/** Hand limit for buying cards (05 §8.4, the card module's HAND_LIMIT). */
-const HAND_LIMIT = 15;
 
 /**
  * Answer to the `shop` question (types.ts): buy the shelf cell `index` of the card or tool shelf, sell the card at
@@ -1081,7 +1080,8 @@ export class Tools {
         // 「歡迎董事長光臨\n\n送您%s！」 for 1500 ms, then the player's line (rich4_shop.asm:1898-1971).
         if (id) yield { t: 'fx', kind: 'tool-received', p: p.id, data: { tool: id, chairman: true } };
       } else {
-        const id = yield* g.cards.receiveRandom(p);
+        // 大富豪模式: the gift may be a 複製卡 (its copies among the others in the nationwide pool; the user 2026-10-19).
+        const id = yield* g.cards.receiveRandom(p, true);
         if (id) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id, chairman: true } };
       }
     }
@@ -1102,7 +1102,7 @@ export class Tools {
     const g = this.g;
     const always = g.world ? [...TYCOON_SHOP_ALWAYS, ...((g.cards.wanted ?? 1) > 0 ? [WANTED_CARD] : [])] : [];
     const copies = [...g.cards.remaining];
-    if (g.world) for (const id of [...TYCOON_SHOP_ALWAYS, WANTED_CARD]) if (id <= copies.length) copies[id - 1] = 0;
+    if (g.world) for (const id of [...TYCOON_SHOP_ALWAYS, WANTED_CARD, COPY_CARD]) if (id <= copies.length) copies[id - 1] = 0; // 複製卡: a gift only
     const n = g.rng.below(10) + 6, shelf: number[] = [];
     for (let i = 0; i < n; i++) {
       const total = copies.reduce((a, b) => a + b, 0);
@@ -1180,7 +1180,7 @@ export class Tools {
       if (!a || typeof a !== 'object') break;
       if ('buy' in a && a.buy === 'card') {
         const id = cards[a.index] ?? 0, price = cardPrice(id);
-        if (!id || p.points < price || p.cards.length >= HAND_LIMIT) continue;
+        if (!id || p.points < price || !g.cards.room(p, id)) continue;
         p.points = (p.points - price) & 0xffff;
         this.shopCard(p, id);
         g.stats?.cardBought(p.id, id, price);
@@ -1246,7 +1246,7 @@ export class Tools {
     });
     cands.sort((a, b) => cardPrice(b) - cardPrice(a));
     for (const id of cands) {
-      if (p.cards.length >= 15) break;
+      if (!g.cards.room(p, id)) continue; // a full hand (大富豪模式: a full slot of this card too)
       const price = cardPrice(id);
       if (price > bc || p.points < price || !inShop(id)) continue;
       p.points = (p.points - price) & 0xffff;

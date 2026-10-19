@@ -13,7 +13,7 @@ import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
 import { Rng, daySeed } from '../rng';
 import { LAND_LIMIT_MONTHS, type Player } from '../types';
-import { CARDS, HAND_LIMIT, TYCOON_CARDS, cardName } from './cards';
+import { CARDS, TYCOON_CARDS, cardName } from './cards';
 import { MAX_HELD, TOOLS } from './tools';
 
 export const MAX_LISTINGS = 6;
@@ -70,7 +70,7 @@ export class BlackMarket {
     // Tools 1-8 exist 10 times in the whole game (05 §2.1): a black-market one comes out of that supply.
     // 大富豪模式 has no tool stock (17 §3.10).
     if (l.kind === 'tool' && l.id <= 8 && !this.g.world && this.g.tools.shopStock[l.id - 1] <= 0) return '缺貨';
-    if (l.kind === 'card' && p.cards.length >= HAND_LIMIT) return '卡片欄已滿';
+    if (l.kind === 'card' && !this.g.cards.room(p, l.id)) return '卡片欄已滿';
     if (l.kind === 'land' && this.g.board.lands[l.id - 1]?.owner) return '已有地主';
     return '';
   }

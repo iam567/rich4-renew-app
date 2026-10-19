@@ -1213,7 +1213,7 @@ export class KabukichoRules implements MapRules {
         yield* this.result(g, p, c, 'demolish', [{ p: p.id, text: `${l.name}的房子降一級` }], { refs: [l.id + 2000] }); return true;
       }
       case 'kb-f-vip': yield* show(); this.s.vip[p.id] = 1; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '下次進店只付一倍' }]); return true;
-      case 'kb-f-omikuji': { yield* show(); const ok = g.cards.receive(p, 21); if (ok) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: 21 } }; yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: ok ? '得到免罪卡' : '卡片已滿' }]); return true; }
+      case 'kb-f-omikuji': { yield* show(); const ok = yield* g.cards.take(p, 21); if (ok) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: 21 } }; yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: ok ? '得到免罪卡' : '卡片已滿' }]); return true; }
       case 'kb-f-flyers': yield* show(); p.points = (p.points + 10) & 0xffff; yield { t: 'points', p: p.id, amount: 10 }; g.gain(p, 1000 * F, 1); yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '點券 +10', amount: 1000 * F }]); return true;
       case 'kb-f-gift': { yield* show(); const id = yield* g.cards.receiveRandom(p); if (id) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id } }; yield* this.result(g, p, c, 'gain', [{ p: p.id, text: id ? '得到一張卡片' : '卡片已經發完了' }]); return true; }
       case 'kb-f-skimming': { const a = Math.min(Math.trunc(p.bank * 0.08), 20000 * F); if (a <= 0) return false; yield* show(); yield* lose(a); return true; }

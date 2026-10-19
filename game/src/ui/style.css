@@ -427,6 +427,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .info-tool img { width: calc(40px * var(--k)); height: calc(34px * var(--k)); object-fit: contain; }
 .info-tool b { position: absolute; right: 3px; bottom: 0; font-weight: 400; font-size: 12px; color: #5a2d00; }
 .info-tool, .info-card { cursor: pointer; }
+.info-card b { margin-left: 3px; color: #c2185b; } /* 大富豪模式: 「×3」 a slot */
 .info-tip { margin-top: calc(6px * var(--k)); font-size: calc(13px * var(--k)); line-height: 1.3; color: #6a3a10; min-height: 1.3em; }
 .info-card { padding: calc(3px * var(--k)) 10px; border-radius: 999px; font-size: calc(14px * var(--k)); color: #5a2d00; background: linear-gradient(#fff8cf, #ffd23f); white-space: nowrap; }
 .info-none { opacity: .7; font-size: 14px; }

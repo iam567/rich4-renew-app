@@ -496,7 +496,7 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(finaleBoard());
     const keep = [0, 3, 6, 9];
     const w = nearFinale(21, keep);
-    w.players[3].cards.push(31, 24); w.players[3].tools[9] = 2;   // 飛行卡, 紅卡, two 時光機
+    w.players[3].cards = [31, 24]; w.players[3].tools[9] = 2;   // just 飛行卡, 紅卡 (and two 時光機): what is sold is known
     const before = keep.map(id => w.wealth(w.players[id]));
     const points = w.players[3].points;
     const ledger = (w as unknown as { stats: Ledger }).stats;
@@ -716,8 +716,9 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
       return w.daysElapsed > 3000;
     });
     expect(chips.length).toBe(4);
-    // A whole game's chips are well above a Lv5 hall's cap (800 籌碼), not the shortcut's few dozen.
-    for (const c of chips) expect(c.total).toBeGreaterThan(CAPS[5] / FINALE_CHIP);
+    // A whole game's chips, not the shortcut's few dozen: hundreds each (at least a quarter of a Lv5 hall's cap of 800
+    // 籌碼; with this seed one player came in with 773 once 大富豪模式's hands stacked 3 a slot, 2026-10-19).
+    for (const c of chips) expect(c.total).toBeGreaterThan(CAPS[5] / FINALE_CHIP / 4);
     expect(w.over).toBeTruthy();
     expect(w.players.filter(p => !p.bankrupt).length).toBe(1);
     expect(w.finale.visits).toBeGreaterThan(0);
