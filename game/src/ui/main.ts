@@ -928,6 +928,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       wd.setHuman(false);
       continue;
     }
+    try {
     switch (s.t) {
       case 'turn':
         view.unmark();
@@ -986,8 +987,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         if (isPlayer(s.from) && !s.quiet) {
           // Paying for a lot or a facility's service (core_actions:492 / 1231) rings the till (slot 20).
           if (/費$/.test(s.reason) && s.reason !== '保護費') audio.sfx(Sfx.rent);
-          const n = nodeById(game.board, game.players[s.from].node);
-          view.highlight = n.ref > 2000 && n.ref < 4000 ? n.ref - 2001 : null;
+          // 大富豪模式: a payer in another city (小財神's eleven rivals) has no square on this map.
+          const payer = game.players[s.from], n = game.here(payer) ? game.node(payer.node) : undefined;
+          view.highlight = n && n.ref > 2000 && n.ref < 4000 ? n.ref - 2001 : null;
           await hud.flash(toPot ? `${from}\n\n${s.reason}\n${s.amount.toLocaleString()} 元` : `${from}付給${to}\n\n${s.reason}\n${s.amount.toLocaleString()} 元`, 1300);
           view.highlight = null;
         }
@@ -1099,6 +1101,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           if (act === 'home') location.reload();
         }
         return;
+    }
+    } catch (e) {
+      // A screen that fails on one event (say, a player in another city) must not stop the game: the rules go on.
+      console.error('event', s, e);
+      view.highlight = null;
+      hud.note('（畫面略過一個事件）');
     }
   }
 }
