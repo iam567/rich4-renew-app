@@ -51,11 +51,11 @@
 .pc-btn i { position: absolute; right: -4px; top: -4px; min-width: 18px; height: 18px; border-radius: 9px; font-size: 11px; font-style: normal; line-height: 18px;
   color: #fff; background: #e8402a; border: 2px solid #fff; }
 .pc-btn i[hidden] { display: none; }
-.pc-pops { position: absolute; left: 10px; right: 64px; top: 92px; z-index: 14; display: grid; gap: 4px; pointer-events: none; }
+.pc-pops { position: absolute; left: 10px; right: 10px; top: 60px; z-index: 14; display: grid; gap: 4px; pointer-events: none; }
 .pc-pop { justify-self: start; max-width: 100%; padding: 4px 10px 4px 4px; border-radius: 14px; background: rgba(20, 30, 80, .82); animation: pc-in .25s ease-out; transition: opacity .4s; }
 .pc-pop.out { opacity: 0; }
 @keyframes pc-in { from { transform: translateY(-8px); opacity: 0; } }
-.pc-panel { position: absolute; inset: 52px 8px 8px; z-index: 16; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 18px;
+.pc-panel { position: absolute; inset: 8px; z-index: 16; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 18px;
   background: linear-gradient(#2a6fe0, #17469e); border: 4px solid #ffa21f; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
 .pc-panel .pc-log { flex: 1; max-height: none; min-height: 60px; }
 .pc-head { display: flex; justify-content: space-between; align-items: center; color: #ffe14a; font-size: 17px; }
@@ -81,3 +81,40 @@
 .pt-nick { min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 10px; border: 2px solid #ffe14a; background: #fff; color: #333; }
 .pt-hint { margin: -4px 0 0; font-size: 11px; color: #dfe8ff; text-align: center; }
 .pt-seat b, .pt-seat small { white-space: normal; text-align: center; line-height: 1.2; word-break: break-all; max-width: 100%; }
+
+/* 派對模式's own row of buttons under the toolbar (PartyBar): the game's grid gets a row for it. */
+.game.party { grid-template-rows: calc(40px * var(--tu)) calc(34px * var(--tu)) 1fr; }
+.game.party .stage { grid-row: 3; }
+.game.party .side { grid-row: 1 / 4; }
+.game.party.portrait { grid-template-rows: calc(40px * var(--tu)) calc(34px * var(--tu)) 1fr calc(280px * var(--pu)); }
+.game.party.portrait .side { grid-row: 4; }
+.party-bar { grid-column: 1; grid-row: 2; z-index: 2; display: flex; gap: 4px; padding: 3px 5px; min-width: 0;
+  background: linear-gradient(#3b2a70, #241a4a); border-bottom: 2px solid #ffa21f; }
+.party-bar button { position: relative; flex: 1 1 0; min-width: 0; display: flex; align-items: center; justify-content: center; gap: 2px;
+  padding: 0 2px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, .55); color: #fff; font: inherit;
+  font-size: calc(12px * var(--tu)); background: linear-gradient(#5fb4ff, #2a6fe0); box-shadow: 0 2px 0 #1a4aa0; }
+.party-bar button span { font-size: calc(15px * var(--tu)); line-height: 1; }
+.party-bar button b { font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.party-bar button em { font-style: normal; font-size: .85em; opacity: .9; }
+.party-bar button i { position: absolute; right: -5px; top: -5px; min-width: 16px; height: 16px; border-radius: 8px; font-size: 10px; font-style: normal;
+  line-height: 16px; color: #fff; background: #e8402a; border: 2px solid #fff; z-index: 1; }
+.party-bar button i[hidden] { display: none; }
+.party-bar button.on { background: linear-gradient(#ffd15a, #f59a1a); box-shadow: 0 2px 0 #b06a10; }
+.party-bar button.lit { background: linear-gradient(#ff8a5c, #e0482a); box-shadow: 0 2px 0 #9a2a14; }
+@media (max-width: 420px) { .party-bar button b { display: none; } .party-bar button span { font-size: 18px; } }
+.pc-panel.small { bottom: auto; }
+.pc-phrases.big .chip { font-size: 15px; padding: 6px 12px; }
+.pc-emojis { display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; }
+.pc-emojis button { font-size: 28px; padding: 4px 0; border-radius: 12px; border: 2px solid rgba(255,255,255,.5); background: rgba(255,255,255,.15); }
+.pc-pop.big { display: flex; align-items: center; gap: 6px; color: #fff; }
+.pc-pop.big img { width: 26px; height: 26px; border-radius: 50%; background: #fff; }
+.pc-pop.big b { font-weight: 400; color: #ffe14a; }
+.pc-pop.big span { font-size: 38px; line-height: 1; animation: pc-bounce .5s ease-out; }
+@keyframes pc-bounce { 0% { transform: scale(.2); } 60% { transform: scale(1.3); } 100% { transform: scale(1); } }
+.pc-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #3ddc6a; margin-right: 5px; vertical-align: middle; }
+.pc-dot.off { background: #9a9aa6; }
+.pc-person.away { opacity: .6; }
+.pc-votes { display: grid; gap: 6px; }
+.pc-vote { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; color: #fff; padding: 6px 8px; border-radius: 12px; background: rgba(255,255,255,.12); }
+.pc-vote b { font-weight: 400; color: #ffe14a; } .pc-vote span { grid-column: 1; font-size: 12px; opacity: .85; }
+.pc-vote em, .pc-vote .chip { grid-row: 1 / 3; grid-column: 2; font-style: normal; font-size: 12px; }

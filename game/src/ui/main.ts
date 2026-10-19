@@ -14,7 +14,7 @@ import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
-import { GameChat } from './party-chat';
+import { PartyBar } from './party-chat';
 import { openParty } from './party';
 import type { Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
@@ -846,14 +846,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       }
       if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true;
     };
-    // Chat (party-chat.ts): the 💬 button, pop-ups, mute and votes.
-    new GameChat(stage, room, c => bank!.art('Data', 2, c)?.src ?? '');
   }
   // 派對模式's clock (the user 2026-10-19: no stalling): a turn not rolled within 60 s after GO first shows — card and
   // tool menus included — goes to the computer (托管); 取消托管 hands it back from the next turn.
   const TURN_MS = 60000;
   let turnDeadline = 0;
   const cancelAuto = new Set<number>();
+  /** 托管 asked for from the bar, waiting for this phone's next turn. */
+  let wantAuto = false;
   const clock = document.createElement('div');
   clock.className = 'pt-clock'; clock.hidden = true;
   const unauto = document.createElement('button');
@@ -873,6 +873,24 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       unauto.hidden = !auto;
       unauto.textContent = [...room.mine].some(s2 => cancelAuto.has(s2)) ? '下回合恢復手動' : '托管中・取消托管';
     }, 400);
+    // The row of 派對模式 buttons under the toolbar (party-chat.ts PartyBar): chat, quick phrases, reactions, players,
+    // votes, 托管. 托管 asked for here answers this phone's next turn with the computer (in step on every phone, like
+    // the 60 s clock); off again: 取消托管 from the next turn.
+    const mine = () => [...room.mine].map(seat => game.players[seat]).filter(p => p && !p.bankrupt);
+    const partyBar = new PartyBar(stage, room, c => bank!.art('Data', 2, c)?.src ?? '', {
+      state: () => mine().some(p => p.autopilot) ? ([...room.mine].some(seat => cancelAuto.has(seat)) ? 'back' : 'auto') : wantAuto ? 'pending' : 'manual',
+      toggle: () => {
+        if (mine().some(p => p.autopilot)) {
+          const back = [...room.mine].some(seat => cancelAuto.has(seat));
+          for (const seat of room.mine) if (back) cancelAuto.delete(seat); else if (game.players[seat]?.autopilot) cancelAuto.add(seat);
+          return;
+        }
+        wantAuto = !wantAuto;
+        if (wantAuto && answerTurn && room.mine.has(game.current)) { wantAuto = false; void hud.flash('改由電腦托管\n（再按「取消托管」恢復手動）', 1600); go.cancel(); answerTurn({ action: 'autopilot' } as Answer); }
+      },
+    });
+    shell.insertBefore(partyBar.el, stage);
+    shell.classList.add('party');
   }
   /** The rest of this phone's turn clock (null when it does not run for this question). */
   const expires = (p: number): Promise<void> | null => {
@@ -964,6 +982,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         }
         sendSeq = seq;
         if (s.t === 'auto-turn') { answer = (cancelAuto.delete(s.p) ? 1 : 0) as Answer; continue; }
+        if (s.t === 'turn' && wantAuto) { wantAuto = false; answer = { action: 'autopilot' } as Answer; continue; }
       }
       if (s.t === 'turn') {
         // Auto-save when a human's turn opens, before the dice (one per turn): slot 0, or 大富豪模式's own automatic slot.

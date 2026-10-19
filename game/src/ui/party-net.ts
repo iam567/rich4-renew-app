@@ -26,7 +26,7 @@ export const LOBBY = `${PREFIX}lobby`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
 
 /** `nick`: the name the player gave themself (the user 2026-10-19); `name` is it or the character's. */
-export interface Member { id: string; name: string; character: number; region?: string; nick?: string }
+export interface Member { id: string; name: string; character: number; region?: string; nick?: string; /** In the game: its phone is gone (the host tells everyone). */ away?: boolean }
 
 /** A nickname as kept and shown: no markup characters, trimmed, at most NICK_MAX characters. */
 export const NICK_MAX = 7;
@@ -351,6 +351,7 @@ export class Room {
           const from = Math.min(m.have ?? 0, this.log.length);
           c.send({ t: 'log', from, answers: this.log.slice(from), total: this.log.length } satisfies Msg);
           if (!this.members.some(x => x.id === c.peer)) this.members.push(named({ id: c.peer, name: m.name, character: m.character, region: m.region, nick: m.nick }));
+          for (const x of this.members) if (x.id === c.peer) x.away = false;
           this.lobbyChanged();
           this.onStatus('');
           return;
@@ -375,7 +376,7 @@ export class Room {
       if (this.guests.get(c.peer) !== c) return;
       this.guests.delete(c.peer);
       if (!this.started) { this.members = this.members.filter(x => x.id !== c.peer); this.lobbyChanged(); }
-      else if (!this.closed) this.onStatus('有玩家斷線，等待他回來…');
+      else if (!this.closed) { for (const x of this.members) if (x.id === c.peer) x.away = true; this.lobbyChanged(); this.onStatus('有玩家斷線，等待他回來…'); }
     });
   }
 
