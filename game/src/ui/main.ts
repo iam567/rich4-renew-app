@@ -14,6 +14,7 @@ import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
+import { GameChat } from './party-chat';
 import { openParty } from './party';
 import type { Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
@@ -29,7 +30,7 @@ import { LoadingScreen } from './loading';
 import { preloadBoard } from './board-preload';
 import { WeatherFx } from './weather-fx';
 import { LossNotices } from './losses';
-import { CITY_NAMES, TYCOON_MAPS, tycoonSettings, type World } from '../core/world';
+import { autoAnswer, CITY_NAMES, TYCOON_MAPS, tycoonSettings, type World } from '../core/world';
 import { isWorldSave, saveWorld } from '../core/save';
 import { openCityViewer } from './city-viewer';
 import { tycoonEnding } from './tycoon-ending';
@@ -831,8 +832,61 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   waiting.className = 'pt-waiting'; waiting.hidden = true;
   if (room) {
     stage.append(waiting);
-    room.onStatus = t => { if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true; };
+    room.onStatus = t => {
+      if (room.kicked) {
+        // Its own notice over everything (a box could queue behind the game's), then back to the title.
+        const out = document.createElement('div');
+        out.className = 'pt-out';
+        out.innerHTML = '<div class="msg"><div class="msg-text">你已被投票請出房間<br>返回標題畫面…</div></div>';
+        document.body.append(out);
+        setTimeout(() => location.reload(), 2500);
+        return;
+      }
+      if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true;
+    };
+    // Chat (party-chat.ts): the 💬 button, pop-ups, mute and votes.
+    new GameChat(stage, room, c => bank!.art('Data', 2, c)?.src ?? '');
   }
+  // 派對模式's clock (the user 2026-10-19: no stalling): a turn not rolled within 60 s after GO first shows — card and
+  // tool menus included — goes to the computer (托管); 取消托管 hands it back from the next turn.
+  const TURN_MS = 60000;
+  let turnDeadline = 0;
+  const cancelAuto = new Set<number>();
+  const clock = document.createElement('div');
+  clock.className = 'pt-clock'; clock.hidden = true;
+  const unauto = document.createElement('button');
+  unauto.className = 'candy yes pt-unauto'; unauto.hidden = true;
+  if (room) {
+    stage.append(clock, unauto);
+    unauto.onclick = e => {
+      e.stopPropagation(); audio.ui('click');
+      for (const seat of room.mine) if (game.players[seat]?.autopilot) cancelAuto.add(seat);
+    };
+    const tick = window.setInterval(() => {
+      if (me !== session) { clearInterval(tick); return; }
+      const left = turnDeadline ? Math.ceil((turnDeadline - Date.now()) / 1000) : 99;
+      clock.hidden = left > 20 || left < 0;
+      clock.textContent = `還剩 ${left} 秒`;
+      const auto = [...room.mine].some(seat => game.players[seat]?.autopilot && !game.players[seat].bankrupt);
+      unauto.hidden = !auto;
+      unauto.textContent = [...room.mine].some(s2 => cancelAuto.has(s2)) ? '下回合恢復手動' : '托管中・取消托管';
+    }, 400);
+  }
+  /** The rest of this phone's turn clock (null when it does not run for this question). */
+  const expires = (p: number): Promise<void> | null => {
+    if (!room || !room.mine.has(p) || p !== game.current) return null;
+    if (!turnDeadline) turnDeadline = Date.now() + TURN_MS;
+    return new Promise(res => setTimeout(res, Math.max(0, turnDeadline - Date.now())));
+  };
+  /** `ui` or, when the clock runs out first, `late()`. */
+  const timed = async <T,>(ui: Promise<T>, clockRun: Promise<void> | null, late: () => T): Promise<T> => {
+    if (!clockRun) return ui;
+    let out = false;
+    const r = await Promise.race([ui, clockRun.then(() => { out = true; return late(); })]);
+    void out;
+    return r;
+  };
+  const dropped = new Map<number, number>();
   const digest = () => {
     let h = game.rng.seed >>> 0;
     for (const p of game.players) for (const v of [p.cash, p.bank, p.node, p.points, p.cards.length]) h = (Math.imul(h ^ v, 0x01000193) >>> 0);
@@ -879,15 +933,35 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         const seq = askSeq++;
         if (s.t === 'turn' && !room.digest(seq, digest()) && !warnedDesync) { warnedDesync = true; void hud.flash('和房主的遊戲不同步了\n請把這局截圖給開發者', 2600); }
         if (!room.mine.has(s.p)) {
-          // Another phone's player decides: wait for the answer.
-          waiting.textContent = `等待 ${nameOf(s.p)} 操作…`; waiting.hidden = false;
+          // Another phone's player decides: wait for the answer. A seat sent away (voted out) is answered by the
+          // host for the computer: 托管 at its turn (then the rules play it), the safe answer otherwise.
+          // A phone gone for 10 s counts as dropped: the host answers it the same way (the user 2026-10-19).
+          const auto = () => (s.t === 'turn' ? { action: 'autopilot' } : s.t === 'auto-turn' ? 0 : autoAnswer(s)) as Answer;
           wd.setHuman(true);
-          answer = (await room.wait(seq)) as Answer;
+          let got: { v: Answer } | null = null;
+          while (!got) {
+            if (room.host) {
+              if (room.ownerConnected(s.p)) dropped.delete(s.p); else if (!dropped.has(s.p)) dropped.set(s.p, Date.now());
+              if (room.kickedSeats.has(s.p) || Date.now() - (dropped.get(s.p) ?? Infinity) >= 10000) { answer = auto(); sendSeq = seq; break; }
+            }
+            waiting.textContent = room.kickedSeats.has(s.p) ? `${nameOf(s.p)} 由電腦接手…` : `等待 ${nameOf(s.p)} 操作…`; waiting.hidden = false;
+            // (untilHost only for a guest: it is already settled on the host, and racing it there spun forever)
+            got = await Promise.race([room.wait(seq).then(v => ({ v: v as Answer })), ...(room.host ? [] : [room.untilHost().then(() => null)]), new Promise<null>(r => setTimeout(() => r(null), 1000))]);
+          }
+          if (got) answer = got.v;
           wd.setHuman(false);
           waiting.hidden = true;
           continue;
         }
+        // This phone's seat but no connection: the host may have answered it meanwhile (dropped): take that.
+        if (!room.connected()) {
+          waiting.textContent = '與房主的連線中斷，重新連線中…'; waiting.hidden = false;
+          const fromLog = await Promise.race([room.wait(seq).then(v => ({ v: v as Answer })), room.untilConnected().then(() => null)]);
+          waiting.hidden = true;
+          if (fromLog) { answer = fromLog.v; continue; }
+        }
         sendSeq = seq;
+        if (s.t === 'auto-turn') { answer = (cancelAuto.delete(s.p) ? 1 : 0) as Answer; continue; }
       }
       if (s.t === 'turn') {
         // Auto-save when a human's turn opens, before the dice (one per turn): slot 0, or 大富豪模式's own automatic slot.
@@ -907,11 +981,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         view.setMode('free');
         // Idle time: get the big clips of what this player can use ready, so they never load while playing.
         warmFor(p);
-        answer = await new Promise<Answer>(resolve => {
+        answer = await timed(new Promise<Answer>(resolve => {
           answerTurn = resolve;
           toolbar.setTurnOpen(true);
           go.show(p.traffic & 3, p.dice, s.maxDice, p.stay !== 0, p.turtle !== 0).then(dice => resolve({ dice }));
-        });
+        }), expires(s.p), () => { go.cancel(); void hud.flash('60 秒沒有前進\n改由電腦托管（可按「取消托管」）', 2200); return { action: 'autopilot' } as Answer; });
         answerTurn = null;
         wd.setHuman(false);
         view.setMode('locked');
@@ -964,7 +1038,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         // the missiles may look round the whole map (selector flag 0x80, 05 §2.6).
         view.setMode(s.onScreen ? 'pick' : 'pick-scroll');
         wd.setHuman(true);
-        answer = (await pick.done) as Answer;
+        answer = await timed(pick.done as Promise<Answer>, expires(s.p), () => { pick.cancel(); return none as unknown as Answer; });
         wd.setHuman(false);
         view.setMode('locked');
         stage.classList.remove('picking');
@@ -983,12 +1057,13 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         continue;
       }
       wd.setHuman(true);
-      answer = (await hud.ask(s)) as Answer;
+      answer = await timed(hud.ask(s) as Promise<Answer>, expires(s.p), () => { hud.dismiss(); return autoAnswer(s); });
       wd.setHuman(false);
       continue;
     }
     switch (s.t) {
       case 'turn':
+        turnDeadline = 0; // 派對模式: a new turn, a new clock
         view.unmark();
         view.followActor(s.p);
         // Anyone's turn (a computer's too): the big clips of the tools they hold start loading in idle time.

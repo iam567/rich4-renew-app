@@ -854,6 +854,8 @@ export class Game {
   *playerTurn(p: Player): Flow {
     if (p.bankrupt) return;
     yield { t: 'turn', p: p.id };
+    // 派對模式: 取消托管 is an answer, so every phone takes it at the same point (the user 2026-10-19).
+    if (this.settings.party && p.whoPlays === 1 && p.autopilot && (yield ask({ t: 'auto-turn', p: p.id })) === 1) p.autopilot = false; // 1 = 取消托管
     if (!p.placed) yield* this.airdrop(p);
     if (this.offRoad(p) || p.sleep) {
       const [what, n] = p.hotel ? [this.rules?.stayLabel?.(this, p) ?? '住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : ['消失中', p.vanish & 0x3f];

@@ -9,7 +9,8 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { Lobby, Room, type RoomInfo, type StartMsg } from './party-net';
+import { Lobby, myRegion, Room, type RoomInfo, type StartMsg } from './party-net';
+import { inlineChat } from './party-chat';
 import type { SpriteBank } from './sprites';
 import './party.css';
 
@@ -66,7 +67,7 @@ export function openParty(d: PartyDeps): void {
       if (a === 'open') {
         audio.ui('yes');
         show('建立房間', '<p class="pt-lead">建立房間中…</p>');
-        const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter() });
+        const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter(), region: myRegion() });
         room = r;
         try { await r.create(String(map), shared); } catch (err) { fail(err); box.onclick = menu; return; }
         if (shared) { lobby = new Lobby(); void lobby.start(info(r)); }
@@ -75,29 +76,41 @@ export function openParty(d: PartyDeps): void {
     };
   }
   const mapName = (id: string) => maps.find(m => String(m.id) === id)?.name ?? '';
-  const info = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: 4, at: Date.now() });
+  const info = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: 4, at: Date.now(), region: r.members[0]?.region });
 
   function roomView(r: Room) {
     let fill = true;
+    show(r.shared ? '共享房間' : '私享房間', '<div class="pt-dyn"></div><div class="pt-chat"></div><div class="choices pt-acts"></div>');
+    const chat = inlineChat(r, face);
+    box.querySelector('.pt-chat')!.append(chat.el);
+    r.onChat = () => chat.draw();
     const render = () => {
-      if (!r.code) return;
+      const dyn = box.querySelector('.pt-dyn'), acts = box.querySelector('.pt-acts');
+      if (!r.code || !dyn || !acts) return;
+      const host = r.members[0]?.id === r.myId;
       const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, 4 - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
-      show(r.shared ? '共享房間' : '私享房間', `
+      dyn.innerHTML = `
         <div class="pt-code"><small>房間碼</small><b>${r.code}</b>${r.shared ? '<em>已公開在「尋找夥伴」</em>' : '<em>把房間碼告訴朋友</em>'}</div>
-        <div class="pt-seats">${seats.map(x => x.m
-          ? `<div class="pt-seat${x.m.id === r.myId ? ' me' : ''}" ${x.m.id === r.myId ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(CHARACTERS[x.m.character].name)}</b><small>${x.m.id === r.myId ? '你・點我換角色' : '玩家'}</small></div>`
-          : '<div class="pt-seat cpu"><span>電腦</span></div>').join('')}</div>
+        <div class="pt-seats">${seats.map((x, i) => {
+          if (!x.m) return '<div class="pt-seat cpu"><span>電腦</span></div>';
+          const me = x.m.id === r.myId, votes = r.votes.get(x.m.id), voted = votes?.has(r.myId);
+          return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(CHARACTERS[x.m.character].name)}</b>
+            <small>${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}${x.m.region ? `・${esc(x.m.region)}` : ''}</small>
+            ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
+        }).join('')}</div>
         <div class="pt-row"><b>地圖</b><span class="pt-map">${esc(mapName(r.map))}</span></div>
-        ${r.host ? `<div class="pt-row"><b>空位</b><div class="chips"><button class="chip${fill ? ' on' : ''}" data-fill="1">電腦補滿4人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
-        <p class="pt-wait">${r.host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p>
-        <div class="choices"><button class="candy ghost" data-a="home">${r.host ? '解散房間' : '離開房間'}</button>${r.host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}</div>`);
+        ${host ? `<div class="pt-row"><b>空位</b><div class="chips"><button class="chip${fill ? ' on' : ''}" data-fill="1">電腦補滿4人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
+        <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p>`;
+      acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
     };
-    r.onLobby = () => { render(); lobby?.announce(info(r)); };
-    r.onStatus = t => { if (t && !r.started) { audio.ui('error'); home(`<p class="pt-err">${esc(t)}</p>`); box.onclick = menu; } };
+    r.onLobby = () => { render(); if (r.members[0]?.id === r.myId) lobby?.announce(info(r)); };
+    r.onVotes = () => render();
+    r.onStatus = t => { if (t && !r.started && r.kicked || t && !r.started && /滿/.test(t)) { audio.ui('error'); home(`<p class="pt-err">${esc(t)}</p>`); box.onclick = menu; } };
     r.onStart = (s: StartMsg) => { lobby?.close(); lobby = null; overlay.remove(); d.play(s.settings, r); };
     render();
     box.onclick = e => {
-      const t = e.target as HTMLElement, a = t.closest<HTMLElement>('[data-a]')?.dataset.a, f = t.closest<HTMLElement>('[data-fill]');
+      const t = e.target as HTMLElement, a = t.closest<HTMLElement>('[data-a]')?.dataset.a, f = t.closest<HTMLElement>('[data-fill]'), k = t.closest<HTMLElement>('[data-kick]');
+      if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
       if (f) { audio.ui('click'); fill = f.dataset.fill === '1'; render(); return; }
       if (a === 'char') {
         audio.ui('click');
@@ -108,12 +121,12 @@ export function openParty(d: PartyDeps): void {
         return;
       }
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
-      if (a === 'go' && r.host && r.members.length >= 2) {
+      if (a === 'go' && r.members[0]?.id === r.myId && r.members.length >= 2) {
         audio.ui('yes');
         const used = new Set(r.members.map(m => m.character));
         const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, 4 - r.members.length)) : [];
         const players = [...r.members.map(m => ({ character: m.character, human: true })), ...cpus.map(c => ({ character: c, human: false }))];
-        const settings: GameSettings = { mapId: Number(r.map), players, fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0 };
+        const settings: GameSettings = { mapId: Number(r.map), players, fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0, party: true };
         r.start({ settings, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) });
       }
     };
@@ -138,7 +151,7 @@ export function openParty(d: PartyDeps): void {
   async function enter(code: string) {
     audio.ui('yes');
     show('進入房間', `<p class="pt-lead">連線到房間 ${esc(code)}…</p>`);
-    const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter() });
+    const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter(), region: myRegion() });
     room = r;
     try { await r.join(code); } catch (err) { fail(err); box.onclick = menu; return; }
     roomView(r);
@@ -149,7 +162,7 @@ export function openParty(d: PartyDeps): void {
     lobby = new Lobby();
     const render = (rooms: RoomInfo[]) => show('尋找夥伴', `
       ${rooms.length ? `<div class="pt-rooms">${rooms.map(x => `<button class="pt-room" data-code="${x.code}"${x.players >= x.max ? ' disabled' : ''}>
-        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${esc(x.map)}・${x.players}/${x.max} 人</small></span><em>${x.players >= x.max ? '已滿' : '加入'}</em></button>`).join('')}</div>`
+        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${x.region ? `${esc(x.region)}・` : ''}${esc(x.map)}・${x.players}/${x.max} 人</small></span><em>${x.players >= x.max ? '已滿' : '加入'}</em></button>`).join('')}</div>`
         : '<p class="pt-lead">目前沒有人在找夥伴<br>可以自己建一個共享房間，等別人加入</p>'}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy opt" data-a="create">建立共享房間</button></div>`);
     lobby.onRooms = rooms => { if (lobby) render(rooms); };

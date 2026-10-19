@@ -33,3 +33,45 @@
 .pt-waiting { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 15; padding: 6px 16px; border-radius: 999px; font-size: 14px; color: #fff;
   background: rgba(20, 30, 80, .82); border: 2px solid #ffe14a; white-space: nowrap; pointer-events: none; }
 .pt-waiting[hidden] { display: none; }
+/* chat (party-chat.ts) */
+.pc-inline { width: 100%; display: grid; gap: 6px; }
+.pc-log { display: grid; gap: 4px; max-height: 120px; overflow: auto; padding: 6px; border-radius: 12px; background: rgba(0,0,0,.25); }
+.pc-line { display: grid; grid-template-columns: 22px auto 1fr; align-items: center; gap: 6px; font-size: 13px; color: #fff; text-align: left; }
+.pc-line img { width: 22px; height: 22px; border-radius: 50%; background: #fff; }
+.pc-line b { font-weight: 400; color: #ffe14a; white-space: nowrap; }
+.pc-line span { min-width: 0; overflow-wrap: anywhere; }
+.pc-line.sys { display: block; text-align: center; opacity: .75; font-size: 12px; }
+.pc-phrases { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; }
+.pc-phrases .chip { font-size: 12px; padding: 3px 9px; }
+.pc-form { display: flex; gap: 6px; }
+.pc-form input { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 12px; border: 2px solid #ffbf2e; }
+.pc-form .candy { font-size: 14px; padding: 4px 14px; }
+.pc-btn { position: absolute; right: 10px; top: 56px; z-index: 14; width: 46px; height: 46px; border-radius: 50%; font-size: 22px; border: 3px solid #fff;
+  background: linear-gradient(#5fb4ff, #2a6fe0); box-shadow: 0 3px 0 #1a4aa0; }
+.pc-btn i { position: absolute; right: -4px; top: -4px; min-width: 18px; height: 18px; border-radius: 9px; font-size: 11px; font-style: normal; line-height: 18px;
+  color: #fff; background: #e8402a; border: 2px solid #fff; }
+.pc-btn i[hidden] { display: none; }
+.pc-pops { position: absolute; left: 10px; right: 64px; top: 92px; z-index: 14; display: grid; gap: 4px; pointer-events: none; }
+.pc-pop { justify-self: start; max-width: 100%; padding: 4px 10px 4px 4px; border-radius: 14px; background: rgba(20, 30, 80, .82); animation: pc-in .25s ease-out; transition: opacity .4s; }
+.pc-pop.out { opacity: 0; }
+@keyframes pc-in { from { transform: translateY(-8px); opacity: 0; } }
+.pc-panel { position: absolute; inset: 52px 8px 8px; z-index: 16; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 18px;
+  background: linear-gradient(#2a6fe0, #17469e); border: 4px solid #ffa21f; box-shadow: 0 6px 20px rgba(0,0,0,.5); }
+.pc-panel .pc-log { flex: 1; max-height: none; min-height: 60px; }
+.pc-head { display: flex; justify-content: space-between; align-items: center; color: #ffe14a; font-size: 17px; }
+.pc-x { width: 32px; height: 32px; border-radius: 50%; border: 2px solid #fff; background: rgba(255,255,255,.2); color: #fff; font-size: 16px; }
+.pc-people { display: grid; gap: 4px; }
+.pc-person { display: grid; grid-template-columns: 30px 1fr auto auto; align-items: center; gap: 6px; color: #fff; font-size: 14px; }
+.pc-person img { width: 30px; height: 30px; border-radius: 50%; background: #fff; }
+.pc-person b { font-weight: 400; } .pc-person small { margin-left: 6px; font-size: 11px; opacity: .75; }
+.pc-person .chip { font-size: 12px; padding: 3px 8px; }
+.pc-host { font-size: 12px; opacity: .7; padding: 0 8px; }
+.pc-note { margin: 0; font-size: 11px; color: #fff; opacity: .7; text-align: center; }
+.pt-seat .pt-region, .pt-room .pt-region { font-size: 10px; opacity: .8; }
+.pt-kick { margin-top: 2px; font-size: 10px !important; padding: 1px 6px !important; }
+.pt-chat { width: 100%; }
+.pt-clock { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); z-index: 15; padding: 4px 14px; border-radius: 999px; font-size: 16px; font-weight: 900;
+  color: #fff; background: #e8402a; border: 2px solid #fff; pointer-events: none; animation: pc-in .2s; }
+.pt-clock[hidden], .pt-unauto[hidden] { display: none; }
+.pt-unauto { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 15; font-size: 15px; padding: 6px 18px; }
+.pt-out { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(0, 0, 0, .55); }

@@ -11,6 +11,8 @@ export interface GameSettings {
   victoryIndex: number;
   startDate: PackedDate;
   seed: number;
+  /** 派對模式 (ui/party-net.ts): a 托管 player's turn starts with the 'auto-turn' question, so 取消托管 reaches every phone. */
+  party?: boolean;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];
@@ -105,6 +107,8 @@ export interface PickSpot { at: 'node' | 'plot' | 'actor'; id: number; label: st
 /** Questions the engine asks a human player; computer players are answered by the AI rules. */
 export type Ask =
   | { t: 'turn'; p: number; maxDice: number; canUseCard: boolean; canUseTool: boolean }
+  /** 派對模式: a human on 托管 at the start of their turn: 1 (取消托管) plays this turn by hand, anything else lets the computer. */
+  | { t: 'auto-turn'; p: number }
   | { t: 'yesno'; p: number; kind: string; text: string; price?: number }
   | { t: 'facility-type'; p: number; price: number; title?: string; text?: string; cancellable?: boolean }
   /**

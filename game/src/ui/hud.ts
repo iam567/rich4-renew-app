@@ -123,6 +123,9 @@ export class Hud {
    * timer, a tap that came in as the next one opened) must not take the next screen away with it: the game then
    * waited on a question nobody could see (the user, fast taps after a card, 2026-10-19).
    */
+  /** Closes whatever dialog is up (派對模式: a turn's 60 s ran out with a menu open). */
+  dismiss() { this.under = []; this.hide(); }
+
   private hide(node?: HTMLElement) {
     if (node && node.parentElement !== this.layer && (!this.fullLayer || node.parentElement !== this.fullLayer)) {
       this.under = this.under.filter(u => u.node !== node); // answered while covered: it does not come back
