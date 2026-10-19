@@ -44,6 +44,13 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     copy(fj);
     for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
   }
+  // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps).
+  for (const res of ['2604', '2605']) {
+    const fj = `maps/remake/sprites/${res}/frames.json`;
+    if (!existsSync(join(src, fj))) continue;
+    copy(fj);
+    for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+  }
   // 歌舞伎町's street life (docs/rules/21 §8.3): vehicles, the train, the street characters (map/1901..1911, registered at run time).
   for (let res = 1901; res <= 1911; res++) {
     const fj = `maps/remake/sprites/${res}/frames.json`;

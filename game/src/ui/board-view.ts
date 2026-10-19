@@ -17,6 +17,7 @@ import { drawForkArrows } from './fork-arrows';
 import type { TiledGround } from './ground';
 import { GroundCache } from './ground-cache';
 import { casinoSprite } from './casino-sprite'; // 大富翁城 (docs/rules/19)
+import { hotelSprite } from './hotels'; // the redrawn 旅館 levels 4 and 5
 import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite, KbStreet } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import type { StreetView } from './kb-ambient';
 import { timeout, watch } from './watchdog';
@@ -499,7 +500,7 @@ export class BoardView {
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
     const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
     if (fa.level) {
-      const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
+      const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa) ?? hotelSprite(fa); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21), the redrawn hotels
       if (own) return { res: own, frame: buildingFrame(0, this.rot) };
       const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
       return { res: stage === 0 ? 87 + i : 104 + inStage * 17 + i, frame: buildingFrame(0, this.rot) };
@@ -1389,7 +1390,7 @@ export class BoardView {
       if (fa.level) {
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
         // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
-        const res = casinoSprite(fa) ?? kbShopSprite(g, fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
+        const res = casinoSprite(fa) ?? kbShopSprite(g, fa) ?? hotelSprite(fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
         add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.neon(res, fr, p.x, p.y, fa.id + 4000); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
       } else if (fa.owner) {
         const ch = g.players[fa.owner - 1]?.character ?? 0;

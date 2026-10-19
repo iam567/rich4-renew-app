@@ -36,6 +36,7 @@ import { openCityViewer } from './city-viewer';
 import { tycoonEnding } from './tycoon-ending';
 import { finaleResults } from './finale-ending'; // 大富翁城 (docs/rules/19)
 import { finaleToolbar, noStocks, prepareFinale } from './finale';
+import { prepareHotels } from './hotels';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
@@ -498,6 +499,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     boot.progress(0.12, '載入地圖資料…');
     bank.addMapSprites(art.sprites);
     if (ty) { await registerSprites(bank); installWorldScreens(); }
+    await prepareHotels(bank); // the 旅館's redrawn levels 4 and 5 (ui/hotels.ts)
     if (ty || mapId === FINALE_MAP) await prepareFinale(bank); // 大富翁城's halls (docs/rules/19)
     if (mapId === KB_MAP) prepareKabukicho(bank); // 歌舞伎町's tool icons (docs/rules/21 §7.5)
     game = make(art.board);
