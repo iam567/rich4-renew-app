@@ -885,6 +885,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         continue;
       }
       if (s.t === 'yesno' && s.kind && AUTO_BUY_KINDS.has(s.kind) && autoBuy()) { answer = true as Answer; continue; } // 自動買地
+      if (s.t === 'pick-city-node') {
+        // 洲際飛彈 on another city: the square tapped on that city's map in the city viewer.
+        wd.setHuman(true);
+        answer = (ty ? await openCityViewer(hud, ty.world, bank!, s.city, { nodes: s.nodes, title: s.title }) : 0) as unknown as Answer;
+        wd.setHuman(false);
+        view.syncAll();
+        continue;
+      }
       if (s.t === 'pick-node' || s.t === 'pick-map') {
         // Pick on the map itself, as the original does (09 §7.5, 04 §2.4).
         const hint = document.createElement('div');

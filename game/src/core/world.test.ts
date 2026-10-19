@@ -617,6 +617,16 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(me.tools[14]).toBe(0);
     expect(w.log.some(l => l.kind === 'icbm' && l.map === 1)).toBe(true);
     expect(w.icbmTargets(me, 1).every(o => typeof o.value === 'number')).toBe(true);
+    // A human: city chosen, then a square tapped on that city's map (pick-city-node) — the lot there is hit.
+    const far2 = w.cities[1].board.lands.find(l => !l.chain && l !== far)!;
+    far2.owner = q.id + 1; far2.level = 3; me.tools[14] = 1;
+    const sq = w.cities[1].board.nodes.filter(n => n.adjacent.some(Boolean)).sort((a, b) => Math.hypot(a.x - far2.x, a.y - far2.y) - Math.hypot(b.x - far2.x, b.y - far2.y))[0];
+    const asks: string[] = [];
+    const f0 = g.tools.use(me, 15);
+    for (let r = f0.next(); !r.done; ) { const st = r.value as { t: string; ask?: boolean; nodes?: number[] }; if ('ask' in st) asks.push(st.t); r = f0.next(('ask' in st ? (st.t === 'choose' ? 1 : st.t === 'pick-city-node' ? sq.id : undefined) : undefined) as never); }
+    expect(asks).toEqual(['choose', 'pick-city-node']);
+    expect(far2.level).toBe(0);
+    expect(me.tools[14]).toBe(0);
     // 時空機 from the turn menu: a random square of 九州 at once, no dice, no 在路上; the 土地公 attached goes along.
     me.tools[15] = 1;
     w.mask(0);

@@ -50,7 +50,12 @@ function summary(w: World, i: number, bank: SpriteBank): string {
   </div>`;
 }
 
-export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start: number): Promise<void> {
+/**
+ * `pick` (洲際飛彈 on another city): the viewer shows only that city and the player taps a square of `nodes` on its
+ * map (the pulsing marks, as on the game's own map); resolves with the node, or 0 when closed.
+ */
+export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start: number, pick?: { nodes: number[]; title: string }): Promise<number> {
+  let picked = 0;
   const node = document.createElement('div');
   node.className = 'cv';
   node.innerHTML = '<div class="cv-tabs"></div><div class="cv-board"><div class="cv-load">載入中…</div></div><div class="cv-info"></div>';
@@ -95,11 +100,28 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
     v.syncAll();
     // Look at the human there, else at the first player there, else the middle.
     const p = (human && human.map === i ? human : null) ?? w.players.find(q => !q.bankrupt && q.map === i && !q.trip);
-    if (p) v.snapTo(p.id); else v.lookAt(w.cities[i].board.size ? w.cities[i].board.size! / 2 : 1152, 1152);
+    // Picking a square: start on the rivals' busiest spot (else the first square), where a target is likely.
+    const lots = pick ? [...w.cities[i].board.lands, ...w.cities[i].board.facilities].filter(l => l.level > 0 && l.owner && l.owner !== (human?.id ?? -1) + 1) : [];
+    const spot = lots.sort((a, b) => b.level - a.level)[0] ?? (pick ? w.cities[i].board.nodes.find(n => pick.nodes.includes(n.id)) : undefined);
+    if (spot) v.lookAt(spot.x, spot.y);
+    else if (p) v.snapTo(p.id); else v.lookAt(w.cities[i].board.size ? w.cities[i].board.size! / 2 : 1152, 1152);
     await preloadBoard(v, { aim: false, alive: () => my === token && node.isConnected, onProgress: f => progress(0.15 + 0.85 * f) });
     if (my !== token) return;
     load.setAttribute('hidden', '');
     fitInfo();
+    if (pick && my === token) {
+      const hint = document.createElement('div');
+      hint.className = 'cv-pick';
+      hint.textContent = pick.title;
+      box.append(hint);
+      const sel = v.pickNode(pick.nodes, () => audio.ui('error'), false, false);
+      const n = await sel.done;
+      hint.remove();
+      if (my !== token || !(n > 0)) return;
+      picked = n;
+      audio.ui('yes');
+      node.closest('.msg')?.querySelector<HTMLButtonElement>('.sheet-close button')?.click();
+    }
   };
   // Twelve faces beside the board on a short screen: smaller ones until the summary fits (關閉 under the viewer
   // never covers its last line).
@@ -117,10 +139,12 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
     void show(Number(b.dataset.city));
   });
   renderTabs();
-  const closed = hud.sheetNode('各城市地圖', node);
+  if (pick) tabs.style.display = 'none'; // only that city
+  const closed = hud.sheetNode(pick ? `洲際飛彈・${w.cityName(start)}` : '各城市地圖', node);
   void show(start);
   await closed;
   token++;
   (view as BoardView | null)?.destroy();
   w.mask(w.view());
+  return picked;
 }

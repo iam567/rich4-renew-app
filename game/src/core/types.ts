@@ -148,6 +148,8 @@ export type Ask =
    * `plot`: the choices are lots / facilities, picked on the building (each node stands for the plot it borders).
    */
   | { t: 'pick-node'; p: number; title: string; nodes: number[]; cancellable: boolean; onScreen?: boolean; plot?: boolean }
+  /** 大富豪模式: a square of another city, tapped on that city's map (the city viewer): 洲際飛彈's target. 0: none. */
+  | { t: 'pick-city-node'; p: number; title: string; city: number; nodes: number[]; cancellable: boolean }
   /**
    * Pick something on the map, as the original's card selector does (04 §2.4): the spots may mix road nodes,
    * lots / facilities and players / NPCs. `onScreen`: only the spots on the player's screen may be picked (the

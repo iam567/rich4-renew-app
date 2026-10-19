@@ -408,6 +408,7 @@ export class Finale extends CasinoRules implements WorldHooks {
   wantedTaken(g: Game, p: Player): void { this.w.wantedTaken(g, p); }
   wantedUsed(p: Player): void { this.w.wantedUsed(p); }
   syncWanted(): void { this.w.syncWanted(); }
+  cityRoadNodes(): number[] { return []; }
   icbmCities(): Option[] { return [{ label: FINALE_NAME, value: this.index, detail: '只能打大富翁城' }]; }
   icbmTargets(p: Player): Option[] { return this.w.icbmTargets(p, this.index); }
   *icbm(g: Game, p: Player, _city: number, ref: number): Flow { yield* this.w.icbm(g, p, this.index, ref); }

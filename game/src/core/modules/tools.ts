@@ -472,7 +472,8 @@ export class Tools {
   }
 
   /**
-   * 洲際飛彈 (大富豪模式, 17 §3.6): a nuclear missile on any lot of any city. Param: city × 10000 + lot ref. In the
+   * 洲際飛彈 (大富豪模式, 17 §3.6): a nuclear missile anywhere in any city (another city's square tapped on its map).
+   * Param: city × 10000 + lot ref. In the
    * player's own city it is the nuclear missile without the screen limit; elsewhere that city's blast runs there.
    */
   private *icbm(p: Player, param?: number): Flow<boolean> {
@@ -485,7 +486,8 @@ export class Tools {
       if (!(city >= 0)) return false;
       target = city === w.index
         ? Number(yield ask({ t: 'pick-node', p: p.id, title: '洲際飛彈', nodes: g.board.nodes.filter(n => n.adjacent.some(Boolean)).map(n => n.id), cancellable: true }))
-        : Number(yield ask({ t: 'choose', p: p.id, title: '洲際飛彈：打哪一塊地？', options: w.hooks.icbmTargets(p, city), cancellable: true, layout: 'faces' }));
+        // Another city: its map opens and the square is tapped there, as in one's own city (the user 2026-10-19).
+        : (n => (n > 0 ? 100000 + n : 0))(Number(yield ask({ t: 'pick-city-node', p: p.id, title: '洲際飛彈：點選要轟炸的位置', city, nodes: w.hooks.cityRoadNodes(city), cancellable: true })));
     }
     if (!target || target < 0) return false;
     if (city === w.index) {

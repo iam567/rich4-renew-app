@@ -873,12 +873,22 @@ export class World implements WorldHooks {
     }));
   }
 
-  /** 洲際飛彈 on another city: the launch here, the nuclear blast there (headless), news for everyone. */
+  cityRoadNodes(city: number): number[] { return this.cities[city]?.board.nodes.filter(n => n.adjacent.some(Boolean)).map(n => n.id) ?? []; }
+
+  /**
+   * 洲際飛彈 on another city: the launch here, the nuclear blast there (headless), news for everyone. `ref`: a lot or
+   * facility (the computer's), or 100000 + a road square tapped on that city's map (the human's).
+   */
   *icbm(g: Game, p: Player, city: number, ref: number): Flow {
     const c = this.cities[city];
-    const at = ref > 4000 ? c.board.facilities[ref - 4001] : c.board.lands[ref - 2001];
+    const node = ref >= 100000 ? c.board.nodes.find(n => n.id === ref - 100000) : undefined;
+    const lot = node ? undefined : ref > 4000 ? c.board.facilities[ref - 4001] : c.board.lands[ref - 2001];
+    // A square's name for the news: its own lot, else the nearest lot or facility.
+    const plots = [...c.board.lands, ...c.board.facilities];
+    const near = node && plots.reduce<(typeof plots)[number] | undefined>((b, l) => (!b || Math.hypot(l.x - node.x, l.y - node.y) < Math.hypot(b.x - node.x, b.y - node.y) ? l : b), undefined);
+    const at = node ? { x: node.x, y: node.y, name: near?.name ?? '' } : lot;
     if (!at) return;
-    const text = `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}的${at.name}！`;
+    const text = at.name ? `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}的${at.name}！` : `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}！`;
     yield { t: 'fx', kind: 'icbm-launch', p: p.id, data: { city: this.cityName(city), target: at.name, text } };
     this.ticker(city, text, 'icbm', p.id, { important: true });
     const h = this.human();
@@ -1438,7 +1448,7 @@ export function autoAnswer(s: Ask): Answer {
     case 'yesno': return false;
     case 'choose': return s.cancellable ? -1 : (s.options.find(o => !o.disabled)?.value ?? s.options[0]?.value ?? 0);
     case 'facility-type': return 1;
-    case 'pick-node': return 0;
+    case 'pick-node': case 'pick-city-node': return 0;
     case 'mini-game': return 60;
     case 'slot-machine': case 'wheel': return 39;
     default: return -1;

@@ -76,6 +76,8 @@ export interface WorldHooks {
   icbmCities(p: Player): Option[];
   icbmTargets(p: Player, city: number): Option[];
   icbm(g: Game, p: Player, city: number, ref: number): Flow;
+  /** The road squares of a city (洲際飛彈 picks one on that city's map). */
+  cityRoadNodes(city: number): number[];
   aiIcbm(p: Player): number;
   /** 時空機 (17 §3.6): the cities to cross to, the crossing, the computer's city (-1 none). */
   spaceTimeCities(p: Player): Option[];
