@@ -66,13 +66,14 @@ button:disabled { opacity: 0.4; cursor: default; }
 .toolbar { display: flex; justify-content: center; align-items: stretch; gap: 0; padding: 0 4px; z-index: 2;
   background: linear-gradient(#fff3c4, #ffd25a 55%, #f5ac2a); border-bottom: calc(3px * var(--tu)) solid #b86a12;
   box-shadow: 0 3px 8px rgba(80, 40, 0, 0.35); }
-.tb { position: relative; flex: 0 1 calc(40px * var(--tu)); min-width: 0; padding: 0; border-radius: 0; background: none;
+.toolbar .tb { position: relative; flex: 0 1 calc(40px * var(--tu)); min-width: 0; padding: 0; border-radius: 0; background: none;
   display: grid; place-items: center; }
-.tb img { grid-area: 1 / 1; width: calc(36px * var(--tu)); height: calc(34px * var(--tu)); object-fit: contain; transition: transform .12s; }
-.tb .tb-h { opacity: 0; }
-.tb span { display: none; }
-.tb:hover .tb-n, .tb:active .tb-n { opacity: 0; }
-.tb:hover .tb-h, .tb:active .tb-h { opacity: 1; transform: scale(1.06); }
+.toolbar .tb img { grid-area: 1 / 1; width: calc(36px * var(--tu)); height: calc(34px * var(--tu)); object-fit: contain; transition: transform .12s; }
+.toolbar .tb .tb-h { opacity: 0; }
+/* the toolbar's buttons only (大富豪模式's banners are .msg.tb too: their text must show) */
+.toolbar .tb span { display: none; }
+.toolbar .tb:hover .tb-n, .toolbar .tb:active .tb-n { opacity: 0; }
+.toolbar .tb:hover .tb-h, .toolbar .tb:active .tb-h { opacity: 1; transform: scale(1.06); }
 .toolbar:not(.turn-open) .tb:is([data-key=save], [data-key=tool], [data-key=card], [data-key=trade], [data-key=stock]) { opacity: 0.45; }
 
 .view-tools { position: absolute; left: 8px; top: 8px; display: flex; gap: 6px; z-index: 3; }

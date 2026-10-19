@@ -672,14 +672,16 @@ export class World implements WorldHooks {
     const q = list[this.rng.below(list.length)], here = g.world!.index, from = q.map!;
     const text = `${this.name(p.id)}使用召集卡，把${this.name(q.id)}從${this.cityName(from)}叫來${this.cityName(here)}！`;
     yield { t: 'fx', kind: 'summon', p: p.id, target: q.id, data: { from: this.cityName(from), to: this.cityName(here), text } };
-    // The human summoned from another city's turn: a notice on their screen (the summoner's city is not shown).
-    if (q.human) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'summon' } };
+    // A notice on the screen when the summoner's city is not the one shown but it concerns the human or the city
+    // on screen (the summoned one is there) — the user 2026-10-19: not only the summoner's city sees it.
+    const shown = this.view();
+    if (shown !== here && (q.human || p.human || shown === from)) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'summon' } };
     this.ticker(here, text, 'summon', p.id);
     g.addHostility(q.id, p.id, 50 * this.priceIndex);
     if (q.cards.includes(21)) {
       const fc = this.cities[from], no = `${this.name(q.id)}使用免罪卡，拒絕了${this.name(p.id)}的召集！`;
       yield* this.across(from, (function* () { fc.cards.consume(q, 21); yield { t: 'fx', kind: 'card', p: q.id, data: { card: 21 } } as GameEvent; })());
-      if (p.human || q.human) yield { t: 'fx', kind: 'tycoon-notice', p: q.id, target: p.id, data: { text: no, icon: 'summon' } };
+      if (p.human || q.human || shown === from || shown === here) yield { t: 'fx', kind: 'tycoon-notice', p: q.id, target: p.id, data: { text: no, icon: 'summon' } };
       this.ticker(from, no, 'summon', q.id);
       return;
     }
@@ -710,10 +712,18 @@ export class World implements WorldHooks {
     const at = q.map!, c = this.cities[at];
     const text = `${this.name(p.id)}發出通緝令：${this.name(q.id)}在${this.cityName(at)}被捕！`;
     yield { t: 'fx', kind: 'wanted', p: p.id, target: q.id, data: { city: this.cityName(at), text } };
-    if (q.human && this.view() !== g.world!.index) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'wanted' } };
+    // A notice when the 通緝 comes from another city than the one shown and concerns the human or the city on screen.
+    const shown = this.view(), here = g.world!.index, seen = p.human || q.human || shown === at || shown === here;
+    if (shown !== here && (q.human || p.human || shown === at)) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'wanted' } };
     this.ticker(at, text, 'wanted', q.id);
     let sufferer = q.id;
     yield* this.across(at, (function* () { sufferer = yield* c.cards.pardonOrFrame(q); })());
+    // 免罪卡 / 嫁禍卡: said on screen too (the user 2026-10-19), and in the log.
+    if (sufferer !== q.id) {
+      const said = sufferer < 0 ? `${this.name(q.id)}使用免罪卡，躲過了${this.name(p.id)}的通緝！` : `${this.name(q.id)}使用嫁禍卡，把通緝轉給${this.name(sufferer)}！`;
+      this.ticker(at, said, 'wanted', q.id);
+      if (seen || (sufferer >= 0 && this.players[sufferer].human)) yield { t: 'fx', kind: 'tycoon-notice', p: q.id, target: p.id, data: { text: said, icon: 'wanted' } };
+    }
     const s = this.players[sufferer];
     if (sufferer < 0 || !s?.whoPlays || s.trip || s.map === undefined || s.map < 0) return;
     yield* this.across(s.map, this.cities[s.map].sendTo(s, 'prison', 5));
