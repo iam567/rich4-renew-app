@@ -1,7 +1,7 @@
 /**
  * 派對模式's screens (v0.5.0, the user 2026-10-19): 「建立房間」 (私享: a room code for friends; 共享: also listed in
  * 「尋找夥伴」), 「進入房間」 (type the code), 「尋找夥伴」 (the shared rooms). The room shows its code, the players
- * (tap your face to change character), the map, computers to fill up to four, and the host's 「開始遊戲」. The game
+ * (tap your face to change character), the map, computers to fill up to four or eight (at most eight players), and the host's 「開始遊戲」. The game
  * itself runs in main.ts with the room (party-net.ts: lockstep answers).
  */
 import { CHARACTERS } from '../core/characters';
@@ -9,7 +9,7 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { Lobby, myRegion, Room, type RoomInfo, type StartMsg } from './party-net';
+import { Lobby, myRegion, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
 import { inlineChat } from './party-chat';
 import { checkNetwork } from './party-check';
 import type { SpriteBank } from './sprites';
@@ -77,10 +77,11 @@ export function openParty(d: PartyDeps): void {
     };
   }
   const mapName = (id: string) => maps.find(m => String(m.id) === id)?.name ?? '';
-  const info = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: 4, at: Date.now(), region: r.members[0]?.region });
+  const info = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region });
 
   function roomView(r: Room) {
-    let fill = true;
+    /** Computers up to this many players (4 or 8), or 0: players only. */
+    let fill = 4;
     show(r.shared ? '共享房間' : '私享房間', '<div class="pt-dyn"></div><div class="pt-chat"></div><div class="choices pt-acts"></div>');
     const chat = inlineChat(r, face);
     box.querySelector('.pt-chat')!.append(chat.el);
@@ -89,10 +90,11 @@ export function openParty(d: PartyDeps): void {
       const dyn = box.querySelector('.pt-dyn'), acts = box.querySelector('.pt-acts');
       if (!r.code || !dyn || !acts) return;
       const host = r.members[0]?.id === r.myId;
-      const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, 4 - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
+      if (fill && fill <= r.members.length) fill = fill === 4 ? 0 : fill; // 補滿4人 with four players already: players only
+      const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, fill - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
       dyn.innerHTML = `
         <div class="pt-code"><small>房間碼</small><b>${r.code}</b>${r.shared ? '<em>已公開在「尋找夥伴」</em>' : '<em>把房間碼告訴朋友</em>'}</div>
-        <div class="pt-seats">${seats.map((x, i) => {
+        <div class="pt-seats${seats.length > 4 ? " many" : ""}">${seats.map((x, i) => {
           if (!x.m) return '<div class="pt-seat cpu"><span>電腦</span></div>';
           const me = x.m.id === r.myId, votes = r.votes.get(x.m.id), voted = votes?.has(r.myId);
           return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(CHARACTERS[x.m.character].name)}</b>
@@ -100,7 +102,7 @@ export function openParty(d: PartyDeps): void {
             ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
         }).join('')}</div>
         <div class="pt-row"><b>地圖</b><span class="pt-map">${esc(mapName(r.map))}</span></div>
-        ${host ? `<div class="pt-row"><b>空位</b><div class="chips"><button class="chip${fill ? ' on' : ''}" data-fill="1">電腦補滿4人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
+        ${host ? `<div class="pt-row"><b>空位</b><div class="chips">${r.members.length < 4 ? `<button class="chip${fill === 4 ? ' on' : ''}" data-fill="4">電腦補滿4人</button>` : ''}<button class="chip${fill === 8 ? ' on' : ''}" data-fill="8">電腦補滿8人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
         <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p>`;
       acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
     };
@@ -112,7 +114,7 @@ export function openParty(d: PartyDeps): void {
     box.onclick = e => {
       const t = e.target as HTMLElement, a = t.closest<HTMLElement>('[data-a]')?.dataset.a, f = t.closest<HTMLElement>('[data-fill]'), k = t.closest<HTMLElement>('[data-kick]');
       if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
-      if (f) { audio.ui('click'); fill = f.dataset.fill === '1'; render(); return; }
+      if (f) { audio.ui('click'); fill = Number(f.dataset.fill); render(); return; }
       if (a === 'char') {
         audio.ui('click');
         const mine = r.members.find(m => m.id === r.myId)!;
@@ -125,7 +127,7 @@ export function openParty(d: PartyDeps): void {
       if (a === 'go' && r.members[0]?.id === r.myId && r.members.length >= 2) {
         audio.ui('yes');
         const used = new Set(r.members.map(m => m.character));
-        const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, 4 - r.members.length)) : [];
+        const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
         const players = [...r.members.map(m => ({ character: m.character, human: true })), ...cpus.map(c => ({ character: c, human: false }))];
         const settings: GameSettings = { mapId: Number(r.map), players, fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0, party: true };
         r.start({ settings, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) });

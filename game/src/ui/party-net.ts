@@ -25,6 +25,9 @@ export const LOBBY = `${PREFIX}lobby`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
 
 export interface Member { id: string; name: string; character: number; region?: string }
+/** Players in a room (the user 2026-10-19: eight; the game's NPCs come after them, core/game.ts npcBase). */
+export const ROOM_MAX = 8;
+
 export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string }
 export interface ChatLine { from: string; name: string; character: number; text: string; at: number }
 
@@ -345,7 +348,7 @@ export class Room {
           return;
         }
         if (!this.members.some(x => x.id === c.peer)) {
-          if (this.members.length >= 4) { c.send({ t: 'bye' } satisfies Msg); return; }
+          if (this.members.length >= ROOM_MAX) { c.send({ t: 'bye' } satisfies Msg); return; }
           this.members.push({ id: c.peer, name: m.name, character: this.freeCharacter(m.character, c.peer), region: m.region });
         }
         this.lobbyChanged();

@@ -680,15 +680,17 @@ export class Game {
     let newDay = false;
     for (;;) {
       this.current += 1;
-      if (this.current === this.players.length && this.current < 4) this.current = 4;
-      if (this.current >= 8) { this.current = 0; newDay = true; }
-      if (this.current >= 4) { if (this.places.npcActive(this.current)) break; continue; }
+      // npcBase is 4 up to four players (the original's 4..7); 派對模式 with five to eight has the NPCs after them.
+      const base = this.npcBase;
+      if (this.current === this.players.length && this.current < base) this.current = base;
+      if (this.current >= base + 4) { this.current = 0; newDay = true; }
+      if (this.current >= base) { if (this.places.npcActive(this.current)) break; continue; }
       if (this.players[this.current].bankrupt) continue;
       break;
     }
     if (newDay) yield* this.dailySettlement();
     if (this.over) return;
-    if (this.current < 4) yield* this.turnStart(this.players[this.current]);
+    if (this.current < this.npcBase) yield* this.turnStart(this.players[this.current]);
   }
 
   /** Daily settlement fcn_0041cf67 (docs/rules/01 §4.2). */
