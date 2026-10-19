@@ -3,7 +3,7 @@
  * cloud, news/fate boards and the choice dialogs. Drawn as crisp vector UI in the game's toy style, with the
  * redrawn portraits and art; text is real text.
  */
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import type { Game } from '../core/game';
 import type { Ask } from '../core/types';
 import type { PlayerPanel, Calendar } from './side';
@@ -357,7 +357,7 @@ export class Hud {
   say(p: number, text: string, ms = 1300): Promise<void> {
     const ch = CHARACTERS[this.game.players[p]?.character ?? 0];
     return this.hold(el('div', 'cloud', `<div class="cloud-face">${this.portrait(ch.id)}</div>
-      <div class="cloud-body"><b>${ch.name}</b><div>${lines(text)}</div></div>`), ms, characterVoice(ch.id, text) ?? voiceOf(text));
+      <div class="cloud-body"><b>${playerName(this.game.players[p])}</b><div>${lines(text)}</div></div>`), ms, characterVoice(ch.id, text) ?? voiceOf(text));
   }
 
   /** News and fate boards (09 §6.6) over the map. */
@@ -395,7 +395,7 @@ export class Hud {
         return b;
       };
       if (a.t === 'yesno') {
-        box.innerHTML = `${head(ch.name)}<div class="msg-text">${lines(a.text)}</div>`;
+        box.innerHTML = `${head(playerName(who))}<div class="msg-text">${lines(a.text)}</div>`;
         row.className = 'choices yesno';
         button('YES 是', true, 'yes'); button('NO 否', false, 'no');
       } else if (a.t === 'facility-type') {
@@ -450,7 +450,7 @@ export class Hud {
         row.className = 'choices players';
         for (const q of a.players) {
           const c = CHARACTERS[this.game.players[q].character];
-          button(`${this.portrait(c.id)}<span>${c.name}</span>`, q, 'cell');
+          button(`${this.portrait(c.id)}<span>${playerName(this.game.players[q])}</span>`, q, 'cell');
         }
         if (a.cancellable) button('取消', -1, 'ghost');
         box.append(row);
@@ -542,7 +542,7 @@ export class Hud {
   /** A readable label for a node: its lot, plot or event. */
   private describeNode(id: number): string {
     const g = this.game, n = g.node(id);
-    const owner = (o: number) => (o ? `（${CHARACTERS[g.players[o - 1].character].name}）` : '（無主）');
+    const owner = (o: number) => (o ? `（${playerName(g.players[o - 1])}）` : '（無主）');
     if (n.ref > 2000 && n.ref < 4000) { const l = g.board.lands[n.ref - 2001]; return `${l.name} ${l.level}級${owner(l.owner)}`; }
     if (n.ref > 4000 && n.ref < 6000) { const f = g.board.facilities[n.ref - 4001]; return `${f.name}${owner(f.owner)}`; }
     if (n.ref > 6000 && n.ref < 8000) return g.board.companies[n.ref - 6001].name;

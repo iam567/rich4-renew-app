@@ -1,6 +1,6 @@
 /** Title/setup screen and the game controller that plays the engine's flow on screen. */
 import '@fontsource/huninn/index.css';
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import { format, today } from '../core/date';
 import { Game, SPEED } from '../core/game';
 import { nodeById } from '../core/board';
@@ -740,7 +740,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     }
   };
   const pause = (ms: number) => new Promise(r => setTimeout(r, ms * scale()));
-  const nameOf = (p: number) => CHARACTERS[game.players[p].character].name;
+  const nameOf = (p: number) => playerName(game.players[p]);
   const colorOf = (p: number) => CHARACTERS[game.players[p].character].color;
   const isPlayer = (p: number) => p >= 0 && p < game.players.length;
   /**

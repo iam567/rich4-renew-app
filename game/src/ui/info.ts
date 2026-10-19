@@ -2,7 +2,7 @@
  * 查詢 — the player information screen (docs/rules/09 §7.10) with the original's three pages: assets, property
  * (filters 全部 / 住宅區 / 商業區 / 房屋 / 連鎖店) and stocks, for any player picked by tab.
  */
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import { day, month, year } from '../core/date';
 import type { Game } from '../core/game';
 import { TOOLS, TYCOON_TOOLS } from '../core/modules/tools';
@@ -115,11 +115,11 @@ export class InfoScreen {
     const tabs = w ? `<div class="info-faces">${g.players.map((q, i) => {
       const c = CHARACTERS[q.character], f = this.bank.art('Data', 2, q.character), k = w.fallen.findIndex(x => x.p === q.id);
       const fell = k >= 0 ? `<small>第${k + 1}位破產</small>` : '';
-      return `<button class="info-face-tab${i === this.who ? ' on' : ''}${q.bankrupt ? ' out' : ''}${q.human ? ' me' : ''}" data-who="${i}" style="--c:${hex(c.color)}" title="${c.name}">
-        ${f ? `<img src="${f.src}" alt="">` : ''}<span>${c.name}</span>${fell}</button>`;
+      return `<button class="info-face-tab${i === this.who ? ' on' : ''}${q.bankrupt ? ' out' : ''}${q.human ? ' me' : ''}" data-who="${i}" style="--c:${hex(c.color)}" title="${playerName(q)}">
+        ${f ? `<img src="${f.src}" alt="">` : ''}<span>${playerName(q)}</span>${fell}</button>`;
     }).join('')}</div>` : g.players.map((q, i) => {
       const c = CHARACTERS[q.character];
-      return `<button class="info-tab${i === this.who ? ' on' : ''}" data-who="${i}" style="--c:${hex(c.color)}">${c.name}${q.bankrupt ? '<small>破產</small>' : ''}</button>`;
+      return `<button class="info-tab${i === this.who ? ' on' : ''}" data-who="${i}" style="--c:${hex(c.color)}">${playerName(q)}${q.bankrupt ? '<small>破產</small>' : ''}</button>`;
     }).join('');
     const side = `<div class="info-side">
       <div class="info-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>

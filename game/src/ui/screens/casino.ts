@@ -8,7 +8,7 @@
  * Questions: { t: 'casino', phase: 'choose' | 'blackjack' | 'holdem', … } (finale.ts), answered with the choice or
  * the move. Results: fx 'casino-result' (data.result is the game's record), 'casino-auto' (data.digits, amount).
  */
-import { CHARACTERS } from '../../core/characters';
+import { playerName } from '../../core/characters';
 import * as C from '../../core/modules/casino';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
 import { esc, face, openScene, type Scene } from './place-scene';
@@ -92,7 +92,7 @@ export function cardHtml(c: number | null, cls = '', i = 0): string {
   return `<div class="cs-card ${SUIT_RED(c) ? 'red' : ''} ${cls}" ${st}><b>${r}</b><s>${s}</s><em>${s}</em></div>`;
 }
 
-const name = (ctx: ScreenContext, p: number) => CHARACTERS[ctx.game.players[p]?.character ?? 0]?.name ?? '';
+const name = (ctx: ScreenContext, p: number) => playerName(ctx.game.players[p]);
 const sleep = (ms: number) => new Promise<void>(r => setTimeout(r, ms));
 
 /** The page of one visit (kept open from the first question to the result). */

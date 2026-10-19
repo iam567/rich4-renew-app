@@ -4,7 +4,7 @@
  * the statistics ledger of the chosen player (core/stats.ts), and 「儲存到相簿」 / 「分享」 (a picture drawn by
  * results-card.ts), 「下一局」 (pick the next map, next-game.ts) and 「回到主畫面」.
  */
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import { format } from '../core/date';
 import { cardName } from '../core/modules/cards';
 import { OBJECT_NAMES } from '../core/modules/objects';
@@ -104,15 +104,15 @@ function rankRow(bank: SpriteBank, x: PlayerResult, on: boolean): string {
   const line = x.bankrupt ? `第 ${x.fellDay + 1} 天破產` : `地 ${x.lots}・房 ${x.houses}級${x.plots ? `・大型 ${x.plots}` : ''}`;
   return `<button class="rs-rank-row${on ? ' on' : ''}${x.winner ? ' win' : ''}${x.bankrupt ? ' out' : ''}" data-p="${x.p}" style="--c:${hex(ch.color)}">
     <i class="rs-medal r${Math.min(4, x.rank)}">${x.rank}</i>${face(bank, x.character, x.bankrupt ? 'grey' : '')}
-    <span class="rs-who"><b>${esc(ch.name)}${x.human ? '<sup>玩家</sup>' : ''}</b><small>${line}</small></span>
+    <span class="rs-who"><b>${esc(playerName(x))}${x.human ? '<sup>玩家</sup>' : ''}</b><small>${line}</small></span>
     <span class="rs-assets">${x.bankrupt ? '—' : money(x.assets)}</span></button>`;
 }
 
 function defaultHero(bank: SpriteBank, r: GameResults, o: ResultsOptions): string {
   const w = r.players.find(p => p.winner), me = featured(r);
-  const who = w ?? me, ch = CHARACTERS[who.character];
+  const who = w ?? me;
   const lost = !w || (!w.human && r.players.some(p => p.human));
-  const title = w ? `${ch.name}獲勝！` : '遊戲結束';
+  const title = w ? `${playerName(who)}獲勝！` : '遊戲結束';
   return `<div class="rs-hero${lost ? ' lost' : ''}">
     <div class="rs-hero-face">${w ? '<i class="rs-crown"></i>' : ''}${face(bank, who.character, w ? 'big' : 'big grey')}</div>
     <div class="rs-hero-text"><div class="rs-title">${esc(title)}</div>
@@ -144,8 +144,8 @@ export function showResults(bank: SpriteBank, root: HTMLElement, r: GameResults,
   const stats = cover.querySelector<HTMLElement>('.rs-stats')!;
   const render = () => {
     rank.innerHTML = r.players.map(x => rankRow(bank, x, x.p === sel)).join('');
-    const x = r.players.find(q => q.p === sel)!, ch = CHARACTERS[x.character];
-    head.innerHTML = `${face(bank, x.character, 'small')}<b>${esc(ch.name)}的成績</b><span>第 ${x.rank} 名</span>`;
+    const x = r.players.find(q => q.p === sel)!;
+    head.innerHTML = `${face(bank, x.character, 'small')}<b>${esc(playerName(x))}的成績</b><span>第 ${x.rank} 名</span>`;
     stats.innerHTML = statTiles(x, r.cityNames);
   };
   // One page, no scrolling: portrait shows the ranking with the figures under it when both fit, else one pane at a

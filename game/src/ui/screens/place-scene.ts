@@ -4,7 +4,7 @@
  * scaled to fit, so everything shows on one page at every size. Art is placed the way the original draws it:
  * frame (x, y) puts the frame's anchor at (x, y).
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import type { ScreenContext } from './registry';
 import './place-scene.css';
 
@@ -138,7 +138,7 @@ export function face(ctx: ScreenContext, character: number, cls = ''): string {
   return a ? `<img class="pl-face ${cls}" src="${a.src}" alt="">` : '';
 }
 
-export const charName = (ctx: ScreenContext, p: number) => CHARACTERS[ctx.game.players[p]?.character ?? 0]?.name ?? '';
+export const charName = (ctx: ScreenContext, p: number) => playerName(ctx.game.players[p]);
 export const charColor = (ctx: ScreenContext, p: number) => hex(CHARACTERS[ctx.game.players[p]?.character ?? 0]?.color ?? 0xffffff);
 
 /**

@@ -7,7 +7,7 @@
  */
 import type { GameEvent } from '../../core/types';
 import type { MonthReport } from '../../core/game';
-import { CHARACTERS } from '../../core/characters';
+import { playerName } from '../../core/characters';
 import { month } from '../../core/date';
 import type { Frame } from '../sprites';
 import { fxScreens, type ScreenContext } from './registry';
@@ -314,7 +314,7 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       const a = ctx.bank.art('Panel', 25, 11 + i);
       const box = s.box(`mr-plaque${big ? ' big' : ''}${pop(`p${i}`)}`, x, y, w, h, '', parent);
       if (a) box.style.backgroundImage = `url('${a.src}')`;
-      box.title = `${CHARACTERS[r.character]?.name ?? ''}：存款 ${money(r.bank)} → ${money(r.after)} 元`;
+      box.title = `${playerName(ctx.game.players[r.p])}：存款 ${money(r.bank)} → ${money(r.after)} 元`;
       box.innerHTML = `<span class="mr-l l1">存款：</span><span class="mr-v l1">$${money(r.bank)}</span>
         <span class="mr-l l2">利息：</span>${r.loan ? '<span class="mr-v l2 loan">貸款中</span>' : `<span class="mr-v l2">$${money(r.interest)}</span>`}`;
     };
@@ -383,7 +383,7 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       render();
     };
     const set = (v: Partial<View>) => { Object.assign(view, v); render(); };
-    const nameOf = (row: number) => CHARACTERS[rows[row].character]?.name ?? '';
+    const nameOf = (row: number) => playerName(ctx.game.players[rows[row].p]);
 
     const script = async () => {
       await Promise.all([preload(srcs, 1500), checkBaked()]);

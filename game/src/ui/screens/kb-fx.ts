@@ -11,7 +11,7 @@
  *   by themselves; 確變骰子 and 違反暴力團對策法 hold the game until read. The other notices (女性顧客免費,
  *   拉客仔, 店被砸了, 保鑣, 黑幫附身 / 離開) are the rules' own 'say' lines.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import { isKbShop } from '../../core/modules/kb-data';
 import { fxScreens, type ScreenContext } from './registry';
 import { fitOverlay } from './bank';
@@ -32,7 +32,7 @@ const faceImg = (ctx: ScreenContext, p: number | undefined, cls = '') => {
   const a = ch ? ctx.bank.art('Data', 2, ch.id) : null;
   return a ? `<img class="${cls}" src="${a.src}" alt="" style="--c:#${ch!.color.toString(16).padStart(6, '0')}">` : '';
 };
-const who = (ctx: ScreenContext, p: number | undefined) => (p !== undefined ? CHARACTERS[ctx.game.players[p]?.character ?? -1]?.name ?? '' : '');
+const who = (ctx: ScreenContext, p: number | undefined) => (p !== undefined ? playerName(ctx.game.players[p]) : '');
 
 /** Whether the human (a player not on autopilot) is the one this card is about, or the other side of it. */
 const humanIn = (ctx: ScreenContext, fx: Fx) => [fx.p, fx.target].some(i => { const q = i !== undefined ? ctx.game.players[i] : undefined; return !!q && ctx.game.isHuman(q); });

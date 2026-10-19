@@ -3,7 +3,7 @@
  * (the blue board with the orange and purple frame, the gold ribbon), 1080 px wide, portrait: the winner, the ranking
  * and one player's main figures. Text follows the chosen script (lang.ts).
  */
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import { format } from '../core/date';
 import { sum, type GameResults, type PlayerResult } from '../core/stats';
 import { ASSETS, image, portrait } from './assets';
@@ -140,7 +140,7 @@ export async function drawResultsCard(r: GameResults, o: CardOptions): Promise<H
   const hy = by + 200;
   if (r.players.some(p => p.winner)) crown(c, 250, hy - 118, 120);
   drawFace(c, faces.get(win.character) ?? null, win.character, 250, hy, 112, !win.winner);
-  const name = CHARACTERS[win.character].name;
+  const name = playerName(win);
   text(c, win.winner ? `${name}獲勝！` : '遊戲結束', 400, hy - 50, 72, '#ffe14a', 'left', true, 600);
   const dx = drawIcon('days', 400, hy + 8, 44) ? 452 : 404;
   text(c, `${o.mapName}・${r.days} 天・${format(r.date)}`, dx, hy + 30, 34, '#fff', 'left', true, 620 - (dx - 404));
@@ -151,7 +151,6 @@ export async function drawResultsCard(r: GameResults, o: CardOptions): Promise<H
   text(c, '排名', bx + 50, y, 34, '#ffe14a');
   y += 40;
   for (const p of r.players) {
-    const ch = CHARACTERS[p.character];
     round(c, bx + 36, y, bw - 72, rowH - 10, 20);
     c.fillStyle = p.winner ? 'rgba(255, 225, 74, .28)' : p.p === o.featured.p ? 'rgba(255,255,255,.2)' : 'rgba(255,255,255,.1)'; c.fill();
     const cy = y + (rowH - 10) / 2, fr = (rowH - 26) / 2;
@@ -159,7 +158,7 @@ export async function drawResultsCard(r: GameResults, o: CardOptions): Promise<H
     c.fillStyle = medal; c.beginPath(); c.arc(bx + 84, cy, many ? 22 : 30, 0, Math.PI * 2); c.fill();
     text(c, String(p.rank), bx + 84, cy + 1, many ? 26 : 36, '#3a2000', 'center', false);
     drawFace(c, faces.get(p.character) ?? null, p.character, bx + 160, cy, fr, p.bankrupt);
-    text(c, `${ch.name}${p.human ? '（玩家）' : ''}`, bx + 160 + fr + 22, cy - (many ? 0 : 16), many ? 30 : 38, '#fff', 'left', true, 360);
+    text(c, `${playerName(p)}${p.human ? '（玩家）' : ''}`, bx + 160 + fr + 22, cy - (many ? 0 : 16), many ? 30 : 38, '#fff', 'left', true, 360);
     if (!many) text(c, p.bankrupt ? `第 ${p.fellDay + 1} 天破產` : `土地 ${p.lots}・房屋 ${p.houses} 級・大型 ${p.plots}`, bx + 160 + fr + 22, cy + 26, 26, '#cfe0ff', 'left', false, 380);
     text(c, p.bankrupt ? '破產' : `$${money(p.assets)}`, bx + bw - 70, cy, many ? 30 : 40, p.bankrupt ? '#c8d0e0' : '#ffe14a', 'right', true);
     y += rowH;
@@ -167,7 +166,7 @@ export async function drawResultsCard(r: GameResults, o: CardOptions): Promise<H
 
   // The figures of the player shown.
   y += 30;
-  text(c, `${CHARACTERS[o.featured.character].name}的成績`, bx + 50, y, 34, '#ffe14a');
+  text(c, `${playerName(o.featured)}的成績`, bx + 50, y, 34, '#ffe14a');
   y += 36;
   const tw = (bw - 72 - 2 * 16) / 3;
   tiles.forEach(([ic, label, value, color], i) => {

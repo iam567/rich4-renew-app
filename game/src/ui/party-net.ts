@@ -19,12 +19,20 @@
  * rooms announce themselves again.
  */
 import Peer, { type DataConnection } from 'peerjs';
+import { CHARACTERS } from '../core/characters';
 
 const PREFIX = 'rich4-party-v1-';
 export const LOBBY = `${PREFIX}lobby`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
 
-export interface Member { id: string; name: string; character: number; region?: string }
+/** `nick`: the name the player gave themself (the user 2026-10-19); `name` is it or the character's. */
+export interface Member { id: string; name: string; character: number; region?: string; nick?: string }
+
+/** A nickname as kept and shown: no markup characters, trimmed, at most NICK_MAX characters. */
+export const NICK_MAX = 8;
+export const cleanNick = (s: unknown) => [...String(s ?? '').replace(/[<>&"'`\\]/g, '').replace(/\s+/g, ' ').trim()].slice(0, NICK_MAX).join('');
+/** The member's shown name: the nickname, else the character's. */
+const named = (m: Member) => { m.nick = cleanNick(m.nick) || undefined; m.name = m.nick || CHARACTERS[m.character]?.name || '玩家'; return m; };
 /** Players in a room (the user 2026-10-19: eight; the game's NPCs come after them, core/game.ts npcBase). */
 export const ROOM_MAX = 8;
 
@@ -51,8 +59,8 @@ export function myRegion(): string {
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
 
 type Msg =
-  | { t: 'hi'; name: string; character: number; have?: number; region?: string; prev?: string }
-  | { t: 'char'; character: number }
+  | { t: 'hi'; name: string; character: number; have?: number; region?: string; prev?: string; nick?: string }
+  | { t: 'char'; character: number; nick?: string }
   | { t: 'lobby'; members: Member[]; map: string; shared: boolean }
   | { t: 'start'; start: StartMsg }
   | { t: 'ans'; seq: number; v: unknown; u?: boolean }
@@ -210,7 +218,7 @@ export class Room {
   private closed = false;
   myId = '';
 
-  constructor(readonly me: { name: string; character: number; region?: string }) {}
+  constructor(readonly me: { name: string; character: number; region?: string; nick?: string }) {}
 
   /** Host: a new room; resolves with its code. */
   async create(map: string, shared: boolean): Promise<string> {
@@ -222,7 +230,7 @@ export class Room {
       if (peer) this.code = code;
     }
     if (!peer) throw new Error('無法建立房間（網路連不上）');
-    this.members = [{ id: peer.id, ...this.me }];
+    this.members = [named({ id: peer.id, ...this.me })];
     this.becomeHost(peer);
     return this.code;
   }
@@ -301,7 +309,7 @@ export class Room {
     this.toHost = c;
     c.on('data', d => this.fromHost(d as Msg));
     c.on('close', () => { if (this.toHost === c) { this.toHost = null; if (!this.closed && !this.host) void this.rejoin(); } });
-    c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, have: this.started ? this.log.length : undefined, prev } satisfies Msg);
+    c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, nick: this.me.nick, have: this.started ? this.log.length : undefined, prev } satisfies Msg);
     for (const w of this.connWaiters.splice(0)) w();
     return true;
   }
@@ -342,19 +350,19 @@ export class Room {
           // Back after a drop, or to a new host: what it missed; it sends back what this phone lacks.
           const from = Math.min(m.have ?? 0, this.log.length);
           c.send({ t: 'log', from, answers: this.log.slice(from), total: this.log.length } satisfies Msg);
-          if (!this.members.some(x => x.id === c.peer)) this.members.push({ id: c.peer, name: m.name, character: m.character, region: m.region });
+          if (!this.members.some(x => x.id === c.peer)) this.members.push(named({ id: c.peer, name: m.name, character: m.character, region: m.region, nick: m.nick }));
           this.lobbyChanged();
           this.onStatus('');
           return;
         }
         if (!this.members.some(x => x.id === c.peer)) {
           if (this.members.length >= ROOM_MAX) { c.send({ t: 'bye' } satisfies Msg); return; }
-          this.members.push({ id: c.peer, name: m.name, character: this.freeCharacter(m.character, c.peer), region: m.region });
+          this.members.push(named({ id: c.peer, name: m.name, character: this.freeCharacter(m.character, c.peer), region: m.region, nick: m.nick }));
         }
         this.lobbyChanged();
       } else if (m.t === 'char') {
         const x = this.members.find(y => y.id === c.peer);
-        if (x) { x.character = this.freeCharacter(m.character, c.peer); this.lobbyChanged(); }
+        if (x && !this.started) { x.character = this.freeCharacter(m.character, c.peer); x.nick = m.nick; named(x); this.lobbyChanged(); }
       } else if (m.t === 'ans') {
         this.record(m.seq, m.u ? undefined : m.v, true);
       } else if (m.t === 'chat') {
@@ -384,9 +392,11 @@ export class Room {
     this.onLobby();
   }
   setMap(map: string) { this.map = map; this.lobbyChanged(); }
-  setCharacter(c: number) {
-    if (this.host) { const x = this.members[0]; x.character = this.freeCharacter(c, x.id); this.lobbyChanged(); }
-    else this.toHost?.send({ t: 'char', character: c } satisfies Msg);
+  /** This phone's character and nickname (in the room, before the game). */
+  setCharacter(c: number, nick = this.me.nick) {
+    this.me.character = c; this.me.nick = cleanNick(nick) || undefined;
+    if (this.host) { const x = this.members[0]; x.character = this.freeCharacter(c, x.id); x.nick = this.me.nick; named(x); this.lobbyChanged(); }
+    else this.toHost?.send({ t: 'char', character: c, nick: this.me.nick } satisfies Msg);
   }
 
   private fromHost(m: Msg) {

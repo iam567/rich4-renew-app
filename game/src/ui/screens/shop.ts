@@ -10,7 +10,7 @@
  *
  * The engine asks one `shop` question per action; the scene stays up between them and is taken down on leaving.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import { cardDef, HAND_LIMIT, cardName, cardPrice, handRoom, handSlots, handStacks, stackOf } from '../../core/modules/cards';
 import { MAX_HELD, TOOLS, sellPrice, type ShopAnswer } from '../../core/modules/tools';
 import type { Ask } from '../../core/types';
@@ -274,7 +274,7 @@ class ShopScene {
     const face = this.art('Data', 2, ch.id);
     const used = pg === 0 ? `${handSlots(me.cards, stackOf(this.ctx.game))}/${HAND_LIMIT}` : `${me.tools.filter(Boolean).length} 種`;
     this.label.title = '點背包裡的東西即可賣出，得九折點券';
-    this.label.innerHTML = `${face ? `<img src="${face.src}" alt="">` : ''}<b>${esc(ch.name)}</b><span>${pg === 0 ? '卡片' : '道具'}</span><span class="n">${used}</span><span class="s">9折收購</span>`;
+    this.label.innerHTML = `${face ? `<img src="${face.src}" alt="">` : ''}<b>${esc(playerName(me))}</b><span>${pg === 0 ? '卡片' : '道具'}</span><span class="n">${used}</span><span class="s">9折收購</span>`;
     this.hint.hidden = !L.hint;
     if (L.hint) place(this.hint, L.hint.x, L.hint.y, L.hint.w, 30);
 

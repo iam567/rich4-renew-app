@@ -78,3 +78,6 @@
 .pt-note { font-size: 13px; color: #fff3b0; text-align: center; margin: 0; }
 .pt-spin { width: 34px; height: 34px; margin: 10px auto; border-radius: 50%; border: 4px solid rgba(255, 255, 255, .3); border-top-color: #ffe14a; animation: pt-spin .9s linear infinite; }
 @keyframes pt-spin { to { transform: rotate(360deg); } }
+.pt-nick { min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 10px; border: 2px solid #ffe14a; background: #fff; color: #333; }
+.pt-hint { margin: -4px 0 0; font-size: 11px; color: #dfe8ff; text-align: center; }
+.pt-seat b, .pt-seat small { white-space: normal; text-align: center; line-height: 1.2; word-break: break-all; max-width: 100%; }

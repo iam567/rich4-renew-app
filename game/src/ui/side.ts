@@ -4,7 +4,7 @@
  */
 import { blindsTag, chipMode } from './finale';
 import { kbPanelTags } from './kabukicho'; // 歌舞伎町's signs (docs/rules/21)
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
 import type { SpriteBank } from './sprites';
@@ -25,6 +25,9 @@ const SEASON = [3, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3];
 /** Top of the three value bands in the redrawn panel art (measured; the original's are at 96/160/224). */
 const BANDS = [97, 155, 213];
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+
+/** A long name (派對模式's own names, up to 8 characters) gets smaller to stay on its line; the characters' are unchanged. */
+const fit = (name: string, width: number, size: number) => { const n = [...name].length, px = Math.min(size, Math.floor(width / Math.max(1, n))); return px < size ? ` style="font-size:${px}px"` : ''; };
 
 export class PlayerPanel {
   readonly el: HTMLElement;
@@ -58,7 +61,7 @@ export class PlayerPanel {
       const bg = this.bank.art('Panel', 0, 4), face = this.bank.art('Data', 2, p.character);
       this.el.innerHTML = `${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
         <div class="pp-face small" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-        <div class="pp-cname">${ch.name}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
+        <div class="pp-cname"${fit(playerName(p), 116, 18)}>${playerName(p)}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
         <div class="pp-cl" style="top:36px">現金</div><div class="pp-cv" style="top:34px">${money(p.cash)}</div>
         <div class="pp-cl" style="top:56px">存款</div><div class="pp-cv" style="top:54px">${money(p.bank)}</div>`;
       return;
@@ -70,7 +73,7 @@ export class PlayerPanel {
     this.el.innerHTML = `
       ${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
       <div class="pp-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-      <div class="pp-name">${ch.name}</div>
+      <div class="pp-name"${fit(playerName(p), 96, 21)}>${playerName(p)}</div>
       <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
       ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}

@@ -3,7 +3,7 @@
  * bought with cash; the rules check every purchase (modules/blackmarket.ts).
  */
 import './black-market.css';
-import { CHARACTERS } from '../../core/characters';
+import { playerName } from '../../core/characters';
 import { format } from '../../core/date';
 import { cardDef } from '../../core/modules/cards';
 import { TOOLS } from '../../core/modules/tools';
@@ -58,7 +58,7 @@ askScreens['black-market'] = (ctx, ask) => new Promise(resolve => {
     const empty = Array.from({ length: Math.max(0, 6 - bm.listings.length) }, () => '<div class="bm-item empty"><span>每月一日進新貨</span></div>').join('');
     board.innerHTML = `<div class="bm-lanterns"><i></i><i></i><i></i><i></i><i></i></div>
       <div class="bm-sign">黑市</div>
-      <div class="bm-who"><img src="${face}" alt=""><span>${CHARACTERS[p.character].name}</span><b>現金 ${money(p.cash)}</b></div>
+      <div class="bm-who"><img src="${face}" alt=""><span>${playerName(p)}</span><b>現金 ${money(p.cash)}</b></div>
       <div class="bm-grid">${items}${empty}</div>
       <div class="bm-foot"><span>只收現金 · 每月進一個道具、一張卡片；${months}個月沒人買的土地以五十倍地價出售</span>
         <button class="candy ghost" data-leave="1">離開黑市</button></div>`;

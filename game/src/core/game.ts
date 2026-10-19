@@ -4,7 +4,7 @@
  * Turn flow is a generator: it yields events for the screen and questions for human players.
  */
 import { companyOf, facilityOf, landOf, nodeById, type Board, type BoardNode, type Facility, type Land } from './board';
-import { CHARACTERS } from './characters';
+import { CHARACTERS, playerName } from './characters';
 import { addDays, addMonths, daysBetween, day as dayOf, nextDay, weekday, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
 import { Rng, daySeed } from './rng';
@@ -312,6 +312,7 @@ export class Game {
         luckBad: 0, luckMoney: 0, luckFate: 0, facility: 0,
         savedTraffic: 0, savedDice: 0, sleepTraffic: 0, sleepDice: 0,
         tools: new Array(15).fill(0), cards: [],
+        ...(s.nick ? { nick: s.nick } : {}),
       };
     });
     this.stocks = new Stocks(this);
@@ -343,7 +344,7 @@ export class Game {
    * (id ≥ 1000) keep their own id, which matches no slot.
    */
   get mapSlot(): number { return this.settings.mapId >= 8 && this.settings.mapId < 1000 ? this.board.mapId : this.settings.mapId; }
-  name(p: number): string { return CHARACTERS[this.players[p].character].name; }
+  name(p: number): string { return playerName(this.players[p]); }
   isHuman(p: Player): boolean { return p.whoPlays === 1 && !p.autopilot; }
   /** Not on the road: hotel, vanished, prison or hospital (+50..+53). */
   offRoad(p: Player): boolean { return p.hotel !== 0 || p.vanish !== 0 || p.prison !== 0 || p.hospital !== 0 || !!p.trip; }

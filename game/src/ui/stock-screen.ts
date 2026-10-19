@@ -3,7 +3,7 @@
  * table, a company page with the price chart, figures and shareholders, and buy / sell. Each trade is handed
  * back to the rules (stocks.humanMarket), which checks it.
  */
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
 import type { Game } from '../core/game';
 import { formatPrice, Trend, trendOf, type Stock } from '../core/modules/stocks';
 import type { World } from '../core/world';
@@ -194,7 +194,7 @@ export class StockScreen {
       return `<tr class="${i === this.selected ? 'sel' : ''}" data-a="row" data-v="${i}"><td class="nm">${s.name}</td>${cells}${extra ? `
         <td>${c && s.companyId ? c.freeShares.toLocaleString('en-US') : ''}</td><td>${c && s.companyId ? money(c.fundB) : ''}</td>` : ''}</tr>`;
     }).join('');
-    return `<table class="stk-table holders"><thead><tr><th>股票名稱</th>${ps.map(q => `<th style="color:${onBlue(CHARACTERS[q.character].color)}">${CHARACTERS[q.character].name}</th>`).join('')}${extra ? '<th>保留股份</th><th>累積盈餘</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>${pager}`;
+    return `<table class="stk-table holders"><thead><tr><th>股票名稱</th>${ps.map(q => `<th style="color:${onBlue(CHARACTERS[q.character].color)}">${playerName(q)}</th>`).join('')}${extra ? '<th>保留股份</th><th>累積盈餘</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>${pager}`;
   }
 
   /** Oldest to newest daily closes from the 144-day ring. */
@@ -237,7 +237,7 @@ export class StockScreen {
     const diff = s.price - s.prevClose, pct = s.prevClose ? diff / s.prevClose * 100 : 0;
     const total = 10000;
     const holders = this.game.players.map((q, k) => ({ q, n: this.st.holdings[k][slot].shares })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
-    const ctl = c && c.controller ? CHARACTERS[this.game.players[c.controller - 1].character].name : '無';
+    const ctl = c && c.controller ? playerName(this.game.players[c.controller - 1]) : '無';
     const fig = (k: string, v: string, cls2 = '') => `<div class="stk-fig ${cls2}"><span>${k}</span><b>${v}</b></div>`;
     // 大富豪模式: up to twelve shareholders — in columns across the page, never past its bottom.
     const many = holders.length > 6 ? ' many' : '';
@@ -253,7 +253,7 @@ export class StockScreen {
       <div class="stk-holders${many}"><h4>股東</h4>${holders.length ? holders.map(({ q, n }) => {
         const ch = CHARACTERS[q.character], r = n / total * 100;
         return `<div class="stk-holder${c && c.controller === q.id + 1 ? ' ctl' : ''}" style="--c:${hex(ch.color)}">
-          <span class="nm">${ch.name}${c && c.controller === q.id + 1 ? '<em>經營者</em>' : ''}</span>
+          <span class="nm">${playerName(q)}${c && c.controller === q.id + 1 ? '<em>經營者</em>' : ''}</span>
           <span class="bar"><i style="width:${Math.min(100, r).toFixed(1)}%"></i></span><span class="n" title="${n.toLocaleString('en-US')} 股 · ${r.toFixed(1)}%">${many ? `${(n / 1000).toLocaleString('en-US')}千股 ${r.toFixed(0)}%` : `${n.toLocaleString('en-US')} 股 · ${r.toFixed(1)}%`}</span></div>`;
       }).join('') : '<p class="info-none">目前沒有玩家持股</p>'}</div></div>`;
   }

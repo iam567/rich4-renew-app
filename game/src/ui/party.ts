@@ -9,7 +9,7 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { Lobby, myRegion, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
+import { cleanNick, Lobby, myRegion, NICK_MAX, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
 import { inlineChat } from './party-chat';
 import { checkNetwork } from './party-check';
 import type { SpriteBank } from './sprites';
@@ -19,6 +19,11 @@ const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;
 const KEY = 'rich4.party.character';
 const myCharacter = () => { try { const v = Number(localStorage.getItem(KEY)); return v >= 0 && v < 12 ? v : 9; } catch { return 9; } };
 const keepCharacter = (c: number) => { try { localStorage.setItem(KEY, String(c)); } catch { /* not kept */ } };
+/** The player's own name (the user 2026-10-19: 「可可愛愛小仙女」 for 孫小美), kept on the phone. */
+const NICK_KEY = 'rich4.party.name';
+const myNick = () => { try { return cleanNick(localStorage.getItem(NICK_KEY)); } catch { return ''; } };
+const keepNick = (s: string) => { try { localStorage.setItem(NICK_KEY, s); } catch { /* not kept */ } };
+const newRoom = () => new Room({ name: myNick() || CHARACTERS[myCharacter()].name, character: myCharacter(), region: myRegion(), nick: myNick() || undefined });
 
 export interface PartyDeps {
   app: HTMLElement; bank: SpriteBank; maps: MapInfo[];
@@ -68,7 +73,7 @@ export function openParty(d: PartyDeps): void {
       if (a === 'open') {
         audio.ui('yes');
         show('建立房間', '<p class="pt-lead">建立房間中…</p>');
-        const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter(), region: myRegion() });
+        const r = newRoom();
         room = r;
         try { await r.create(String(map), shared); } catch (err) { fail(err); box.onclick = menu; return; }
         if (shared) { lobby = new Lobby(); void lobby.start(info(r)); }
@@ -82,7 +87,24 @@ export function openParty(d: PartyDeps): void {
   function roomView(r: Room) {
     /** Computers up to this many players (4 or 8), or 0: players only. */
     let fill = 4;
-    show(r.shared ? '共享房間' : '私享房間', '<div class="pt-dyn"></div><div class="pt-chat"></div><div class="choices pt-acts"></div>');
+    show(r.shared ? '共享房間' : '私享房間', `<div class="pt-dyn"></div>
+      <div class="pt-row pt-me"><b>名字</b><input class="pt-nick" maxlength="${NICK_MAX}" enterkeyhint="done" value="${esc(myNick())}"></div>
+      <p class="pt-hint">可以自己取名（最多 ${NICK_MAX} 字），遊戲中大家看到的就是這個名字</p>
+      <div class="pt-chat"></div><div class="choices pt-acts"></div>`);
+    // Own name: outside the part redrawn on every change, so typing is never interrupted.
+    const nick = box.querySelector<HTMLInputElement>('.pt-nick')!;
+    let nickTimer = 0;
+    nick.oninput = () => {
+      clearTimeout(nickTimer);
+      nickTimer = window.setTimeout(() => {
+        const v = cleanNick(nick.value);
+        keepNick(v);
+        const mine = r.members.find(m => m.id === r.myId);
+        if (mine) r.setCharacter(mine.character, v);
+      }, 400);
+    };
+    nick.onkeydown = e => { if (e.key === 'Enter') nick.blur(); };
+    nick.onblur = () => { nick.value = cleanNick(nick.value); };
     const chat = inlineChat(r, face);
     box.querySelector('.pt-chat')!.append(chat.el);
     r.onChat = () => chat.draw();
@@ -90,6 +112,8 @@ export function openParty(d: PartyDeps): void {
       const dyn = box.querySelector('.pt-dyn'), acts = box.querySelector('.pt-acts');
       if (!r.code || !dyn || !acts) return;
       const host = r.members[0]?.id === r.myId;
+      const mine = r.members.find(m => m.id === r.myId);
+      if (mine) nick.placeholder = CHARACTERS[mine.character].name;
       if (fill && fill <= r.members.length) fill = fill === 4 ? 0 : fill; // 補滿4人 with four players already: players only
       const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, fill - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
       dyn.innerHTML = `
@@ -97,8 +121,8 @@ export function openParty(d: PartyDeps): void {
         <div class="pt-seats${seats.length > 4 ? " many" : ""}">${seats.map((x, i) => {
           if (!x.m) return '<div class="pt-seat cpu"><span>電腦</span></div>';
           const me = x.m.id === r.myId, votes = r.votes.get(x.m.id), voted = votes?.has(r.myId);
-          return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(CHARACTERS[x.m.character].name)}</b>
-            <small>${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}${x.m.region ? `・${esc(x.m.region)}` : ''}</small>
+          return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(x.m.name)}</b>
+            <small>${x.m.nick ? `${esc(CHARACTERS[x.m.character].name)}・` : ''}${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}${x.m.region ? `・${esc(x.m.region)}` : ''}</small>
             ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
         }).join('')}</div>
         <div class="pt-row"><b>地圖</b><span class="pt-map">${esc(mapName(r.map))}</span></div>
@@ -120,7 +144,7 @@ export function openParty(d: PartyDeps): void {
         const mine = r.members.find(m => m.id === r.myId)!;
         const next = r.freeCharacter((mine.character + 1) % 12, r.myId);
         keepCharacter(next);
-        r.setCharacter(next);
+        r.setCharacter(next, cleanNick(nick.value));
         return;
       }
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
@@ -128,7 +152,7 @@ export function openParty(d: PartyDeps): void {
         audio.ui('yes');
         const used = new Set(r.members.map(m => m.character));
         const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
-        const players = [...r.members.map(m => ({ character: m.character, human: true })), ...cpus.map(c => ({ character: c, human: false }))];
+        const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
         const settings: GameSettings = { mapId: Number(r.map), players, fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0, party: true };
         r.start({ settings, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) });
       }
@@ -154,7 +178,7 @@ export function openParty(d: PartyDeps): void {
   async function enter(code: string) {
     audio.ui('yes');
     show('進入房間', `<p class="pt-lead">連線到房間 ${esc(code)}…</p>`);
-    const r = new Room({ name: CHARACTERS[myCharacter()].name, character: myCharacter(), region: myRegion() });
+    const r = newRoom();
     room = r;
     try { await r.join(code); } catch (err) { fail(err); box.onclick = menu; return; }
     roomView(r);

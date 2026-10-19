@@ -8,7 +8,7 @@
  * { withdraw }, the counter { borrow } or { repay }, or from the chairman's room (special financing, only for
  * the controller of the bank's company, 02 §8.7) { finance } or { financeRepay }; undefined leaves.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import { daysBetween, format } from '../../core/date';
 import type { Ask, Player } from '../../core/types';
 import { askScreens, type ScreenContext } from './registry';
@@ -94,7 +94,7 @@ function accountCard(ctx: ScreenContext, p: Player) {
   const ch = CHARACTERS[p.character];
   const face = ctx.bank.art('Data', 2, p.character);
   card.insertAdjacentHTML('beforeend', `<div class="bk-card-face" style="--c:#${ch.color.toString(16).padStart(6, '0')}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-    <div class="bk-card-name">${esc(ch.name)}</div>
+    <div class="bk-card-name">${esc(playerName(p))}</div>
     <div class="bk-card-label" style="top:78px">現　金</div><div class="bk-card-label" style="top:142px">存　款</div><div class="bk-card-label" style="top:205px">貸　款</div>
     <div class="bk-card-val" data-k="cash" style="top:100px"></div><div class="bk-card-val" data-k="bank" style="top:164px"></div><div class="bk-card-val" data-k="loan" style="top:228px"></div>`);
   const shown: Shown = { cash: p.cash, bank: p.bank, loan: p.loan };
@@ -421,7 +421,6 @@ type PadKind = 'borrow' | 'repay' | 'finance' | 'financeRepay';
 
 function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
   const p = ctx.game.players[a.p];
-  const ch = CHARACTERS[p.character];
   const fin = a.finance;
   return new Promise(resolve => {
     let busy = false;
@@ -675,7 +674,7 @@ function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
 
     // Greeting: 歡迎光臨大富翁銀行！ → 需要我為您服務嗎？ (or the suspended-lending notice).
     (async () => {
-      if (await say(`${CLERK.hi(ch.name)}\n${CLERK.hello}`, 1500)) {
+      if (await say(`${CLERK.hi(playerName(p))}\n${CLERK.hello}`, 1500)) {
         if (!padFor && !busy && !inRoom) say(p.noLoan ? CLERK.noLoan((p.noLoan & 0x7f) + 1) : CLERK.serve);
       }
     })();

@@ -5,7 +5,7 @@
  * only after that) and longer for more rows at the slow speed; it sits at the bottom of the map so the effect
  * above it stays in view.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import type { EventResult } from '../../core/modules/events';
 import type { ScreenContext } from './registry';
 import { fitPhrases, phrases, shrinkText } from '../text';
@@ -61,7 +61,7 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
     const text = common ? '' : `<span class="er-text">${esc(l.text)}</span>`;
     return `<div class="er-row${ch ? '' : ' plain'}"${ch ? ` style="--c:#${ch.color.toString(16).padStart(6, '0')}"` : ''}>
       ${ch ? `<span class="er-face">${face ? `<img src="${face.src}" alt="">` : ''}</span>` : '<i class="er-dot"></i>'}
-      <span class="er-body">${ch ? `<b class="er-name">${esc(ch.name)}</b>` : ''}${text}</span>${amt}</div>`;
+      <span class="er-body">${ch ? `<b class="er-name">${esc(playerName(p))}</b>` : ''}${text}</span>${amt}</div>`;
   }).join('');
   const node = document.createElement('div');
   node.className = `msg er-box ${tone(r.fx)}${many ? ' many' : ''}${common ? ' bare' : ''}`;

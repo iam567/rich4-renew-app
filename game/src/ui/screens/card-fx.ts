@@ -5,7 +5,7 @@
  * Receiving a card (the card square, gifts) uses the same scene with 「得到%s！」: the original shows only that
  * message box, the remake shows the card as well.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import { cardDef, cardName } from '../../core/modules/cards';
 import { toolDef, toolIcon } from '../../core/modules/tools';
 import { TOOL_TEXT } from './shop';
@@ -57,7 +57,7 @@ function reveal(ctx: ScreenContext, who: number | undefined, o: { front: string;
       <div class="cfx-front">${o.front}</div>
     </div>${'<i class="cfx-star"></i>'.repeat(6)}</div>
     <div class="cfx-msg">
-      ${ch ? `<div class="cfx-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span class="cfx-face">${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(ch.name)}</div>` : ''}
+      ${ch ? `<div class="cfx-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span class="cfx-face">${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(playerName(p))}</div>` : ''}
       <div class="cfx-use">${o.line}</div>
       ${o.text ? `<div class="cfx-text">${esc(o.text)}</div>` : ''}
     </div>

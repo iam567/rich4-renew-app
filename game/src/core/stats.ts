@@ -388,7 +388,10 @@ export function chipInputs(ledger: Ledger, p: number): ChipInputs {
 
 /** One row of the results: who, the place, the end state and the ledger's counters. */
 export interface PlayerResult {
-  p: number; character: number; human: boolean; rank: number; winner: boolean; bankrupt: boolean;
+  p: number; character: number; human: boolean; rank: number;
+  /** 派對模式's own name (core/characters playerName). */
+  nick?: string;
+   winner: boolean; bankrupt: boolean;
   /** Total assets at the end (0 when bankrupt), money = cash + deposit − loans. */
   assets: number; money: number;
   /** Owned at the end: lots, building levels on them, large plots. */
@@ -428,7 +431,7 @@ function rows(ledger: Ledger, players: Player[], boards: Board[], winner: number
   const list = players.map(p => {
     const x = ledger.of(p.id);
     return {
-      p: p.id, character: p.character, human: p.human, rank: 0, winner: p.id === winner, bankrupt: p.bankrupt,
+      p: p.id, character: p.character, ...(p.nick ? { nick: p.nick } : {}), human: p.human, rank: 0, winner: p.id === winner, bankrupt: p.bankrupt,
       assets: p.bankrupt ? 0 : wealth(p), money: p.cash + p.bank - p.loan, ...owned(boards, p), fellDay: x.bankruptDay,
       titles: titles(p), stats: x,
     };

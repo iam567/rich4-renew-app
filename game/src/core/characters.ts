@@ -29,3 +29,9 @@ export const CHARACTERS: readonly Character[] = [
   { id: 10, name: '小丹尼', female: false, personality: 1, loanRatio: 30, cashRatio: 55, stockRatio: 15, color: 0x2017fe },
   { id: 11, name: '金貝貝', female: true, personality: 2, loanRatio: 80, cashRatio: 80, stockRatio: 0, color: 0x0ebdbd },
 ];
+
+/** The name shown for a player: its own (派對模式's nickname) or its character's. */
+export function playerName(p: { character: number; nick?: string } | undefined): string {
+  // (a nickname came from another phone: never markup)
+  return p?.nick?.replace(/[<>&"'`\\]/g, '') || (p ? CHARACTERS[p.character]?.name : '') || '';
+}

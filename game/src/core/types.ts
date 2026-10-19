@@ -3,7 +3,8 @@ import type { PackedDate } from './date';
 /** New-game settings (docs/rules/01 §2.1). Index fields select from the original option tables. */
 export interface GameSettings {
   mapId: number;
-  players: { character: number; human: boolean }[];
+  /** `nick`: 派對模式's own name for the player (the user 2026-10-19), shown instead of the character's. */
+  players: { character: number; human: boolean; nick?: string }[];
   fundIndex: number;
   traffic: 0 | 1 | 2;
   landLimitIndex: number;
@@ -26,6 +27,8 @@ export interface Player {
   id: number;
   character: number;
   human: boolean;
+  /** 派對模式: the name the player gave themself (shown instead of the character's name). */
+  nick?: string;
   /** 0 out (bankrupt or not yet landed), 1 human, 2 computer. Autopilot (托管) is `autopilot`. */
   whoPlays: 0 | 1 | 2;
   autopilot: boolean;

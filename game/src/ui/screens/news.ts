@@ -6,7 +6,7 @@
  * double tap closes it (a single tap does nothing, so it is not dismissed by accident). Laid out on the
  * original 440×480 canvas and scaled to fit the map view.
  */
-import { CHARACTERS } from '../../core/characters';
+import { CHARACTERS, playerName } from '../../core/characters';
 import { fitOverlay } from './bank';
 import { fxScreens, type ScreenContext } from './registry';
 import type { GameEvent } from '../../core/types';
@@ -61,7 +61,7 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
   const facesHtml = faces.map((f, i) => {
     const c = CHARACTERS[ctx.game.players[f.p].character], img = ctx.bank.art('Data', 2, c.id);
     const amt = typeof f.amount === 'number' && f.amount ? `<em class="${f.amount < 0 ? 'minus' : ''}">${f.amount > 0 ? '+' : '−'}${Math.abs(f.amount).toLocaleString('zh-Hant')}</em>` : '';
-    return `<div class="nw-face" style="--c:#${c.color.toString(16).padStart(6, '0')};animation-delay:${0.7 + i * (many ? 0.04 : 0.12)}s"><span>${img ? `<img src="${img.src}" alt="">` : ''}</span><b>${esc(c.name)}</b>${amt}</div>`;
+    return `<div class="nw-face" style="--c:#${c.color.toString(16).padStart(6, '0')};animation-delay:${0.7 + i * (many ? 0.04 : 0.12)}s"><span>${img ? `<img src="${img.src}" alt="">` : ''}</span><b>${esc(playerName(ctx.game.players[f.p]))}</b>${amt}</div>`;
   }).join('');
   const ov = fitOverlay(ctx.area, `nw-ov ${kind}`, () => [440, 480], undefined, 22);
   const { scene, root } = ov;
@@ -70,7 +70,7 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
       ${bg ? `<img class="nw-bg" src="${bg.src}" alt="">` : ''}
       <div class="nw-title">${esc(title)}</div>
       ${kind === 'news' ? '<div class="nw-live"><i></i>NEWS</div>' : ''}
-      ${ch ? `<div class="nw-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span>${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(ch.name)}</div>` : ''}
+      ${ch ? `<div class="nw-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span>${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(playerName(p))}</div>` : ''}
       <div class="nw-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}${local?.city ? `<span class="nw-city">${esc(local.city)}</span>` : ''}</div>
       <div class="nw-text${faces.length ? ' with-faces' : ''}"><div>${body(text)}</div></div>
       ${faces.length ? `<div class="nw-faces${many ? ` many c${faces.length <= 6 ? 3 : 4}` : ''}">${facesHtml}</div>` : ''}
