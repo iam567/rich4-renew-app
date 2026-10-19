@@ -88,7 +88,17 @@ export class Hud {
     return b ? { node: b, full: true } : null;
   }
 
+  /** While a question builds its boxes (ask): every box shown, so its answer closes whichever is up. */
+  private collect: HTMLElement[] | null = null;
+  /** Closes the first of `nodes` on screen; those covered are forgotten (answered: they do not come back). */
+  private hideAny(nodes: HTMLElement[]) {
+    const up = nodes.find(n => n.parentElement === this.layer || (!!this.fullLayer && n.parentElement === this.fullLayer));
+    if (up) this.hide(up);
+    for (const n of nodes) if (n !== up) this.under = this.under.filter(u => u.node !== n);
+  }
+
   private show(node: HTMLElement, full = false, restoring = false) {
+    if (this.collect && !restoring) { this.collect.push(node); node.dataset.keep = '1'; }
     if (full && this.shell && !this.fullLayer) { this.fullLayer = el('div', 'ui-layer full'); this.shell.append(this.fullLayer); }
     const now = this.shown();
     if (!restoring && now && now.node !== node && now.node.dataset.keep) this.under.push(now);
@@ -363,10 +373,13 @@ export class Hud {
     const screen = askScreens[askKey(a)];
     if (screen) return screen(this.context(this.shell ?? this.area, true), a);
     const who = this.game.players[a.p], ch = CHARACTERS[who?.character ?? 0];
-    return new Promise(resolve => {
+    // Every box this question shows (its own, or a sheet such as 股市's): its answer closes whichever is up.
+    const mine: HTMLElement[] = [], prev = this.collect;
+    this.collect = mine;
+    const asked = new Promise(resolve => {
       const box = el('div', 'msg ask');
       box.dataset.keep = '1'; // a question: it waits under a box that covers it (show / hide)
-      const done = (v: unknown) => { this.hide(box); resolve(v); };
+      const done = (v: unknown) => { this.hideAny(mine.length ? mine : [box]); resolve(v); };
       const head = (title: string) => `<div class="ribbon"><span class="ribbon-face">${this.portrait(ch.id)}</span>${esc(title)}</div>`;
       const row = el('div', 'choices');
       // YES / confirm Effect#2, NO / cancel #4, other choices click #1, mouse hover #0 (rich4_ui_yesno.asm).
@@ -507,6 +520,8 @@ export class Hud {
       if (a.t === 'choose' && a.layout && a.layout !== 'lab') this.fitTiles(box, row, null, a.layout === 'cards' ? 960 / 624 : a.layout === 'faces' ? 1 : 44 / 52, a.layout === 'cards' ? 112 : 64);
       else this.fitBox(box);
     });
+    this.collect = prev;
+    return asked;
   }
 
   private amountInput(min: number, max: number, step: number, value: number) {
