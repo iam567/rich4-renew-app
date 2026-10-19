@@ -64,9 +64,14 @@ export class SpriteBank {
    * A map's own sprites (its landscapes beyond the original archives), 4× frames under `ASSETS/maps/<dir>/`.
    * They stay registered for later games; a key already known keeps the original.
    */
-  addMapSprites(sprites: Record<string, { dir: string; frames: { file: string; width: number; height: number; anchor_x: number; anchor_y: number }[] }>) {
+  /**
+   * `replace`: the given keys win over the original's (大富豪模式's card pictures Data#601…: the original's Data#601 is an
+   * unused 「Loading」 sign, which kept 飛行卡 without its picture).
+   */
+  addMapSprites(sprites: Record<string, { dir: string; frames: { file: string; width: number; height: number; anchor_x: number; anchor_y: number }[] }>, replace = false) {
     for (const [key, s] of Object.entries(sprites)) {
-      if (this.orig.has(key) || this.hd.has(key)) continue;
+      if (!replace && (this.orig.has(key) || this.hd.has(key))) continue;
+      if (replace) this.orig.delete(key);
       this.hd.set(key, { type: 'SPR', dir: `${ASSETS}/maps/${s.dir}`, frames: s.frames.map((f, i) => ({ frame: i, ...f })) });
       this.cache.delete(key);
     }
