@@ -44,12 +44,22 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     copy(fj);
     for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
   }
-  // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps).
-  for (const res of ['2604', '2605']) {
+  // 派對模式's bar icons and the characters' reaction stickers (party-chat.ts, tools/tycoon-art/party_icons.py).
+  if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
+  // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps), and the APARTMENT
+  // HOTEL 11 towers (ui/ah11.ts: map/2611..2615 on 日本 and the five cities).
+  for (const res of ['2604', '2605', '2611', '2612', '2613', '2614', '2615']) {
     const fj = `maps/remake/sprites/${res}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
     for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+  }
+  // The five cities' own lot buildings (ui/city-lots.ts: map/2701..2724 東京, 2801.. 大阪, 2901.. 札幌, 3001.. 九州, 3101.. 沖繩).
+  for (const base of [2700, 2800, 2900, 3000, 3100]) for (let n = 1; n <= 24; n++) {
+    const fj = `maps/remake/sprites/${base + n}/frames.json`;
+    if (!existsSync(join(src, fj))) continue;
+    copy(fj);
+    for (const f of json(fj)) copy(`maps/remake/sprites/${base + n}/${f.file}`);
   }
   // 歌舞伎町's street life (docs/rules/21 §8.3): vehicles, the train, the street characters (map/1901..1911, registered at run time).
   for (let res = 1901; res <= 1911; res++) {

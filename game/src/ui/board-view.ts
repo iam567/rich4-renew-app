@@ -18,6 +18,8 @@ import type { TiledGround } from './ground';
 import { GroundCache } from './ground-cache';
 import { casinoSprite } from './casino-sprite'; // 大富翁城 (docs/rules/19)
 import { hotelSprite } from './hotels'; // the redrawn 旅館 levels 4 and 5
+import { ah11Hides, ah11Placements } from './ah11'; // the APARTMENT HOTEL 11 towers (decoration)
+import { cityLotSprite } from './city-lots'; // the five cities' own shops on the small lots
 import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite, KbStreet } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import type { StreetView } from './kb-ambient';
 import { timeout, watch } from './watchdog';
@@ -368,7 +370,9 @@ export class BoardView {
     }
     for (const co of b.companies) if (co.resource && near(co.x, co.y, 260)) add('map', co.resource + 38);
     for (const ls of b.landscapes) if (ls.resource && near(ls.x, ls.y, 300)) add('map', ls.resource + 38);
-    for (const d of this.art.decor ?? []) if (near(d.x, d.y, 90)) add('map', d.res);
+    const towers = ah11Placements(g, this.art.decor);
+    for (const t of towers) if (near(t.x, t.y, 300)) add('map', t.res);
+    for (const d of this.art.decor ?? []) if (!ah11Hides(towers, d) && near(d.x, d.y, 90)) add('map', d.res);
     at = 0;
     for (const res of this.street?.walkerSprites() ?? []) add('map', res);
     for (const o of this.objectSlots()) if (o.type) add('Data', 395 + o.type);
@@ -492,7 +496,7 @@ export class BoardView {
   /** The sprite a lot shows now (a building, or the owner's flag on an empty one), as `draw` draws it. */
   private landSprite(l: { level: number; chain: number | boolean; owner: number; facing: number }): { res: number; frame: number; tint?: number } | null {
     const b = this.game.board;
-    if (l.level) return { res: kbHouseSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
+    if (l.level) return { res: kbHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
     if (l.owner) return { res: 25, frame: this.game.players[l.owner - 1]?.character ?? 0 };
     return null;
   }
@@ -1373,7 +1377,7 @@ export class BoardView {
       const fr = buildingFrame(l.facing, this.rot);
       if (l.tmpState) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
       if (l.level) {
-        const res = kbHouseSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
+        const res = kbHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
         add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
       } else if (l.owner) {
         const ch = g.players[l.owner - 1]?.character ?? 0;
@@ -1412,13 +1416,19 @@ export class BoardView {
         this.neon(res, fr, p.x, p.y, 8000 + li);
       });
     }
+    // The APARTMENT HOTEL 11 towers (ui/ah11.ts): decoration drawn like the landscapes.
+    const towers = ah11Placements(g, this.art.decor);
+    for (const t of towers) {
+      const p = visible(t.x, t.y, 300);
+      if (p) add(p.y, Layer.building, () => this.sprite('map', t.res, buildingFrame(t.facing, this.rot), p.x, p.y));
+    }
 
     // Decorations (plants; the remake's own maps): sorted with the buildings, the season from the calendar.
     if (this.art.decor?.length) {
       const m = month(g.date), season = m >= 3 && m <= 5 ? 0 : m >= 6 && m <= 8 ? 1 : m >= 9 && m <= 11 ? 2 : 3;
       for (const [di, d] of this.art.decor.entries()) {
         const p = visible(d.x, d.y, 90);
-        if (!p || this.street?.covers(d.x, d.y)) continue;
+        if (!p || this.street?.covers(d.x, d.y) || ah11Hides(towers, d)) continue;
         add(p.y, Layer.building, () => {
           const n = this.bank.board('map', d.res)?.length ?? 0;
           if (n) { this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y); this.neon(d.res, Math.min(season, n - 1), p.x, p.y, 9000 + di); }
