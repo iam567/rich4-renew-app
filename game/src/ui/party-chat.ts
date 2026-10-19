@@ -4,6 +4,7 @@
  * the map opens the panel (history, quick phrases, input, the players with 靜音 and 請出); new lines pop up at the
  * top for a few seconds (not from someone muted).
  */
+import { ASSETS } from './assets';
 import { audio } from './audio';
 import type { ChatLine, Room } from './party-net';
 import './party.css';
@@ -11,8 +12,20 @@ import './party.css';
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const PHRASES = ['你好！', '快點啦～', '哈哈哈', '謝謝老闆！', '我要破產了…', '手下留情！', '再來一局！'];
 
+/**
+ * The reaction stickers (the user 2026-10-19: 「專屬的表情包」): each character's own eight (tools/tycoon-art/party_icons.py),
+ * sent as a line `[s:key]` and shown as the sender's character's picture.
+ */
+export const STICKERS: [string, string][] = [['good', '讚'], ['laugh', '大笑'], ['cry', '大哭'], ['angry', '生氣'], ['party', '慶祝'], ['rich', '發財'], ['please', '拜託'], ['shock', '嚇到']];
+const PARTY_ART = `${ASSETS}/maps/remake/party`;
+const stickerOf = (t: string) => /^\[s:([a-z]+)\]$/.exec(t)?.[1];
+const stickerSrc = (c: number, key: string) => `${PARTY_ART}/sticker-${c}-${key}.webp`;
+const stickerImg = (c: number, key: string, cls: string) => `<img class="${cls}" src="${stickerSrc(c, key)}" alt="${esc(STICKERS.find(s => s[0] === key)?.[1] ?? '')}">`;
+
 function lineHtml(l: ChatLine, face: (c: number) => string): string {
   if (l.character < 0) return `<div class="pc-line sys">${esc(l.text)}</div>`;
+  const st = stickerOf(l.text);
+  if (st) return `<div class="pc-line"><img src="${face(l.character)}" alt=""><b>${esc(l.name)}</b>${stickerImg(l.character, st, 'pc-stk')}</div>`;
   return `<div class="pc-line"><img src="${face(l.character)}" alt=""><b>${esc(l.name)}</b><span>${esc(l.text)}</span></div>`;
 }
 
@@ -31,9 +44,6 @@ export function inlineChat(room: Room, face: (c: number) => string): { el: HTMLE
   return { el, draw };
 }
 
-/** Quick reactions (the bar's 😀): a line of one of these pops up big beside the sender's face. */
-export const EMOJIS = ['👍', '😂', '😭', '😡', '🎉', '💰', '🙏', '😱', '🤝', '💸', '🔥', '😴'];
-const isEmoji = (t: string) => EMOJIS.includes(t);
 
 /** 托管 from the bar (main.ts): this phone's seat handed to the computer, or back from the next turn. */
 export interface AutoControl { state(): 'manual' | 'auto' | 'pending' | 'back'; toggle(): void }
@@ -55,12 +65,10 @@ export class PartyBar {
 
   constructor(private stage: HTMLElement, private room: Room, private face: (c: number) => string, private auto: AutoControl) {
     this.el.className = 'party-bar';
-    this.el.innerHTML = `<button data-v="chat"><span>💬</span><b>聊天</b><i hidden></i></button>
-      <button data-v="quick"><span>⚡</span><b>快捷語</b></button>
-      <button data-v="emoji"><span>😀</span><b>表情</b></button>
-      <button data-v="people"><span>👥</span><em></em></button>
-      <button data-v="votes"><span>🗳</span><b>投票</b><i hidden></i></button>
-      <button data-v="auto"><span>🤖</span><b>托管</b></button>`;
+    // The icons drawn like the toolbar's (party_icons.py): normal, and lit (-h) when pressed, open or on.
+    const icon = (k: string, title: string, extra = '') => `<button data-v="${k}" title="${title}"><img class="pb-n" src="${PARTY_ART}/icon-${k}.webp" alt=""><img class="pb-h" src="${PARTY_ART}/icon-${k}-h.webp" alt="">${extra}</button>`;
+    this.el.innerHTML = icon('chat', '聊天', '<i hidden></i>') + icon('quick', '快捷語') + icon('emoji', '表情') +
+      icon('people', '玩家', '<em></em>') + icon('votes', '投票', '<i hidden></i>') + icon('auto', '托管', '<em class="pb-tag"></em>');
     this.el.addEventListener('click', e => {
       e.stopPropagation();
       const v = (e.target as HTMLElement).closest<HTMLElement>('[data-v]')?.dataset.v;
@@ -89,7 +97,8 @@ export class PartyBar {
     const vd = vb.querySelector('i')!; vd.hidden = !votes; vd.textContent = String(votes);
     const st = this.auto.state(), ab = q('auto');
     ab.classList.toggle('lit', st !== 'manual');
-    ab.querySelector('b')!.textContent = st === 'auto' ? '取消托管' : st === 'pending' ? '托管中…' : st === 'back' ? '下回合手動' : '托管';
+    ab.title = st === 'auto' ? '取消托管' : st === 'pending' ? '托管中…' : st === 'back' ? '下回合恢復手動' : '托管';
+    ab.querySelector('em')!.textContent = st === 'auto' ? '托管中' : st === 'pending' ? '等待中' : st === 'back' ? '下回合' : '';
     for (const b of this.el.querySelectorAll<HTMLElement>('[data-v]')) b.classList.toggle('on', b.dataset.v === this.view);
   }
 
@@ -98,9 +107,9 @@ export class PartyBar {
     this.refresh();
     if (this.room.muted.has(l.from) || (this.panel && this.view === 'chat')) return;
     const pop = document.createElement('div');
-    const big = isEmoji(l.text);
+    const st = stickerOf(l.text), big = !!st;
     pop.className = `pc-pop${big ? ' big' : ''}`;
-    pop.innerHTML = big ? `<img src="${this.face(l.character)}" alt=""><b>${esc(l.name)}</b><span>${l.text}</span>` : lineHtml(l, this.face);
+    pop.innerHTML = st ? `<b>${esc(l.name)}</b>${stickerImg(l.character, st, 'pc-stk-big')}` : lineHtml(l, this.face);
     this.pops.append(pop);
     while (this.pops.children.length > 3) this.pops.firstElementChild!.remove();
     setTimeout(() => { pop.classList.add('out'); setTimeout(() => pop.remove(), 400); }, big ? 3000 : 5000);
@@ -130,7 +139,10 @@ export class PartyBar {
     const others = r.members.filter(m => m.id !== r.myId);
     const head = (t: string) => `<div class="pc-head"><b>${t}</b><button class="pc-x" data-a="close">✕</button></div>`;
     if (v === 'quick') p.innerHTML = `${head('快捷語')}<div class="pc-phrases big">${PHRASES.map(t => `<button class="chip" data-say="${esc(t)}">${esc(t)}</button>`).join('')}</div>`;
-    else if (v === 'emoji') p.innerHTML = `${head('表情')}<div class="pc-emojis">${EMOJIS.map(t => `<button data-say="${t}">${t}</button>`).join('')}</div>`;
+    else if (v === 'emoji') {
+      const mine = r.members.find(m => m.id === r.myId)?.character ?? 0;
+      p.innerHTML = `${head('表情')}<div class="pc-emojis">${STICKERS.map(([k, t]) => `<button data-say="[s:${k}]" title="${t}">${stickerImg(mine, k, '')}</button>`).join('')}</div>`;
+    }
     else if (v === 'chat') {
       p.innerHTML = `${head('聊天')}<div class="pc-log">${r.chat.filter(l => !r.muted.has(l.from)).slice(-40).map(l => lineHtml(l, this.face)).join('') || '<div class="pc-line sys">還沒有訊息</div>'}</div>
         <div class="pc-phrases">${PHRASES.map(t => `<button class="chip" data-say="${esc(t)}">${esc(t)}</button>`).join('')}</div>
