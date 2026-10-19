@@ -14,6 +14,7 @@ import { askScreens, fxScreens, type ScreenContext } from './screens/registry';
 import { TOOL_TEXT } from './screens/shop';
 import { audio, Sfx } from './audio';
 import { phrases, shrinkText } from './text';
+import { onePage, pageRows, pickLayout, rowsReadable } from './fit-list';
 import './tycoon.css';
 
 /** The world being played (null in a normal game); screens that differ in 大富豪模式 read it. */
@@ -320,19 +321,36 @@ fxScreens['house-full'] = async (ctx, s) => {
 type Fx = Extract<GameEvent, { t: 'fx' }>;
 const yuan = (n: number) => `${Math.trunc(n).toLocaleString('zh-Hant')}`;
 
-/** A compact sheet of twelve rows (face, name, figures), closed by a tap or after `ms`. */
+/**
+ * A compact sheet of twelve rows (face, name, figures), closed by a tap or after `ms`: over the whole game screen, in
+ * the roomiest of one, two or three columns that fits, names shrunk to one line; pages with a pager when not even
+ * the smallest rows fit (a tap or the time turns the page first) — no cut-off, no scrolling.
+ */
 function sheetRows(ctx: ScreenContext, title: string, head: string, rows: string[], ms: number): Promise<void> {
   return new Promise(resolve => {
     const box = document.createElement('div');
     box.className = 'msg tw';
     box.innerHTML = `<div class="ribbon">${esc(title)}</div>${head ? `<div class="tw-head">${head}</div>` : ''}<div class="tw-rows">${rows.join('')}</div><div class="tw-tap">點一下繼續</div>`;
-    let done = false;
-    const close = () => { if (done) return; done = true; ctx.close(); resolve(); };
-    box.addEventListener('click', close);
-    // Twelve rows: over the whole game screen, two columns, names shrunk to one line (no cut-off, no scrolling).
     ctx.open(box, true);
-    shrinkText(box, '.tw-name', 9);
-    setTimeout(close, ms * Math.max(0.6, ctx.scale()));
+    const list = box.querySelector<HTMLElement>('.tw-rows')!, layer = box.parentElement;
+    const across = () => !!layer && box.offsetWidth <= layer.clientWidth + 1 && list.scrollWidth <= list.clientWidth + 1 && rowsReadable(box, '.tw-row, .tw-name');
+    const fits = () => !!layer && box.offsetHeight <= layer.clientHeight - 30 && across();
+    const LOOKS = ['one', 'two', 'three', 'tight'];
+    const wide = (layer?.clientWidth ?? 0) >= 540;
+    const looks = [...(wide ? ['two', 'one'] : ['one', 'two']), 'one tight', 'two tight', 'three tight'];
+    const apply = (cls: string) => { box.classList.remove(...LOOKS); box.classList.add(...cls.split(' ')); shrinkText(box, '.tw-name', 9); };
+    let pages = onePage;
+    if (pickLayout(looks, apply, fits) === null) {
+      apply([...looks].reverse().find(l => (apply(l), across())) ?? 'one tight');
+      pages = pageRows([...list.children] as HTMLElement[], list, fits);
+    }
+    let done = false, timer = 0;
+    const wait = () => { clearTimeout(timer); timer = window.setTimeout(turn, ms * Math.max(0.6, ctx.scale())); };
+    const close = () => { if (done) return; done = true; clearTimeout(timer); ctx.close(); resolve(); };
+    const turn = () => { if (pages.next()) wait(); else close(); };
+    box.addEventListener('click', turn);
+    box.querySelector('.fl-pager')?.addEventListener('click', wait);
+    wait();
   });
 }
 
@@ -345,7 +363,9 @@ function faceRow(ctx: ScreenContext, p: number, cells: string, cls = ''): string
 function worldMonthReport(ctx: ScreenContext, fx: Fx): Promise<void> {
   audio.sfx(Sfx.monthly);
   const d = fx.data as unknown as { rows: { p: number; bank: number; loan: boolean; interest: number; after: number }[]; unlucky: number; champion: number };
-  const rows = d.rows.map((r, i) => faceRow(ctx, r.p,
+  // The biggest deposits first (the champion and the unlucky one keep their marks).
+  const order = d.rows.map((r, i) => ({ r, i })).sort((a, b) => b.r.bank - a.r.bank);
+  const rows = order.map(({ r, i }) => faceRow(ctx, r.p,
     `<span class="tw-num">${yuan(r.bank)}</span><span class="tw-num ${r.loan ? 'minus' : 'plus'}">${r.loan ? '貸款中' : `+${yuan(r.interest)}`}</span>`,
     i === d.champion ? 'champ' : i === d.unlucky ? 'unlucky' : ''));
   const champ = d.rows[d.champion], unl = d.unlucky >= 0 ? d.rows[d.unlucky] : null;
@@ -371,7 +391,7 @@ function worldDividends(ctx: ScreenContext, fx: Fx): Promise<void> {
   audio.sfx(61);
   const d = fx.data as unknown as { rows: { company: string; city: string; profit: number; each: number[] }[]; pay: number[] };
   const g = ctx.game, me = g.players.find(q => q.human)?.id ?? -1;
-  const rows = g.players.filter(q => q.whoPlays !== 0 && d.pay[q.id]).map(q => faceRow(ctx, q.id,
+  const rows = g.players.filter(q => q.whoPlays !== 0 && d.pay[q.id]).sort((a, b) => Math.abs(d.pay[b.id]) - Math.abs(d.pay[a.id])).map(q => faceRow(ctx, q.id,
     `<span class="tw-num ${d.pay[q.id] < 0 ? 'minus' : 'plus'}">${d.pay[q.id] > 0 ? '+' : ''}${yuan(d.pay[q.id])}</span>`, q.id === me ? 'me' : ''));
   const mine = me >= 0 ? d.rows.filter(r => r.each[me]).map(r => `${esc(r.city)}・${esc(r.company)} ${r.each[me] > 0 ? '+' : ''}${yuan(r.each[me])}`) : [];
   if (!rows.length) return Promise.resolve();

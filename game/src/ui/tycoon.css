@@ -49,6 +49,10 @@
 .tv-fare { font-size: 16px; font-weight: 900; color: #d0202e; }
 .tv-meta { display: flex; flex-direction: column; align-items: center; font-size: 12px; opacity: .8; max-width: 100%; }
 .tv-meta > span, .tv-resort > span, .tv-name, .tv-fare, .tv-lord { display: block; white-space: nowrap; overflow: hidden; max-width: 100%; }
+/* many players here (city-viewer.ts fitInfo): smaller faces */
+.cv-sum.tight { font-size: 11px; gap: 1px; }
+.cv-sum.tight > div { gap: 2px; }
+.cv-sum.tight .cv-face { width: 20px; height: 20px; border-width: 1px; }
 .tv-resort { display: flex; flex-direction: column; align-items: center; max-width: 100%; }
 .tv-card:disabled { filter: grayscale(.9); opacity: .55; }
 .game.portrait .tv-cards { grid-template-columns: repeat(2, minmax(0, 1fr)); }
@@ -120,8 +124,16 @@
 .msg.tw { width: min(560px, 100%); padding: 18px 12px 8px; gap: 4px; cursor: pointer; }
 .tw-head { font-size: 14px; margin: -2px 0 4px; }
 .tw-head b { color: #ffe14a; }
-.tw-rows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 8px; width: 100%; }
-@media (max-width: 480px) { .tw-rows { grid-template-columns: 1fr; } }
+.tw-rows { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 4px 8px; width: 100%; }
+.msg.tw.one .tw-rows { grid-template-columns: minmax(0, 1fr); }
+.msg.tw.one { width: min(420px, 100%); }
+.msg.tw.three { width: min(860px, 100%); }
+.msg.tw.three .tw-rows { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 6px; }
+.msg.tw.tight { padding: 16px 10px 6px; gap: 2px; }
+.msg.tw.tight .tw-rows { gap: 2px 6px; }
+.msg.tw.tight .tw-row { padding-top: 1px; padding-bottom: 1px; font-size: 13px; }
+.msg.tw.tight .tw-face, .msg.tw.tight .tw-rank { width: 20px; height: 20px; }
+.msg.tw.tight .tw-num { font-size: 12px; }
 .tw-row { display: flex; align-items: center; gap: 6px; padding: 2px 8px 2px 2px; border-radius: 12px; background: rgba(255,255,255,.94); color: #2a1a0a;
   border-left: 5px solid var(--c); font-size: 14px; min-width: 0; }
 .tw-row.champ { background: linear-gradient(#fff6b0, #ffd76a); }
@@ -130,7 +142,7 @@
 .tw-face { width: 26px; height: 26px; flex: none; border-radius: 50%; overflow: hidden; background: var(--c); }
 .tw-face img { width: 100%; height: 100%; display: block; }
 .tw-name { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
-.tw-num { flex: none; font-weight: 700; }
+.tw-num { flex: none; font-weight: 700; white-space: nowrap; }
 .tw-num.plus { color: #138a36; }
 .tw-num.minus { color: #d0202e; }
 .tw-tap { font-size: 12px; opacity: .7; }

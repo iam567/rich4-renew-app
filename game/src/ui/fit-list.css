@@ -1,0 +1,8 @@
+/* ============================================================== one-page player lists: the pager (fit-list.ts) */
+.fl-pager { position: relative; display: flex; align-items: center; justify-content: center; gap: 10px; margin: 6px auto 0; flex: none; }
+.fl-pager button { width: 34px; height: 30px; border-radius: 12px; border: 2px solid #fff; padding: 0; font: inherit; font-size: 22px; line-height: 1;
+  color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); box-shadow: 0 3px 0 #c97a00; cursor: pointer; }
+.fl-pager button:disabled { opacity: .35; box-shadow: none; cursor: default; }
+.fl-pager button:active:not(:disabled) { transform: translateY(2px); box-shadow: 0 1px 0 #c97a00; }
+.fl-num { min-width: 52px; font-size: 15px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0, 0, 0, .35); font-variant-numeric: tabular-nums; }
+.fl-off { display: none !important; }

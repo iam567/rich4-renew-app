@@ -8,9 +8,17 @@ import type { Game } from '../core/game';
 import { formatPrice, Trend, trendOf, type Stock } from '../core/modules/stocks';
 import type { World } from '../core/world';
 import { audio, Sfx } from './audio';
+import './fit-list.css';
 
 const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
+/** A player's colour as text on the dark blue sheet: dark ones (忍太郎, 小丹尼) lifted halfway to white. */
+const onBlue = (c: number) => {
+  const r = c >> 16, g = (c >> 8) & 0xff, b = c & 0xff;
+  if (0.299 * r + 0.587 * g + 0.114 * b > 110) return hex(c);
+  const up = (v: number) => Math.round(v + (255 - v) * 0.55);
+  return hex((up(r) << 16) | (up(g) << 8) | up(b));
+};
 const signed = (v: number, ref: number) => (v > 0 ? '+' : v < 0 ? '−' : '±') + formatPrice(Math.abs(v)).replace(/^/, '') + (ref ? '' : '');
 
 export type Trade = { slot: number; buy: boolean; n: number };
@@ -28,6 +36,14 @@ export class StockScreen {
    * city × 12 + the city's slot.
    */
   private city = 0;
+  /**
+   * 持股表 with more player columns than fit across (大富豪模式's twelve, or a narrow phone): the players a page at a
+   * time with a pager (`hper` columns a page, 0 = all), never cut off.
+   */
+  private hpage = 0;
+  private hper = 0;
+  /** The 持股表 without 保留股份 / 累積盈餘 (left to 公司資訊), so the players get the room. */
+  private lean = false;
 
   constructor(readonly game: Game, readonly p: number, readonly world?: World | null) {
     this.el = document.createElement('div');
@@ -35,7 +51,11 @@ export class StockScreen {
     if (world) { this.city = Math.max(0, world.cities.indexOf(game)); this.el.classList.add('world'); }
     this.el.addEventListener('click', e => this.click(e));
     this.render();
-    new ResizeObserver(() => this.fit()).observe(this.el);
+    let w = 0;
+    new ResizeObserver(() => {
+      // Turned or resized: the 持股表 works out its columns again.
+      if (this.view === 'holders' && this.detail < 0 && Math.abs(this.el.clientWidth - w) > 1) { w = this.el.clientWidth; this.render(); } else this.fit();
+    }).observe(this.el);
   }
 
   /** One page, no scrolling: the table's sizes step down (--k) until it fits; a tiny screen shrinks it as a whole. */
@@ -68,8 +88,9 @@ export class StockScreen {
     audio.sfx(a === 'ok' && this.trade ? (this.trade.buy ? Sfx.stockBuy : Sfx.stockSell) : a === 'n' || a === 'max' ? Sfx.key : a === 'exit' || a === 'cancel-trade' || a === 'back' ? 4 : 1);
     const s = this.selected >= 0 ? this.st.stocks[this.selected] : null;
     const me = this.game.players[this.p];
-    if (a === 'city') { this.city = v; this.selected = -1; this.detail = -1; this.trade = null; }
-    else if (a === 'view') { this.view = this.view === 'prices' ? 'holders' : 'prices'; }
+    if (a === 'city') { this.city = v; this.selected = -1; this.detail = -1; this.trade = null; this.hpage = 0; }
+    else if (a === 'view') { this.view = this.view === 'prices' ? 'holders' : 'prices'; this.hpage = 0; }
+    else if (a === 'hpage') { const n = this.holderCount(); this.hpage = Math.max(0, Math.min(Math.ceil(n / (this.hper || n)) - 1, this.hpage + v)); }
     else if (a === 'row') { if (this.selected === v) this.detail = v; else this.selected = v; }
     else if (a === 'detail' && this.selected >= 0) this.detail = this.selected;
     else if (a === 'back') { this.detail = -1; this.trade = null; }
@@ -106,9 +127,31 @@ export class StockScreen {
       <button class="chip" data-a="detail" ${this.selected < 0 ? 'disabled' : ''}>公司資訊</button>
       <span class="stk-bank">存款 ${money(me.bank)}</span></div>${this.world ? `<div class="stk-cities">${this.world.cities.map((_c, i) =>
         `<button class="chip${i === this.city ? ' on' : ''}" data-a="city" data-v="${i}">${this.world!.cityName(i)}${this.market.stocks.open() || i !== this.city ? '' : '（休市）'}</button>`).join('')}</div>` : ''}`;
-    const body = this.detail >= 0 ? this.company_page(this.detail) : this.view === 'prices' ? this.prices() : this.holders();
-    this.el.innerHTML = `${head}${body}${this.trade ? this.tradeBox() : ''}`;
-    this.fit();
+    const draw = () => {
+      const body = this.detail >= 0 ? this.company_page(this.detail) : this.view === 'prices' ? this.prices() : this.holders();
+      this.el.innerHTML = `${head}${body}${this.trade ? this.tradeBox() : ''}`;
+      this.fit();
+    };
+    this.hper = 0; this.lean = false;
+    draw();
+    // The 持股表 wider than the sheet: fewer player columns a page until it fits across.
+    const wide = () => {
+      const t = this.el.querySelector<HTMLElement>('.stk-table.holders');
+      return !!t && this.el.clientWidth > 0 && t.getBoundingClientRect().right > this.el.getBoundingClientRect().right + 1;
+    };
+    if (this.view === 'holders' && this.detail < 0 && wide()) { this.lean = true; draw(); }
+    if (this.view === 'holders' && this.detail < 0 && wide()) {
+      // Every page must fit (names differ in width); the page asked for stays.
+      const n = this.holderCount(), want = this.hpage;
+      for (let per = n - 1; per >= 1; per--) {
+        this.hper = per;
+        let fits = true;
+        for (let pg = 0; pg < Math.ceil(n / per) && fits; pg++) { this.hpage = pg; draw(); fits = !wide(); }
+        if (fits || per === 1) break;
+      }
+      this.hpage = Math.min(want, Math.ceil(n / this.hper) - 1);
+      draw();
+    }
   }
 
   private prices(): string {
@@ -126,20 +169,32 @@ export class StockScreen {
     return `<table class="stk-table"><thead><tr><th>股票名稱</th><th>成交價</th><th>漲跌</th><th>交易量</th><th>持有股數</th><th>平均成本</th></tr></thead><tbody>${rows}</tbody></table>`;
   }
 
-  private holders(): string {
-    // 12 players (大富豪模式): only those holding shares of this market get a column.
+  /** 12 players (大富豪模式): only those holding shares of this market get a column. */
+  private holderPlayers() {
     const all = this.game.players;
-    const ps = all.length > 4 ? all.filter(q => this.st.holdings[q.id].some(h => h.shares > 0)) : all;
+    return all.length > 4 ? all.filter(q => this.st.holdings[q.id].some(h => h.shares > 0)) : all;
+  }
+  private holderCount() { return this.holderPlayers().length; }
+
+  private holders(): string {
+    const every = this.holderPlayers();
+    const per = this.hper > 0 && this.hper < every.length ? this.hper : every.length;
+    const pages = Math.max(1, Math.ceil(every.length / per));
+    const page = Math.min(this.hpage, pages - 1);
+    const ps = every.slice(page * per, (page + 1) * per);
+    const extra = !this.lean;
+    const pager = pages > 1 ? `<div class="fl-pager stk-hpager"><button type="button" class="fl-prev" data-a="hpage" data-v="-1"${page ? '' : ' disabled'} aria-label="上一頁">‹</button>
+      <span class="fl-num">${page + 1} / ${pages}</span><button type="button" class="fl-next" data-a="hpage" data-v="1"${page < pages - 1 ? '' : ' disabled'} aria-label="下一頁">›</button></div>` : '';
     const rows = this.st.stocks.map((s, i) => {
       const c = this.company(i);
       const cells = ps.map(q => {
         const k = q.id, n = this.st.holdings[k][i].shares, ctl = c && c.controller === k + 1;
         return `<td${ctl ? ' class="ctl"' : ''}>${n ? n.toLocaleString('en-US') : ''}</td>`;
       }).join('');
-      return `<tr class="${i === this.selected ? 'sel' : ''}" data-a="row" data-v="${i}"><td class="nm">${s.name}</td>${cells}
-        <td>${c && s.companyId ? c.freeShares.toLocaleString('en-US') : ''}</td><td>${c && s.companyId ? money(c.fundB) : ''}</td></tr>`;
+      return `<tr class="${i === this.selected ? 'sel' : ''}" data-a="row" data-v="${i}"><td class="nm">${s.name}</td>${cells}${extra ? `
+        <td>${c && s.companyId ? c.freeShares.toLocaleString('en-US') : ''}</td><td>${c && s.companyId ? money(c.fundB) : ''}</td>` : ''}</tr>`;
     }).join('');
-    return `<table class="stk-table holders"><thead><tr><th>股票名稱</th>${ps.map(q => `<th style="color:${hex(CHARACTERS[q.character].color)}">${CHARACTERS[q.character].name}</th>`).join('')}<th>保留股份</th><th>累積盈餘</th></tr></thead><tbody>${rows}</tbody></table>`;
+    return `<table class="stk-table holders"><thead><tr><th>股票名稱</th>${ps.map(q => `<th style="color:${onBlue(CHARACTERS[q.character].color)}">${CHARACTERS[q.character].name}</th>`).join('')}${extra ? '<th>保留股份</th><th>累積盈餘</th>' : ''}</tr></thead><tbody>${rows}</tbody></table>${pager}`;
   }
 
   /** Oldest to newest daily closes from the 144-day ring. */
@@ -184,7 +239,9 @@ export class StockScreen {
     const holders = this.game.players.map((q, k) => ({ q, n: this.st.holdings[k][slot].shares })).filter(x => x.n > 0).sort((a, b) => b.n - a.n);
     const ctl = c && c.controller ? CHARACTERS[this.game.players[c.controller - 1].character].name : '無';
     const fig = (k: string, v: string, cls2 = '') => `<div class="stk-fig ${cls2}"><span>${k}</span><b>${v}</b></div>`;
-    return `<div class="stk-company">
+    // 大富豪模式: up to twelve shareholders — in columns across the page, never past its bottom.
+    const many = holders.length > 6 ? ' many' : '';
+    return `<div class="stk-company${many}">
       <div class="stk-title"><b>${s.name}</b>${c && s.companyId ? `<span>經營者：${ctl}</span>` : '<span>未上市企業</span>'}<button class="chip" data-a="back">返回列表</button></div>
       ${this.chart(s)}
       <div class="stk-figs">
@@ -193,11 +250,11 @@ export class StockScreen {
         ${fig('歷史高價', formatPrice(Math.max(...h)))}${fig('歷史低價', formatPrice(Math.min(...h)))}
         ${c && s.companyId ? `${fig('本月盈餘', money(c.fundA))}${fig('累積盈餘', money(c.fundB))}${fig('保留股份', c.freeShares.toLocaleString('en-US'))}` : ''}
       </div>
-      <div class="stk-holders"><h4>股東</h4>${holders.length ? holders.map(({ q, n }) => {
+      <div class="stk-holders${many}"><h4>股東</h4>${holders.length ? holders.map(({ q, n }) => {
         const ch = CHARACTERS[q.character], r = n / total * 100;
         return `<div class="stk-holder${c && c.controller === q.id + 1 ? ' ctl' : ''}" style="--c:${hex(ch.color)}">
           <span class="nm">${ch.name}${c && c.controller === q.id + 1 ? '<em>經營者</em>' : ''}</span>
-          <span class="bar"><i style="width:${Math.min(100, r).toFixed(1)}%"></i></span><span class="n">${n.toLocaleString('en-US')} 股 · ${r.toFixed(1)}%</span></div>`;
+          <span class="bar"><i style="width:${Math.min(100, r).toFixed(1)}%"></i></span><span class="n" title="${n.toLocaleString('en-US')} 股 · ${r.toFixed(1)}%">${many ? `${(n / 1000).toLocaleString('en-US')}千股 ${r.toFixed(0)}%` : `${n.toLocaleString('en-US')} 股 · ${r.toFixed(1)}%`}</span></div>`;
       }).join('') : '<p class="info-none">目前沒有玩家持股</p>'}</div></div>`;
   }
 

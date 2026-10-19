@@ -42,3 +42,13 @@
 .mg-banner.over { z-index: 9; }
 .mg-banner.fade { opacity: 0; transition: opacity .2s; }
 .mg-say[hidden] { display: none; }
+/* more than four targets (大富豪模式): six to a row, the heading above them, the box as tall as it needs */
+.mg-who.many { gap: 3px; padding: 5px 6px; }
+.mg-who.many .mg-faces { display: grid; grid-template-columns: repeat(6, auto); gap: 4px; }
+.mg-who.many .mg-face .pl-face { width: 28px; height: 28px; }
+.mg-scene.portrait .mg-who.many { flex-direction: column; gap: 4px; min-height: 112px; }
+.mg-scene.portrait .mg-who.many b { font-size: 22px; }
+.mg-scene.portrait .mg-who.many .mg-faces { grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 4px 6px; width: 100%; }
+.mg-scene.portrait .mg-who.many .mg-face { flex-direction: row; gap: 4px; min-width: 0; }
+.mg-scene.portrait .mg-who.many .mg-face .pl-face { width: 32px; height: 32px; flex: none; }
+.mg-scene.portrait .mg-who.many .mg-face i { font-size: 14px; white-space: nowrap; min-width: 0; }

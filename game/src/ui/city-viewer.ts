@@ -13,6 +13,7 @@ import type { Hud } from './hud';
 import type { SpriteBank } from './sprites';
 import { CITY_COLORS } from './tycoon';
 import { audio } from './audio';
+import { pickLayout } from './fit-list';
 import { groundStyle, groundStylesFor, TiledGround } from './ground';
 import { preloadBoard } from './board-preload';
 import './loading.css';
@@ -31,20 +32,13 @@ async function cityArt(w: World, i: number): Promise<MapArt> {
   return { board: parseBoard(raw), ground, sprites: { ...(raw.sprites ?? {}), ...(raw.tycoon?.sprites ?? {}) }, decor: raw.decorations ?? [], stepMarks: !!raw.step_marks };
 }
 
-/** The summary of a city: who is there, who owns how much, the hospital and prison. */
+/** The summary of a city: its 霸主, who is there (and on the way), the hospital and prison (no owners' list: the user 2026-10-19). */
 function summary(w: World, i: number, bank: SpriteBank): string {
   const c = w.cities[i], b = c.board;
   const face = (ch: number) => { const f = bank.art('Data', 2, ch); return f ? `<img src="${f.src}" alt="">` : ''; };
   const here = w.players.filter(p => !p.bankrupt && p.map === i && !p.trip);
   const coming = w.players.filter(p => p.trip?.to === i);
-  const owners = w.players.map(p => {
-    const me = p.id + 1;
-    const lots = b.lands.filter(l => l.owner === me).length + b.facilities.filter(f => f.owner === me).length;
-    const houses = b.lands.filter(l => l.owner === me && (l.level > 0 || l.chain)).length + b.facilities.filter(f => f.owner === me && f.level > 0).length;
-    return { p, lots, houses };
-  }).filter(x => x.lots > 0).sort((a, z) => z.lots - a.lots);
   const who = (ps: typeof here) => ps.map(p => `<span class="cv-face" style="--c:${hex(CHARACTERS[p.character].color)}" title="${CHARACTERS[p.character].name}">${face(p.character)}</span>`).join('');
-  const free = b.lands.filter(l => !l.owner).length + b.facilities.filter(f => !f.owner).length;
   // 城市霸主 (17 §3.8): more than half of the regular lots.
   const lord = w.overlordOf(i), mine = (q: number) => b.lands.filter(l => l.owner === q + 1).length;
   const lordLine = lord >= 0
@@ -52,7 +46,6 @@ function summary(w: World, i: number, bank: SpriteBank): string {
     : `<div class="cv-lord none"><b>霸主</b><span class="ph">從缺</span><span class="ph">（需超過半數普通用地：</span><span class="ph">${Math.floor(b.lands.length / 2) + 1}/${b.lands.length}）</span></div>`;
   return `<div class="cv-sum">${lordLine}
     <div><b>在這裡</b>${who(here) || '<em>沒有人</em>'}${coming.length ? `<b class="cv-coming">在路上</b>${who(coming)}` : ''}</div>
-    <div><b>地主</b>${owners.map(o => `<span class="cv-own" style="--c:${hex(CHARACTERS[o.p.character].color)}">${esc(CHARACTERS[o.p.character].name)} ${o.lots}塊${o.houses ? `・${o.houses}棟` : ''}</span>`).join('') || '<em>還沒有人買地</em>'}<span class="cv-own free">空地 ${free}</span></div>
     <div><span class="cv-kv"><b>醫院</b>${w.occupancy(i, 'hospital')}/${PLACES_PER_HOUSE}</span><span class="cv-kv"><b>監獄</b>${w.occupancy(i, 'prison')}/${PLACES_PER_HOUSE}</span><span class="cv-kv"><b>地價</b>×${(LAND_INDEX[w.mapId(i)] ?? 1).toFixed(1)}</span>${RESORT[w.mapId(i)] ? `<span class="cv-kv"><b>度假勝地</b>旅館收入×${RESORT[w.mapId(i)].base}（夏季×${RESORT[w.mapId(i)].summer}）</span>` : ''}</div>
   </div>`;
 }
@@ -76,6 +69,8 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
     box.querySelectorAll('canvas, .info-bubble').forEach(e => e.remove());
     shown = i; renderTabs();
     info.innerHTML = summary(w, i, bank);
+    fitInfo();
+    requestAnimationFrame(fitInfo);
     // The city is covered (with its progress) until its first view is complete (ui/board-preload.ts).
     const load = box.querySelector<HTMLElement>('.cv-load')!;
     load.removeAttribute('hidden');
@@ -104,7 +99,17 @@ export async function openCityViewer(hud: Hud, w: World, bank: SpriteBank, start
     await preloadBoard(v, { aim: false, alive: () => my === token && node.isConnected, onProgress: f => progress(0.15 + 0.85 * f) });
     if (my !== token) return;
     load.setAttribute('hidden', '');
+    fitInfo();
   };
+  // Twelve faces beside the board on a short screen: smaller ones until the summary fits (關閉 under the viewer
+  // never covers its last line).
+  const fitInfo = () => {
+    const sum = info.querySelector<HTMLElement>('.cv-sum');
+    if (!sum || !info.clientHeight) return;
+    const fits = () => info.scrollHeight <= info.clientHeight + 1 && info.scrollWidth <= info.clientWidth + 1 && node.scrollHeight <= node.clientHeight + 1;
+    pickLayout(['', 'tight'], cls => { sum.classList.toggle('tight', !!cls); }, fits);
+  };
+  new ResizeObserver(() => fitInfo()).observe(info);
   tabs.addEventListener('click', e => {
     const b = (e.target as HTMLElement).closest<HTMLElement>('[data-city]');
     if (!b) return;

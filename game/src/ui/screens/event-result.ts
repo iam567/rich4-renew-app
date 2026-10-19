@@ -9,6 +9,7 @@ import { CHARACTERS } from '../../core/characters';
 import type { EventResult } from '../../core/modules/events';
 import type { ScreenContext } from './registry';
 import { fitPhrases, phrases, shrinkText } from '../text';
+import { onePage, pageRows, pickLayout, rowsReadable } from '../fit-list';
 import './event-result.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -37,50 +38,73 @@ const TAG: Record<string, string> = {
   abroad: '出國', abduct: '綁架', demolish: '拆除', expropriate: '徵收',
 };
 
+/** What must stay on one line in a row (a name, a sum; the text too in the tightest rows). */
+const ONE_LINE = '.er-row, .er-body, .er-amt, .er-box.tight .er-text';
+
 /**
  * Shows the box on the dialog layer (which raises the camera point above it); resolves when it closes. `subject`
  * gives the screen y (CSS px from the top of the map area) of what the box is about: when the camera cannot lift
  * it above the box (the edge of the map), the box moves to the top instead.
  */
 export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number | null): Promise<void> {
-  const rows = r.lines.map(l => {
+  // More than four players (大富豪模式's twelve): the biggest sums first, and a line every row shares said once
+  // above the rows (「繳交地價稅」), which then hold just the face, the name and the sum.
+  let lines = r.lines;
+  const many = lines.length > 4;
+  if (many && lines.every(l => typeof l.amount === 'number')) lines = [...lines].sort((a, b) => Math.abs(b.amount!) - Math.abs(a.amount!));
+  const common = many && lines.every(l => l.p !== undefined && l.text === lines[0].text) ? lines[0].text : '';
+  const rows = lines.map(l => {
     const p = l.p !== undefined ? ctx.game.players[l.p] : undefined;
     const ch = p ? CHARACTERS[p.character] : undefined;
     const face = ch ? ctx.bank.art('Data', 2, ch.id) : null;
     const amt = typeof l.amount === 'number' && l.amount !== 0 ? `<span class="er-amt ${l.amount > 0 ? 'plus' : 'minus'}">${money(l.amount)}</span>` : '';
+    const text = common ? '' : `<span class="er-text">${esc(l.text)}</span>`;
     return `<div class="er-row${ch ? '' : ' plain'}"${ch ? ` style="--c:#${ch.color.toString(16).padStart(6, '0')}"` : ''}>
       ${ch ? `<span class="er-face">${face ? `<img src="${face.src}" alt="">` : ''}</span>` : '<i class="er-dot"></i>'}
-      <span class="er-body">${ch ? `<b class="er-name">${esc(ch.name)}</b>` : ''}<span class="er-text">${esc(l.text)}</span></span>${amt}</div>`;
+      <span class="er-body">${ch ? `<b class="er-name">${esc(ch.name)}</b>` : ''}${text}</span>${amt}</div>`;
   }).join('');
   const node = document.createElement('div');
-  // Three rows or more go in two columns when the map is wide (a phone held sideways is short).
-  const two = r.lines.length >= 3 && ctx.area.clientWidth >= 540;
-  node.className = `msg er-box ${tone(r.fx)}${two ? ' two' : ''}`;
+  node.className = `msg er-box ${tone(r.fx)}${many ? ' many' : ''}${common ? ' bare' : ''}`;
   const tag = r.tag ?? TAG[r.fx];
   node.innerHTML = `<div class="er-head"><span class="er-cat">${esc(r.title)}</span>${tag ? `<span class="er-tag">${esc(tag)}</span>` : ''}</div>
-    <div class="er-title">${phrases(r.head)}</div>${r.hero ?? ''}
+    <div class="er-title">${phrases(r.head)}</div>${r.hero ?? ''}${common ? `<div class="er-common">${esc(common)}</div>` : ''}
     <div class="er-rows">${rows}</div>
     <div class="er-tap">點一下繼續</div>`;
-  ctx.open(node);
-  shrinkText(node, '.ls-name, .er-name, .er-cat, .er-tag', 9);
-  fitPhrases(node.querySelector<HTMLElement>('.er-title')!, 0.8);
-  // Many rows (大富豪模式's twelve) in a low map area: two columns, and over the whole game screen when even that
-  // does not fit — never cut off.
-  {
-    const room = () => (node.parentElement?.clientHeight ?? 0) - 40, wide = () => (node.parentElement?.clientWidth ?? 0) >= 540;
-    if (node.offsetHeight > room()) node.classList.add('compact');
-    if (node.offsetHeight > room()) {
-      ctx.open(node, true);
-      node.classList.toggle('two', r.lines.length >= 3 && wide());
-      if (node.offsetHeight > room() && r.lines.length >= 3) node.classList.add('two');
-      // the last resort on an extreme screen: the box as a whole a little smaller
-      if (node.offsetHeight > room()) node.style.zoom = String(Math.max(0.7, room() / node.offsetHeight));
-    }
+  // Every row on one page: the roomiest layout that fits over the map (so the effect stays in view), else over the
+  // whole game screen, in one, two or three columns, smaller rows; when not even that fits (a small phone held
+  // sideways), pages with a pager — never cut off, never scrolled.
+  const n = lines.length, list = node.querySelector<HTMLElement>('.er-rows')!;
+  const room = () => (node.parentElement?.clientHeight ?? 0) - 40;
+  const across = (textLines: number) => node.offsetWidth <= (node.parentElement?.clientWidth ?? 0) + 1
+    && list.scrollWidth <= list.clientWidth + 1 && rowsReadable(node, ONE_LINE, '.er-text', textLines);
+  const fits = () => node.offsetHeight <= room() && across(2);
+  const cols = (c: string) => (n >= 3 ? [c ? `${c} two` : 'two'] : []);
+  const looks = (full: boolean) => [
+    ...(n >= 3 && ctx.area.clientWidth >= 540 ? ['two', ''] : ['', ...cols('')]), 'compact', ...cols('compact'),
+    ...(full && n >= 5 ? ['tight', 'tight two', 'tight three'] : []),
+  ].map(cls => ({ full, cls }));
+  const LOOKS = ['two', 'three', 'compact', 'tight'];
+  let opened: boolean | null = null;
+  const apply = ({ full, cls }: { full: boolean; cls: string }) => {
+    if (opened !== full) { ctx.open(node, full); opened = full; }
+    node.classList.remove(...LOOKS);
+    if (cls) node.classList.add(...cls.split(' '));
+    shrinkText(node, '.ls-name, .er-name, .er-cat, .er-tag', 9);
+    fitPhrases(node.querySelector<HTMLElement>('.er-title')!, 0.8);
+  };
+  let pages = onePage;
+  if (pickLayout([...looks(false), ...looks(true)], apply, fits) === null) {
+    // The most compact layout whose rows still read (a long text on up to three lines), its rows on pages.
+    const cap = (l: { cls: string }) => (l.cls.includes('tight') ? 2 : 3);
+    const last = [...looks(true)].reverse().find(l => (apply(l), across(cap(l)))) ?? looks(true)[0];
+    apply(last);
+    pages = pageRows([...list.children] as HTMLElement[], list, () => node.offsetHeight <= room() && across(cap(last)));
   }
   const layer = node.parentElement;
   // The whole map takes the closing tap while the box is up (no info bubble, no drag underneath).
   if (layer) layer.style.pointerEvents = 'auto';
-  const extra = Math.max(0, r.lines.length - 1);
+  // Longer for more rows (those of the page shown); a page turns by itself, a tap turns it or closes the box.
+  const extra = Math.max(0, Math.ceil(r.lines.length / pages.count) - 1);
   const ms = Math.max(RESULT_MIN_MS + 350 * extra, (2600 + 500 * extra) * ctx.scale());
   return new Promise(resolve => {
     let done = false;
@@ -93,8 +117,11 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
       ctx.close();
       resolve();
     };
-    const tap = () => end();
-    const timer = setTimeout(end, ms);
+    const turn = () => { if (!pages.next()) return end(); clearTimeout(timer); timer = setTimeout(turn, ms); };
+    const tap = () => turn();
+    let timer = setTimeout(turn, ms);
+    // The pager's own buttons give the page shown its full time again.
+    node.querySelector('.fl-pager')?.addEventListener('click', () => { clearTimeout(timer); timer = setTimeout(turn, ms); });
     setTimeout(() => {
       const y = subject?.(), top = node.getBoundingClientRect().top - ctx.area.getBoundingClientRect().top;
       if (!done && y != null && y > top - 12) node.classList.add('top');

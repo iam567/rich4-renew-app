@@ -14,7 +14,8 @@ import type { BoardFace } from '../../core/modules/events';
 import { audio, boardVoice } from '../audio';
 import './news.css';
 import { regionalPicture } from './regional';
-import { clauseWraps, phrases } from '../text';
+import { clauseWraps, phrases, shrinkText } from '../text';
+import '../fit-list.css';
 
 type Fx = Extract<GameEvent, { t: 'fx' }>;
 
@@ -53,11 +54,14 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
   const title = kind === 'news' ? String(fx.data?.category ?? '新聞快報') : '命運';
   // The players a news entry concerns, with their faces (and sums) down the right side as the original draws
   // them (news.asm fcn_004562a5 at x 390 from y 328).
-  const faces = (Array.isArray(fx.data?.faces) ? fx.data.faces as BoardFace[] : []).filter(f => ctx.game.players[f.p]);
+  let faces = (Array.isArray(fx.data?.faces) ? fx.data.faces as BoardFace[] : []).filter(f => ctx.game.players[f.p]);
+  // More than four (大富豪模式's twelve): a grid across the board under the text, the biggest sums first.
+  const many = faces.length > 4;
+  if (many) faces = [...faces].sort((a, b) => Math.abs(b.amount ?? 0) - Math.abs(a.amount ?? 0));
   const facesHtml = faces.map((f, i) => {
     const c = CHARACTERS[ctx.game.players[f.p].character], img = ctx.bank.art('Data', 2, c.id);
     const amt = typeof f.amount === 'number' && f.amount ? `<em class="${f.amount < 0 ? 'minus' : ''}">${f.amount > 0 ? '+' : '−'}${Math.abs(f.amount).toLocaleString('zh-Hant')}</em>` : '';
-    return `<div class="nw-face" style="--c:#${c.color.toString(16).padStart(6, '0')};animation-delay:${0.7 + i * 0.12}s"><span>${img ? `<img src="${img.src}" alt="">` : ''}</span><b>${esc(c.name)}</b>${amt}</div>`;
+    return `<div class="nw-face" style="--c:#${c.color.toString(16).padStart(6, '0')};animation-delay:${0.7 + i * (many ? 0.04 : 0.12)}s"><span>${img ? `<img src="${img.src}" alt="">` : ''}</span><b>${esc(c.name)}</b>${amt}</div>`;
   }).join('');
   const ov = fitOverlay(ctx.area, `nw-ov ${kind}`, () => [440, 480], undefined, 22);
   const { scene, root } = ov;
@@ -69,16 +73,49 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
       ${ch ? `<div class="nw-who" style="--c:#${ch.color.toString(16).padStart(6, '0')}"><span>${face ? `<img src="${face.src}" alt="">` : ''}</span>${esc(ch.name)}</div>` : ''}
       <div class="nw-pic">${pic ? `<img src="${pic.src}" alt="">` : ''}${local?.city ? `<span class="nw-city">${esc(local.city)}</span>` : ''}</div>
       <div class="nw-text${faces.length ? ' with-faces' : ''}"><div>${body(text)}</div></div>
-      ${faces.length ? `<div class="nw-faces${faces.length > 4 ? ' many' : ''}">${facesHtml}</div>` : ''}
+      ${faces.length ? `<div class="nw-faces${many ? ` many c${faces.length <= 6 ? 3 : 4}` : ''}">${facesHtml}</div>` : ''}
       <div class="nw-tap">雙擊關閉</div>
     </div>`;
   // Long texts shrink to stay inside the board.
   const box = scene.querySelector<HTMLElement>('.nw-text')!, inner = box.firstElementChild as HTMLElement;
-  // …and smaller still (to 17 px) until no clause has to break inside itself.
-  for (let size = 27; size > 16; size -= 1) {
-    inner.style.fontSize = `${size}px`;
-    if (inner.scrollHeight <= box.clientHeight && !clauseWraps(inner)) break;
-  }
+  const shrink = () => {
+    // …and smaller still (to 17 px) until no clause has to break inside itself.
+    for (let size = 27; size > 16; size -= 1) {
+      inner.style.fontSize = `${size}px`;
+      if (inner.scrollHeight <= box.clientHeight && !clauseWraps(inner)) return true;
+    }
+    return inner.scrollHeight <= box.clientHeight;
+  };
+  // The grid of many faces takes the bottom of the board, the text what is left above it; when a long text leaves
+  // too little room, the faces take turns a page at a time (the board is not tapped: it turns by itself).
+  const grid = many ? scene.querySelector<HTMLElement>('.nw-faces')! : null;
+  let cycle = 0, minShow = MIN_SHOW_MS;
+  if (grid) {
+    const cells = [...grid.children] as HTMLElement[], cols = faces.length <= 6 ? 3 : 4;
+    shrinkText(grid, '.nw-face b', 9);
+    const place = () => { box.style.bottom = `${480 - grid.offsetTop + 4}px`; };
+    let per = cells.length;
+    const show = (pg: number) => cells.forEach((c, i) => c.classList.toggle('fl-off', i < pg * per || i >= (pg + 1) * per));
+    place();
+    while (!shrink() && per > cols) {
+      per -= cols;
+      show(0);
+      place();
+    }
+    const pages = Math.ceil(cells.length / per);
+    if (pages > 1) {
+      per = Math.ceil(cells.length / pages);
+      const num = document.createElement('div');
+      num.className = 'nw-pages';
+      grid.append(num);
+      let pg = 0;
+      const turn = () => { show(pg); num.textContent = `${pg + 1} / ${pages}`; };
+      turn();
+      // later pages slide in at once (a cell shown again replays its entrance, without the first page's stagger)
+      cycle = window.setInterval(() => { pg = (pg + 1) % pages; for (const c of cells) c.style.animationDelay = '0s'; turn(); }, 1600);
+      minShow = Math.max(MIN_SHOW_MS, pages * 1600 + 400); // every page seen once
+    }
+  } else shrink();
   // The board's text is voiced ('#0149'…: news 149 + n, fate 185 + t); it stays while the line is spoken and
   // at least 3 s; a double tap ends both.
   const spoken = audio.voice(boardVoice(kind, id, ctx.game.mapSlot));
@@ -88,11 +125,12 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
       if (done) return;
       done = true;
       clearTimeout(timer);
+      clearInterval(cycle);
       audio.stopVoice();
       root.classList.add('out');
       setTimeout(() => { ov.close(); resolve(); }, 180);
     };
-    const timer = setTimeout(() => { timeUp = true; if (said) end(); }, MIN_SHOW_MS);
+    const timer = setTimeout(() => { timeUp = true; if (said) end(); }, minShow);
     void spoken.then(() => { said = true; if (timeUp) end(); });
     let lastTap = 0;
     const tap = (e: PointerEvent) => {

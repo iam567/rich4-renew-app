@@ -50,10 +50,20 @@
 /* four faces: a little tighter so the fourth stays on the board */
 .nw-faces:has(> .nw-face:nth-child(4)) { gap: 3px; }
 .nw-faces:has(> .nw-face:nth-child(4)) .nw-face { padding-top: 2px; padding-bottom: 2px; }
-/* more than four (大富豪模式's twelve): two columns of small faces with the sums, no names */
-.nw-faces.many { right: 8px; width: 138px; display: grid; grid-template-columns: 1fr 1fr; align-content: start; gap: 3px; }
-.nw-faces.many .nw-face { grid-template-columns: 20px 1fr; grid-template-rows: auto; column-gap: 2px; padding: 1px 3px 1px 1px; border-left-width: 3px; border-radius: 8px; }
-.nw-faces.many .nw-face span { grid-row: 1; width: 20px; height: 20px; }
-.nw-faces.many .nw-face b { display: none; }
-.nw-faces.many .nw-face em { font-size: 11px; line-height: 20px; }
-.nw-text.with-faces:has(~ .nw-faces.many) { right: 152px; }
+/* more than four (大富豪模式's twelve): a grid across the bottom of the board, the text above it (news.ts places it),
+   each cell the face, the name and the sum; pages that turn by themselves when a long text leaves too little room */
+.nw-faces.many { left: 18px; right: 18px; top: auto; bottom: 30px; width: auto; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: end; gap: 3px 4px; }
+.nw-faces.many.c3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.nw-faces.many .nw-face { grid-template-columns: 24px minmax(0, 1fr); column-gap: 4px; padding: 2px 5px 2px 2px; border-left-width: 4px; border-radius: 9px; min-width: 0; }
+.nw-faces.many .nw-face span { width: 24px; height: 24px; }
+.nw-faces.many .nw-face b { display: block; min-width: 0; overflow: hidden; font-size: 13px; line-height: 14px; }
+.nw-faces.many .nw-face em { font-size: 13px; line-height: 14px; }
+.nw-faces.many .nw-face b:last-child { grid-row: 1 / 3; line-height: 28px; }
+.nw-text.with-faces:has(~ .nw-faces.many) { right: 22px; }
+.nw-pages { position: absolute; right: 0; top: -20px; padding: 0 8px; border-radius: 8px; font-size: 13px; line-height: 17px; color: #5a2d00;
+  background: linear-gradient(#fff07a, #ffbf2e); border: 1px solid #fff; }
+/* with the faces on the right, the double-tap hint goes bottom left (it covered the fourth face) */
+.nw-board:has(> .nw-faces) .nw-tap { right: auto; left: 12px; }
+.nw-text.with-faces { bottom: 30px; }
+.nw-faces:not(.many) { bottom: 8px; }

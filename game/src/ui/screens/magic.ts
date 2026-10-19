@@ -171,7 +171,10 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
         if (phase === 'pick') void s.sleep(2000).then(() => { if (n === said && phase === 'pick') balloon.hidden = true; });
       };
       // Who the group is: faces of the targets (not drawn by the original, which shows only the icon).
-      const who = P ? s.box('mg-who', 20, 492, 600, 112) : s.box('mg-who', 8, 8, 196, 70);
+      // More than four (大富豪模式's eleven rivals): a grid of smaller faces, names beside them in portrait.
+      const manyWho = targets.length > 4;
+      const who = P ? s.box(`mg-who${manyWho ? ' many' : ''}`, 20, 492, 600, 112) : s.box(`mg-who${manyWho ? ' many' : ''}`, 8, 8, manyWho ? 236 : 196, 70);
+      if (manyWho) who.style.height = 'auto';
       const whoHtml = () => `<b>${esc(GROUP_LINES[group])}</b><span class="mg-faces">${targets.map(q =>
         `<span class="mg-face" style="--c:${charColor(ctx, q.id)}" title="${esc(nameOf(ctx, q.id))}">${face(ctx, q.character)}${P ? `<i>${esc(nameOf(ctx, q.id))}</i>` : ''}</span>`).join('')}</span>`;
       who.innerHTML = phase === 'intro' ? '' : whoHtml();

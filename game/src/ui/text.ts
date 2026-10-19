@@ -5,8 +5,8 @@
  * (\n) stay, a blank line becomes a small gap.
  */
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-/** A clause: everything up to and including its closing punctuation (and closing brackets after it). */
-const CLAUSE = /[^，。、！？：；,!?;…　・]+(?:[，。、！？：；,!?;…　・]+[」』）)]*)?|[，。、！？：；,!?;…　・]+/g;
+/** A clause: everything up to and including its closing punctuation (and closing brackets after it); a thousands comma (345,678) is not one. */
+const CLAUSE = /(?:[^，。、！？：；,!?;…　・]|(?<=\d),(?=\d))+(?:[，。、！？：；,!?;…　・]+[」』）)]*)?|[，。、！？：；,!?;…　・]+/g;
 
 /**
  * Amounts never break inside: a number with its thousands separators, a 萬/億 and its unit (20,000 元, 3 天, ×2 倍)

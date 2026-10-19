@@ -47,7 +47,9 @@ export function cardBox(g: Game, s: Fx): BoxData | null {
   switch (card) {
     case 1: { // 均富卡
       const avg = Number(d.avg);
-      for (const [p, cash] of (d.before as [number, number][]) ?? []) lines.push({ p, text: `現金 ${cash.toLocaleString('zh-Hant')} → ${avg.toLocaleString('zh-Hant')}`, amount: avg - cash });
+      // 大富豪模式's twelve: the new sum is in the headline, each row says what one had.
+      const before = (d.before as [number, number][]) ?? [], many = before.length > 4;
+      for (const [p, cash] of before) lines.push({ p, text: many ? `原有${cash.toLocaleString('zh-Hant')}` : `現金 ${cash.toLocaleString('zh-Hant')} → ${avg.toLocaleString('zh-Hant')}`, amount: avg - cash });
       return { ...base, fx: 'card-info', head: `${who}使用均富卡：所有人的現金平均分配，每人${yuan(avg)}`, lines };
     }
     case 2: { // 均貧卡

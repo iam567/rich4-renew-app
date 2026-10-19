@@ -11,11 +11,11 @@
 .er-box.good .er-tag { background: linear-gradient(#7af59a, #22a84a); box-shadow: 0 3px 0 #127a2e, 0 5px 8px rgba(0, 0, 0, .3); }
 .er-box.info .er-tag { background: linear-gradient(#8ec5ff, #2d7ff9); box-shadow: 0 3px 0 #1a4fa8, 0 5px 8px rgba(0, 0, 0, .3); }
 .er-title { position: relative; font-size: 19px; line-height: 1.3; color: #ffe14a; margin: 2px 6px 8px; text-shadow: 0 2px 0 #0b2160, 1px 1px 0 #0b2160; }
-.er-rows { position: relative; display: grid; grid-template-columns: 1fr; gap: 6px; width: 100%; }
+.er-rows { position: relative; display: grid; grid-template-columns: minmax(0, 1fr); gap: 6px; width: 100%; }
 .er-box.two { width: min(680px, 100%); }
 .er-box.two .er-text, .er-box.two .er-name { font-size: 16px; }
 .er-box.two .er-amt { font-size: 17px; }
-.er-box.two .er-rows { grid-template-columns: 1fr 1fr; }
+.er-box.two .er-rows { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .er-row { display: flex; align-items: center; gap: 7px; padding: 4px 10px 4px 4px; border-radius: 14px; text-align: left;
   background: rgba(255, 255, 255, .94); color: #2a1a0a; border-left: 6px solid var(--c, #ffbf2e);
   animation: er-row .35s cubic-bezier(.3, 1.4, .5, 1) both; }
@@ -44,3 +44,24 @@
 .er-box.compact .er-face { width: 28px; height: 28px; }
 .er-box.compact .er-text, .er-box.compact .er-name { font-size: 14px; }
 .er-box.compact .er-amt { font-size: 15px; }
+/* 大富豪模式's twelve rows (event-result.ts picks the roomiest layout that fits, then pages): names and sums on one
+   line; a text every row shares said once above them; the tightest rows in two or three columns over the screen */
+.er-name, .er-amt { white-space: nowrap; }
+.er-common { position: relative; align-self: center; margin: -2px 0 6px; padding: 1px 12px; border-radius: 999px; font-size: 14px;
+  background: rgba(0, 0, 0, .22); color: #fff; }
+.er-box.bare .er-body { align-items: center; }
+.er-box.bare .er-amt { margin-left: auto; }
+.er-box.many .er-row { animation-delay: 0s !important; animation-duration: .25s; }
+.er-box.three { width: min(900px, 100%); }
+.er-box.three .er-rows { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.er-box.tight { padding: 18px 10px 8px; }
+.er-box.tight .er-title { font-size: 16px; margin: 0 4px 5px; }
+.er-box.tight .er-rows { gap: 3px 5px; }
+.er-box.tight .er-row { gap: 4px; padding: 1px 6px 1px 2px; border-left-width: 4px; border-radius: 10px; }
+.er-box.tight .er-face { width: 22px; height: 22px; border-width: 1px; }
+.er-box.tight .er-body { flex-wrap: nowrap; column-gap: 4px; }
+.er-box.tight .er-name { font-size: 13px; }
+.er-box.tight .er-text { font-size: 12px; white-space: nowrap; overflow: hidden; }
+.er-box.tight .er-amt { font-size: 13px; }
+.er-box.tight .er-common { font-size: 12px; margin-bottom: 4px; }
+.er-box.tight .er-tap { margin-top: 4px; }
