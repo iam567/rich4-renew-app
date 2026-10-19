@@ -258,6 +258,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .slot-face.out { filter: grayscale(1); opacity: 0.5; }
 .slot-when { font-size: 12px; opacity: 0.75; white-space: nowrap; }
 .slot-empty { font-size: 16px; }
+/* An automatic slot keeps its last five turns: the count on its row, the five in a list of their own. */
+.slot-more { display: inline-block; margin-right: 6px; padding: 1px 7px; border-radius: 9px; font-weight: 400; color: #fff; background: #e2459a; opacity: 1; }
+.slot-note { color: #fff; font-size: 15px; text-align: center; padding: 2px 0 4px; text-shadow: 0 1px 2px rgba(0,0,0,.4); }
 /* Phones: every slot as a compact two-line card (map + saved-at / game date + faces), so all six fit on one page with
    no scrolling — one column in portrait, two in landscape. */
 @media (max-width: 520px), (max-height: 560px) {

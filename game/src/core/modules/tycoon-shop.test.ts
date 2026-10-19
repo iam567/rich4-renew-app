@@ -157,4 +157,18 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(w.cities.map(c => c.cards.wanted)).toEqual([0, 1, 1, 1, 1]);
     expect(g.tools.cardShelf()).not.toContain(36);
   });
+
+  it('the magic house works on its own city only: a 嫁禍卡 cannot send its 住院 to someone in another city', () => {
+    const { w } = world();
+    const osaka = w.cities[1], ai = w.players[1], me = w.players[0], local = w.players[2];
+    for (const q of w.players) if (q.id > 2) q.map = 4;
+    me.map = 0; ai.map = 1; local.map = 1;
+    for (const q of [ai, local]) { q.placed = true; q.node = osaka.board.nodes.find(n => n.event === 1)?.id ?? osaka.board.nodes[0].id; }
+    ai.human = false; ai.whoPlays = 2; local.whoPlays = 2; ai.cards = [19]; ai.hostility[0] = 9999; // hates the human in 東京 most
+    const flow = osaka.places.castMagic(local, 10, [ai]);
+    for (let r = flow.next(); !r.done; r = flow.next()) { /* no question for a computer */ }
+    expect(me.hospital).toBe(0);
+    expect(ai.cards).toEqual([]); // the 嫁禍卡 went to someone here instead
+    expect(local.hospital).toBeGreaterThan(0);
+  });
 });

@@ -340,7 +340,8 @@ export class Places {
         break;
       case 2: case 10: { // no god check; pardon / frame cards only
         g.addHostility(q.id, visitor.id, 90 * g.priceIndex); // also ends their alliance
-        const who = yield* g.cards.pardonOrFrame(q);
+        // 大富豪模式: the magic house works on this city only — a 嫁禍卡 cannot pass it to another city (17 §4).
+        const who = yield* g.cards.pardonOrFrame(q, true);
         if (who < 0) break;
         yield* g.sendTo(g.players[who], e === 2 ? 'prison' : 'hospital', 3);
         break;

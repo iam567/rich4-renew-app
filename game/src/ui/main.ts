@@ -14,7 +14,7 @@ import { Calendar, PlayerPanel, SideToday } from './side';
 import { Minimap } from './minimap';
 import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
-import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeSlot } from './saves';
+import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
 import { audio, BGM, Sfx, Theme } from './audio';
@@ -586,6 +586,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   /** State at the open turn menu: what a save stores (loading resumes at that menu). */
   let turnSave: SaveData | null = null;
   let lastAuto = '';
+  // Going to the background at the turn menu stores that turn again (the app may be closed or crash out there).
+  const saveOnHide = () => {
+    if (me !== session) { document.removeEventListener('visibilitychange', saveOnHide); return; }
+    if (document.visibilityState === 'hidden' && turnSave && lastAuto) writeAuto(ty ? TYCOON_AUTO_SLOT : AUTO_SLOT, turnSave, `${me}:${lastAuto}`).catch(() => {});
+  };
+  document.addEventListener('visibilitychange', saveOnHide);
   /** Answers the open turn (GO or a toolbar action); null while no human decides to roll. */
   let answerTurn: ((a: Answer) => void) | null = null;
   const thumb = (id: number) => maps.find(m => m.id === id)?.thumbnail ?? '';
@@ -837,7 +843,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         // Auto-save when a human's turn opens, before the dice (one per turn): slot 0, or 大富豪模式's own automatic slot.
         turnSave = ty ? (saveWorld(ty.world) as unknown as SaveData) : saveGame(game);
         const key = `${game.daysElapsed}:${game.current}`;
-        if (key !== lastAuto) { lastAuto = key; writeSlot(ty ? TYCOON_AUTO_SLOT : AUTO_SLOT, turnSave).catch(() => hud.note('自動存檔失敗')); }
+        if (key !== lastAuto) {
+          lastAuto = key;
+          // A failed automatic save says so plainly (it used to be a log line nobody saw), and is tried again.
+          const slot = ty ? TYCOON_AUTO_SLOT : AUTO_SLOT, data = turnSave;
+          // The last five turns are kept (saves.ts writeAuto); the same turn again rewrites its own copy.
+          const turn = `${me}:${key}`;
+          writeAuto(slot, data, turn).catch(() => writeAuto(slot, data, turn)).catch(() => { if (me === session) void hud.flash('自動存檔失敗！\n請用「存檔」手動存一次', 2600); });
+        }
         const p = game.players[s.p];
         wd.setHuman(true);
         // The human decides: the map may be dragged, turned and tapped for information (09 §1.4).

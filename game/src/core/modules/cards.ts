@@ -752,13 +752,14 @@ export class Cards {
   }
 
   /** Pardon (21) or frame (19) before a punishment (06 §2.2): -1 = cancelled, otherwise who suffers it. */
-  *pardonOrFrame(p: Player): Flow<number> {
+  /** `local`: 大富豪模式's magic house — only someone in this city can be framed (17 §4, the user 2026-10-19). */
+  *pardonOrFrame(p: Player, local = false): Flow<number> {
     if (this.consume(p, 21)) {
       // _rich4_use_card_mianzuika: the announcement and the holder's card[0][20]; nobody else speaks.
       yield { t: 'fx', kind: 'card', p: p.id, data: { card: 21 } };
       return -1;
     }
-    const r = yield* this.tryFrame(p, 0, 0);
+    const r = yield* this.tryFrame(p, 0, 0, local);
     return r >= 0 ? r : p.id;
   }
 
@@ -789,13 +790,14 @@ export class Cards {
   /**
    * _rich4_try_use_card_jiahuoka (04 §2.6): mode 0 punishment, 1 fee, 2 tax. Returns the new sufferer or -1.
    * A human picks among the other living players (the attacker included); with one candidate a yes/no question.
+   * `local` (大富豪模式's magic house): only the players in this city.
    */
-  *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number): Flow<number> {
+  *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number, local = false): Flow<number> {
     if (!this.has(p, 19)) return -1;
     const g = this.g, pi = g.priceIndex;
     let target: number;
     if (g.isHuman(p)) {
-      const cands = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0);
+      const cands = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0 && (!local || g.here(q)));
       if (!cands.length) return -1;
       if (cands.length === 1) {
         const yes = yield ask({ t: 'yesno', p: p.id, kind: 'frame-card', text: `是否使用嫁禍卡嫁禍給${g.name(cands[0].id)}？` });
@@ -812,8 +814,9 @@ export class Cards {
         : p.cash * 0.2 > 4000 * pi;
       if (!use) return -1;
       target = this.mostHostile(p);
+      if (target >= 0 && local && !g.here(g.players[target])) target = -1;
       if (target < 0) {
-        const others = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0 && !g.offRoad(q));
+        const others = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0 && !g.offRoad(q) && (!local || g.here(q)));
         if (!others.length) return -1;
         target = others[g.rng.below(others.length)].id;
       }
