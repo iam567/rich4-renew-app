@@ -14,6 +14,7 @@ import { askScreens, fxScreens, type ScreenContext } from './screens/registry';
 import { TOOL_TEXT } from './screens/shop';
 import { audio, Sfx } from './audio';
 import { phrases, shrinkText } from './text';
+import { icbmFlight } from './icbm-flight';
 import { onePage, pageRows, pickLayout, rowsReadable } from './fit-list';
 import './tycoon.css';
 
@@ -422,10 +423,11 @@ Object.assign(TOOL_TEXT, {
 
 /** 洲際飛彈 launched at another city: the rocket over the globe, then the news (the blast happens there). */
 fxScreens['icbm-launch'] = async (ctx, s) => {
-  const d = (s.data ?? {}) as { text?: string };
+  // The full-screen flight onto the target (icbm-flight.ts), then the news line.
+  const d = (s.data ?? {}) as { text?: string; from?: string; city?: string; target?: string; mapId?: number; x?: number; y?: number; size?: number };
+  await icbmFlight(ctx, d);
   const ic = ctx.bank.art('Data', 615, 0);
-  audio.sfx(Sfx.nuke);
-  await banner(ctx, 'icbm', `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">洲際飛彈！</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 2400);
+  await banner(ctx, 'icbm', `${ic ? `<img class="ic-rocket" src="${ic.src}" alt="">` : ''}<div class="dc-word">命中！</div><div class="dc-sub">${phrases(d.text ?? '')}</div>`, 1600);
 };
 
 /** 時空機 to another city: a swirl of light around the gadget, then the new city. */

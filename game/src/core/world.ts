@@ -889,7 +889,8 @@ export class World implements WorldHooks {
     const at = node ? { x: node.x, y: node.y, name: near?.name ?? '' } : lot;
     if (!at) return;
     const text = at.name ? `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}的${at.name}！` : `${this.name(p.id)}的洲際飛彈落在${this.cityName(city)}！`;
-    yield { t: 'fx', kind: 'icbm-launch', p: p.id, data: { city: this.cityName(city), target: at.name, text } };
+    // The full-screen flight (ui/icbm-flight.ts): from this city over the globe onto that city's map, zooming on the spot.
+    yield { t: 'fx', kind: 'icbm-launch', p: p.id, data: { city: this.cityName(city), target: at.name, text, from: this.cityName(g.world!.index), mapId: this.mapId(city), x: at.x, y: at.y, size: c.board.size ?? 2304 } };
     this.ticker(city, text, 'icbm', p.id, { important: true });
     const h = this.human();
     if (h && this.view() === city && g.world!.index !== city) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, data: { text, icon: 'icbm' } };
