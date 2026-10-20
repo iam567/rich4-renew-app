@@ -1,0 +1,17 @@
+{
+  "name": "rich4-desktop",
+  "productName": "大富翁4",
+  "version": "0.0.0",
+  "description": "大富翁4 重制版（Windows / macOS）",
+  "main": "main.cjs",
+  "private": true,
+  "author": "taoo",
+  "scripts": {
+    "start": "electron ."
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "26.0.12",
+    "resedit": "2.0.3"
+  }
+}
