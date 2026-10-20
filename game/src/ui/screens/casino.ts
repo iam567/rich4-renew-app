@@ -50,7 +50,7 @@ const GAME_RULE: Record<C.CasinoGame, string[]> = {
   sicbo: ['莊家搖三顆骰子', '押大 11–17', '押小 4–10', '1 賠 1・豹子通殺'],
 };
 /** Text cut at its natural breaks (，・→) into pieces that never wrap inside. */
-const pieces = (text: string, cls = '') => text.split(/(?<=[，・])|(?= → )/).filter(Boolean).map(t => `<span class="cs-pc${cls ? ` ${cls}` : ''}">${esc(t.trim())}</span>`).join('');
+const pieces = (text: string, cls = '') => text.replace(/([，・])/g, '$1\u0000').replace(/ → /g, '\u0000 → ').split('\u0000').filter(Boolean).map(t => `<span class="cs-pc${cls ? ` ${cls}` : ''}">${esc(t.trim())}</span>`).join('');
 /** The banker's big hands of a hall as rows: label and multiplier (BANKER_TABLE's 「…×5・…全部現金」). */
 const bigRows = (game: C.CasinoGame) => C.BANKER_TABLE[game].replace(/現金/g, chipMode() ? '籌碼' : '現金').split('・').map(x => {
   const m = /^(.*?)\s*(×\d+(?:\.\d+)?|全部\S+)$/.exec(x.trim());

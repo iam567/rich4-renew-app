@@ -237,7 +237,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* save / load screen (09 §7.11) */
 .slots-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 10px 12px;
   background: rgba(20, 10, 50, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); font-family: "Huninn", system-ui, sans-serif; }
-.msg.slots { width: min(660px, 100%); max-height: 96vh; }
+.msg.slots { width: min(660px, 100%); max-width: min(660px, 100%); max-height: 96vh; }
 .slot-list { position: relative; display: flex; flex-direction: column; gap: 9px; width: 100%; overflow: auto; padding: 4px 4px 10px; margin-bottom: 8px; }
 .slot-row { display: grid; grid-template-columns: 52px 62px 66px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; width: 100%;
   font-family: inherit; text-align: left; color: #4a2a00; border-radius: 18px; border: 3px solid #fff;
@@ -254,8 +254,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 .slot-map img { width: 60px; height: 60px; border-radius: 12px; border: 2px solid #fff; object-fit: cover; display: block; }
 .slot-main { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .slot-mapname { font-weight: 400; font-size: 16px; color: #7a3a00; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.slot-faces { display: flex; flex-wrap: wrap; gap: 4px; }
-.slot-face img { width: 42px; height: 42px; border-radius: 10px; border: 2px solid #fff; display: block; }
+/* The faces stay in one row (the user: a narrow middle column stacked them into a tall column); they shrink instead. */
+.slot-faces { display: flex; flex-wrap: nowrap; gap: 4px; min-width: 0; }
+.slot-face { flex: 0 1 42px; width: 42px; min-width: 22px; }
+.slot-face img { width: 100%; max-width: 42px; height: auto; aspect-ratio: 1; border-radius: 10px; border: 2px solid #fff; display: block; }
 .slot-face.out { filter: grayscale(1); opacity: 0.5; }
 .slot-when { font-size: 12px; opacity: 0.75; white-space: nowrap; }
 .slot-empty { font-size: 16px; }

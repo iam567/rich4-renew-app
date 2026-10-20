@@ -6,6 +6,33 @@
   <meta name="theme-color" content="#0b3b40" />
   <title>大富翁4 · 高清重製</title>
   <link rel="stylesheet" href="/src/ui/style.css" />
+  <script>
+    // A start that fails shows why instead of a black screen (the user's iPadOS 16.3 iPad, 2026-10-20): errors before
+    // the title screen appears are listed on the page, with the system's version, for a screenshot.
+    (function () {
+      var errs = [], shown = false;
+      function show(why) {
+        var app = document.getElementById('app');
+        if (started() && !why) return;
+        var box = document.getElementById('boot-err') || document.createElement('pre');
+        box.id = 'boot-err';
+        box.style.cssText = 'position:fixed;inset:0;z-index:99999;margin:0;padding:24px;overflow:auto;background:#0b2427;color:#ffe14a;font:14px/1.5 -apple-system,monospace;white-space:pre-wrap';
+        box.textContent = '大富翁4 無法啟動，請截圖給開發者\n\n' + (why ? why + '\n\n' : '') + errs.join('\n\n') + '\n\n' + navigator.userAgent;
+        if (!box.parentNode) document.body.appendChild(box);
+        shown = true;
+      }
+      function started() { return !!document.querySelector('#app .title, #app .game, #app .boot, #app .error'); }
+      window.addEventListener('error', function (e) {
+        errs.push((e.message || 'error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno : '') + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+        if (!started()) setTimeout(function () { if (!started()) show(); }, 1500);
+      }, true);
+      window.addEventListener('unhandledrejection', function (e) {
+        var r = e.reason; errs.push('promise: ' + (r && (r.stack || r.message) || r));
+        if (!started()) setTimeout(function () { if (!started()) show(); }, 1500);
+      });
+      setTimeout(function () { if (!started() && !shown) show('20 秒後畫面仍是空的'); }, 20000);
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
