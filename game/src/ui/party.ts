@@ -44,7 +44,7 @@ export function openParty(d: PartyDeps): void {
   let lobby: Lobby | null = null, room: Room | null = null;
   const leave = () => { lobby?.close(); lobby = null; if (room && !room.started) room.close(); room = null; overlay.remove(); };
   const show = (title: string, html: string) => { box.innerHTML = `<div class="ribbon">${esc(title)}</div>${html}`; };
-  const fail = (e: unknown) => { audio.ui('error'); home(`<p class="pt-err">${esc((e as Error)?.message ?? '連線失敗')}</p>`); };
+  const fail = (e: unknown) => { audio.ui('error'); home(`<p class="pt-err">${esc((e as Error)?.message ?? '連線失敗').replace(/\n/g, '<br>')}</p>`); };
 
   function home(note = '') {
     lobby?.close(); lobby = null; room?.close(); room = null;

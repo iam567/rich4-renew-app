@@ -53,5 +53,7 @@
 	<true/>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>把遊戲結算畫面儲存到相簿。</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>派對模式需要連到同一個 Wi-Fi 裡朋友的手機或電腦，一起玩同一局。</string>
 </dict>
 </plist>

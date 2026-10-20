@@ -4,16 +4,14 @@
  * (a STUN address or the TURN relay). Each failure says plainly that this phone cannot play with others now.
  */
 import Peer from 'peerjs';
+import { ICE_SERVERS } from './party-net';
 
 export type NetCheck =
   | { ok: true; note?: string }
   | { ok: false; title: string; text: string; retry: boolean };
 
-/** PeerJS's own servers (its defaults): Google's STUN and PeerJS's TURN relay. */
-const ICE: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
-  { urls: ['turn:eu-0.turn.peerjs.com:3478', 'turn:us-0.turn.peerjs.com:3478'], username: 'peerjs', credential: 'peerjsp' },
-];
+/** The same servers as the game's connections (party-net ICE_SERVERS). */
+const ICE: RTCIceServer[] = ICE_SERVERS;
 
 const within = <T,>(p: Promise<T>, ms: number, late: T) => Promise.race([p, new Promise<T>(r => setTimeout(() => r(late), ms))]);
 
@@ -21,7 +19,7 @@ const within = <T,>(p: Promise<T>, ms: number, late: T) => Promise.race([p, new 
 function signalling(): Promise<boolean> {
   return within(new Promise<boolean>(resolve => {
     let p: Peer;
-    try { p = new Peer({ debug: 0 }); } catch { resolve(false); return; }
+    try { p = new Peer({ debug: 0, config: { iceServers: ICE_SERVERS } }); } catch { resolve(false); return; }
     p.on('open', () => { resolve(true); p.destroy(); });
     p.on('error', () => { resolve(false); p.destroy(); });
     setTimeout(() => p.destroy(), 9000);

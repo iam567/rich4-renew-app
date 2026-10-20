@@ -74,10 +74,22 @@ type Msg =
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
+/**
+ * Where the phones find a way to each other (2026-10-20): Google's STUN, and our own relay (TURN, coturn on the user's
+ * Tokyo VPS, /game/turn there) for networks that cannot connect directly (mobile data, company Wi-Fi). PeerJS's free
+ * relay is gone. The relay only carries the game's answers and the chat; it is rate- and quota-limited on the server.
+ */
+export const ICE_SERVERS: RTCIceServer[] = [
+  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: 'stun:154.205.139.82:3478' },
+  { urls: ['turn:154.205.139.82:3478?transport=udp', 'turn:154.205.139.82:3478?transport=tcp'], username: 'rich4', credential: '29e57ad82edb53b7f8dde103' },
+];
+const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } } as const;
+
 /** A PeerJS peer with a given id, or null when the id is taken (another phone has it). */
 function open(id?: string): Promise<Peer | null> {
   return new Promise(resolve => {
-    const p = id ? new Peer(id, { debug: 0 }) : new Peer({ debug: 0 });
+    const p = id ? new Peer(id, PEER_OPTS) : new Peer(PEER_OPTS);
     let done = false;
     p.on('open', () => { if (!done) { done = true; resolve(p); } });
     p.on('error', e => {
@@ -279,7 +291,7 @@ export class Room {
     const peer = await open();
     if (!peer) throw new Error('網路連不上');
     this.asGuest(peer);
-    if (!(await this.reach())) throw new Error('找不到這個房間');
+    if (!(await this.reach())) throw new Error('連不上這個房間\n（房間碼不對，或兩邊的網路無法直接連線：可以試試連同一個 Wi-Fi）');
   }
 
   private asGuest(peer: Peer) {
