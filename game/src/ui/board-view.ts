@@ -505,6 +505,8 @@ export class BoardView {
     const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
     if (fa.level) {
       const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa) ?? hotelSprite(fa); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21), the redrawn hotels
+      const id = (fa as { id?: number }).id, at = fa as { x?: number; y?: number };
+      if (own && hotelSprite(fa) && id !== undefined && at.x !== undefined && at.y !== undefined) return { res: own, frame: buildingFrame(this.roadFacing(id + 4000, at.x, at.y), this.rot) };
       if (own) return { res: own, frame: buildingFrame(0, this.rot) };
       const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
       return { res: stage === 0 ? 87 + i : 104 + inStage * 17 + i, frame: buildingFrame(0, this.rot) };
@@ -1221,20 +1223,34 @@ export class BoardView {
     ctx.restore();
   }
 
+  /** A plot's angle: from its road squares to it (the map compiler draws the outlines the same way). */
+  plotAngle(ref: number, x: number, y: number): number {
+    const b = this.game.board;
+    let a = this.plateAngle.get(ref);
+    if (a === undefined) {
+      const own = b.nodes.filter(n => n.ref === ref);
+      let tx = 0, ty = 0;
+      if (own.length) { for (const n of own) { tx += n.x; ty += n.y; } tx /= own.length; ty /= own.length; }
+      else { let d = Infinity; for (const n of b.nodes) { const e = Math.hypot(n.x - x, n.y - y); if (e < d) { d = e; tx = n.x; ty = n.y; } } }
+      a = Math.atan2(y - ty, x - tx); this.plateAngle.set(ref, a);
+    }
+    return a;
+  }
+
+  /**
+   * The facing (0..7) that turns a redrawn building's front door to its road (the user: the hotels face the street).
+   * Frame (8 − facing − rot) & 7 shows the model turned by 45°·facing in the world; the model's front is +y turned by
+   * `turn` degrees (tools/tycoon-art/hotels.py TURN, 0: plots lie at multiples of 45°), i.e. the world angle
+   * 90 + turn + 45·facing.
+   */
+  roadFacing(ref: number, x: number, y: number, turn = 0): number {
+    const toRoad = this.plotAngle(ref, x, y) * 180 / Math.PI + 180;
+    return ((Math.round((toRoad - 90 - turn) / 45) % 8) + 8) % 8;
+  }
+
   private ownerPlates(ctx: CanvasRenderingContext2D) {
     const g = this.game, b = g.board;
-    // The plot faces the road squares that belong to it (the map compiler draws the outlines the same way).
-    const angle = (ref: number, x: number, y: number) => {
-      let a = this.plateAngle.get(ref);
-      if (a === undefined) {
-        const own = b.nodes.filter(n => n.ref === ref);
-        let tx = 0, ty = 0;
-        if (own.length) { for (const n of own) { tx += n.x; ty += n.y; } tx /= own.length; ty /= own.length; }
-        else { let d = Infinity; for (const n of b.nodes) { const e = Math.hypot(n.x - x, n.y - y); if (e < d) { d = e; tx = n.x; ty = n.y; } } }
-        a = Math.atan2(y - ty, x - tx); this.plateAngle.set(ref, a);
-      }
-      return a;
-    };
+    const angle = (ref: number, x: number, y: number) => this.plotAngle(ref, x, y);
     const plate = (ref: number, x: number, y: number, owner: number, side: number) => {
       const p = g.players[owner - 1];
       if (!p || p.bankrupt) return;
@@ -1389,9 +1405,10 @@ export class BoardView {
       const fa = { ...live, ...snap?.facilities[fi] };
       const p = visible(fa.x, fa.y, 260);
       if (!p) continue;
-      const fr = buildingFrame(0, this.rot);
+      let fr = buildingFrame(0, this.rot);
       if (fa.tmpState) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
+        if (hotelSprite(fa)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
         // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
         const res = casinoSprite(fa) ?? kbShopSprite(g, fa) ?? hotelSprite(fa) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);

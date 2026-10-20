@@ -16,6 +16,17 @@ function createWindow() {
     autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true },
   });
   win.loadURL('app://rich4/index.html');
+  // A scripted run (RICH4_STEPS=steps.json: [{ js, wait, shot }]): each step's script in the page, a wait, a picture.
+  if (process.env.RICH4_STEPS) win.webContents.once('did-finish-load', async () => {
+    const fs = require('node:fs'), steps = JSON.parse(fs.readFileSync(process.env.RICH4_STEPS, 'utf8'));
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    for (const st of steps) {
+      if (st.js) { try { await win.webContents.executeJavaScript(st.js); } catch (e) { console.log('STEP-ERR', String(e).slice(0, 200)); } }
+      await sleep(st.wait ?? 1000);
+      if (st.shot) { fs.writeFileSync(st.shot, (await win.webContents.capturePage()).toPNG()); console.log('SHOT', st.shot); }
+    }
+    app.quit();
+  });
   // A check without hands (RICH4_SHOT=file.png): a picture of the window after a while, then quit.
   if (process.env.RICH4_SHOT) setTimeout(async () => {
     const img = await win.webContents.capturePage();
