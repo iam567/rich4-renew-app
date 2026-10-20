@@ -76,13 +76,17 @@ export function openParty(d: PartyDeps): void {
         const r = newRoom();
         room = r;
         try { await r.create(String(map), shared); } catch (err) { fail(err); box.onclick = menu; return; }
-        if (shared) { lobby = new Lobby(); void lobby.start(info(r)); }
+        // Every open room is in the list: a shared one to join, a private one only counted (the title's figures).
+        lobby = new Lobby(); void lobby.start(info(r));
         roomView(r);
       }
     };
   }
   const mapName = (id: string) => maps.find(m => String(m.id) === id)?.name ?? '';
-  const info = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region });
+  /** A private room's token in the list (never its code). */
+  const token = `p-${Math.random().toString(36).slice(2, 10)}`;
+  const info = (r: Room): RoomInfo => r.shared ? infoShared(r) : { ...infoShared(r), code: token, host: '', map: '', private: true };
+  const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region });
 
   function roomView(r: Room) {
     /** Computers up to this many players (4 or 8), or 0: players only. */
@@ -193,7 +197,7 @@ export function openParty(d: PartyDeps): void {
         : '<p class="pt-lead">目前沒有人在找夥伴<br>可以自己建一個共享房間，等別人加入</p>'}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy opt" data-a="create">建立共享房間</button></div>`);
     lobby.onRooms = rooms => { if (lobby) render(rooms); };
-    void lobby.start();
+    void lobby.start(undefined, true);
     setTimeout(() => { if (lobby && !box.querySelector('.pt-rooms, .pt-room')) render([]); }, 6000);
     box.onclick = async e => {
       const t = e.target as HTMLElement, r = t.closest<HTMLElement>('[data-code]'), a = t.closest<HTMLElement>('[data-a]')?.dataset.a;

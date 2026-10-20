@@ -16,7 +16,7 @@ import { InfoScreen } from './info';
 import { askScreens, fxScreens } from './screens/registry';
 import { PartyBar } from './party-chat';
 import { openParty } from './party';
-import type { Room } from './party-net';
+import { Lobby, type Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
@@ -142,7 +142,7 @@ function title() {
     return `<button class="title-btn" style="--k:${k.toFixed(3)}" data-act="${key}" aria-label="${label}">${n ? `<img class="n" src="${n.src}" alt="">` : ''}${h ? `<img class="h" src="${h.src}" alt="">` : ''}${n ? '' : `<span>${label}</span>`}</button>`;
   };
   // 派對模式 (v0.5.0): its own redrawn button (maps/remake/title/party*.webp, tools/tycoon-art/party_button.py).
-  const party = `<button class="title-btn party" data-act="party" aria-label="派對模式"><img class="n" src="${ASSETS}/maps/remake/title/party.webp" alt=""><img class="h" src="${ASSETS}/maps/remake/title/party-hover.webp" alt=""></button>`;
+  const party = `<button class="title-btn party" data-act="party" aria-label="派對模式"><span class="party-live" hidden></span><img class="n" src="${ASSETS}/maps/remake/title/party.webp" alt=""><img class="h" src="${ASSETS}/maps/remake/title/party-hover.webp" alt=""></button>`;
   // The title plays MIDI01 (rich4_ui_main.asm:483); buttons have the hover / click sounds.
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
@@ -150,8 +150,10 @@ function title() {
     <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div>
     <div class="title-ver">v${__APP_VERSION__}</div></div>`;
   buttonSounds(app.querySelector('.title-buttons')!, '.title-btn');
+  watchParty(app.querySelector<HTMLElement>('.party-live')!);
   app.onclick = async e => {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
+    if (act) stopWatchingParty();
     if (act === 'start') newGame();
     if (act === 'party') openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} });
     if (act === 'load') {
@@ -161,6 +163,25 @@ function title() {
     if (act === 'option') options();
   };
 }
+
+/**
+ * The title's live figures over 派對模式 (the user 2026-10-20): 私享 rooms open now and people waiting for partners,
+ * from the room list (party-net Lobby, which this phone may come to hold). Only while the title is shown and online.
+ */
+let titleLobby: Lobby | null = null;
+function watchParty(el: HTMLElement) {
+  stopWatchingParty();
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+  const lobby = new Lobby();
+  titleLobby = lobby;
+  lobby.onStats = s => {
+    if (titleLobby !== lobby || !el.isConnected) { if (!el.isConnected) stopWatchingParty(); return; }
+    el.hidden = !(s.privateRooms || s.waiting);
+    el.innerHTML = `${s.privateRooms ? `<b>私享房間 ${s.privateRooms}</b>` : ''}${s.waiting ? `<b>等待夥伴 ${s.waiting} 人</b>` : ''}`;
+  };
+  void lobby.start();
+}
+function stopWatchingParty() { titleLobby?.close(); titleLobby = null; }
 
 /** 動畫過程 (RICH4.CFG +1) as far as the remake goes: play the mini games, or take the automatic 50..69 points. */
 const MINI_GAME_MODES = ['親自玩', '自動結算'];

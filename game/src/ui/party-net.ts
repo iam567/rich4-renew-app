@@ -22,7 +22,8 @@ import Peer, { type DataConnection } from 'peerjs';
 import { CHARACTERS } from '../core/characters';
 
 const PREFIX = 'rich4-party-v1-';
-export const LOBBY = `${PREFIX}lobby`;
+// v2 (2026-10-20): the list also counts private rooms and seekers; older versions keep their own list (v1).
+export const LOBBY = `${PREFIX}lobby-v2`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
 
 /** `nick`: the name the player gave themself (the user 2026-10-19); `name` is it or the character's. */
@@ -36,7 +37,11 @@ const named = (m: Member) => { m.nick = cleanNick(m.nick) || undefined; m.name =
 /** Players in a room (the user 2026-10-19: eight; the game's NPCs come after them, core/game.ts npcBase). */
 export const ROOM_MAX = 8;
 
-export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string }
+/** A room in the list. `private`: a 私享 room counted only (its code is a random token, never shown or joinable). */
+export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string; private?: boolean }
+/** The title button's figures (the user 2026-10-20): 私享 rooms open now, and people waiting for partners (the players
+ * in shared rooms not started, plus those looking at 「尋找夥伴」). */
+export interface LobbyStats { privateRooms: number; waiting: number }
 export interface ChatLine { from: string; name: string; character: number; text: string; at: number }
 
 /**
@@ -125,27 +130,46 @@ export class Lobby {
   private timer = 0;
   private closed = false;
   private mine: RoomInfo | null = null;
+  /** This phone looks at 「尋找夥伴」 (counted as waiting for partners). */
+  seeking = false;
+  /** Seekers by connection (the holder's bookkeeping), last seen. */
+  private seekers = new Map<DataConnection, number>();
+  stats: LobbyStats = { privateRooms: 0, waiting: 0 };
+  onStats: (s: LobbyStats) => void = () => {};
 
   /** Starts watching (and announcing `room` every 8 s while set). */
-  async start(room?: RoomInfo): Promise<void> {
+  async start(room?: RoomInfo, seeking = false): Promise<void> {
     this.mine = room ?? null;
+    this.seeking = seeking;
     void this.loop();
   }
   announce(room: RoomInfo | null) { this.mine = room; this.push(); }
 
-  private list(): RoomInfo[] {
+  private all(): RoomInfo[] {
     const now = Date.now();
     for (const [k, r] of this.rooms) if (now - r.at > 25000) this.rooms.delete(k);
     return [...this.rooms.values()].sort((a, b) => b.at - a.at);
   }
+  /** The shared rooms (private ones are only counted). */
+  private list(): RoomInfo[] { return this.all().filter(r => !r.private); }
+  private count(): LobbyStats {
+    const now = Date.now();
+    for (const [c, at] of this.seekers) if (!c.open || now - at > 25000) this.seekers.delete(c);
+    const rooms = this.all();
+    return {
+      privateRooms: rooms.filter(r => r.private).length,
+      waiting: rooms.filter(r => !r.private).reduce((a, r) => a + r.players, 0) + this.seekers.size + (this.seeking ? 1 : 0),
+    };
+  }
   private push() {
     if (this.holder) {
       if (this.mine) this.rooms.set(this.mine.code, { ...this.mine, at: Date.now() });
-      const rooms = this.list();
-      for (const c of this.conns) c.open && c.send({ t: 'rooms', rooms });
+      const rooms = this.list(), stats = this.count();
+      for (const c of this.conns) c.open && c.send({ t: 'rooms', rooms, stats });
       this.onRooms(rooms);
+      this.stats = stats; this.onStats(stats);
     } else if (this.toHolder?.open) {
-      this.toHolder.send(this.mine ? { t: 'room', room: { ...this.mine, at: Date.now() } } : { t: 'list' });
+      this.toHolder.send(this.mine ? { t: 'room', room: { ...this.mine, at: Date.now() } } : { t: 'list', seek: this.seeking });
     }
   }
 
@@ -157,7 +181,11 @@ export class Lobby {
         const c = this.peer && await connect(this.peer, LOBBY);
         if (c) {
           this.toHolder = c;
-          c.on('data', d => { const m = d as { t: string; rooms?: RoomInfo[] }; if (m.t === 'rooms' && m.rooms) { this.rooms = new Map(m.rooms.map(r => [r.code, r])); this.onRooms(this.list()); } });
+          c.on('data', d => {
+            const m = d as { t: string; rooms?: RoomInfo[]; stats?: LobbyStats };
+            if (m.t === 'rooms' && m.rooms) { this.rooms = new Map(m.rooms.map(r => [r.code, r])); this.onRooms(this.list()); }
+            if (m.t === 'rooms' && m.stats) { this.stats = m.stats; this.onStats(m.stats); }
+          });
           c.on('close', () => { this.toHolder = null; });
         } else {
           const h = await open(LOBBY);
@@ -166,12 +194,13 @@ export class Lobby {
             h.on('connection', c2 => {
               this.conns.add(c2);
               c2.on('data', d => {
-                const m = d as { t: string; room?: RoomInfo; code?: string };
+                const m = d as { t: string; room?: RoomInfo; code?: string; seek?: boolean };
                 if (m.t === 'room' && m.room) this.rooms.set(m.room.code, { ...m.room, at: Date.now() });
                 if (m.t === 'room-off' && m.code) this.rooms.delete(m.code);
+                if (m.t === 'list') { if (m.seek) this.seekers.set(c2, Date.now()); else this.seekers.delete(c2); }
                 this.push();
               });
-              c2.on('close', () => this.conns.delete(c2));
+              c2.on('close', () => { this.conns.delete(c2); this.seekers.delete(c2); });
             });
             h.on('disconnected', () => { if (!this.closed) h.reconnect(); });
           }
