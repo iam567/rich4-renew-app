@@ -76,13 +76,13 @@ const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
 /**
  * Where the phones find a way to each other (2026-10-20): Google's STUN, and our own relay (TURN, coturn on the user's
- * Tokyo VPS, /game/turn there) for networks that cannot connect directly (mobile data, company Wi-Fi). PeerJS's free
+ * Tokyo VPS game.flj.info = 154.205.139.82, /game/turn there) for networks that cannot connect directly (mobile data, company Wi-Fi). PeerJS's free
  * relay is gone. The relay only carries the game's answers and the chat; it is rate- and quota-limited on the server.
  */
 export const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:stun.l.google.com:19302' },
-  { urls: 'stun:154.205.139.82:3478' },
-  { urls: ['turn:154.205.139.82:3478?transport=udp', 'turn:154.205.139.82:3478?transport=tcp'], username: 'rich4', credential: '29e57ad82edb53b7f8dde103' },
+  { urls: 'stun:game.flj.info:3478' },
+  { urls: ['turn:game.flj.info:3478?transport=udp', 'turn:game.flj.info:3478?transport=tcp'], username: 'rich4', credential: '29e57ad82edb53b7f8dde103' },
 ];
 const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } } as const;
 
