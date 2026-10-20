@@ -145,6 +145,7 @@ export class BoardView {
     this.syncAll();
     this.warm();
     let last = performance.now(), acc = 0;
+    this.looping = true;
     const loop = (t: number) => {
       if (!this.alive) return;
       // Scheduled first: a frame that throws (a picture released under it …) must not stop the loop, or every
@@ -178,11 +179,16 @@ export class BoardView {
     // At most 2×: a phone's 3× canvas has 2.25 times the pixels to fill every frame for no visible gain.
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.W = Math.max(1, r.width); this.H = Math.max(1, r.height);
-    this.canvas.width = Math.round(this.W * this.dpr);
-    this.canvas.height = Math.round(this.H * this.dpr);
+    const pw = Math.round(this.W * this.dpr), ph = Math.round(this.H * this.dpr);
+    const changed = this.canvas.width !== pw || this.canvas.height !== ph;
+    if (changed) { this.canvas.width = pw; this.canvas.height = ph; }
     this.zoom = Math.max(0.6, Math.min(this.W, this.H) / VIEW) * this.userZoom;
     // Sprites for the board are kept at the density it draws at (a phone: half the redrawn pixels each way).
     this.bank.setBoardDensity(this.zoom * this.dpr);
+    // Setting a canvas's size clears it, and the frame loop draws only on the next frame: dragging a window's edge
+    // flashed black every step (the user, the Windows build). Drawn again at once instead (the observer runs before
+    // the browser paints).
+    if (changed && this.alive && this.looping) { try { this.draw(); } catch (e) { this.oops('draw', e); } }
   }
 
   private basis() {
@@ -272,6 +278,8 @@ export class BoardView {
   }
 
   private alive = true;
+  /** The frame loop runs (a redraw on resize only then: the first resize comes from the constructor). */
+  private looping = false;
   private resizer = new ResizeObserver(() => this.resize());
   private onKey = (e: KeyboardEvent) => {
     if ((e.target as HTMLElement | null)?.closest?.('input, textarea')) return;
