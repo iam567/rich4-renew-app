@@ -1,7 +1,7 @@
 {
   "name": "rich4-remake",
   "private": true,
-  "version": "0.6.2",
+  "version": "0.6.3",
   "type": "module",
   "description": "High-resolution remake of Rich4 (大富翁4) following the original rules; assets come from the player's own copy.",
   "license": "GPL-3.0-or-later",
