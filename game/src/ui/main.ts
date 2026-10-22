@@ -279,6 +279,8 @@ function newGame() {
   const b = bank!;
   const state = {
     mapId: 2, count: 4, fundIndex: 1, traffic: 0 as 0 | 1 | 2, daysLimitIndex: 0, victoryIndex: 0, landLimitIndex: 0,
+    /** 電腦難度 (core/smart-ai.ts, Game.aiLevel): 0 簡單 = the original's computer, 1 中級, 2 困難; not in 大富豪模式. */
+    aiLevel: 0 as 0 | 1 | 2,
     kind: 'orig' as MapInfo['kind'] | 'tycoon',
     slots: [{ character: 9, human: true }, { character: 4, human: false }, { character: 3, human: false }, { character: 0, human: false }],
   };
@@ -357,7 +359,8 @@ function newGame() {
         ${opt('行進方式', 'traffic', ['步行', '機車', '汽車'])}
         ${opt('土地權限', 'landLimitIndex', ['無限期', '二年', '一年', '六個月', '三個月', '一個月'])}
         ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : `${opt('遊戲時間', 'daysLimitIndex', ['無限', '二年', '一年', '六個月', '三個月', '一個月'])}
-        ${opt('勝利條件', 'victoryIndex', ['無限', '100倍', '50倍', '10倍', '5倍', '3倍'])}`}
+        ${opt('勝利條件', 'victoryIndex', ['無限', '100倍', '50倍', '10倍', '5倍', '3倍'])}
+        ${opt('電腦難度', 'aiLevel', ['簡單', '中級', '困難'])}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
       </section>
       <div class="choices ng-actions"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
@@ -418,6 +421,7 @@ function newGame() {
       start({
         mapId: state.mapId, players, fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex,
         daysLimitIndex: state.daysLimitIndex, victoryIndex: state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
+        ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}),
       });
       return;
     }

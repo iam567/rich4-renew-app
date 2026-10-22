@@ -12,8 +12,8 @@ import type { GameSettings } from '../core/types';
 /** What the run of games so far has done (memory only, like the original's tables): maps cleared, characters beaten. */
 export interface RunRecord { cleared: number[]; defeated: number[] }
 
-/** The settings that carry over to the next game (01 §2.1: the new-game screen's six options). */
-export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex'>;
+/** The settings that carry over to the next game (01 §2.1: the new-game screen's six options; the remake's 電腦難度). */
+export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex' | 'aiLevel'>;
 
 export const OPPONENTS = 3;
 
@@ -49,5 +49,6 @@ export function nextSettings(carried: CarriedSettings, mapId: number, humans: nu
     players: [...humans.map(character => ({ character, human: true })), ...opponents.map(character => ({ character, human: false }))],
     fundIndex: carried.fundIndex, traffic: carried.traffic, landLimitIndex: carried.landLimitIndex,
     daysLimitIndex: carried.daysLimitIndex, victoryIndex: carried.victoryIndex, startDate, seed,
+    ...(carried.aiLevel ? { aiLevel: carried.aiLevel } : {}),
   };
 }

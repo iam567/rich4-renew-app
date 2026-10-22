@@ -275,7 +275,7 @@ export class Game {
   readonly blackMarket: BlackMarket;
   /** 岔路箭頭: the remake's arrows at forks and crossroads (docs/rules/14). */
   readonly forks: Forks;
-  /** 派對模式's smarter computer (core/smart-ai.ts), only for the seats `smartAi` names. */
+  /** The smarter computer (core/smart-ai.ts): 派對模式, and a normal game's 中級 / 困難 (`aiLevel`). */
   readonly smart: SmartAi;
   date: PackedDate;
   daysElapsed = 0;
@@ -359,19 +359,26 @@ export class Game {
   name(p: number): string { return playerName(this.players[p]); }
   isHuman(p: Player): boolean { return p.whoPlays === 1 && !p.autopilot; }
   /**
-   * Test hook only (never set by the game): the seats that play the smart computer in 派對模式; undefined = every
-   * computer-played seat. The simulation (scripts/ai-sim.ts, smart-ai.test.ts) pits smart seats against classic ones.
+   * Test hook only (never set by the game): the computer's level by seat, in place of the settings'. The simulation
+   * (core/ai-sim.ts, scripts/ai-sim.ts, smart-ai.test.ts) pits the levels against each other.
    */
-  smartSeats?: ReadonlySet<number>;
+  testLevels?: readonly (0 | 1 | 2)[];
   /**
-   * 派對模式's smarter computer (core/smart-ai.ts; the user 2026-10-22): a seat the computer plays there — a computer
-   * seat, a human on 托管, a player voted out or dropped (their seat goes on 托管). Everywhere else (a normal game,
-   * 大富豪模式) false: the computer plays the original's rules, bit for bit.
+   * The level a computer-played seat (a computer, a human on 托管, in 派對模式 also a player voted out or dropped) plays
+   * at (core/smart-ai.ts): 0 簡單 = the original's rules bit for bit, 1 中級 = the smarter money, buying, building and
+   * dice with the original's cards, tools and shop, 2 困難 = the smarter computer in full. A normal game takes
+   * `settings.aiLevel` (none: 0, as every game before it); 派對模式 always 2 (the user 2026-10-22); 大富豪模式 always 0.
+   * A human playing by hand: 0.
    */
-  smartAi(p: Player): boolean {
-    if (!this.settings.party || this.world || this.isHuman(p) || !p.whoPlays) return false;
-    return this.smartSeats ? this.smartSeats.has(p.id) : true;
+  aiLevel(p: Player): 0 | 1 | 2 {
+    if (this.world || this.isHuman(p) || !p.whoPlays) return 0;
+    if (this.testLevels) return this.testLevels[p.id] ?? 0;
+    return this.settings.party ? 2 : this.settings.aiLevel ?? 0;
   }
+  /** 中級 and up: the smarter money, buying, building and dice (core/smart-ai.ts). */
+  smartAi(p: Player): boolean { return this.aiLevel(p) >= 1; }
+  /** 困難: also the smarter cards, tools, shop and passive cards (core/smart-ai.ts). */
+  smartTactics(p: Player): boolean { return this.aiLevel(p) >= 2; }
   /** Not on the road: hotel, vanished, prison or hospital (+50..+53). */
   offRoad(p: Player): boolean { return p.hotel !== 0 || p.vanish !== 0 || p.prison !== 0 || p.hospital !== 0 || !!p.trip; }
   living(): Player[] { return this.players.filter(p => p.whoPlays !== 0); }
@@ -958,7 +965,7 @@ export class Game {
       human = this.isHuman(p);
     }
     if (!human && this.smartAi(p)) {
-      // 派對模式's smarter computer (core/smart-ai.ts): its own stock, card and tool play, then its dice.
+      // The smarter computer (派對模式, 中級 / 困難; core/smart-ai.ts): its own stock, card and tool play, then its dice.
       yield* this.smart.beforeDice(p);
       if (this.over || !p.whoPlays || this.offRoad(p) || p.sleep || p.sleepwalk) return;
       const pending = this.tools.pending;

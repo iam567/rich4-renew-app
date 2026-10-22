@@ -895,7 +895,7 @@ export class Tools {
     }
   }
 
-  /** The original computer's judgement of tool `t` (its parameter, null to skip), for 派對模式's smarter one (core/smart-ai.ts). */
+  /** The original computer's judgement of tool `t` (its parameter, null to skip), for the smarter one at 困難 (core/smart-ai.ts). */
   judgeFor(p: Player, t: number): number | null { return this.judge(p, t); }
 
   /** Personality +0x17 (0 乖寶寶, 1 普通人, 2 大老奸) from the character template. */
@@ -1123,7 +1123,7 @@ export class Tools {
     const turnover = { buy: 0, sell: 0 };
     g.world?.hooks.syncWanted(); // 大富豪模式: one 通緝卡 per city (17 §3.5)
     if (g.isHuman(p)) yield* this.humanShop(p, turnover);
-    else if (g.smartAi(p)) g.smart.shop(p, turnover); // 派對模式's smarter computer (core/smart-ai.ts)
+    else if (g.smartTactics(p)) g.smart.shop(p, turnover); // the smarter computer at 困難 (core/smart-ai.ts)
     else this.aiShop(p, turnover);
     // Turnover (05 §8.6): purchases count price × 10, sales full price × count, on the shop's company record.
     if (company) { const sum = turnover.buy + turnover.sell; company.fundA += sum; company.fundB += sum; }

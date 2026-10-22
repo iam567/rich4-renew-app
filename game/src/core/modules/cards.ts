@@ -341,7 +341,7 @@ export class Cards {
   }
 
   /**
-   * 派對模式's smarter computer (core/smart-ai.ts) plays card `id` at its own targets (as aiArg0 / aiArg1 for the
+   * The smarter computer at 困難 (core/smart-ai.ts) plays card `id` at its own targets (as aiArg0 / aiArg1 for the
    * original's computer). False when nothing happened (the card is kept).
    */
   *playAs(p: Player, id: number, arg0: number, arg1 = 0): Flow<boolean> {
@@ -905,7 +905,7 @@ export class Cards {
     const g = this.g;
     const use = g.isHuman(p)
       ? (yield ask({ t: 'yesno', p: p.id, kind: 'free-card', text: table?.text ?? `需付${fee}元\n\n是否使用免費卡？` })) === true
-      : table ? true : g.smartAi(p) ? g.smart.useFreeCard(p, fee) : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
+      : table ? true : g.smartTactics(p) ? g.smart.useFreeCard(p, fee) : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
     if (!use) return false;
     this.consume(p, 20);
     yield { t: 'fx', kind: 'card', p: p.id, data: { card: 20 } };
@@ -919,7 +919,7 @@ export class Cards {
    * _rich4_try_use_card_jiahuoka (04 §2.6): mode 0 punishment, 1 fee, 2 tax. Returns the new sufferer or -1.
    * A human picks among the other living players (the attacker included); with one candidate a yes/no question.
    * `local` (大富豪模式's magic house): only the players in this city. `payee`: who a fee goes to (-1 none), for
-   * 派對模式's smarter computer.
+   * the smarter computer at 困難.
    */
   *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number, local = false, payee = -1): Flow<number> {
     if (!this.has(p, 19)) return -1;
@@ -937,8 +937,8 @@ export class Cards {
         if (typeof a !== 'number' || !cands.some(q => q.id === a)) return -1;
         target = a;
       }
-    } else if (g.smartAi(p)) {
-      target = g.smart.frameTarget(p, mode, amount, payee, local); // 派對模式's smarter computer (core/smart-ai.ts)
+    } else if (g.smartTactics(p)) {
+      target = g.smart.frameTarget(p, mode, amount, payee, local); // the smarter computer at 困難 (core/smart-ai.ts)
       if (target < 0) return -1;
     } else {
       const use = mode === 0 ? true

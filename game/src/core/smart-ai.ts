@@ -1,7 +1,9 @@
 /**
- * 派對模式's smarter computer (the user 2026-10-22). It plays every seat the computer plays in a party — computer
- * seats, humans on 托管, players voted out or dropped — and only there: `Game.smartAi(p)` is false in a normal game and
- * in 大富豪模式, where the computer keeps the original's rules bit for bit.
+ * The smarter computer (the user 2026-10-22). It plays every seat the computer plays in 派對模式 — computer seats,
+ * humans on 托管, players voted out or dropped — and a normal game's computers at 中級 / 困難 (`settings.aiLevel`,
+ * Game.aiLevel): 中級 (`Game.smartAi`) takes the money, buying, building and dice below and keeps the original's
+ * random cards, tools, shop and passive cards; 困難 (`Game.smartTactics`) all of it. At 簡單 (a normal game's
+ * default) and in 大富豪模式 the computer keeps the original's rules bit for bit.
  *
  * Every phone of a party runs the same simulation, so each decision is a pure function of the game state (and, where
  * a rule draws one, the game's own rng): no clock, no Math.random, lists walked in a fixed order.
@@ -377,7 +379,8 @@ export class SmartAi {
 
   /**
    * Before the dice: shares for the reserve, the bank operator check, the map's own tools, then up to three cards or
-   * tools by their value (a human may use several in a turn too), the remote dice last.
+   * tools by their value (a human may use several in a turn too), the remote dice last. 中級: the original's one card
+   * or tool.
    */
   *beforeDice(p: Player): Flow {
     const g = this.g;
@@ -387,6 +390,8 @@ export class SmartAi {
     if (this.money(p) >= this.reserve(p) * 2) { yield* g.stocks.aiTrade(p); if (g.over || !p.whoPlays) return; }
     yield* g.financeRecall(); // rich4.asm:11632, as after the computer's trading
     if (g.over || !p.whoPlays) return;
+    // 中級: a card or a tool as the original's computer picks them (01 §3.5).
+    if (!g.smartTactics(p)) { if (g.rng.rand() & 1) yield* g.cards.aiUse(p); else yield* g.tools.aiUse(p); return; }
     const stopped = () => g.over || !p.whoPlays || g.offRoad(p) || !!p.sleep || !!p.sleepwalk || g.tools.pending !== 'none';
     if (g.rules?.aiTools && (yield* g.rules.aiTools(g, p))) { if (stopped()) return; } // 歌舞伎町's own tools (21 §7.5)
     for (let k = 0; k < 3; k++) {
