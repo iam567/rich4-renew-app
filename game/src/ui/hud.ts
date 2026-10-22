@@ -208,7 +208,11 @@ export class Hud {
         const byH = (rowH - (GAP + 5) * (rows - 1) - 5) / rows - th;
         const h = Math.min(byW, byH, MAX_H), fs = fsFor(h, cellW);
         if (cols > 1 && fs < 10) break; // no column narrower than the longest name at 10 px
-        if (h > best.h + 0.5) best = { cols, h, fs };
+        // Bigger pictures first; at the same size (capped at MAX_H on a wide screen) fewer rows, then the fewest
+        // columns for those rows (balanced rows) — it used to stop at two columns, a tall narrow strip in a wide
+        // dialog (the user 2026-10-23: 「道具排列…這麼醜」).
+        const bestRows = Math.ceil(n / best.cols);
+        if (h > best.h + 0.5 || (h > best.h - 0.5 && rows < bestRows)) best = { cols, h, fs };
       }
       // Pictures too small for the map area (a small phone): the dialog moves over the whole game screen.
       if (best.h < MAX_H * 0.5 && this.promote(box, ro)) return;
