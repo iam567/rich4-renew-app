@@ -49,17 +49,17 @@ export const JQ_NEWS: JqCard[] = [
   N('jq-n-barefoot', 1, '衛生戰線', '赤腳醫生下鄉', '赤腳醫生下鄉！\n住院的人提前出院'),
   N('jq-n-opera', 1, '文藝戰線', '樣板戲匯演', '樣板戲匯演！\n宣傳站3天罰款×2'),
   N('jq-n-exercise', 1, '體育新聞', '全民做廣播體操', '全民做廣播體操！\n每人＋{amount}票證'),
-  // The era's campaigns (the user 2026-10-22: 「符合那個年代的歷史事件也都需要寫進新聞或命運裡」); a picture of the nearest card.
-  N('jq-n-yida', 0, '最新指示', '一打三反', '一打三反！\n反貪污反浪費，每人繳現金5%', undefined, 'jq-n-cloth'),
-  N('jq-n-dousi', 1, '最新指示', '鬥私批修', '鬥私批修！\n私心存起來建設國家：無貸款者存款＋10%', undefined, 'jq-n-saving'),
+  // The era's campaigns (the user 2026-10-22: 「符合那個年代的歷史事件也都需要寫進新聞或命運裡」), each with its own picture.
+  N('jq-n-yida', 0, '最新指示', '一打三反', '一打三反！\n反貪污反浪費，每人繳現金5%'),
+  N('jq-n-dousi', 1, '最新指示', '鬥私批修', '鬥私批修！\n私心存起來建設國家：無貸款者存款＋10%'),
   N('jq-n-tunnel', 0, '備戰備荒', '深挖洞', '深挖洞！\n挖塌了{street}，各降一級'),
   N('jq-n-yiku', 0, '本市消息', '憶苦思甜大會', '憶苦思甜大會！\n每人交{amount}元飯錢'),
-  N('jq-n-fanan', 0, '本市消息', '反擊右傾翻案風', '反擊右傾翻案風！\n大字報貼滿街，3天過路費減半', undefined, 'jq-n-dazibao'),
-  N('jq-n-qingli', 0, '本市消息', '清理階級隊伍', '清理階級隊伍！\n首富{name}被查成分，停2回合', '清理階級隊伍！\n{name}被老師查家譜，罰站2回合', 'jq-n-pidou'),
-  N('jq-n-pilin', 0, '最新指示', '批林批孔', '批林批孔！\n學習會開不完，騎車開車的人停一回合', undefined, 'jq-n-wudou'),
+  N('jq-n-fanan', 0, '本市消息', '反擊右傾翻案風', '反擊右傾翻案風！\n大字報貼滿街，3天過路費減半'),
+  N('jq-n-qingli', 0, '本市消息', '清理階級隊伍', '清理階級隊伍！\n首富{name}被查成分，停2回合', '清理階級隊伍！\n{name}被老師查家譜，罰站2回合'),
+  N('jq-n-pilin', 0, '最新指示', '批林批孔', '批林批孔！\n學習會開不完，騎車開車的人停一回合'),
   N('jq-n-sijiu', 0, '本市消息', '破四舊', '破四舊！\n每人燒掉一張卡片'),
   N('jq-n-subway', 1, '建設成就', '地鐵一號線通車', '地鐵一號線通車！\n{street}地價上漲'),
-  N('jq-n-zaoqing', 1, '最新指示', '早請示晚彙報', '早請示晚彙報！\n表現積極，每人＋{amount}票證', undefined, 'jq-f-yulu'),
+  N('jq-n-zaoqing', 1, '最新指示', '早請示晚彙報', '早請示晚彙報！\n表現積極，每人＋{amount}票證'),
   N('jq-n-chuanlian', 0, '本市消息', '紅衛兵大串聯', '紅衛兵大串聯！\n招待所3天免費住'),
   N('jq-n-supply', 1, '商業消息', '供銷社到貨啦', '供銷社到貨啦！\n3天消費×2'),
   N('jq-n-zhenbao', 0, '備戰備荒', '全民備戰', '全民備戰！\n內部認購暫停10天'),
@@ -68,7 +68,7 @@ export const JQ_NEWS: JqCard[] = [
 /** The fate cards (§6.2): a 大字報 each. */
 export const JQ_FATE: JqCard[] = [
   F('jq-f-quanguo', 1, '撿到全國糧票', '撿到全國糧票！\n＋{amount}元'),
-  F('jq-f-pingfa', 0, '評法批儒', '評法批儒！\n熬夜寫批判稿，停一回合', '評法批儒！\n熬夜抄作業，停一回合', undefined, 'jq-f-dazibao'),
+  F('jq-f-pingfa', 0, '評法批儒', '評法批儒！\n熬夜寫批判稿，停一回合', '評法批儒！\n熬夜抄作業，停一回合'),
   F('jq-f-model', 1, '評上勞動模範', '評上勞動模範！\n＋{amount}元'),
   F('jq-f-bike', 1, '搶到永久牌自行車', '搶到永久牌自行車！\n得到幸福摩托'),
   F('jq-f-sanzhuan', 1, '三轉一響湊齊了', '三轉一響湊齊了！\n＋1張卡片'),

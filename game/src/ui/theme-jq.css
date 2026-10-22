@@ -122,3 +122,8 @@
 .game.theme-jq .pl-scene { background: radial-gradient(circle at 50% 40%, rgba(110, 22, 14, .85), rgba(30, 6, 4, .95)); }
 .game.theme-jq .pl-scene.in-area { background: radial-gradient(circle at 50% 40%, rgba(110, 22, 14, .85), rgba(30, 6, 4, .95)); }
 .game.theme-jq .bl-panel { background: linear-gradient(#6a1a10, #3a0c08); border-top-color: #e0a92e; }
+/* 特別融資 on the director's desk: the redrawn desk has no blank paper there, so the words sit on their own memo slip. */
+.game.theme-jq .bk-room-title, .game.theme-jq .bk-room-title.hd {
+  padding: 3px 12px 4px; color: #b3131b; font-weight: 800; background: #fff8e4; border: 2px solid #b3131b; border-radius: 3px;
+  box-shadow: 0 3px 6px rgba(0, 0, 0, .35); transform: translate(-50%, -50%) rotate(-2deg);
+}
