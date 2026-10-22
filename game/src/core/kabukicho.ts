@@ -371,21 +371,26 @@ export class KabukichoRules implements MapRules {
   /** A computer holding 黑幫 avoids the prison at forks (§4.1). */
   walkNext(g: Game, pid: number, at: number, from: number, next: number): number {
     if (this.s.gang.holder !== pid || g.isHuman(g.players[pid])) return next;
-    const bad = (first: number) => this.reaches(g, pid, at, first, 12);
+    const bad = (first: number) => this.reaches(g, pid, at, from, first, 12);
     if (!bad(next)) return next;
     const other = g.node(at).adjacent.filter(a => a && a !== from && a !== next && !bad(a));
     return other[0] ?? next;
   }
 
-  /** Whether walking from `at` to `first` and on (forks by p's choices) meets the prison square within `steps`. */
-  reaches(g: Game, pid: number, at: number, first: number, steps: number): boolean {
+  /**
+   * Whether walking out of `at` (come from `back`) to `first` and on (forks by p's arrows) meets the prison square
+   * within `steps`.
+   */
+  reaches(g: Game, pid: number, at: number, back: number, first: number, steps: number): boolean {
     let from = at, cur = first;
+    const walk = g.forks.walk(pid);
+    walk.took(at, back, first);
     for (let i = 0; i < steps; i++) {
       const n = g.node(cur);
       if (!n) return false;
       if (n.event === 4) return true;
       const ways = n.adjacent.filter(a => a && a !== from);
-      const nx = g.forks.isFork(cur) ? g.forks.follow(pid, cur, from) : ways[0] ?? from;
+      const nx = g.forks.isFork(cur) ? walk.next(cur, from) : ways[0] ?? from;
       from = cur; cur = nx;
     }
     return false;
@@ -967,9 +972,10 @@ export class KabukichoRules implements MapRules {
   /** How good a landing `steps` ahead looks to a computer (its own land, free land, the pads: good; a rival's: bad). */
   landingScore(g: Game, p: Player, steps: number): number {
     let from = p.lastNode, at = p.node;
+    const walk = g.forks.walk(p.id);
     for (let i = 0; i < steps; i++) {
       const n = g.node(at), ways = n.adjacent.filter(a => a && a !== from);
-      const nx = g.forks.isFork(at) ? g.forks.follow(p.id, at, from) : ways[0] ?? from;
+      const nx = g.forks.isFork(at) ? walk.next(at, from) : ways[0] ?? from;
       from = at; at = nx;
     }
     const n = g.node(at), land = landOf(g.board, n), f = facilityOf(g.board, n), owner = land ? land.owner : f ? f.owner : -1;

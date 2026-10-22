@@ -1353,10 +1353,11 @@ export class Cards {
   predict(w: Walker, n: number): { nodes: number[]; forked: boolean } {
     let at = w.node, from = w.lastNode, forked = false;
     const nodes: number[] = [], player = (this.g.players as Walker[]).indexOf(w);
+    const walk = player >= 0 ? this.g.forks.walk(player) : undefined;
     for (let i = 0; i < n; i++) {
       if (this.exits(this.g.node(at), from).length >= 2) forked = true;
-      // A player's route follows that player's own fork choices (14 §2), as it will happen; an NPC's stays random.
-      const next = player >= 0 ? this.g.peekNext(player, at, from) : this.g.nextNode(at, from);
+      // A player's route follows that player's own fork arrows (14 §2), as it will happen; an NPC's stays random.
+      const next = player >= 0 ? this.g.peekNext(player, at, from, walk) : this.g.nextNode(at, from);
       from = at; at = next;
       nodes.push(at);
     }

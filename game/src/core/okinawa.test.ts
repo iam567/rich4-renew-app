@@ -220,7 +220,7 @@ describe.skipIf(!have)('沖繩 map', () => {
           const copy = loadGame(JSON.parse(JSON.stringify(saveGame(game))));
           expect(copy.board.lands.map(l => l.owner)).toEqual(game.board.lands.map(l => l.owner));
           expect(copy.mapSlot).toBe(2);
-          expect(copy.forks.choices).toEqual(game.forks.choices);
+          expect(saveGame(copy).modules.forks).toEqual(saveGame(game).modules.forks); // the fork arrows (14 §2)
         }
       }
       expect(game.daysElapsed >= 200 || !!game.over).toBe(true);

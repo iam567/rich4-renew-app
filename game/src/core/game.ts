@@ -9,7 +9,7 @@ import { addDays, addMonths, daysBetween, day as dayOf, nextDay, weekday, type P
 import { ask, type Flow } from './flow';
 import { Rng, daySeed } from './rng';
 import { BlackMarket } from './modules/blackmarket';
-import { Forks } from './modules/forks';
+import { Forks, type ForkWalk } from './modules/forks';
 import { Cards } from './modules/cards';
 import { Events } from './modules/events';
 import { Objects } from './modules/objects';
@@ -114,8 +114,8 @@ export interface MapRules {
   pickFacilityType?(g: Game, p: Player, f: Facility): Flow<number>;
   /** 改建卡 on a facility here: the new type (-1 cancelled), the level kept. */
   rebuildFacility?(g: Game, p: Player, f: Facility, human: boolean): Flow<number>;
-  /** News / fate entries that do not happen here (skipped like a failed precondition). */
-  finaleDeny?(kind: 'news' | 'fate', id: number): boolean;
+  /** News / fate entries that do not happen here (skipped like a failed precondition); cards not on sale here. */
+  finaleDeny?(kind: 'news' | 'fate' | 'cards', id: number): boolean;
   /** After the day's settlement of a normal game (the world calls its own). */
   daily?(g: Game): void;
   /** The bank counter is closed (no loans: 大富翁城's finale plays in chips); the ATM stays open. */
@@ -447,23 +447,26 @@ export class Game {
   }
 
   /**
-   * Player `p`'s step (docs/rules/14 §2): out of a fork by the player's own choice there (直走/左轉/右轉), which
-   * this step's rand() then draws again; anywhere else the original rule. Same rand() count as the original.
+   * Player `p`'s step (docs/rules/14 §2): out of a fork by the player's own arrow there (Forks.pass: the least
+   * recently used road, noted as used; FORK_LRU off the choice, drawn again), with this step's rand(); anywhere else
+   * the original rule. Same rand() count as the original.
    */
   walkNext(p: number, at: number, from: number): number {
     if (!this.forks.isFork(at)) return this.nextNode(at, from);
-    const next = this.forks.pass(p, at, from);
-    return this.rules?.walkNext ? this.rules.walkNext(this, p, at, from, next) : next; // 歌舞伎町 (docs/rules/21 §4.1)
+    const rules = this.rules;
+    // 歌舞伎町 (docs/rules/21 §4.1): a computer holding 黑幫 may take another way; that way is the one noted.
+    return this.forks.pass(p, at, from, rules?.walkNext ? next => rules.walkNext!(this, p, at, from, next) : undefined);
   }
 
   /**
    * A predicted step of player `p`'s route (route predictions fcn_0040b221 / fcn_0040b343, the robot doll of owner
-   * `p`): forks by p's choices, which stay as they are; the original's rand() for the step is still drawn.
+   * `p`): forks by p's arrows, which stay as they are; the original's rand() for the step is still drawn. `walk`
+   * (Forks.walk, one per predicted route): a fork met again on the same route goes the way it then will (14 §2).
    */
-  peekNext(p: number, at: number, from: number): number {
+  peekNext(p: number, at: number, from: number, walk?: ForkWalk): number {
     if (!this.forks.isFork(at)) return this.nextNode(at, from);
     this.rng.rand();
-    return this.forks.follow(p, at, from);
+    return walk ? walk.next(at, from) : this.forks.follow(p, at, from);
   }
 
   /** Random free node _rich4_find_random_unoccupied_(distant_)node (docs/rules/01 §6.6). */
@@ -1025,8 +1028,9 @@ export class Game {
     const bomb = p.bomb ? this.objects.slots[p.bomb - 1]?.life ?? 0 : 0;
     if (p.bomb) { p.dice = bomb < 15 ? 1 : vehicle === 2 ? 3 : 2; return; }
     let at = p.node, from = p.lastNode, good = 0, bad = 0;
+    const walk = this.forks.walk(p.id);
     for (let i = 0; i < 5; i++) {
-      const next = this.peekNext(p.id, at, from);
+      const next = this.peekNext(p.id, at, from, walk);
       from = at; at = next;
       const n = this.node(at), land = landOf(this.board, n), fac = facilityOf(this.board, n);
       const owner = land ? land.owner : fac ? fac.owner : -1;

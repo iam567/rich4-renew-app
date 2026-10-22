@@ -550,9 +550,10 @@ export class Tools {
     this.consume(p, 1);
     yield { t: 'fx', kind: 'robot-doll', p: p.id, node: p.node };
     let at = p.node, from = p.lastNode;
+    const walk = g.forks.walk(p.id);
     for (let i = 0; i < DOLL_STEPS; i++) {
-      // The doll goes the owner's way at forks (clearing the road the owner will take) without redrawing (14 §2).
-      const next = g.peekNext(p.id, at, from);
+      // The doll goes the owner's way at forks (clearing the road the owner will take) without changing it (14 §2).
+      const next = g.peekNext(p.id, at, from, walk);
       const a = g.node(at), b = g.node(next);
       yield { t: 'actor-step', actor: g.dollId, from: at, to: next, dir: direction(b.x - a.x, b.y - a.y) };
       from = at; at = next;
@@ -851,12 +852,13 @@ export class Tools {
   private route(p: number, at: number, from: number, n: number): { nodes: number[]; fork: boolean } {
     const g = this.g, nodes: number[] = [];
     let fork = false;
+    const walk = g.forks.walk(p);
     for (let i = 0; i < n; i++) {
       const node = g.node(at);
       // No square to start from (a piece just placed or teleported has no way in, lastNode 0): the route ends here.
       if (!node) break;
       if (node.adjacent.filter((a, j) => a && a !== from && !(node.oneWay & (8 >> j))).length >= 2) fork = true;
-      const next = g.peekNext(p, at, from);
+      const next = g.peekNext(p, at, from, walk);
       from = at; at = next;
       nodes.push(at);
     }
@@ -1137,7 +1139,8 @@ export class Tools {
    */
   cardShelf(): number[] {
     const g = this.g;
-    const always = g.world ? [...TYCOON_SHOP_ALWAYS, ...((g.cards.wanted ?? 1) > 0 ? [WANTED_CARD] : [])] : [];
+    // 大富翁城 (docs/rules/19 §3): the cards its rules leave out (飛行卡, 電車卡, 遣返卡, 召集卡 …) are not on its shelf.
+    const always = g.world ? [...TYCOON_SHOP_ALWAYS, ...((g.cards.wanted ?? 1) > 0 ? [WANTED_CARD] : [])].filter(id => !g.rules?.finaleDeny?.('cards', id)) : [];
     const copies = [...g.cards.remaining];
     if (g.world) for (const id of [...TYCOON_SHOP_ALWAYS, WANTED_CARD, COPY_CARD]) if (id <= copies.length) copies[id - 1] = 0; // 複製卡: a gift only
     const n = g.rng.below(10) + 6, shelf: number[] = [];
@@ -1273,7 +1276,8 @@ export class Tools {
     // 大富豪模式 (17 §3.10, the user 2026-10-19): the computer sees the same shelf as the human and buys at most one of
     // each card on it — the always-stocked cards too (buying again and again is the human's alone).
     const cands: number[] = [];
-    const inShop = (id: number) => (!g.world ? g.cards.remaining[id - 1] > 0 : id === WANTED_CARD ? (g.cards.wanted ?? 1) > 0 : shopAlways(id) || g.cards.remaining[id - 1] > 0);
+    const inShop = (id: number) => (!g.world ? g.cards.remaining[id - 1] > 0 : g.rules?.finaleDeny?.('cards', id) ? false
+      : id === WANTED_CARD ? (g.cards.wanted ?? 1) > 0 : shopAlways(id) || g.cards.remaining[id - 1] > 0);
     const shelf = g.world ? new Set(this.cardShelf()) : null;
     g.cards.remaining.forEach((n, i) => {
       const [, price, f7] = CARD_INFO[i] ?? ['', 0, 0];

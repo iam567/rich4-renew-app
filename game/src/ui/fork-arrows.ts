@@ -1,9 +1,10 @@
 /**
  * 岔路箭頭 on the board (docs/rules/14-forks-and-junctions.md §5): the arrows of the player whose turn it is, in
  * that player's colour. Each is a small toy arrow on the free ground beside a fork (not on the road, the event pads,
- * lots, plots, landmarks or plants), pointing the absolute way that player will walk out of the fork: their route
- * ahead is walked by their own 直走/左轉/右轉 choices (Forks.plan) up to the first fork met twice, so every arrow
- * shown is what will happen; forks not on that walk show none. A fork's spot is chosen once in map coordinates, so
+ * lots, plots, landmarks or plants), pointing the absolute way that player will walk out of the fork the next time
+ * they get there: their route ahead is walked by their own arrows (Forks.plan; the least recently taken way, a fork
+ * met again on the walk going the way it then will), so every arrow shown is what will happen; forks not on that
+ * walk show none. A fork's spot is chosen once in map coordinates, so
  * it is the same in all 8 view rotations; the arrow lies flat on the ground plane and swings round when it changes.
  *
  * Board view hook: `drawForkArrows(ctx, game, project, zoom, W, H, decor)` once per frame after the event icons.
@@ -20,13 +21,13 @@ const plans = new WeakMap<Game, { key: string; plan: Map<number, number> }>();
 
 /**
  * Player p's way out of each fork on the road ahead where they have a real choice (Forks.plan: their route walked
- * by their own choices up to the first fork met twice) — exactly what will happen, so that is what the arrows
- * show. A fork they reach with only one way out (an original map's prison / hospital spur passed on the main road)
- * gets no arrow (docs/rules/14 §5). Recomputed when the player moves or a choice changes.
+ * by their own arrows, each fork's first visit) — exactly what will happen, so that is what the arrows show. A fork
+ * they first reach with only one way out (an original map's prison / hospital spur passed on the main road) gets no
+ * arrow (docs/rules/14 §5). Recomputed when the player moves or walks out of a fork.
  */
 export function arrowsOf(game: Game, p: number): Map<number, number> {
-  const q = game.players[p], c = game.forks.choices[p] ?? {};
-  const key = `${p}:${q.node}:${q.lastNode}:${q.dir}:${Object.values(c).join('')}`;
+  const q = game.players[p];
+  const key = `${p}:${q.node}:${q.lastNode}:${q.dir}:${game.forks.stateKey(p)}`;
   const hit = plans.get(game);
   if (hit && hit.key === key) return hit.plan;
   const ways = new Map<number, number>(), plan = game.forks.plan(p, 600, ways);

@@ -42,15 +42,37 @@ describe.skipIf(!have)('fork arrows: only where there is a choice', () => {
       for (const n of g.forks.forks()) for (const from of n.adjacent.filter(Boolean)) {
         stand(g, from, 0);
         g.players[0].lastNode = g.node(from).adjacent.find(a => a && a !== n.id) ?? 0;
-        const all = g.forks.plan(0), shown = arrowsOf(g, 0);
+        const passes: { at: number; to: number }[] = [], all = g.forks.plan(0, 600, undefined, passes), shown = arrowsOf(g, 0);
         for (const [id, to] of shown) expect(to).toBe(all.get(id));
         for (const id of all.keys()) {
-          // Shown exactly where the side arrived from leaves two or more ways.
-          let at = g.players[0].node, back = g.players[0].lastNode, arrive = -1;
-          for (let i = 0; i < 600 && arrive < 0; i++) { if (at === id) arrive = back; const next = g.forks.isFork(at) ? all.get(at)! : openExits(g.node(at)).filter(x => x !== back)[0] ?? back; back = at; at = next; }
+          // Shown exactly where the side first arrived from leaves two or more ways (the walk: the plan's passes in order).
+          let at = g.players[0].node, back = g.players[0].lastNode, arrive = -1, k = 0;
+          for (let i = 0; i < 600 && arrive < 0; i++) { if (at === id) arrive = back; const next = g.forks.isFork(at) ? passes[k++].to : openExits(g.node(at)).filter(x => x !== back)[0] ?? back; back = at; at = next; }
           expect(shown.has(id), `map ${mapId} fork ${id}`).toBe(openExits(g.node(id)).filter(x => x !== arrive).length >= 2);
         }
       }
+    }
+  });
+
+  it('walking out of a fork turns its arrow at once to a road not walked yet (14 §2)', () => {
+    for (const mapId of [7, 106]) {
+      const g = game(mapId, 5);
+      let cases = 0;
+      for (const n of g.forks.forks()) for (const from of n.adjacent.filter(a => a && openExits(n).filter(x => x !== a).length >= 2)) {
+        const back = g.node(from).adjacent.find(a => a && a !== n.id) ?? 0;
+        stand(g, from, back);
+        const before = arrowsOf(g, 0).get(n.id);
+        if (before === undefined) continue;     // not on this walk (another fork first sends them elsewhere)
+        stand(g, n.id, from);
+        expect(g.walkNext(0, n.id, from)).toBe(before);
+        stand(g, from, back);
+        const after = arrowsOf(g, 0).get(n.id);
+        expect(after, `map ${mapId} fork ${n.id} from ${from}`).not.toBe(before);
+        expect(g.forks.used[0][n.id]?.[after!] ?? 0).toBe(0);   // never used there yet
+        g.forks.init();                                         // the next case starts clean
+        cases++;
+      }
+      expect(cases, `map ${mapId}`).toBeGreaterThan(5);
     }
   });
 });

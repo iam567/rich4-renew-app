@@ -579,10 +579,11 @@ export class World implements WorldHooks {
     if (!p.tools[7] || p.trip || this.daysElapsed - (this.lastTrip[p.id] ?? -999) < World.TRIP_REST) return false;
     const from = g.world!.index;
     let at = p.node, back = p.lastNode, k = 0, via: 'station' | 'airport' | null = null;
+    const walk = g.forks.walk(p.id);
     for (k = 1; k <= 6; k++) {
       const n = g.node(at);
       let next: number;
-      if (g.forks.isFork(at)) next = g.forks.follow(p.id, at, back);
+      if (g.forks.isFork(at)) next = walk.next(at, back);
       else {
         const ways = n.adjacent.filter((a, j) => a && a !== back && !(n.oneWay & (8 >> j)));
         if (ways.length > 1) return false;

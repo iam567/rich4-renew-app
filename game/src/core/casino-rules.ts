@@ -153,8 +153,11 @@ export abstract class CasinoRules implements MapRules {
     const t = yield* this.askHall(p, f, '免費建設', true);
     return t >= 0 ? t : defaultHall(f);
   }
-  /** News and fate entries that do not happen in 大富翁城 (events.ts: skipped like a failed precondition). */
-  finaleDeny(kind: 'news' | 'fate', id: number): boolean { return DENY[kind].has(id); }
+  /**
+   * News and fate entries that do not happen in 大富翁城 (events.ts: skipped like a failed precondition); cards that
+   * are not on its shop shelf (tools.ts: 大富豪模式's always-stocked 飛行卡 / 電車卡 / 遣返卡 / 召集卡 are left out).
+   */
+  finaleDeny(kind: 'news' | 'fate' | 'cards', id: number): boolean { return DENY[kind].has(id); }
 
   /** The city's setup (a new city, a load): its plots made casino plots, no stock market, nothing denied in its pool. */
   setup(g: Game, fresh: boolean): void {

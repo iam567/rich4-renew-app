@@ -22,6 +22,7 @@ import { companyOf, facilityOf, landOf, type Facility, type Land } from './board
 import { daysBetween } from './date';
 import type { Flow } from './flow';
 import type { Game } from './game';
+import type { ForkWalk } from './modules/forks';
 import type { Player } from './types';
 
 /** Facility level caps by type (ref_00474940; the core's FACILITY_MAX_LEVEL, copied to keep the import one way). */
@@ -59,10 +60,13 @@ export class SmartAi {
     return best;
   }
 
-  /** One step of q's walk as it will happen: the fork arrows as they stand (no rng; Game.walkNext draws its own). */
-  nextOf(q: Player, at: number, from: number): number {
+  /**
+   * One step of q's walk as it will happen: the fork arrows as they stand, or as `walk` (Forks.walk, one per route)
+   * has them by then (no rng; Game.walkNext draws its own).
+   */
+  nextOf(q: Player, at: number, from: number, walk?: ForkWalk): number {
     const g = this.g;
-    if (g.forks.isFork(at)) return g.forks.follow(q.id, at, from);
+    if (g.forks.isFork(at)) return walk ? walk.next(at, from) : g.forks.follow(q.id, at, from);
     const n = g.node(at);
     if (!n) return from;
     const exits = n.adjacent.filter((a, j) => a && a !== from && !(n.oneWay & (8 >> j)));
@@ -73,8 +77,9 @@ export class SmartAi {
   route(q: Player, n: number): number[] {
     const out: number[] = [];
     let at = q.node, from = q.lastNode;
+    const walk = this.g.forks.walk(q.id);
     for (let i = 0; i < n; i++) {
-      const next = this.nextOf(q, at, from);
+      const next = this.nextOf(q, at, from, walk);
       if (!next || !this.g.node(next)) break;
       from = at; at = next;
       out.push(at);
