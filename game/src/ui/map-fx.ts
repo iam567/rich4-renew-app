@@ -161,13 +161,15 @@ export class MapDirector {
     if (!stay) await this.view.panTo(at.x, at.y);
     // 激情歲月 (docs/rules/24 §7): a quotation first in the same cloud, the line 0.6 s later (× the game speed).
     const quote = occasion && jqRules(this.game) && quotesMode() === 0 ? pickQuote(p.character, occasion) : undefined;
+    // The quotation and the line show together (the user 2026-10-23: no empty cloud first); the cloud stays the
+    // quotation's reading time longer.
     const lead = quote ? Math.round(QUOTE_LEAD * Math.max(0.5, this.hud.scale())) : 0;
     if (quote) this.hud.note(`${playerName(p)}：毛主席教導我們：${quote}`);
     // The line's voice ('#NNNN'): the cloud stays while it is spoken, at least 1000 ms (fcn_004544f6(1000)); a
     // tap ends both.
-    if (lead) setTimeout(() => void audio.voice(v), lead); else void audio.voice(v);
+    void audio.voice(v);
     const ms = lead + Math.max(1000, v !== undefined ? audio.length('voice', v) * 1000 + 80 : 0);
-    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, face, text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }), quote, lead);
+    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, face, text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }), quote, 0);
     if (!stay) this.view.refollow();
   }
 

@@ -138,6 +138,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .go { position: absolute; z-index: 4; width: calc(72px * var(--gu)); height: calc(67px * var(--gu)); touch-action: none;
   filter: drop-shadow(0 4px 6px rgba(0,0,0,.45)); }
 .go[hidden] { display: none; }
+.talking > .go { opacity: 0; pointer-events: none; transition: opacity .12s; }
 .go-face { width: 100%; height: 100%; display: block; cursor: grab; }
 .go-slots button { position: absolute; width: calc(100% * 14 / 72); height: calc(100% * 14 / 67); padding: 0; background: none; border-radius: 0; }
 .go-slots img { width: 100%; height: 100%; display: block; }

@@ -38,7 +38,7 @@ const FATE_PICS = [
 export const fatePicture = (t: number, map: number) => FATE_PICS[t < 33 ? t : t + 4 * (map & 3)] ?? 0;
 
 /** A board stays this long at least, whatever the game speed; two taps this close together close it. */
-const MIN_SHOW_MS = 3000, DOUBLE_TAP_MS = 400;
+const MIN_SHOW_MS = 3000, DOUBLE_TAP_MS = 400, ARM_MS = 1500;
 
 function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> {
   const id = Number(fx.data?.id ?? -1);
@@ -137,7 +137,9 @@ function show(ctx: ScreenContext, fx: Fx, kind: 'news' | 'fate'): Promise<void> 
       if (e.timeStamp - lastTap < DOUBLE_TAP_MS) end();
       lastTap = e.timeStamp;
     };
-    setTimeout(() => { if (!done) root.addEventListener('pointerup', tap); }, 200);
+    // Taps still coming from hurrying past the boxes before it (a computer's turn) must not close it unseen: the
+    // double tap only counts once the board has been up a moment.
+    setTimeout(() => { if (!done) root.addEventListener('pointerup', tap); }, ARM_MS);
   });
 }
 

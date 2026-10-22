@@ -4,7 +4,7 @@
  * ornate name labels (#18.6/7/9/10) and the closing spell (FLC Panel #20). The answer is the magic index 0..11,
  * as the plain dialog returned.
  */
-import { eraLine } from '../era-line';
+import { eraLine, eraOn } from '../era-line';
 import type { Ask } from '../../core/types';
 import { MAGIC_GROUPS, MAGIC_NAMES } from '../../core/modules/places';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
@@ -19,6 +19,16 @@ type Choose = Extract<Ask, { t: 'choose' }>;
 
 /** Symbol centres (`ref_004756e8`) and name labels {frame, x, y} (`_rich4_magic_house_function_info`), magic 0..11. */
 const SYMBOLS: [number, number][] = [[322, 91], [414, 82], [453, 157], [509, 242], [458, 314], [415, 387], [322, 394], [239, 393], [188, 316], [131, 222], [184, 161], [225, 83]];
+/**
+ * 激情歲月 (docs/rules/24 §11.3): the redrawn 八卦 table has no hexagram points; the twelve icons sit evenly on its
+ * decorated outer ring (centre (320, 226), measured on the picture), clockwise from the top, each name label just
+ * inside its icon.
+ */
+const ERA_RING = { cx: 320, cy: 226, rx: 186, ry: 178 };
+const eraSym = (i: number): [number, number] => {
+  const a = (-90 + 30 * i) * Math.PI / 180;
+  return [Math.round(ERA_RING.cx + ERA_RING.rx * Math.cos(a)), Math.round(ERA_RING.cy + ERA_RING.ry * Math.sin(a))];
+};
 const LABELS: [number, number, number][] = [[9, 208, 167], [10, 510, 150], [7, 545, 88], [7, 568, 147], [7, 550, 234], [7, 510, 320], [7, 422, 320], [6, 134, 318], [6, 92, 250], [6, 72, 130], [6, 77, 85], [9, 122, 154]];
 /** The teller's names for the twelve groups (#46-#57). */
 const GROUP_LINES = ['財產最多的人', '土地最多的人', '房屋最多的人', '現金最多的人', '存款最多的人', '點券最多的人', '走路的人', '騎機車的人', '開汽車的人', '神明附身的人', '所有男生', '所有女生'];
@@ -135,7 +145,9 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       s.art('Panel', 18, 0, 0, 0, 'mg-bg');
       // The redrawn circle (2026-10-15) has 魔法屋 / MAGIC painted on its plaques (the original's top one read 1998).
       const banners: HTMLElement[] = [];
-      const syms = SYMBOLS.map(([x, y], i) => {
+      const era = eraOn();
+      const syms = SYMBOLS.map((xy, i) => {
+        const [x, y] = era ? eraSym(i) : xy;
         const glow = s.box('mg-glow', x - 34, y - 34, 68, 68);
         const img = s.art('Panel', 18, 23 + i, x, y, 'mg-sym');
         const hit = s.box('mg-hit', x - 40, y - 40, 80, 80);
@@ -147,7 +159,12 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       let label: HTMLElement | null = null;
       const showLabel = (i: number) => {
         label?.remove();
-        const [f, x, y] = LABELS[i];
+        let [f, x, y] = LABELS[i];
+        if (era) {
+          // the label (its box's anchor) 40 % of the way from the icon towards the centre
+          const [sx, sy] = eraSym(i);
+          x = Math.round(sx + (ERA_RING.cx - sx) * 0.42); y = Math.round(sy + (ERA_RING.cy - sy) * 0.42);
+        }
         const art = ctx.bank.art('Panel', 18, f);
         label = s.box(`mg-label f${f} pl-pop`, x - (art?.ax ?? 71), y - (art?.ay ?? 60), art?.w ?? 142, art?.h ?? 120, `<span>${esc(MAGIC_NAMES[i])}</span>`);
         if (art) label.style.backgroundImage = `url('${art.src}')`;

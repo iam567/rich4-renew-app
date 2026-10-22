@@ -299,8 +299,16 @@ export class Effects {
       },
     };
     onTap?.(() => { e.done = true; });
-    return this.add(e, 'fx.cloud', ms + 2000);
+    // The GO button (a DOM element over the canvas) would cover the cloud: it steps aside while anyone speaks.
+    const stage = this.host.ctx.canvas.parentElement;
+    this.talking++;
+    stage?.classList.add('talking');
+    const done = this.add(e, 'fx.cloud', ms + 2000);
+    void done.finally(() => { if (--this.talking <= 0) { this.talking = 0; stage?.classList.remove('talking'); } });
+    return done;
   }
+  /** Speech clouds up now (the GO button hides meanwhile). */
+  private talking = 0;
 
   /** The quotation strip (docs/rules/24 §7.1): a small red book, 「毛主席教導我們：」 and the quotation, over the cloud. */
   private quoteStrip(ctx: CanvasRenderingContext2D, quote: string, cx: number, cy: number, z: number) {

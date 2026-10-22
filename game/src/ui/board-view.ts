@@ -11,7 +11,7 @@ import type { PickSpot, Player } from '../core/types';
 import type { MapArt } from './assets';
 import type { Archive, Frame, SpriteBank } from './sprites';
 import { audio, Sfx } from './audio';
-import { Effects, type FxHost } from './effects';
+import { Effects, TOP, type FxHost } from './effects';
 import { describe, InfoBubble } from './map-info';
 import { drawForkArrows } from './fork-arrows';
 import type { TiledGround } from './ground';
@@ -127,6 +127,8 @@ export class BoardView {
     parent.append(this.canvas);
     this.info = new InfoBubble(parent, bank);
     this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : jqRules(game) ? new JqStreet(game, art.walkers ?? []) : null;
+    // 激情歲月's street keeps its people and vehicles off the players' and NPCs' tokens (the user 2026-10-23).
+    if (this.street instanceof JqStreet) this.street.tokens = () => [...this.actors.values()].filter(x => x.visible).map(x => this.at(x));
     if (this.street instanceof KbStreet) this.street.ambient.frameInfo = (res, fr) => { const f = this.bank.board('map', res)?.[fr]; return f ? { img: f.img, ax: f.ax, ay: f.ay, w: f.w, h: f.h, scale: f.scale } : null; };
     // Opaque: every frame covers the whole canvas, so the page need not blend it with what is behind.
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
@@ -1521,10 +1523,12 @@ export class BoardView {
     this.fx.draw(add);
     // The discs of what an effect is about lie on the ground, under whatever stands on them (11 §7.1).
     for (const sp of this.markSpots()) { const p = visible(sp.x, sp.y, 120); if (p) add(p.y, -1, () => this.markDisc(p.x, p.y, sp.r)); }
+    // The street maps' glowing fork arrows (over their busy sidewalks) go over every board item but under the
+    // effects' speech clouds and pop-ups (TOP + 1, ui/effects.ts): a line is never covered by an arrow.
+    if (this.street) add(TOP - 1, 0, () => drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor, { scale: 1.6, glow: true }));
     items.sort((x, y) => x.key - y.key);
     // One picture that fails (released, not decodable) must not take the rest of the frame with it.
     for (const it of items) { try { it.draw(); } catch (err) { this.oops('sprite', err); } }
-    if (this.street) drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor, { scale: 1.6, glow: true });
     if (this.overWorld) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       try { this.overWorld(ctx, this.W, this.H, this.dpr, this.zoom); } catch (err) { this.oops('weather', err); }

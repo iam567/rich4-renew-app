@@ -202,3 +202,9 @@
 /* (portrait: smaller flags right at the cloth's ends, over the ties) */
 .game.theme-jq .mr-title.era .mr-cloth::before { bottom: -40px; left: 0; transform: rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
 .game.theme-jq .mr-title.era .mr-cloth::after { bottom: -40px; right: 0; transform: scaleX(-1) rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
+/* The 大字報 card's words stay inside the torn paper sheet (the frame's writable area, with a margin); news.ts shrinks a
+   long text to fit this box. */
+.game.theme-jq .nw-scene.fate .nw-text { left: 48px; right: 48px; top: 336px; bottom: 44px; justify-content: center; }
+.game.theme-jq .nw-scene.fate .nw-text > div { text-align: center; }
+/* the loudspeaker banner steps aside while someone speaks (the quotation strip sits at the cloud's top) */
+.game.theme-jq .talking > .jq-announce { opacity: 0; transition: opacity .15s; }

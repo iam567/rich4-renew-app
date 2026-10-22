@@ -31,6 +31,8 @@ const LINES = {
 
 /** By number of living players (tables 0x475928 / 0x475940 / 0x475958 / 0x475970; 1 is the remake's). */
 const PLAQUE_Y: Record<number, number[]> = { 1: [240], 2: [120, 360], 3: [100, 240, 380], 4: [60, 180, 300, 420] };
+/** 激情歲月: the same column below the stage's cloth banner (0–58), so no face is ever covered by it. */
+const ERA_PLAQUE_Y: Record<number, number[]> = { 1: [260], 2: [170, 370], 3: [130, 270, 410], 4: [102, 214, 326, 438] };
 const STAND_X: Record<number, number[]> = { 1: [407], 2: [407, 490], 3: [324, 407, 490], 4: [324, 407, 490, 573] };
 const SPOT_X: Record<number, number[]> = { 1: [334], 2: [334, 414], 3: [259, 334, 414], 4: [259, 334, 414, 494] };
 const SPOT_F: Record<number, number[]> = { 1: [16], 2: [16, 17], 3: [15, 16, 17], 4: [15, 16, 17, 18] };
@@ -270,7 +272,7 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       // The deposit column (landscape; in portrait it is the list under the scene).
       if (view.phase !== 'stage' && !P) {
         rows.forEach((r, i) => {
-          const y = PLAQUE_Y[n][i];
+          const y = (eraOn() ? ERA_PLAQUE_Y : PLAQUE_Y)[n][i];
           s.art('Panel', 25, (view.phase === 'intro' ? 47 : 49) + 3 * r.character, 600, y, 'mr-icon', W);
           if (view.phase === 'deposits') plaque(s, r, i, 360, y - 36, 160, 71, W);
         });

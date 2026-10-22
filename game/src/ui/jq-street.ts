@@ -31,7 +31,12 @@ const LM = { tiananmen: 3201, monument: 3206, qianmen: 3208, dept: 3213, loud: 3
 const PACE: [number, number][] = [[20, 27], [16, 22], [18, 25], [14, 20], [17, 24], [20, 28], [10, 15], [40, 52]];
 /** Screens that cover the map or ask something: the street stands still meanwhile. */
 const COVERS = '.ui-layer.show, .pl-scene, .fx-overlay, .te-cover, .shop, .bk-atm-ov, .bk-counter-ov, .dv-ov, .bm-overlay, .slots-overlay, .rd-ov, .kbm-root, .jq-intro';
-const SIDEWALK = 9;
+/** How far the walkers' sidewalks lie beyond the map's walker lines (23 px from the road's centre): 41 px, off the squares. */
+const SIDEWALK = 18;
+/** Clearances (map px, the user 2026-10-23: nobody on the playing road, its squares, pads, coins or a player's token). */
+const ROAD_CLEAR = 38, NODE_CLEAR = 36, TOKEN_CLEAR = 44;
+/** The vehicles' lane: the outer edge of the road, clear of the squares (pads reach about 31 px from the centre). */
+const LANE_OFF = 37;
 
 /** The loudspeakers' announcements (§9.2), shown as banners (no voice yet): original, playful, of the era. */
 export const ANNOUNCEMENTS = [
@@ -95,13 +100,24 @@ export class JqStreet {
   private readonly spots: { square: Spot; dept: Spot | null; qianmen: Spot | null; campus: Spot | null; walls: Spot[]; hutongs: Spot[]; horns: Spot[] };
   private pigeons: { x: number; y: number; t: number; fr: number; fly: number; vx: number; vy: number; z: number }[] = [];
   private banner: HTMLElement | null = null;
+  /** The road's segments and squares (for the clearances) and where the players' / NPCs' tokens stand now (board-view). */
+  private readonly segs: [number, number, number, number][] = [];
+  private readonly nodePts: [number, number][] = [];
+  tokens: () => { x: number; y: number }[] = () => [];
+  private tokenPts: { x: number; y: number }[] = [];
   private readonly unlisten: () => void;
 
   constructor(readonly game: Game, paths: [number, number][][]) {
     const tier = memTier(), seed = (game.settings.seed ^ 0x6a71) >>> 0, b = game.board;
     this.r = prng(seed ^ 0x5157);
-    this.maxCars = tier.vehicles + 2;
+    // Lighter than 歌舞伎町's (the user 2026-10-23: 「人會不會有點太多了？」), lighter still on a phone held upright.
+    const upright = typeof window !== 'undefined' && window.innerHeight > window.innerWidth;
+    this.maxCars = Math.max(2, Math.ceil(tier.vehicles / 2));
     const nodes = b.nodes;
+    for (const n of nodes) {
+      this.nodePts.push([n.x, n.y]);
+      for (const a of n.adjacent) if (a > n.id) { const m = nodes.find(x => x.id === a); if (m) this.segs.push([n.x, n.y, m.x, m.y]); }
+    }
     const roadDir = (x: number, y: number): [number, number] | null => {
       let best: [number, number] | null = null, bd = 90 * 90;
       for (const n of nodes) { const d = (n.x - x) ** 2 + (n.y - y) ** 2; if (d < bd) { bd = d; best = [n.x - x, n.y - y]; } }
@@ -137,7 +153,7 @@ export class JqStreet {
       const horizontal = Math.abs(c.b[1] - c.a[1]) < 20, cy = (c.a[1] + c.b[1]) / 2;
       const avenue = horizontal && banks.some(y => Math.abs(y - cy) < 40);
       for (const [a, e] of [[c.a, c.b], [c.b, c.a]] as const) {
-        const dx = (e[0] - a[0]) / len, dy = (e[1] - a[1]) / len, ox = -dy * 12, oy = dx * 12;
+        const dx = (e[0] - a[0]) / len, dy = (e[1] - a[1]) / len, ox = -dy * LANE_OFF, oy = dx * LANE_OFF;
         const lane: Lane = { a: [a[0] + ox, a[1] + oy], b: [e[0] + ox, e[1] + oy], len, dx, dy, avenue };
         this.lanes.push(lane);
         if (avenue) this.avenues.push(lane);
@@ -145,15 +161,15 @@ export class JqStreet {
     }
     // Busiest round 王府井, the square and 前門大街.
     const busy = (x: number, y: number) => 0.4 + 1.6 * Math.exp(-(((x - 1500) ** 2 + (y - 800) ** 2) / (420 * 420))) + 1.4 * Math.exp(-(((x - 1250) ** 2 + (y - 1300) ** 2) / (450 * 450)));
-    this.crowd = new Crowd(buildTracks(side), tier.walkers, seed, roadDir, tier.bikes + 2, busy, { kinds: KINDS, pace: PACE, keepRight: true });
+    this.crowd = new Crowd(buildTracks(side), Math.round(tier.walkers * (upright ? 0.3 : 0.45)), seed, roadDir, Math.ceil(tier.bikes / 2), busy, { kinds: KINDS, pace: PACE, keepRight: true });
     // Where the movements gather (from the landmarks, wherever the layout puts them).
     const at = (res: number) => b.landscapes.filter(l => l.resource + 38 === res).map(l => ({ x: l.x, y: l.y }));
     const sq = at(LM.monument)[0] ?? { x: 1250, y: 1200 };
     this.spots = { square: sq, dept: at(LM.dept)[0] ?? null, qianmen: at(LM.qianmen)[0] ?? null, campus: at(LM.campus)[0] ?? null,
       walls: at(LM.dazibao), hutongs: at(LM.hutong), horns: [...at(LM.loud), sq, ...nodes.filter(n => n.event === 2).map(n => ({ x: n.x, y: n.y }))] };
     const r = this.r;
-    for (let i = 0; i < (tier.name === 'low' ? 5 : 10); i++) this.pigeons.push({ x: sq.x + 40 + (r() - 0.5) * 90, y: sq.y - 50 + (r() - 0.5) * 60, t: r() * 2, fr: 0, fly: 0, vx: 0, vy: 0, z: 0 });
-    for (let i = 0; i < this.maxCars - 2; i++) this.spawnCar(r() * 0.8);
+    for (let i = 0; i < (tier.name === 'low' ? 3 : 5); i++) this.pigeons.push({ x: sq.x + 40 + (r() - 0.5) * 90, y: sq.y - 50 + (r() - 0.5) * 60, t: r() * 2, fr: 0, fly: 0, vx: 0, vy: 0, z: 0 });
+    for (let i = 0; i < this.maxCars - 1; i++) this.spawnCar(r() * 0.8);
     const update = () => {
       this.walkOn = walkersMode() === 0; this.carsOn = vehiclesMode() === 0; this.loudOn = loudspeakerMode() === 0;
       if (!this.loudOn) this.loud.place(0, 0, 0, false);
@@ -179,7 +195,7 @@ export class JqStreet {
       // A string of bicycles on an avenue, one behind the other (§8.2).
       const lane = (this.avenues.length ? this.avenues : this.lanes)[Math.floor(r() * (this.avenues.length || this.lanes.length))];
       // One behind the other with a real gap (a bicycle is about 30 px long): never drawn on top of each other.
-      const n = 3 + Math.floor(r() * 4), speed = 34 + r() * 8;
+      const n = 2 + Math.floor(r() * 2), speed = 34 + r() * 8;
       let s0 = at * lane.len;
       if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s0) < 120)) return;
       for (let i = 0; i < n; i++) { this.cars.push({ res: JQA.bicycle, lane, s: s0, speed, pace: speed, kind: 'bike' }); s0 -= lengthOf(JQA.bicycle) + 8 + r() * 14; }
@@ -209,7 +225,7 @@ export class JqStreet {
     if (this.carsOn) {
       const motor = this.cars.filter(c => c.kind === 'car').length;
       if ((this.nextCar -= dt) <= 0 && motor < this.maxCars) { this.spawnCar(); this.nextCar = 1.2 + r() * 3; }
-      if ((this.nextPack -= dt) <= 0) { this.spawnCar(0, true); this.nextPack = (memTier().name === 'low' ? 14 : memTier().name === 'mid' ? 8 : 5) + r() * 5; }
+      if ((this.nextPack -= dt) <= 0) { this.spawnCar(0, true); this.nextPack = (memTier().name === 'low' ? 30 : memTier().name === 'mid' ? 20 : 14) + r() * 12; }
     } else this.cars = [];
     for (const c of this.cars) {
       c.pace = c.speed;
@@ -219,19 +235,23 @@ export class JqStreet {
         const gap = (lengthOf(c.res) + lengthOf(o.res)) / 2 + 6;
         if (ahead > 0 && ahead < gap + 14) c.pace = Math.min(c.pace, ahead < gap ? 0 : o.pace * 0.95);
       }
-      if (this.march && this.march.lane === c.lane && this.march.s - c.s > 0 && this.march.s - c.s < 40 + 12 * this.march.members.length) c.pace = Math.min(c.pace, 4);
+      if (this.march && this.march.lane === c.lane && this.march.s - c.s > 0 && this.march.s - c.s < 40 + 21 * this.march.members.length) c.pace = Math.min(c.pace, 4);
       c.s += c.pace * dt;
     }
     this.cars = this.cars.filter(c => c.s < c.lane.len);
     // A march every 2–3 minutes along an avenue (§8.3).
     if (this.march) {
       this.march.s += this.march.speed * dt;
-      if (this.march.s - 100 - this.march.members.length * 10 > this.march.lane.len) this.march = null;
-    } else if (this.walkOn && (this.nextMarch -= dt) <= 0 && this.avenues.length) {
-      const lane = this.avenues[Math.floor(r() * this.avenues.length)], n = 10 + Math.floor(r() * 9);
+      if (this.march.s - this.march.members.length * 21 > this.march.lane.len) this.march = null;
+    } else if (this.walkOn && (this.nextMarch -= dt) <= 0) {
+      // Only across the open square (天安門廣場's interior, well off the board's roads; the user 2026-10-23), a short
+      // column: a flag, the banner, a drum and a few marchers. Whoever would come near the road is not drawn.
+      const sq = this.spots.square, y0 = sq.y + 70, len = 220;
+      const lane: Lane = { a: [sq.x - len / 2, y0], b: [sq.x + len / 2, y0], len, dx: 1, dy: 0, avenue: false };
+      const n = 3 + Math.floor(r() * 3);
       this.march = { lane, s: 0, speed: 13, banner: BANNERS[Math.floor(r() * BANNERS.length)],
-        members: [JQA.flag, JQA.flag, JQA.banner, JQA.drummer, JQA.drummer, ...Array.from({ length: n }, () => JQA.marcher)] };
-      this.nextMarch = 120 + r() * 60;
+        members: [JQA.flag, JQA.banner, JQA.drummer, ...Array.from({ length: n }, () => JQA.marcher)] };
+      this.nextMarch = 240 + r() * 120;
     }
     // Pigeons: peck, hop, now and then fly off over the square and come back.
     for (const p of this.pigeons) {
@@ -283,8 +303,34 @@ export class JqStreet {
   // ------------------------------------------------------------------ drawing
 
   /** The street's drawings for the board's y-sorted list (map px → screen through the board's view). */
+  /**
+   * How much of a street figure at map (x, y) may show (0..1): nothing on the playing road, its squares or a token, a
+   * short fade at the edge of the clearance (people crossing at a junction fade out and in rather than walk over it).
+   * `road`: the clearance from the road's centre lines (vehicles in the outer lane use none, they are only kept off the
+   * squares and the tokens).
+   */
+  private clear(x: number, y: number, road = ROAD_CLEAR): number {
+    let k = 1;
+    const fade = (d: number, c: number) => Math.max(0, Math.min(1, (d - c) / 8));
+    for (const tp of this.tokenPts) { const d = Math.hypot(tp.x - x, tp.y - y); if (d < TOKEN_CLEAR + 8) k = Math.min(k, fade(d, TOKEN_CLEAR)); }
+    if (k <= 0) return 0;
+    for (const [nx, ny] of this.nodePts) {
+      if (Math.abs(nx - x) > NODE_CLEAR + 8 || Math.abs(ny - y) > NODE_CLEAR + 8) continue;
+      k = Math.min(k, fade(Math.hypot(nx - x, ny - y), NODE_CLEAR));
+      if (k <= 0) return 0;
+    }
+    if (road > 0) for (const [ax, ay, bx, by] of this.segs) {
+      if (x < Math.min(ax, bx) - road - 8 || x > Math.max(ax, bx) + road + 8 || y < Math.min(ay, by) - road - 8 || y > Math.max(ay, by) + road + 8) continue;
+      const dx = bx - ax, dy = by - ay, l2 = dx * dx + dy * dy || 1, u = Math.max(0, Math.min(1, ((x - ax) * dx + (y - ay) * dy) / l2));
+      k = Math.min(k, fade(Math.hypot(ax + dx * u - x, ay + dy * u - y), road));
+      if (k <= 0) return 0;
+    }
+    return k;
+  }
+
   collect(v: StreetView, add: AddItem) {
     const z = v.zoom, t = this.clock;
+    this.tokenPts = this.tokens();
     // The nearest horn (screen distance from the view's centre): loudness, pan, dullness.
     let best = Infinity, bx = v.W / 2;
     for (const h of this.spots.horns) { const q = v.project(h.x, h.y), d = Math.hypot(q.x - v.W / 2, q.y - v.H / 2); if (d < best) { best = d; bx = q.x; } }
@@ -297,9 +343,11 @@ export class JqStreet {
         const p = v.visible(w.x, w.y, 60);
         if (!p) continue;
         const h = this.crowd.facing(w), d = deg(Math.cos(h), Math.sin(h));
-        if (w.kind === this.crowd.bike) { const k = nearestView(d); add(p.y, () => v.sprite(JQA.bicycle, k, p.x, p.y)); continue; }
+        const a = this.clear(w.x, w.y);
+        if (a <= 0) continue;
+        if (w.kind === this.crowd.bike) { const k = nearestView(d); add(p.y, () => v.sprite(JQA.bicycle, k, p.x, p.y, false, a)); continue; }
         const f = walkerFacing(0, d), phase = w.stop > 0 ? 0 : Math.floor(w.anim) % 4;
-        add(p.y, () => v.sprite(WALKER + w.kind, f.row * 4 + phase, p.x, p.y, f.flip));
+        add(p.y, () => v.sprite(WALKER + w.kind, f.row * 4 + phase, p.x, p.y, f.flip, a));
       }
     }
     if (this.carsOn) {
@@ -308,7 +356,8 @@ export class JqStreet {
         const x = c.lane.a[0] + c.lane.dx * c.s, y = c.lane.a[1] + c.lane.dy * c.s, p = v.visible(x, y, 120);
         if (!p) continue;
         // fade in and out at the junctions (they turn off into the side streets)
-        const alpha = Math.max(0, Math.min(1, c.s / 30, (c.lane.len - c.s) / 30));
+        const alpha = Math.max(0, Math.min(1, c.s / 30, (c.lane.len - c.s) / 30)) * this.clear(x, y, 0);
+        if (alpha <= 0) continue;
         const k = nearestView(deg(c.lane.dx, c.lane.dy));
         add(p.y, () => v.sprite(c.res, k, p.x, p.y, false, alpha));
       }
@@ -319,12 +368,13 @@ export class JqStreet {
     if (m) {
       const flip = flipOf(m.lane.dx, m.lane.dy);
       m.members.forEach((res, i) => {
-        const s = m.s - (i < 5 ? i * 20 : 100 + Math.floor((i - 5) / 2) * 19);
+        const s = m.s - i * 21;
         if (s < 0 || s > m.lane.len) return;
-        const pair = i >= 5 && (i - 5) % 2 === 1 ? 12 : i >= 5 ? -12 : i === 1 ? 12 : i === 0 ? -12 : 0;
+        const pair = 0;   // single file
         const x = m.lane.a[0] + m.lane.dx * s - m.lane.dy * pair, y = m.lane.a[1] + m.lane.dy * s + m.lane.dx * pair, p = v.visible(x, y, 80);
         if (!p) return;
-        const fr = Math.floor(t * 4 + i * 0.7) % 4, alpha = Math.max(0, Math.min(1, s / 25, (m.lane.len - s) / 25));
+        const fr = Math.floor(t * 4 + i * 0.7) % 4, alpha = Math.max(0, Math.min(1, s / 25, (m.lane.len - s) / 25)) * this.clear(x, y);
+        if (alpha <= 0) return;
         add(p.y, () => {
           v.sprite(res, fr, p.x, p.y, flip, alpha);
           if (res === JQA.banner && alpha > 0.5) this.bannerText(v, m.banner, p.x, p.y - 29 * z, z);
@@ -340,46 +390,47 @@ export class JqStreet {
         if (!p) continue;
         // One dancer is always half a beat late, and now and then faces the wrong way for a moment (§8.3).
         const lag = i === late ? 0.5 : 0, wrong = i === late && Math.floor(t / 3.3) % 4 === 1;
-        const fr = Math.floor(t * fps + lag) % 4;
-        add(p.y, () => v.sprite(res, fr, p.x, p.y, wrong, fade));
+        const fr = Math.floor(t * fps + lag) % 4, a = fade * this.clear(x, y);
+        if (a > 0) add(p.y, () => v.sprite(res, fr, p.x, p.y, wrong, a));
       }
     };
     const fadeOf = (s: number, len: number) => Math.max(0, Math.min(1, s / 1.5, (len - s) / 1.5));
     const g = this.gym();
     if (g >= 0) {
-      group(JQA.gymnast, { x: S.square.x - 85, y: S.square.y - 80 }, 3, 5, 22, 2.2, fadeOf(g, 25));
-      if (S.campus) group(JQA.gymnast, { x: S.campus.x, y: S.campus.y + 70 }, 2, 4, 22, 2.2, fadeOf(g, 25));
+      group(JQA.gymnast, { x: S.square.x - 85, y: S.square.y - 80 }, 2, 4, 22, 2.2, fadeOf(g, 25));
     }
     const d = this.dancing();
     if (d >= 0) {
-      group(JQA.dancer, { x: S.square.x + 72, y: S.square.y + 10 }, 2, 5, 23, 3.2, fadeOf(d, 20), 7);
-      if (S.dept) group(JQA.dancer, { x: S.dept.x - 40, y: S.dept.y + 90 }, 2, 4, 23, 3.2, fadeOf(d, 20), 2);
+      group(JQA.dancer, { x: S.square.x + 72, y: S.square.y + 10 }, 2, 4, 23, 3.2, fadeOf(d, 20), 5);
     }
     const dr = this.drums();
-    if (dr >= 0 && S.qianmen) group(JQA.waistdrum, { x: S.qianmen.x + 60, y: S.qianmen.y + 70 }, 1, 6, 21, 3.5, fadeOf(dr, 24));
-    for (const [wi, w] of S.walls.entries()) for (let i = 0; i < 6; i++) {
-      const x = w.x + (i - 2.5) * 17, y = w.y + 38 + (i % 2) * 10, p = v.visible(x, y, 60);
-      if (p) add(p.y, () => v.sprite(JQA.reader, Math.floor(t * 0.7 + i * 1.3 + wi) % 4, p.x, p.y, (i + wi) % 3 === 0));
+    if (dr >= 0 && S.qianmen) group(JQA.waistdrum, { x: S.qianmen.x + 60, y: S.qianmen.y + 70 }, 1, 4, 21, 3.5, fadeOf(dr, 24));
+    for (const [wi, w] of S.walls.entries()) for (let i = 0; i < 3; i++) {
+      const x = w.x + (i - 1) * 17, y = w.y + 38 + (i % 2) * 10, p = v.visible(x, y, 60), a = this.clear(x, y);
+      if (p && a > 0) add(p.y, () => v.sprite(JQA.reader, Math.floor(t * 0.7 + i * 1.3 + wi) % 4, p.x, p.y, (i + wi) % 3 === 0, a));
     }
-    const queue = (c: Spot, n: number, dx: number, dy: number, key: number) => {
-      // a step forward now and then
+    // Queues (排隊): short (3–5), at fixed doors off the road — the department store and every built 供銷社 — standing
+    // beside the building away from its road; anyone of them who would stand on the road is left out.
+    const queue = (c: Spot, n: number, key: number) => {
+      const near = this.nodePts.reduce((b2, q) => (Math.hypot(q[0] - c.x, q[1] - c.y) < Math.hypot(b2[0] - c.x, b2[1] - c.y) ? q : b2), this.nodePts[0] ?? [c.x, c.y + 1]);
+      const l = Math.hypot(c.x - near[0], c.y - near[1]) || 1, ux = (c.x - near[0]) / l, uy = (c.y - near[1]) / l;   // away from the road
       const step = (t * 0.3 + key) % 1 < 0.15 ? 1 : 0;
       for (let i = 0; i < n; i++) {
-        const x = c.x + dx * i, y = c.y + dy * i, p = v.visible(x, y, 60);
-        if (p) add(p.y, () => v.sprite(JQA.queuer, (i + step + Math.floor(t * 0.5)) % 4, p.x, p.y, dx < 0));
+        const x = c.x - uy * 34 + ux * (i * 15 - 8), y = c.y + ux * 34 + uy * (i * 15 - 8), p = v.visible(x, y, 60), a = this.clear(x, y, ROAD_CLEAR + 6);
+        if (p && a > 0) add(p.y, () => v.sprite(JQA.queuer, (i + step + Math.floor(t * 0.5)) % 4, p.x, p.y, ux < 0, a));
       }
     };
-    if (S.dept) queue({ x: S.dept.x - 30, y: S.dept.y + 52 }, 7, -17, 5, 0);
-    for (const f of this.game.board.facilities) if (f.type === 2 && f.level > 0 && f.owner) queue({ x: f.x - 28, y: f.y + 46 }, 4, -17, 5, f.id * 0.37);
-    for (const [hi, h] of S.hutongs.entries()) for (let i = 0; i < 3; i++) {
-      const x = h.x + 46 + i * 19, y = h.y + 40 + (i === 1 ? 6 : 0), p = v.visible(x, y, 60);
-      if (p) add(p.y, () => v.sprite(JQA.skipper, Math.floor(t * 4 + i + hi) % 4, p.x, p.y, i === 2));
+    if (S.dept) queue(S.dept, 5, 0);
+    for (const f of this.game.board.facilities) if (f.type === 2 && f.level > 0 && f.owner) queue({ x: f.x, y: f.y }, 3 + (f.id % 3), f.id * 0.37);
+    for (const [hi, h] of S.hutongs.entries()) for (let i = 0; i < 2; i++) {
+      const x = h.x + 46 + i * 19, y = h.y + 40 + (i === 1 ? 6 : 0), p = v.visible(x, y, 60), a = this.clear(x, y);
+      if (p && a > 0) add(p.y, () => v.sprite(JQA.skipper, Math.floor(t * 4 + i + hi) % 4, p.x, p.y, i === 1, a));
     }
     for (const pg of this.pigeons) {
       const p = v.visible(pg.x, pg.y, 40);
       if (!p) continue;
-      const y = p.y - pg.z * z * 0.86, fr = pg.fly > 0 ? 3 : pg.fr;
-      add(p.y, () => v.sprite(JQA.pigeon, fr, p.x, y, pg.vx < 0));
+      const y = p.y - pg.z * z * 0.86, fr = pg.fly > 0 ? 3 : pg.fr, a = pg.fly > 0 ? 1 : this.clear(pg.x, pg.y);
+      if (a > 0) add(p.y, () => v.sprite(JQA.pigeon, fr, p.x, y, pg.vx < 0, a));
     }
   }
 
