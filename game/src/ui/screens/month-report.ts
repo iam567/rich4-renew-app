@@ -152,6 +152,9 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
   const rows = rep.rows;
   const n = Math.min(4, Math.max(1, rows.length));
   const unl = rep.unlucky, champ = rep.champion;
+  /** 激情歲月's cloth banner: a red 橫幅 with tie ends, the words evenly spaced in big white upright strokes. */
+  const banner = (text: string) => `<div class="mr-cloth"><i class="tie l"></i><div class="mr-cloth-words">${[...text].map(c => `<b>${c}</b>`).join('')}</div><i class="tie r"></i></div>`;
+  const eraMonth = () => eraLine(`${month(g.date)}月份 銀行結算`).replace(/ .*$/, '');
   const view: View = { pose: 19, balloon: null, phase: 'intro', spot: -1, away: -1, stats: null, flc: null };
   const flcFrames = new Map<number, Frame[]>();
   const flcIds = [416 + 2 * (rows[champ]?.character ?? 0), ...(unl >= 0 && unl !== champ ? [417 + 2 * rows[unl].character] : [])];
@@ -248,10 +251,9 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       if (P) world.style.transform = `scale(${440 / 640})`;
       const W = world;
       s.art('Panel', 25, 0, 0, 0, 'mr-bg', W);
-      // 激情歲月 (docs/rules/24 §11): the month's headline on the stage's red banner, in the era's loud lettering.
-      // (on the banner at the top; while the girl's big balloons cover it, on the stage's front drape; not under the heart one)
-      const low = !!view.balloon && view.balloon.frame !== 4;
-      if (eraOn() && !P && view.balloon?.frame !== 4) s.box(`mr-era-title${low ? ' low' : ''}`, 150, low ? 392 : 24, 450, 56, `<b>${eraLine(`${month(g.date)}月份 銀行結算`)}</b>`, W);
+      // 激情歲月 (docs/rules/24 §11): the meeting's cloth banner (橫幅) across the whole top of the stage; the girl's
+      // balloons sit lower on this map so it is never covered (portrait: the banner is the title under the scene).
+      if (eraOn() && !P) s.box('mr-banner', 0, 0, 640, 58, banner(`熱烈慶祝${eraMonth()}先進工作者評比大會`), W);
       if (view.phase === 'stage' && view.spot >= 0) {
         const f = SPOT_F[n][view.spot];
         // Over the redrawn background the columns' baked-in pattern would show as a panel: always the drawn beam.
@@ -288,18 +290,21 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       }
       if (view.stats && !P) stats(s, 440, 405, 1, W);
       if (view.balloon) {
-        const b = BALLOONS[view.balloon.frame], a = ctx.bank.art('Panel', 25, view.balloon.frame);
+        const b0 = BALLOONS[view.balloon.frame], b = eraOn() && !P ? { x: b0.x, y: b0.y + 66 } : b0, a = ctx.bank.art('Panel', 25, view.balloon.frame);
         const w = a?.w ?? 290, h = a?.h ?? 200;
         const box = s.box(`mr-balloon f${view.balloon.frame}${pop(`b${view.balloon.frame}:${view.balloon.text}`)}`, b.x, b.y, w, h, '', W);
         if (a) box.style.backgroundImage = `url('${a.src}')`;
         const said = eraLine(view.balloon.text);
-        const t = el('div', `mr-say${eraOn() && /^本月勞動模範/.test(said) ? ' loud' : ''}`, said.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
+        const loud = eraOn() && /^本月勞動模範/.test(said);
+        const t = el('div', `mr-say${loud ? ' loud' : ''}`, loud ? [...said.replace(/\s+/g, '')].map(c => `<b>${c.replace(/[&<>]/g, '')}</b>`).join('')
+          : said.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
         centreWords(t, `Panel/25/${view.balloon.frame}`);
         box.append(t);
       }
       if (P) {
         // Under the scene: the month's title or the stats board, then everyone's deposit.
         if (view.stats) stats(s, 220, 405, 1.42, s.stage);
+        else if (eraOn()) s.box('mr-title era', 0, 342, 440, 126, `${banner(`${eraMonth()}先進工作者評比大會`)}<span>${eraLine('大富翁銀行・存款加發 10% 利息')}</span>`);
         else s.box('mr-title', 0, 342, 440, 126, `<b>${month(g.date)}月份 銀行結算</b><span>大富翁銀行・存款加發 10% 利息</span>`);
         const top = 480 + (316 - n * 78) / 2;
         rows.forEach((r, i) => {

@@ -168,19 +168,40 @@
 .game.theme-jq .dv-ribbon { border-radius: 0; border: none; background: #c8161d var(--jq-banner) center / 100% 100% no-repeat; box-shadow: none; }
 .game.theme-jq .dv-ribbon span { color: #ffe58a; text-shadow: 0 2px 0 #5a0808; font-family: "Noto Serif TC", "Songti TC", serif; }
 
-/* ---------------------------------------------------------------- 先進工作者評比: the era's loud headline lettering (huge, ultra
-   bold, red with a gold outline and a heavy shadow, slanted and stretched, a gold star beside), with the system's heavy
-   serif / sans (no web font: 宋體 / 黑體 as on 獎狀 and posters) */
-.game.theme-jq .mr-era-title { position: absolute; display: flex; align-items: center; justify-content: center; z-index: 2; pointer-events: none; }
-.game.theme-jq .mr-era-title b, .game.theme-jq .mr-title b, .game.theme-jq .mr-say.loud {
-  font-family: "Heiti TC", "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif; font-weight: 900; color: #e3141b;
-  -webkit-text-stroke: 1.6px #ffd93a; paint-order: stroke fill;
-  text-shadow: 0 0 1px #ffd93a, 2px 3px 0 #6a0606, 3px 5px 0 #3a0303, 0 0 10px rgba(255, 210, 60, .6);
-  letter-spacing: 2px; white-space: nowrap; }
-.game.theme-jq .mr-era-title b { font-size: 34px; color: #ffe14a; -webkit-text-stroke: 1.4px #7a0606; text-shadow: 2px 3px 0 #3a0303, 0 0 8px rgba(0, 0, 0, .4);
-  transform: skewX(-8deg) scaleY(1.18); }
-.game.theme-jq .mr-era-title::before, .game.theme-jq .mr-era-title::after { content: ''; width: 36px; height: 36px; margin: 0 6px; flex: none;
-  background: var(--jq-star) center / contain no-repeat; filter: drop-shadow(1px 2px 0 #3a0303); }
-.game.theme-jq .mr-title b { display: inline-flex; align-items: center; gap: 4px; font-size: 27px; letter-spacing: 1px; transform: skewX(-8deg) scaleY(1.15); }
-.game.theme-jq .mr-title b::before, .game.theme-jq .mr-title b::after { content: ''; width: 24px; height: 24px; flex: none; background: var(--jq-star) center / contain no-repeat; }
-.game.theme-jq .mr-say.loud { font-size: 28px; line-height: 1.15; font-style: italic; white-space: pre-line; }
+/* ---------------------------------------------------------------- 先進工作者評比大會: the meeting's cloth banner (橫幅) across the
+   stage as on the period photos (「慶祝……成立」): deep red cloth with soft folds and tie ends, big upright heavy characters in
+   pale yellow filling its height, evenly spaced (the system's 宋體 / 黑體, no web font), red flags on poles in front of its
+   ends; the 勞動模範 announcement in the same lettering. */
+.game.theme-jq .mr-banner { position: absolute; z-index: 4; pointer-events: none; }
+.game.theme-jq .mr-cloth { position: relative; display: flex; align-items: stretch; width: 100%; height: 100%; }
+.game.theme-jq .mr-cloth-words { flex: 1; display: flex; align-items: center; justify-content: space-evenly; padding: 0 58px;
+  background:
+    repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0 46px, rgba(0, 0, 0, .12) 52px, rgba(255, 255, 255, .05) 58px, rgba(0, 0, 0, 0) 64px),
+    linear-gradient(#b8121a, #a10e16 45%, #880a10 85%, #6e080c);
+  box-shadow: 0 4px 6px rgba(0, 0, 0, .35), inset 0 2px 0 rgba(255, 255, 255, .12), inset 0 -3px 0 rgba(0, 0, 0, .25); }
+.game.theme-jq .mr-cloth-words b, .game.theme-jq .mr-say.loud b { color: #f8dc84; font-size: 30px; line-height: 1; font-weight: 900; font-style: normal;
+  font-family: "Heiti TC", "STHeiti", "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
+  -webkit-text-stroke: 1.2px #f8dc84; text-shadow: 0 1px 1px rgba(60, 0, 0, .5); transform: scaleY(1.08); }
+.game.theme-jq .mr-cloth .tie { flex: none; width: 18px; position: relative;
+  background: linear-gradient(90deg, #6e080c, #a10e16); clip-path: polygon(0 10%, 100% 0, 100% 100%, 0 90%, 45% 50%); }
+.game.theme-jq .mr-cloth .tie.r { transform: scaleX(-1); }
+/* red flags on poles in front of the banner's two ends (over the ties and the padding, never over a character) */
+.game.theme-jq .mr-cloth::before, .game.theme-jq .mr-cloth::after { content: ''; position: absolute; bottom: -62px; width: 46px; height: 84px; z-index: 2;
+  background:
+    linear-gradient(#e8dcc0, #8a8070) 3px 0 / 3px 100% no-repeat,
+    linear-gradient(160deg, #ff2a2a, #c40d16 60%, #8a0a10) 6px 3px / 40px 27px no-repeat;
+  -webkit-mask: linear-gradient(#000, #000) 3px 0 / 3px 100% no-repeat, linear-gradient(#000, #000) 6px 3px / 40px 27px no-repeat;
+  mask: linear-gradient(#000, #000) 3px 0 / 3px 100% no-repeat, linear-gradient(#000, #000) 6px 3px / 40px 27px no-repeat;
+  filter: drop-shadow(1px 2px 1px rgba(0, 0, 0, .45)); transform-origin: 4px 100%; }
+.game.theme-jq .mr-cloth::before { left: 6px; transform: rotate(-8deg); }
+.game.theme-jq .mr-cloth::after { right: 6px; transform: scaleX(-1) rotate(-8deg); }
+.game.theme-jq .mr-title.era { justify-content: flex-start; padding-top: 10px; gap: 14px; }
+.game.theme-jq .mr-title.era .mr-cloth { width: 428px; height: 50px; flex: none; }
+.game.theme-jq .mr-title.era .mr-cloth-words { padding: 0 52px; }
+.game.theme-jq .mr-title.era .mr-cloth-words b { font-size: 23px; -webkit-text-stroke-width: .9px; }
+/* (portrait: smaller flags right at the cloth's ends, over the ties) */
+.game.theme-jq .mr-title.era .mr-cloth::before { bottom: -40px; left: 0; transform: rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
+.game.theme-jq .mr-title.era .mr-cloth::after { bottom: -40px; right: 0; transform: scaleX(-1) rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
+.game.theme-jq .mr-say.loud { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; max-width: 250px; padding: 8px 12px; border-radius: 2px;
+  background: linear-gradient(#b8121a, #880a10); box-shadow: 0 3px 5px rgba(0, 0, 0, .3); }
+.game.theme-jq .mr-say.loud b { font-size: 30px; }
