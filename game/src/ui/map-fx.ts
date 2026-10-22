@@ -8,11 +8,13 @@ import { worldSize } from '../core/board';
 import { cardScene, toolScene } from './screens/card-fx';
 import { resultBox } from './screens/event-result';
 import { playEventFx } from './event-fx';
-import { preloadClips } from './effects';
+import { preloadClips, QUOTE_LEAD } from './effects';
 import { warmFireworks } from './fireworks';
 import type { EventResult } from '../core/modules/events';
 import { cardDef, cardName } from '../core/modules/cards';
-import { CHARACTERS } from '../core/characters';
+import { CHARACTERS, playerName } from '../core/characters';
+import { jqRules, quotesMode } from './jiqing'; // 激情歲月's quotations (docs/rules/24 §7)
+import { eventOccasion, pickQuote } from './jq-quotes';
 import { TOOLS } from '../core/modules/tools';
 import type { GameEvent, Player } from '../core/types';
 import type { BoardView } from './board-view';
@@ -149,7 +151,7 @@ export class MapDirector {
    * `_rich4_player_say(p, face, text)`: the camera goes to the speaker (unless `stay`), the cloud with the
    * expression face shows for 1000 ms (a tap ends it). Nobody speaks while abroad, sleepwalking or hibernating.
    */
-  async line(id: number | undefined, face: number, text: string | null | undefined, stay = false, force = false, spot?: Pt, voice?: number) {
+  async line(id: number | undefined, face: number, text: string | null | undefined, stay = false, force = false, spot?: Pt, voice?: number, occasion?: string) {
     const p = this.player(id);
     if (!p || !text || !p.whoPlays && !p.bankrupt) return;
     if (!force && (p.vanish || p.sleepwalk || p.sleep)) return;
@@ -157,25 +159,29 @@ export class MapDirector {
     if (!this.last.take(p.character, text, v)) return;
     const at = spot ?? this.pos(p.id);
     if (!stay) await this.view.panTo(at.x, at.y);
+    // 激情歲月 (docs/rules/24 §7): a quotation first in the same cloud, the line 0.6 s later (× the game speed).
+    const quote = occasion && jqRules(this.game) && quotesMode() === 0 ? pickQuote(p.character, occasion) : undefined;
+    const lead = quote ? Math.round(QUOTE_LEAD * Math.max(0.5, this.hud.scale())) : 0;
+    if (quote) this.hud.note(`${playerName(p)}：毛主席教導我們：${quote}`);
     // The line's voice ('#NNNN'): the cloud stays while it is spoken, at least 1000 ms (fcn_004544f6(1000)); a
     // tap ends both.
-    void audio.voice(v);
-    const ms = Math.max(1000, v !== undefined ? audio.length('voice', v) * 1000 + 80 : 0);
-    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, face, text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }));
+    if (lead) setTimeout(() => void audio.voice(v), lead); else void audio.voice(v);
+    const ms = lead + Math.max(1000, v !== undefined ? audio.length('voice', v) * 1000 + 80 : 0);
+    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, face, text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }), quote, lead);
     if (!stay) this.view.refollow();
   }
 
   private ev(id: number | undefined, slot: number, face: number, stay = false, force = false) {
     const p = this.player(id);
-    return p ? this.line(id, face, EVENT_LINES[p.character]?.[slot], stay, force, undefined, EVENT_VOICE[p.character]?.[slot]) : Promise.resolve();
+    return p ? this.line(id, face, EVENT_LINES[p.character]?.[slot], stay, force, undefined, EVENT_VOICE[p.character]?.[slot], eventOccasion(slot)) : Promise.resolve();
   }
   private tool(id: number | undefined, slot: number, face: number) {
     const p = this.player(id);
-    return p ? this.line(id, face, TOOL_LINES[p.character]?.[slot], false, false, undefined, TOOL_VOICE[p.character]?.[slot]) : Promise.resolve();
+    return p ? this.line(id, face, TOOL_LINES[p.character]?.[slot], false, false, undefined, TOOL_VOICE[p.character]?.[slot], 'tool') : Promise.resolve();
   }
   private card(id: number | undefined, k: number, face: number) {
     const p = this.player(id);
-    return p ? this.line(id, face, CARD_LINES[p.character]?.[k], false, false, undefined, CARD_VOICE[p.character]?.[k]) : Promise.resolve();
+    return p ? this.line(id, face, CARD_LINES[p.character]?.[k], false, false, undefined, CARD_VOICE[p.character]?.[k], 'card') : Promise.resolve();
   }
   /** A card line by role (0 user, 1 on oneself, 2 the one it hit) with the original's face (reactions.ts). */
   private cardRole(id: number | undefined, card: number, role: 0 | 1 | 2) {
@@ -815,7 +821,7 @@ export class MapDirector {
         const n = hospital ? this.game.hospitalNode() : this.game.prisonNode();
         if (n) {
           await v.panTo(n.x, n.y);
-          await this.line(p.id, Face.cry, EVENT_LINES[p.character]?.[hospital ? 20 : 19], true, true, { x: n.x, y: n.y });
+          await this.line(p.id, Face.cry, EVENT_LINES[p.character]?.[hospital ? 20 : 19], true, true, { x: n.x, y: n.y }, undefined, hospital ? 'hospital' : 'prison');
           v.refollow();
         }
         return true;

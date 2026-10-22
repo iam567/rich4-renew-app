@@ -156,6 +156,8 @@ const write = (key: string, v: number) => {
 export const setWalkersMode = (v: number) => write(KEY_WALKERS, v);
 export const setNeonMode = (v: number) => write(KEY_NEON, v);
 export const setVehiclesMode = (v: number) => write(KEY_VEHICLES, v);
+/** Called when one of these settings changes (激情歲月's street reads 街頭行人 / 街頭車輛 too, ui/jq-street.ts). */
+export const onStreetSettings = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };
 
 // ------------------------------------------------------------------ the street (§8)
 

@@ -42,6 +42,9 @@ import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
+import { JQ_MAP, loudspeakerMode, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
+import { applyJqTheme } from './jq-theme';
+import { playJqIntro } from './screens/jq-intro';
 import './tycoon-onway';
 import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
@@ -541,6 +544,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // The original screen (docs/rules/09 §1): toolbar over the map, the player panel and calendar beside it.
   const shell = document.createElement('main');
   shell.className = 'game';
+  if (mapId === JQ_MAP) applyJqTheme(shell); // 激情歲月's skin and words (docs/rules/24 §3, §11)
   const toolbar = new Toolbar(bank);
   const stage = document.createElement('section');
   stage.className = 'stage';
@@ -701,6 +705,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           ...(mapId === KB_MAP ? [{ label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: (i: number) => setWalkersMode(i) },
             { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
             { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: (i: number) => setNeonMode(i) }] : []),
+          // 激情歲月 (docs/rules/24 §7–§10): its street, the loudspeakers, the quotations, the intro again.
+          ...(mapId === JQ_MAP ? [{ label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: (i: number) => setWalkersMode(i) },
+            { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
+            { label: '大喇叭廣播', opts: STREET_MODES, cur: () => loudspeakerMode(), pick: (i: number) => setLoudspeakerMode(i) },
+            { label: '語錄開場白', opts: STREET_MODES, cur: () => quotesMode(), pick: (i: number) => setQuotesMode(i) },
+            { label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } }] : []),
           // 大富豪模式: the chat box's 播報 (docs/rules/17 §10).
           ...(chat ? [{ label: '播報', opts: CHAT_MODES, cur: () => chatMode(), pick: (i: number) => { setChatMode(i); chat.refresh(); } }] : []),
           { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
@@ -737,10 +747,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           render();
         });
         render();
+        let replayIntro = false;
         const v = await hud.settingsSheet('系統', grid,
           [{ label: '投降', kind: 'no', value: 'surrender' }, { label: '回到標題', value: 'title' }]);
         if (v === 'surrender' && needTurn() && confirm('確定要投降嗎？')) { go.cancel(); turn!({ action: 'surrender' }); }
         if (v === 'title' && confirm('回到標題畫面？（未存檔的進度會遺失）')) location.reload();
+        if (replayIntro) await playJqIntro(shell, game, bank!, scale());
         return;
       }
       case 'info':
@@ -836,6 +848,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // The game goes on once the board shows whole (its first move would otherwise start under the fading screen).
   await boot.close();
   if (me !== session) return;
+  // 激情歲月's 「穿越」 intro (docs/rules/24 §10): once when a new game on the map starts, never for a loaded one.
+  if (mapId === JQ_MAP && !loaded && !ty) { await playJqIntro(shell, game, bank!, scale()); if (me !== session) return; }
   /** The original's small map effects and lines for each event (docs/rules/11). */
   const director = new MapDirector(game, view, hud);
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.director = director;

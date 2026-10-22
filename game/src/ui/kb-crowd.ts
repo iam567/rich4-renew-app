@@ -244,8 +244,20 @@ export class Crowd {
    * `busy(x, y)`: how crowded a spot of the map is (1 = average): the walkers start there more and turn towards it
    * more at the corners, so the busy streets stay busy.
    */
+  /** The walker kinds (0..kinds − 1), the cyclists' kind, their paces, and which side people keep to (map y is down). */
+  readonly kinds: number;
+  readonly bike: number;
+  private readonly pace: readonly [number, number][];
+  private readonly sideSign: number;
+
   constructor(readonly tracks: Track[], n: number, seed: number, private roadDir: (x: number, y: number) => [number, number] | null = () => null,
-    bikes = 0, busy: (x: number, y: number) => number = () => 1) {
+    bikes = 0, busy: (x: number, y: number) => number = () => 1,
+    opts: { kinds?: number; pace?: readonly [number, number][]; keepRight?: boolean } = {}) {
+    // 歌舞伎町: six kinds, the cyclist 6, keeping left (Japan); 激情歲月 (docs/rules/24 §8): its own kinds, keeping right.
+    this.kinds = opts.kinds ?? 6;
+    this.bike = this.kinds;
+    this.pace = opts.pace ?? PACE;
+    this.sideSign = opts.keepRight ? -1 : 1;
     this.r = prng(seed);
     if (!tracks.length) return;
     for (const t of tracks) { const m = t.pts[t.pts.length >> 1]; this.weight.set(t, busy(m[0], m[1])); }
@@ -257,25 +269,25 @@ export class Crowd {
     };
     while (this.walkers.length < n) {
       const track = pick();
-      const lead = this.spawn(track, r() * track.len, Math.floor(r() * 6));
+      const lead = this.spawn(track, r() * track.len, Math.floor(r() * this.kinds));
       // About one in four walks with a friend, one in twelve in a group of three.
       const g = r(), mates = g < 0.08 ? 2 : g < 0.3 ? 1 : 0;
       for (let i = 0; i < mates && this.walkers.length < n; i++) {
-        const w = this.spawn(track, lead.s, Math.floor(r() * 6));
+        const w = this.spawn(track, lead.s, Math.floor(r() * this.kinds));
         w.lead = lead; w.speed = lead.speed;
         w.side = i === 0 ? -7 : 0; w.back = i === 0 ? 1.5 : 8;
         w.anim = lead.anim + 1 + i;
       }
     }
     for (let i = 0; i < bikes; i++) {
-      const track = pick(), b = this.spawn(track, r() * track.len, BIKE);
+      const track = pick(), b = this.spawn(track, r() * track.len, this.bike);
       b.nextStop = Infinity; b.lane = 1;
     }
     for (const w of this.walkers) this.place(w, 0);
   }
 
   private spawn(track: Track, s: number, kind: number): Walker {
-    const r = this.r, [lo, hi] = PACE[kind];
+    const r = this.r, [lo, hi] = this.pace[kind] ?? PACE[BIKE];
     const w: Walker = {
       kind, track, s, then: null, speed: lo + r() * (hi - lo), wob: r() * 6.28, pace: 0, lane: 2 + r() * 3, dodge: 0,
       x: 0, y: 0, h: 0, anim: r() * 4, stop: 0, why: 'phone', nextStop: 6 + r() * 30, look: 0, lead: null, back: 0, side: 0,
@@ -304,7 +316,7 @@ export class Crowd {
     }
     // Keep left (Japan): the side offset is to the left of the way it walks (map y is down: left = (dy, −dx)).
     // Eased towards the spot (a turn back or a dodge slides over instead of jumping; ~2 px behind while walking).
-    const side = w.lane + w.dodge, tx = p.x + p.dy * side, ty = p.y - p.dx * side;
+    const side = (w.lane + w.dodge) * this.sideSign, tx = p.x + p.dy * side, ty = p.y - p.dx * side;
     if (!dt) { w.x = tx; w.y = ty; return; }
     const k = 1 - Math.exp(-dt * 12);
     w.x += (tx - w.x) * k; w.y += (ty - w.y) * k;
@@ -389,7 +401,7 @@ export class Crowd {
           const dx = o.x - w.x, dy = o.y - w.y, ahead = dx * hx + dy * hy, side = -dx * hy + dy * hx;
           if (ahead <= 0 || ahead > 13 || Math.abs(side) > 6) continue;
           const same = Math.cos(o.h - w.h);
-          if (w.kind === BIKE) { w.dodge = side >= 0 ? -6 : 6; w.pace = Math.min(w.pace, w.speed * 0.6); continue; }
+          if (w.kind === this.bike) { w.dodge = side >= 0 ? -6 : 6; w.pace = Math.min(w.pace, w.speed * 0.6); continue; }
           if (same > 0.4 || o.stop > 0) w.pace = Math.min(w.pace, o.stop > 0 ? 0.6 * w.speed : o.pace * 0.97);
           else if (same < -0.4) w.dodge = side >= 0 ? -4 : 4;
         }

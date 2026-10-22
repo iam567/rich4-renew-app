@@ -168,6 +168,8 @@ export interface MapRules {
   readonly hotelType?: number;
   /** What a staying player is said to be doing instead of 住宿中 (歌舞伎町: a child taken to the amusement park, §3). */
   stayLabel?(g: Game, p: Player): string | undefined;
+  /** What a vanished player is said to be doing instead of 消失中 (激情歲月, docs/rules/24 §6: 下鄉中 / 下放中). */
+  vanishLabel?(g: Game, p: Player): string | undefined;
   /**
    * The bubble when a god changes a payment (歌舞伎町, docs/rules/21 §2: the reason first, 「大財神附身，消費免付！」);
    * without it the original's 「…免付！」 / 「…改為N元」.
@@ -255,7 +257,7 @@ export const REMAKE_FREE_BUILD = { on: true };
  */
 export const DOOR_STEP = { on: true };
 
-export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), not in the original
+export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), 14 激情歲月's 宣傳站 (24), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
 
@@ -931,7 +933,7 @@ export class Game {
       if (this.over || !p.whoPlays || this.offRoad(p) || (this.world && !this.here(p))) return;
     }
     if (this.offRoad(p) || p.sleep) {
-      const [what, n] = p.hotel ? [this.rules?.stayLabel?.(this, p) ?? '住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : ['消失中', p.vanish & 0x3f];
+      const [what, n] = p.hotel ? [this.rules?.stayLabel?.(this, p) ?? '住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : [this.rules?.vanishLabel?.(this, p) ?? '消失中', p.vanish & 0x3f];
       this.tools.storeState(p);
       yield* this.say(p.id, `${this.name(p.id)}${what}……還剩${(n & 0x7f) + 1}天！`);
       return;

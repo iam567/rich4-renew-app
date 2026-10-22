@@ -12,6 +12,8 @@ import { watch } from './watchdog';
 import { BUBBLE_BODY } from './bubble-text';
 
 /** The speech cloud's body (Data #517.6). */
+/** How long a quotation shows alone before the line (激情歲月, docs/rules/24 §7.1). */
+export const QUOTE_LEAD = 600;
 const CLOUD_BODY = BUBBLE_BODY['Data/517/6'];
 
 /** Frame delays of the Data.mkf FLC clips in ms, from their headers (`fcn_00450ced` reads header +0x10). */
@@ -240,7 +242,11 @@ export class Effects {
    * The remake centres the face and the words (or the icon) as one row on the cloud's body (bubble-text.ts),
    * not the original's fixed spots that leave a short line at the body's left and sit low over the tail.
    */
-  cloud(at: () => Pt, character: number, face: number, text: string, ms: number, onTap?: (end: () => void) => void): Promise<void> {
+  /**
+   * `quote` (激情歲月, docs/rules/24 §7): a red strip with a quotation above the cloud, shown at once; the line itself
+   * appears `QUOTE_LEAD` ms later (the caller adds that time to `ms`).
+   */
+  cloud(at: () => Pt, character: number, face: number, text: string, ms: number, onTap?: (end: () => void) => void, quote?: string, lead = QUOTE_LEAD): Promise<void> {
     const host = this.host;
     const icon = /^@(\d\d)$/.exec(text);
     const start = performance.now();
@@ -255,12 +261,14 @@ export class Effects {
           // Cloud anchor (220, 130) is 130 px above the speaker; keep the whole cloud on the canvas.
           let cx = q.x, cy = q.y - 130 * z;
           cx = Math.max(130 * z, Math.min(cw - 147 * z, cx));
-          cy = Math.max(94 * z, Math.min(ch - 110 * z, cy));
+          cy = Math.max((quote ? 120 : 94) * z, Math.min(ch - 110 * z, cy));
           const k = Math.min(1, (now - start) / 120), pop = 0.85 + 0.15 * (1 - (1 - k) ** 3);
           ctx.save();
           ctx.translate(cx, cy); ctx.scale(pop, pop); ctx.translate(-cx, -cy);
           ctx.globalAlpha = Math.min(1, k * 1.5, (ms - (now - start)) / 120);
           this.sprite('Data', 517, 6, cx, cy);
+          if (quote) this.quoteStrip(ctx, quote, cx, cy, z);
+          const wait = quote && now - start < lead;
           // The body's centre (the picture's anchor is at (127, 92) of 271×199), the face 40×34 at 1.35×, then a
           // gap and the words (at most 150 wide) or the icon.
           const bx = cx + (CLOUD_BODY.cx * 271 - 127) * z, by = cy + (CLOUD_BODY.cy * 199 - 92) * z;
@@ -276,7 +284,8 @@ export class Effects {
           }
           const left = bx - (faceW + gap + w) / 2;
           this.sprite('map', 27 + character, face + 1, left + faceW / 2, by, 1, 1.35);
-          if (icon) { if (ic) this.frame(ic, left + faceW + gap + w / 2 - (ic.w / 2 - ic.ax) * ic.scale * 1.4 * z, by - (ic.h / 2 - ic.ay) * ic.scale * 1.4 * z, 1, 1.4); }
+          if (wait) { /* the quotation first */ }
+          else if (icon) { if (ic) this.frame(ic, left + faceW + gap + w / 2 - (ic.w / 2 - ic.ax) * ic.scale * 1.4 * z, by - (ic.h / 2 - ic.ay) * ic.scale * 1.4 * z, 1, 1.4); }
           else if (lines) {
             ctx.fillStyle = '#101010';
             ctx.textBaseline = 'middle';
@@ -291,6 +300,31 @@ export class Effects {
     };
     onTap?.(() => { e.done = true; });
     return this.add(e, 'fx.cloud', ms + 2000);
+  }
+
+  /** The quotation strip (docs/rules/24 §7.1): a small red book, 「毛主席教導我們：」 and the quotation, over the cloud. */
+  private quoteStrip(ctx: CanvasRenderingContext2D, quote: string, cx: number, cy: number, z: number) {
+    const w = 262 * z, h = 22 * z, x = cx - 124 * z, y = cy - 92 * z - h - 2 * z, fs = 10.5 * z;
+    ctx.save();
+    ctx.fillStyle = 'rgba(178, 18, 26, .94)';
+    ctx.strokeStyle = '#ffe58a'; ctx.lineWidth = Math.max(1, 1.2 * z);
+    ctx.beginPath(); ctx.roundRect(x, y, w, h, 4 * z); ctx.fill(); ctx.stroke();
+    // the little red book: a darker cover with a gold star
+    ctx.fillStyle = '#7a0a10'; ctx.fillRect(x + 4 * z, y + 3 * z, 12 * z, 16 * z);
+    ctx.fillStyle = '#ffd84a'; ctx.font = `${9 * z}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('★', x + 10 * z, y + 11 * z);
+    ctx.font = `700 ${fs}px "Noto Serif TC", "Songti TC", "PingFang TC", serif`;
+    ctx.textAlign = 'left';
+    const head = '毛主席教導我們：', room = w - 24 * z;
+    let body = quote;
+    while (body.length > 4 && ctx.measureText(head + body).width > room) body = body.slice(0, -1);
+    if (body !== quote) body = `${body.replace(/[，、；：。…]+$/, '')}……`;
+    while (body.length > 4 && ctx.measureText(head + body).width > room) body = `${body.slice(0, -3).replace(/[，、；：。…]+$/, '')}……`;
+    ctx.fillStyle = '#ffe58a';
+    ctx.fillText(head, x + 20 * z, y + h / 2 + 0.5);
+    ctx.fillStyle = '#fff';
+    ctx.fillText(body, x + 20 * z + ctx.measureText(head).width, y + h / 2 + 0.5);
+    ctx.restore();
   }
 
   // ---------------------------------------------------------------- FLC clips

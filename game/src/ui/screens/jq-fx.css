@@ -1,0 +1,30 @@
+/* 激情歲月's cards (jq-fx.ts): a sheet of old kraft paper with a red border, red-star corners; the facility picker's plates. */
+
+/* ---------------------------------------------------------------- the cards (440 units wide, fitted to the map) */
+.jqc-ov { background: rgba(40, 10, 5, .55); }
+.jqc-ov.can-close { cursor: pointer; }
+.jqc-ov.out { opacity: 0; transition: opacity .18s; }
+.jqc-scene { pointer-events: none; }
+.jqc-card { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px 14px; border-radius: 8px; overflow: hidden; color: #3a1a0a;
+  background: #e9d3a6 var(--jq-kraft, none) center / cover;
+  box-shadow: 0 0 0 4px #b3131b, 0 0 0 7px #f3e2b8, 0 0 0 10px #b3131b, 0 16px 36px rgba(0, 0, 0, .55); animation: jqc-drop .45s cubic-bezier(.3, 1.35, .5, 1) both; }
+.jqc-ov.bad .jqc-card { box-shadow: 0 0 0 4px #333, 0 0 0 7px #f3e2b8, 0 0 0 10px #333, 0 16px 36px rgba(0, 0, 0, .55); }
+@keyframes jqc-drop { from { transform: translateY(-60px) rotate(-2deg) scale(.92); opacity: 0; } }
+.jqc-head { display: flex; align-items: center; gap: 8px; height: 34px; }
+.jqc-scene .jqc-face { position: static; width: 34px; height: 34px; flex: none; border-radius: 50%; border: 2px solid #b3131b; background: var(--c); }
+.jqc-where { flex: 1; min-width: 0; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: #7a1010; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
+.jqc-tag { flex: none; padding: 1px 12px; border-radius: 4px; background: #c8161d; color: #ffe58a; font-size: 15px; letter-spacing: 2px; }
+.jqc-ov.good .jqc-tag { background: #c8161d; } .jqc-ov.bad .jqc-tag { background: #3a3a3a; color: #fff; }
+.jqc-pic { position: relative; flex: none; height: 262px; border-radius: 4px; overflow: hidden; border: 4px solid #fff7e0; box-shadow: 0 0 0 2px #b3131b; background: #c8161d; }
+.jqc-card.small .jqc-pic { height: 214px; }
+.jqc-plate { position: absolute; left: 50%; top: 50%; width: 140px; transform: translate(-50%, -50%); border-radius: 18px; }
+.jqc-scene .jqc-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.jqc-title { font-size: 27px; line-height: 1.18; text-align: center; color: #b3131b; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; text-shadow: 0 1px 0 #fff3cf; }
+.jqc-title b { color: #8a0a10; font-size: 30px; }
+.jqc-line { font-size: 18px; line-height: 1.35; text-align: center; padding: 5px 10px; border-radius: 4px; background: rgba(255, 249, 230, .9); border: 1.5px dashed #b3131b; }
+.jqc-line em { font-style: normal; color: #c8161d; font-weight: 800; }
+.jqc-tap { position: absolute; right: 12px; bottom: 4px; font-size: 13px; opacity: 0; transition: opacity .3s; color: #7a1010; }
+.jqc-ov.can-close .jqc-tap { opacity: .85; }
+
+/* ---------------------------------------------------------------- the facility picker (the plates are square-ish) */
+.jq-fac .fac-pic img.kb-plate { object-fit: contain; background: transparent; box-shadow: none; }

@@ -92,6 +92,9 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   for (const dir of ['maps/remake/kabukicho', 'maps/remake/kabukicho/machines']) {
     if (existsSync(join(src, dir))) for (const f of readdirSync(join(src, dir))) if (f.endsWith('.webp')) copy(`${dir}/${f}`);
   }
+  // 激情歲月 (docs/rules/24): the facility plates, the UI skin, the intro's backgrounds and the icons (maps/remake/jiqing/);
+  // its houses, facilities, walkers, street life and pads come with its map file's sprites, its cards' pictures with events/.
+  if (existsSync(join(src, 'maps/remake/jiqing'))) for (const f of readdirSync(join(src, 'maps/remake/jiqing'))) if (f.endsWith('.webp')) copy(`maps/remake/jiqing/${f}`);
   for (const n of [617, 618]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
   for (const n of [607, 608]) if (existsSync(join(src, `maps/remake/cards/0${n}.webp`))) copy(`maps/remake/cards/0${n}.webp`);
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.

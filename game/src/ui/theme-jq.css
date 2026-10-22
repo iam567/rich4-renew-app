@@ -1,0 +1,87 @@
+/*
+ * 激情歲月's UI skin (docs/rules/24 §11): only under `.game.theme-jq` (ui/jq-theme.ts adds the class to this map's game
+ * shell), so every other map looks exactly as before. Looks only — no box changes its size: kraft / newsprint paper
+ * with a thin red frame and a red star for the jewels, red-cloth banners with yellow words, enamel-badge buttons
+ * (同意 / 不同意), the news as a 廣播站快訊 sheet, the fate as a 大字報, the result box as a certificate (獎狀), an old
+ * tear-off calendar. The pictures are maps/remake/jiqing/*.webp, set as CSS variables on the shell (--jq-*).
+ */
+
+/* ---------------------------------------------------------------- message boxes and questions */
+.game.theme-jq .msg {
+  color: #3a1a0a;
+  background: #ead6ab var(--jq-kraft) center / cover;
+  border: 3px solid #b3131b;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px #f6e7c0, 0 0 0 6px #b3131b, 0 12px 30px rgba(0, 0, 0, .45);
+}
+.game.theme-jq .msg::before { inset: 6px; border: 1.5px solid rgba(179, 19, 27, .55); border-radius: 6px; }
+.game.theme-jq .msg::after {
+  top: -24px; width: 44px; height: 44px; background: var(--jq-star) center / contain no-repeat;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .35));
+}
+.game.theme-jq .msg-text { text-shadow: none; color: #3a1a0a; }
+.game.theme-jq .msg-text em, .game.theme-jq .msg-text b { color: #c8161d; }
+.game.theme-jq .ribbon {
+  border-radius: 0; border: none; color: #ffe58a; text-shadow: 0 1px 0 #6a0a0a;
+  background: #c8161d var(--jq-banner) center / 100% 100% no-repeat;
+  box-shadow: none; padding: 6px 34px 8px; font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif; font-weight: 900; letter-spacing: 1px;
+}
+.game.theme-jq .ribbon-face { border-color: #ffe58a; }
+
+/* enamel badges: white with a red rim (同意), a blue rim (不同意) */
+.game.theme-jq .candy {
+  color: #7a1010; border: 3px solid #b3131b; border-radius: 999px;
+  background: radial-gradient(120% 90% at 50% 20%, #fffdf4, #efe6d2);
+  box-shadow: 0 4px 0 #7a0c10, 0 6px 10px rgba(0, 0, 0, .28);
+}
+.game.theme-jq .candy:active:not(:disabled) { box-shadow: 0 1px 0 #7a0c10, 0 2px 4px rgba(0, 0, 0, .28); }
+.game.theme-jq .candy.yes { color: #fff; text-shadow: 0 1px 0 #6a0a0a; background: radial-gradient(120% 90% at 50% 20%, #e83a3a, #b3131b); border-color: #fff3d0; box-shadow: 0 4px 0 #6a0a0a, 0 6px 10px rgba(0, 0, 0, .3); }
+.game.theme-jq .candy.no { color: #1a2f6a; text-shadow: none; background: radial-gradient(120% 90% at 50% 20%, #fffdf4, #e8e4da); border-color: #23408a; box-shadow: 0 4px 0 #142a5e, 0 6px 10px rgba(0, 0, 0, .3); }
+.game.theme-jq .candy.ghost { color: #3a1a0a; border-color: #8a6a3a; box-shadow: 0 4px 0 #6a4a20, 0 6px 10px rgba(0, 0, 0, .25); }
+.game.theme-jq .candy.cell { border-radius: 14px; }
+
+/* the facility picker's rule line, choice lists */
+.game.theme-jq .ch-rule { color: #7a1010; }
+
+/* ---------------------------------------------------------------- the news (廣播站快訊) and the fate (大字報) boards */
+.game.theme-jq .nw-scene .nw-bg { display: none; }
+.game.theme-jq .nw-board { background: #efe2c2 var(--jq-newsprint) center / 100% 100%; box-shadow: 0 0 0 4px #b3131b, 0 0 0 7px #f3e2b8, 0 16px 36px rgba(0, 0, 0, .55); border-radius: 6px; }
+.game.theme-jq .nw-scene.news .nw-board::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 40px; background: linear-gradient(#c8161d, #a50f15); }
+.game.theme-jq .nw-scene.news .nw-board::after { content: ''; position: absolute; left: 6px; top: 2px; width: 36px; height: 36px; background: var(--jq-horn) center / contain no-repeat; }
+.game.theme-jq .nw-scene.news .nw-title { left: 46px; color: #ffe58a; text-shadow: 0 2px 0 #5a0808; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; z-index: 1; }
+.game.theme-jq .nw-scene.fate .nw-board { background: #f4efe2 var(--jq-fate) center / 100% 100%; box-shadow: 0 0 0 4px #3a3a3a, 0 16px 36px rgba(0, 0, 0, .55); }
+.game.theme-jq .nw-scene.fate .nw-title { color: #b3131b; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; font-size: 32px; left: 30px; top: 8px; }
+.game.theme-jq .nw-live { background: #fff3cf; color: #b3131b; z-index: 1; }
+.game.theme-jq .nw-live i { background: #b3131b; }
+.game.theme-jq .nw-who { z-index: 1; }
+.game.theme-jq .nw-pic { border: 3px solid #fff8e4; box-shadow: 0 0 0 2px #b3131b; }
+.game.theme-jq .nw-scene.fate .nw-pic { transform: rotate(-.6deg); box-shadow: 0 0 0 2px #3a3a3a, 3px 4px 0 rgba(0, 0, 0, .2); }
+.game.theme-jq .nw-text > div { color: #2a1406; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif; font-weight: 800; }
+.game.theme-jq .nw-scene.fate .nw-text > div { color: #111; }
+.game.theme-jq .nw-text em { color: #c8161d; }
+.game.theme-jq .nw-city { background: #c8161d; color: #ffe58a; }
+.game.theme-jq .nw-tap { color: #7a1010; }
+
+/* ---------------------------------------------------------------- the result box (a certificate, 獎狀) */
+.game.theme-jq .msg.er-box { background: #fbf2d8 var(--jq-award) center / 100% 100%; border: 3px solid #c8161d; }
+.game.theme-jq .er-cat { border-radius: 0; border: none; color: #ffe58a; background: #c8161d var(--jq-banner) center / 100% 100%; box-shadow: none; padding: 3px 22px 5px; }
+.game.theme-jq .er-title { color: #b3131b; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
+.game.theme-jq .er-text, .game.theme-jq .er-name { color: #3a1a0a; }
+.game.theme-jq .er-common { color: #3a1a0a; }
+.game.theme-jq .er-tap { color: #7a1010; }
+
+/* ---------------------------------------------------------------- the calendar (an old tear-off one: red Sundays) */
+.game.theme-jq .cal-year { color: #b3131b; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
+
+/* ---------------------------------------------------------------- the quotation strip and the loudspeakers' banner */
+.game.theme-jq .jq-announce {
+  position: absolute; left: 50%; top: 10px; transform: translateX(-50%); z-index: 6; max-width: min(92%, 640px);
+  display: flex; align-items: center; gap: 8px; padding: 6px 16px 6px 8px; pointer-events: none;
+  color: #ffe58a; font-size: 15px; line-height: 1.3; font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif; font-weight: 800;
+  background: linear-gradient(#c8161d, #9d0d13); border: 2px solid #ffe58a; border-radius: 4px; box-shadow: 0 4px 12px rgba(0, 0, 0, .35);
+  animation: jq-ann-in .4s ease-out both;
+}
+.game.theme-jq .jq-announce.out { opacity: 0; transform: translate(-50%, -10px); transition: opacity .5s, transform .5s; }
+.game.theme-jq .jq-announce .jq-horn { flex: none; width: 30px; height: 30px; background: var(--jq-horn) center / contain no-repeat; }
+@keyframes jq-ann-in { from { opacity: 0; transform: translate(-50%, -14px); } }
+@media (max-width: 480px) { .game.theme-jq .jq-announce { font-size: 12px; top: 6px; } .game.theme-jq .jq-announce .jq-horn { width: 22px; height: 22px; } }

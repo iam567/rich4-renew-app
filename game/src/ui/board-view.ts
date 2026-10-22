@@ -22,6 +22,8 @@ import { ah11Hides, ah11Placements } from './ah11'; // the APARTMENT HOTEL 11 to
 import { cityLotSprite } from './city-lots'; // the five cities' own shops on the small lots
 import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite, KbStreet } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import type { StreetView } from './kb-ambient';
+import { jqBadges, jqFacSprite, jqHouseSprite, jqPadSprite, jqRules } from './jiqing'; // 激情歲月 (docs/rules/24)
+import { JqStreet } from './jq-street';
 import { timeout, watch } from './watchdog';
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
 
@@ -116,16 +118,16 @@ export class BoardView {
   private readonly info: InfoBubble;
   /** A redrawn ground style drawn instead of the original (null: the original). */
   private tiled: TiledGround | null = null;
-  /** 歌舞伎町's passers-by and neon (docs/rules/21 §8); null on every other map. */
-  private readonly street: KbStreet | null;
+  /** 歌舞伎町's passers-by and neon (docs/rules/21 §8), 激情歲月's street (24 §8); null on every other map. */
+  private readonly street: KbStreet | JqStreet | null;
 
   constructor(parent: HTMLElement, readonly game: Game, readonly art: MapArt, readonly bank: SpriteBank) {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'board';
     parent.append(this.canvas);
     this.info = new InfoBubble(parent, bank);
-    this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : null;
-    if (this.street) this.street.ambient.frameInfo = (res, fr) => { const f = this.bank.board('map', res)?.[fr]; return f ? { img: f.img, ax: f.ax, ay: f.ay, w: f.w, h: f.h, scale: f.scale } : null; };
+    this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : jqRules(game) ? new JqStreet(game, art.walkers ?? []) : null;
+    if (this.street instanceof KbStreet) this.street.ambient.frameInfo = (res, fr) => { const f = this.bank.board('map', res)?.[fr]; return f ? { img: f.img, ax: f.ax, ay: f.ay, w: f.w, h: f.h, scale: f.scale } : null; };
     // Opaque: every frame covers the whole canvas, so the page need not blend it with what is behind.
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
     const view = this;
@@ -358,7 +360,7 @@ export class BoardView {
       return true;
     };
     for (const n of b.nodes) {
-      const pad = this.street ? kbPadSprite(g, n.event) : 0;
+      const pad = this.street instanceof KbStreet ? kbPadSprite(g, n.event) : jqPadSprite(g, n);
       if (n.event === 17 || n.event === 18) { if (near(n.x, n.y, 60)) add('map', n.event === 17 ? 9017 : 9018); }
       else if (pad) { if (near(n.x, n.y, 60)) add('map', pad); }
       else if (n.aux && near(n.x, n.y, 60)) add('map', 24);
@@ -504,7 +506,7 @@ export class BoardView {
   /** The sprite a lot shows now (a building, or the owner's flag on an empty one), as `draw` draws it. */
   private landSprite(l: { level: number; chain: number | boolean; owner: number; facing: number }): { res: number; frame: number; tint?: number } | null {
     const b = this.game.board;
-    if (l.level) return { res: kbHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
+    if (l.level) return { res: kbHouseSprite(this.game, l) ?? jqHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
     if (l.owner) return { res: 25, frame: this.game.players[l.owner - 1]?.character ?? 0 };
     return null;
   }
@@ -512,6 +514,8 @@ export class BoardView {
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
     const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
     if (fa.level) {
+      const jq = jqFacSprite(this.game, fa); // 激情歲月's five facilities (docs/rules/24 §2)
+      if (jq) return { res: jq, frame: buildingFrame(0, this.rot) };
       const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa) ?? hotelSprite(fa, this.game.settings.mapId); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21), the redrawn hotels
       const id = (fa as { id?: number }).id, at = fa as { x?: number; y?: number };
       if (own && hotelSprite(fa, this.game.settings.mapId) && id !== undefined && at.x !== undefined && at.y !== undefined) return { res: own, frame: buildingFrame(this.roadFacing(id + 4000, at.x, at.y), this.rot) };
@@ -1371,7 +1375,8 @@ export class BoardView {
         continue;
       }
       // 歌舞伎町 (docs/rules/21 §7.1): 柏青哥店 / 拉霸店 have their own pads (map sprites 9019 / 9020, the same size).
-      const pad = this.street ? kbPadSprite(g, n.event) : 0;
+      // 激情歲月 (docs/rules/24 §4): every pad redrawn in the era's look (map sprites 9100 + aux, 9150 the branch bank).
+      const pad = this.street instanceof KbStreet ? kbPadSprite(g, n.event) : jqPadSprite(g, n);
       if (pad) {
         const p = visible(n.x, n.y, 60);
         if (p) this.sprite('map', pad, 0, p.x, p.y);
@@ -1401,7 +1406,7 @@ export class BoardView {
       const fr = buildingFrame(l.facing, this.rot);
       if (l.tmpState) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
       if (l.level) {
-        const res = kbHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
+        const res = kbHouseSprite(g, l) ?? jqHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
         add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
       } else if (l.owner) {
         const ch = g.players[l.owner - 1]?.character ?? 0;
@@ -1416,10 +1421,11 @@ export class BoardView {
       let fr = buildingFrame(0, this.rot);
       if (fa.tmpState) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
-        if (hotelSprite(fa, this.game.settings.mapId)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
+        const jq = jqFacSprite(g, fa); // 激情歲月's five facilities (docs/rules/24 §2)
+        if (!jq && hotelSprite(fa, this.game.settings.mapId)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
         // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
-        const res = casinoSprite(fa) ?? kbShopSprite(g, fa) ?? hotelSprite(fa, this.game.settings.mapId) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
+        const res = jq ?? casinoSprite(fa) ?? kbShopSprite(g, fa) ?? hotelSprite(fa, this.game.settings.mapId) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
         add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.neon(res, fr, p.x, p.y, fa.id + 4000); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
       } else if (fa.owner) {
         const ch = g.players[fa.owner - 1]?.character ?? 0;
@@ -1601,7 +1607,7 @@ export class BoardView {
 
   /** 歌舞伎町's neon (docs/rules/21 §8.2) over a landmark, shop or house just drawn at (sx, sy). */
   private neon(res: number, frame: number, sx: number, sy: number, id: number) {
-    if (!this.street || !KbStreet.glows(res)) return;
+    if (!(this.street instanceof KbStreet) || !KbStreet.glows(res)) return;
     const f = this.bank.board('map', res)?.[frame];
     if (!f) return;
     const s = this.zoom * f.scale;
@@ -1613,7 +1619,7 @@ export class BoardView {
     const g = this.game, ctx = this.ctx, z = this.zoom;
     const fs = Math.max(11, Math.min(15, 11 * z));
     for (const p of g.players) {
-      const list = kbBadges(g, p.id), a = this.actors.get(p.id);
+      const list = [...kbBadges(g, p.id), ...jqBadges(g, p.id)], a = this.actors.get(p.id);
       if (!list.length || !a?.visible || g.offRoad(p)) continue;
       const w = this.at(a), q = this.project(w.x, w.y);
       // Above the head, and above a carried bomb's count.

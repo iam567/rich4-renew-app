@@ -4,6 +4,7 @@
  */
 import { blindsTag, chipMode } from './finale';
 import { kbPanelTags } from './kabukicho'; // 歌舞伎町's signs (docs/rules/21)
+import { jqPanelTags, shownYear } from './jiqing'; // 激情歲月's 學習班 sign, the year from 1966 (docs/rules/24)
 import { CHARACTERS, playerName } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
@@ -77,7 +78,7 @@ export class PlayerPanel {
       <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
       ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
-      ${kbPanelTags(g, p)}
+      ${kbPanelTags(g, p)}${jqPanelTags(g, p)}
       ${g.world ? g.world.hooks.overlordTitles(p).map((t, i) => `<div class="pp-overlord" style="--i:${i}">${t}</div>`).join('') : ''}
       ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
         <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}
@@ -160,7 +161,7 @@ export class Calendar {
       ${this.monthView ? '' : `${sun ? `<img class="cal-icon" src="${sun.src}" style="left:22px;top:20px" alt="">` : ''}${moon ? `<img class="cal-icon" src="${moon.src}" style="left:52px;top:21px" alt="">` : ''}`}
       <button class="cal-hit" data-view="day" style="left:8px" aria-label="日視圖"></button>
       <button class="cal-hit" data-view="month" style="left:38px" aria-label="月視圖"></button>
-      <div class="cal-year">${year(d)}</div><div class="cal-month">${m}月</div>${body}${wxBox}`;
+      <div class="cal-year">${shownYear(this.game, d)}</div><div class="cal-month">${m}月</div>${body}${wxBox}`;
   }
 }
 

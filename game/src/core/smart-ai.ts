@@ -25,7 +25,7 @@ import type { Game } from './game';
 import type { Player } from './types';
 
 /** Facility level caps by type (ref_00474940; the core's FACILITY_MAX_LEVEL, copied to keep the import one way). */
-const FAC_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
+const FAC_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5];
 /** Object types (objects.ts OBJ). */
 const O = { SmallWealth: 1, BigWealth: 2, SmallFortune: 3, BigFortune: 4, SmallPoor: 5, BigPoor: 6, SmallBad: 7, BigBad: 8, Angel: 9, Devil: 10, Dog: 11, EarthGod: 12, Gift: 13, Chest: 14, Death: 15, Roadblock: 16, Mine: 17, TimeBomb: 18 } as const;
 

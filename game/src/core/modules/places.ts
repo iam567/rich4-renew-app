@@ -47,6 +47,7 @@ export const MAGIC_NAMES = [
 export const MAGIC_GROUPS = ['資產最多', '土地最多', '房屋最多', '現金最多', '存款最多', '點券最多', '步行者', '騎機車者', '開汽車者', '有神附身者', '所有男性', '所有女性'];
 /** Facility level caps by type (ref_00474940). */
 const FACILITY_MAX = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19)
+FACILITY_MAX[14] = 5; // 激情歲月's 宣傳站 (docs/rules/24 §2.4); 10..13 stay as they were
 
 interface Seat { p: Player; flag: number; permanent: boolean; max: number; out: boolean }
 
