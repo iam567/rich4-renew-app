@@ -13,10 +13,10 @@ export const JQ_FAC_NAMES: Record<number, string> = { 0: '人民公園', 1: '招
 /** The picker's rule line under the plates (§2.6). */
 export const JQ_FAC_RULES: Record<number, string> = {
   0: '地主停下抽好事卡，別人停下抽壞事卡・不收費、不能升級',
-  1: '住宿轉盤 1–4 天，付費並住下（同原版旅館）',
-  2: '消費轉盤 ×1–6，憑票購買（同原版購物中心）',
+  1: '住宿轉盤 1–4 天，付費並住下',
+  2: '消費轉盤 ×1–6，憑票購買',
   [T_XUAN]: '騎車開車的人罰款＋學習班2天・可升到5級',
-  4: '同原版研究所：自己停下時研發道具',
+  4: '自己停下時研發道具',
 };
 /** The plates' pictures (maps/remake/jiqing/plate-<name>.webp). */
 export const JQ_FAC_PLATE: Record<number, string> = { 0: 'park', 1: 'guesthouse', 2: 'coop', [T_XUAN]: 'xuanchuan', 4: 'institute' };
