@@ -1,0 +1,75 @@
+/* 道具 / 高級卡片 cinematics (tool-cinema.ts): painted shots cut with camera moves, in a letterbox, as icbm-flight.css */
+.tc { position: absolute; inset: 0; overflow: hidden; background: #000; z-index: 30; cursor: pointer; touch-action: none; --c: #ffd27a; }
+.tc-shot { position: absolute; inset: 0; opacity: 0; transition: opacity .3s; overflow: hidden; }
+.tc-shot.on { opacity: 1; }
+.tc.out .tc-shot.on { opacity: 0; transition-duration: .25s; }
+.tc-cam { position: absolute; inset: 0; }
+.tc-cam img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+/* camera moves, each over the shot's length (--d) */
+.tc-shot.on.cam-push img { animation: tc-push var(--d) ease-out forwards; }
+.tc-shot.on.cam-pull img { animation: tc-pull var(--d) ease-out forwards; }
+.tc-shot.on.cam-panl img { animation: tc-panl var(--d) ease-in-out forwards; }
+.tc-shot.on.cam-panr img { animation: tc-panr var(--d) ease-in-out forwards; }
+.tc-shot.on.cam-rise img { animation: tc-rise var(--d) ease-out forwards; }
+.tc-shot.on.cam-sink img { animation: tc-sink var(--d) ease-out forwards; }
+.tc-shot.on.cam-dive img { animation: tc-dive var(--d) cubic-bezier(.6, 0, 1, .7) forwards; }
+@keyframes tc-push { from { transform: scale(1.04); } to { transform: scale(1.3); } }
+@keyframes tc-pull { from { transform: scale(1.38); } to { transform: scale(1.04); } }
+@keyframes tc-panl { from { transform: scale(1.22) translateX(6%); } to { transform: scale(1.22) translateX(-6%); } }
+@keyframes tc-panr { from { transform: scale(1.22) translateX(-6%); } to { transform: scale(1.22) translateX(6%); } }
+/* rise: the camera tilts up (the picture slides down); sink: it tilts down */
+@keyframes tc-rise { from { transform: scale(1.22) translateY(-6%); } to { transform: scale(1.28) translateY(7%); } }
+@keyframes tc-sink { from { transform: scale(1.25) translateY(7%); } to { transform: scale(1.14) translateY(-5%); } }
+@keyframes tc-dive { from { transform: scale(1); } to { transform: scale(2.3); } }
+/* shakes on the camera, the sepia of a rewind, a white flash as the shot cuts in */
+.tc-shot.on.fx-shake .tc-cam { animation: tc-shake .05s 24 alternate; }
+.tc-shot.on.fx-quake .tc-cam { animation: tc-quake .04s 34 alternate; }
+@keyframes tc-shake { to { translate: 2px -2px; } }
+@keyframes tc-quake { to { translate: -6px 5px; } }
+.tc-shot.fx-sepia img { filter: sepia(.75) saturate(1.2) contrast(1.05); }
+.tc-shot.on.fx-flash::after { content: ''; position: absolute; inset: 0; background: #fff; z-index: 3; pointer-events: none; animation: tc-flash .7s ease-out forwards; }
+@keyframes tc-flash { from { opacity: 1; } to { opacity: 0; } }
+/* particles: rising sparks, falling snow / coins / petals / feathers */
+.tc-sparks, .tc-fall { position: absolute; inset: 0; pointer-events: none; }
+.tc-sparks i, .tc-fall i { position: absolute; left: calc(var(--x) * 1%); width: calc(5px * var(--s)); height: calc(5px * var(--s)); border-radius: 50%;
+  background: var(--c); box-shadow: 0 0 8px 2px var(--c); }
+.tc-sparks i { bottom: -4%; animation: tc-up 1.5s var(--dl) linear infinite; }
+.tc-fall i { top: -4%; opacity: .9; animation: tc-down 2s var(--dl) linear infinite; }
+@keyframes tc-up { to { transform: translate(calc((var(--x) - 50) * .6px), -110vh); opacity: 0; } }
+@keyframes tc-down { to { transform: translate(calc((var(--x) - 50) * -.5px), 110vh) rotate(260deg); } }
+/* light */
+.tc-glow { position: absolute; inset: 0; pointer-events: none; mix-blend-mode: screen; opacity: .55;
+  background: radial-gradient(48% 42% at 50% 55%, var(--c), transparent 72%); animation: tc-pulse .5s infinite alternate; }
+@keyframes tc-pulse { to { opacity: .3; } }
+.tc-beam { position: absolute; left: 50%; top: -5%; bottom: -5%; width: 22%; transform: translateX(-50%); pointer-events: none; mix-blend-mode: screen;
+  background: linear-gradient(90deg, transparent, var(--c) 40%, #fff 50%, var(--c) 60%, transparent); opacity: .7; animation: tc-beam .9s ease-out forwards; }
+@keyframes tc-beam { from { transform: translateX(-50%) scaleX(0); } 40% { transform: translateX(-50%) scaleX(1.2); } to { transform: translateX(-50%) scaleX(1); } }
+.tc-swirl { position: absolute; inset: -40%; pointer-events: none; mix-blend-mode: screen; opacity: .45;
+  background: repeating-conic-gradient(from 0deg at 50% 50%, var(--c) 0deg 6deg, transparent 6deg 30deg);
+  -webkit-mask: radial-gradient(circle, #000 10%, transparent 60%); mask: radial-gradient(circle, #000 10%, transparent 60%); animation: tc-spin 1.4s linear infinite; }
+@keyframes tc-spin { to { transform: rotate(360deg); } }
+.tc-speed { position: absolute; inset: -20%; pointer-events: none; background: repeating-conic-gradient(from 0deg at 50% 50%, rgba(255,255,255,.35) 0deg 1.5deg, transparent 1.5deg 9deg);
+  -webkit-mask: radial-gradient(circle, transparent 28%, #000 62%); mask: radial-gradient(circle, transparent 28%, #000 62%); animation: tc-turn 1.2s linear infinite; }
+@keyframes tc-turn { to { transform: rotate(20deg); } }
+.tc-flicker { position: absolute; inset: 0; pointer-events: none; background: var(--c); mix-blend-mode: screen; opacity: 0; animation: tc-flicker 1s steps(1) infinite; }
+@keyframes tc-flicker { 0% { opacity: 0; } 12% { opacity: .55; } 16% { opacity: 0; } 22% { opacity: .35; } 26%, 100% { opacity: 0; } }
+.tc-aim { position: absolute; left: 50%; top: 58%; width: 22vmin; height: 22vmin; transform: translate(-50%, -50%); border: 3px solid #ff3a3a; border-radius: 50%;
+  box-shadow: 0 0 0 2px #fff, 0 0 24px #f00; animation: tc-aim .3s infinite alternate; }
+.tc-aim::before, .tc-aim::after { content: ''; position: absolute; left: 50%; top: -22%; height: 144%; width: 3px; background: #ff3a3a; transform: translateX(-50%); }
+.tc-aim::after { transform: translateX(-50%) rotate(90deg); }
+@keyframes tc-aim { to { transform: translate(-50%, -50%) scale(.85); } }
+/* letterbox, who uses it, the titles */
+.tc-bars i { position: absolute; left: 0; right: 0; height: 11%; background: #000; z-index: 5; }
+.tc-bars i:first-child { top: 0; } .tc-bars i:last-child { bottom: 0; }
+.tc-who { position: absolute; left: 12px; top: calc(11% + 10px); z-index: 6; display: flex; align-items: center; gap: 8px; opacity: 0; transform: translateX(-30px); transition: opacity .35s, transform .35s; }
+.tc.intro .tc-who { opacity: 1; transform: none; }
+.tc-face { width: clamp(44px, 11vmin, 72px); aspect-ratio: 1; border-radius: 50%; overflow: hidden; border: 3px solid #fff; box-shadow: 0 0 14px var(--c, #ffd27a), 0 2px 0 #000; background: #2a2a3a; }
+.tc-face img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.tc-icon img { height: clamp(40px, 10vmin, 66px); display: block; filter: drop-shadow(0 0 10px rgba(255, 220, 120, .9)); }
+.tc-title { position: absolute; left: 0; right: 0; bottom: 13%; z-index: 6; text-align: center; color: #fff; opacity: 0; pointer-events: none; }
+.tc-title b { display: block; font-size: clamp(26px, 8vmin, 54px); font-weight: 900; letter-spacing: .12em; text-shadow: 0 0 18px rgba(255, 150, 60, .9), 0 3px 0 #000; }
+.tc-title small { display: block; margin-top: 4px; font-size: clamp(13px, 3.4vmin, 20px); letter-spacing: .5em; color: #ffd27a; text-shadow: 0 2px 0 #000; }
+.tc-title.in { animation: tc-title 1.6s ease-out forwards; }
+@keyframes tc-title { 0% { opacity: 0; transform: scale(1.25); letter-spacing: .4em; } 18% { opacity: 1; transform: scale(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+.tc-skip { position: absolute; right: 12px; top: calc(11% + 6px); z-index: 7; color: rgba(255,255,255,.65); font-size: 12px; }
+@media (prefers-reduced-motion: reduce) { .tc-shot img, .tc-cam { animation: none !important; } }

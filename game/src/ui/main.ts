@@ -43,6 +43,7 @@ import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import './tycoon-onway';
+import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
