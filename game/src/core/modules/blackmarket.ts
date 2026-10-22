@@ -50,7 +50,7 @@ export class BlackMarket {
   }
 
   private rng(salt: number): Rng {
-    return new Rng(daySeed((this.g.settings.seed ^ 0x6b1ac4 ^ salt) >>> 0, this.g.daysElapsed));
+    return new Rng(daySeed((this.g.rollSeed() ^ 0x6b1ac4 ^ salt) >>> 0, this.g.daysElapsed));
   }
 
   price(l: Listing): number {

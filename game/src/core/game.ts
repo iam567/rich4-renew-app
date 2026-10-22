@@ -266,6 +266,14 @@ export class Game {
   readonly board: Board;
   readonly players: Player[];
   readonly rng: Rng;
+  /**
+   * Mixed into the random streams' seeds after a save is loaded (issue #5: reloading a save rolled exactly the same
+   * dice every time — the original reseeds from the clock on loading, rich4_save_files.asm). 0 in a fresh game, so
+   * new games, replays and the golden tests are unchanged; kept in the save.
+   */
+  rngSalt = 0;
+  /** The seed the day's random streams derive from: the game seed, salted after a load. */
+  rollSeed(): number { return (this.settings.seed ^ this.rngSalt) >>> 0; }
   readonly fund: number;
   readonly stocks: Stocks;
   readonly cards: Cards;
@@ -741,7 +749,7 @@ export class Game {
     this.rules?.daily?.(this); // 大富翁城 (docs/rules/19): no stock market, nothing denied on sale
     this.updatePriceIndex();
     // The original reseeds from the clock here; the remake derives the seed from the game seed and day.
-    this.rng.reseed(daySeed(this.settings.seed, this.daysElapsed));
+    this.rng.reseed(daySeed(this.rollSeed(), this.daysElapsed));
     yield* this.stocks.daily();
     if (dayOf(this.date) === 15) {
       yield* this.stocks.dividends();

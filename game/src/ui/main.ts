@@ -4,7 +4,7 @@ import { CHARACTERS, playerName } from '../core/characters';
 import { format, today } from '../core/date';
 import { Game, SPEED } from '../core/game';
 import { nodeById } from '../core/board';
-import { loadGame, saveGame, type SaveData } from '../core/save';
+import { loadGame, reshuffleGame, saveGame, type SaveData } from '../core/save';
 import type { Answer, GameSettings } from '../core/types';
 import { ASSETS, loadMap, mapList, type MapInfo } from './assets';
 import { BoardView } from './board-view';
@@ -490,7 +490,12 @@ async function resume(slot: number) {
   }
   const saved = data;
   // Names of stocks and companies from the map as it is now (a city that got its own local firms later).
-  begin(saved.settings.mapId, board => { const g = loadGame(saved, board); if (!ledgerOf(g.players)) attachLedger(g.players); return g; }, true);
+  begin(saved.settings.mapId, board => {
+    const g = loadGame(saved, board);
+    reshuffleGame(g, crypto.getRandomValues(new Uint32Array(1))[0]); // issue #5: not the same dice as the last time from this save
+    if (!ledgerOf(g.players)) attachLedger(g.players);
+    return g;
+  }, true);
 }
 
 /** The loading screen (ui/loading.ts) alone on the page. */

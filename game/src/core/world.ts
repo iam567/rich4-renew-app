@@ -343,6 +343,8 @@ export class World implements WorldHooks {
 
   // ---------------------------------------------------------------- queries
 
+  /** Like Game.rngSalt (issue #5): mixed into the cities' daily seeds after a load; 0 in a fresh world. */
+  rngSalt = 0;
   citySeed(index: number): number { return (this.settings.seed + Math.imul(index + 1, 0x632be5ab)) >>> 0; }
   mapId(index: number): number { return this.settings.maps[index]; }
   cityName(index: number): string { return CITY_NAMES[this.mapId(index)] ?? `城市${index + 1}`; }
@@ -1343,7 +1345,7 @@ export class World implements WorldHooks {
     this.mask(this.view());
     yield { t: 'day', date, newMonth };
     this.updatePriceIndex();
-    this.cities.forEach((c, i) => c.rng.reseed(daySeed(this.citySeed(i), this.daysElapsed)));
+    this.cities.forEach((c, i) => c.rng.reseed(daySeed((this.citySeed(i) ^ this.rngSalt) >>> 0, this.daysElapsed)));
     for (const [i, c] of this.cities.entries()) { if (!this.finale.runs(i)) continue; this.mask(i); this.drain(i, c.stocks.daily()); }
     this.mask(this.view());
     yield { t: 'fx', kind: 'stocks-updated' };

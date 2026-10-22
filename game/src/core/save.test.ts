@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
 import { Game, type Flow } from './game';
 import { pack } from './date';
-import { loadGame, saveGame } from './save';
+import { loadGame, reshuffleGame, saveGame } from './save';
 import type { GameSettings } from './types';
 
 const mapFile = (id: number) => fileURLToPath(new URL(`../../../editor/site/assets/map-${id}.json`, import.meta.url));
@@ -46,5 +46,50 @@ describe.skipIf(!existsSync(mapFile(2)))('saved games', () => {
       expect(b.daysElapsed).toBe(a.daysElapsed);
       expect(comparable(b)).toEqual(comparable(a));
     }
+  });
+});
+
+function newTestGameForReshuffle(): Game {
+  const board = parseBoard(JSON.parse(readFileSync(mapFile(2), 'utf8')) as RawMap);
+  const settings: GameSettings = {
+    mapId: 2, players: [0, 4, 9, 11].map(character => ({ character, human: false })),
+    fundIndex: 1, traffic: 1, landLimitIndex: 2, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 14), seed: 4242,
+  };
+  const g = new Game(settings, board);
+  until(g.run(), () => g.daysElapsed >= 5);
+  return g;
+}
+
+describe.skipIf(!existsSync(mapFile(2)))('issue #5: a loaded game rolls new dice', () => {
+  it('the same save loaded twice with different salts rolls differently; salt 0 keeps the old behaviour; the salt is saved', () => {
+    const g = newTestGameForReshuffle();
+    const data = saveGame(g);
+    const rolls = (salt: number | null) => {
+      const h = loadGame(JSON.parse(JSON.stringify(data)));
+      if (salt !== null) reshuffleGame(h, salt);
+      return Array.from({ length: 12 }, () => h.rng.rand() % 6 + 1).join('');
+    };
+    expect(rolls(null)).toBe(rolls(null));
+    expect(rolls(123)).not.toBe(rolls(null));
+    expect(rolls(123)).not.toBe(rolls(456));
+    const h = loadGame(JSON.parse(JSON.stringify(data)));
+    reshuffleGame(h, 777);
+    const again = loadGame(JSON.parse(JSON.stringify(saveGame(h))));
+    expect(again.rngSalt).toBe(777);
+    expect(again.rollSeed()).toBe(h.rollSeed());
+  });
+});
+
+describe.skipIf(!existsSync(mapFile(2)))('issue #5: the days after a reshuffled load differ too', () => {
+  it('a salted game plays a different game over the next days (the daily reseed includes the salt)', () => {
+    const data = JSON.parse(JSON.stringify(saveGame(newTestGameForReshuffle())));
+    const play = (salt: number) => {
+      const h = loadGame(JSON.parse(JSON.stringify(data)));
+      if (salt) reshuffleGame(h, salt);
+      until(h.run(), () => h.daysElapsed >= 20);
+      return h.players.map(p => `${p.node}:${p.cash}`).join(',');
+    };
+    expect(play(0)).toBe(play(0));
+    expect(play(99)).not.toBe(play(0));
   });
 });

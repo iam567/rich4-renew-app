@@ -8,6 +8,7 @@
 import type { Board } from './board';
 import { Game } from './game';
 import { STOCK_TABLE } from './modules/stocks';
+import { daySeed } from './rng';
 import type { GameSettings, Player } from './types';
 import type { FinaleState } from './finale';
 import { World, type TickerLine, type TycoonSettings } from './world';
@@ -27,7 +28,7 @@ export interface SaveData {
   players: Player[];
   game: {
     date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number;
-    diceTotal: number; lotteryPool: number; rng: number;
+    diceTotal: number; lotteryPool: number; rng: number; rngSalt?: number;
   };
   modules: Record<string, Record<string, unknown>>;
   /** The statistics ledger (core/stats.ts), when the game kept one; older saves have none. */
@@ -60,6 +61,7 @@ export function saveGame(g: Game): SaveData {
     game: {
       date: g.date, daysElapsed: g.daysElapsed, monthsElapsed: g.monthsElapsed, priceIndex: g.priceIndex,
       current: g.current, diceTotal: g.diceTotal, lotteryPool: g.lotteryPool, rng: g.rng.seed,
+      ...(g.rngSalt ? { rngSalt: g.rngSalt } : {}),
     },
     modules,
     ...(g.stats ? { stats: g.stats.save() } : {}),
@@ -99,6 +101,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
     current: s.game.current, diceTotal: s.game.diceTotal, lotteryPool: s.game.lotteryPool,
   });
   g.rng.reseed(s.game.rng);
+  g.rngSalt = s.game.rngSalt ?? 0;
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
   repairCardPool(g);
   g.forks.afterLoad(s.modules.forks);
@@ -123,7 +126,7 @@ export interface WorldSaveData {
   players: Player[];
   cities: { board: Board; game: SaveData['game']; modules: SaveData['modules'] }[];
   world: {
-    date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number; rng: number;
+    date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number; rng: number; rngSalt?: number;
     landed: boolean[]; log: TickerLine[]; fallen: World['fallen']; history: World['history']; visited: number[][];
     lastTrip?: number[]; lastFrom?: number[]; wantedFrom?: number[][]; overlords?: number[];
     /** The cities share one card pool (17 §3.10); older saves kept one per city. */
@@ -168,7 +171,7 @@ export function saveWorld(w: World): WorldSaveData {
     cities: w.cities.map(cityState),
     world: {
       date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex,
-      current: w.current, rng: w.rng.seed, landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
+      current: w.current, rng: w.rng.seed, ...(w.rngSalt ? { rngSalt: w.rngSalt } : {}), landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
       history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords], sharedPool: true,
       ...(w.finale.active ? { finale: w.finale.save() } : {}),
     },
@@ -210,6 +213,8 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     lastTrip: [...(x.lastTrip ?? [])], lastFrom: [...(x.lastFrom ?? [])], wantedFrom: plain(x.wantedFrom ?? w.players.map(() => [])), overlords: [...(x.overlords ?? [])],
   });
   w.rng.reseed(x.rng);
+  w.rngSalt = x.rngSalt ?? 0;
+  for (const c of w.cities) c.rngSalt = w.rngSalt;
   w.finale.restore(x.finale);
   // One nationwide card pool (17 §3.10): the cities' saved copies are the same array again (an older save's own pools
   // are added up); each city's 通緝卡 follows wantedFrom.
@@ -219,4 +224,19 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
   w.mask(w.view());
   if (s.stats) attachLedger(w.players, Ledger.load(s.stats, w.players.length));
   return w;
+}
+
+/**
+ * A loaded game rolls differently from the last time it was played from that save (issue #5: 「反復讀一個存檔後，每次擲出的
+ * 骰子數完全一樣」 — the original reseeds from the clock when loading, rich4_save_files.asm). `salt` comes from the screen
+ * (crypto random); the rules stay deterministic from here on, so a game can still be replayed from the new save.
+ */
+export function reshuffleGame(g: Game, salt: number): void {
+  g.rngSalt = (salt >>> 0) || 1;
+  g.rng.reseed(daySeed((g.rollSeed() ^ 0x51ed5eed) >>> 0, g.daysElapsed));
+}
+export function reshuffleWorld(w: World, salt: number): void {
+  w.rngSalt = (salt >>> 0) || 1;
+  w.rng.reseed(daySeed((w.settings.seed ^ w.rngSalt) >>> 0, w.daysElapsed));
+  w.cities.forEach((c, i) => { c.rngSalt = w.rngSalt; c.rng.reseed(daySeed((w.citySeed(i) ^ w.rngSalt) >>> 0, w.daysElapsed)); });
 }

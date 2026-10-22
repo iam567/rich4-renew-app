@@ -187,7 +187,7 @@ export abstract class CasinoRules implements MapRules {
 
   /** The visit's own random stream (§5.3): seed, day, player, square. */
   visitRng(g: Game, p: Player): Rng {
-    return new Rng(daySeed((g.settings.seed ^ 0xca5170 ^ Math.imul(p.id + 1, 0x9e3779b1) ^ Math.imul(p.node + 1, 0x85ebca6b)) >>> 0, g.daysElapsed));
+    return new Rng(daySeed((g.rollSeed() ^ 0xca5170 ^ Math.imul(p.id + 1, 0x9e3779b1) ^ Math.imul(p.node + 1, 0x85ebca6b)) >>> 0, g.daysElapsed));
   }
 
   /**

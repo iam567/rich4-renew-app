@@ -7,7 +7,7 @@ import { parseBoard, type RawMap } from '../core/board';
 import { CHARACTERS } from '../core/characters';
 import type { Ask, GameEvent, TravelOption } from '../core/types';
 import { applyOverlay, CITY_NAMES, LAND_INDEX, mergeLines, RESORT, TYCOON_SPRITES, World, type TickerLine, type TycoonOverlay, type TycoonSettings } from '../core/world';
-import { loadWorld as restoreWorld, type WorldSaveData } from '../core/save';
+import { loadWorld as restoreWorld, reshuffleWorld, type WorldSaveData } from '../core/save';
 import { ASSETS, loadMapData, type MapSprites } from './assets';
 import type { SpriteBank } from './sprites';
 import { askScreens, fxScreens, type ScreenContext } from './screens/registry';
@@ -41,7 +41,9 @@ export async function newWorld(settings: TycoonSettings): Promise<World> {
 
 /** A saved world, with the stock and company names of the maps as they are now. */
 export async function resumeWorld(save: WorldSaveData): Promise<World> {
-  return restoreWorld(save, await boards(save.settings.maps));
+  const w = restoreWorld(save, await boards(save.settings.maps));
+  reshuffleWorld(w, crypto.getRandomValues(new Uint32Array(1))[0]); // issue #5: not the same dice as last time
+  return w;
 }
 
 /** The overlay's pads and buildings (maps/remake/sprites/NNNN/frames.json) into the sprite bank. */

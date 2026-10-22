@@ -147,7 +147,7 @@ export class KabukichoRules implements MapRules {
   stream(salt: number, p: number): Rng {
     const g = this.g;
     this.s.draws = (this.s.draws + 1) >>> 0;
-    return new Rng(daySeed((g.settings.seed ^ salt ^ Math.imul(p + 2, 0x9e3779b1) ^ Math.imul(this.s.draws, 0x85ebca6b)) >>> 0, g.daysElapsed));
+    return new Rng(daySeed((g.rollSeed() ^ salt ^ Math.imul(p + 2, 0x9e3779b1) ^ Math.imul(this.s.draws, 0x85ebca6b)) >>> 0, g.daysElapsed));
   }
 
   // ---------------------------------------------------------------- helpers
