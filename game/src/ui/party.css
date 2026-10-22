@@ -121,3 +121,39 @@
 .pc-vote { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; color: #fff; padding: 6px 8px; border-radius: 12px; background: rgba(255,255,255,.12); }
 .pc-vote b { font-weight: 400; color: #ffe14a; } .pc-vote span { grid-column: 1; font-size: 12px; opacity: .85; }
 .pc-vote em, .pc-vote .chip { grid-row: 1 / 3; grid-column: 2; font-style: normal; font-size: 12px; }
+
+/* 嘲諷 (PartyBar.taunted): the sender's character pops up big on the taunted phone, taunting, with the words */
+.pc-tt-who { display: flex; flex-wrap: wrap; gap: 6px; margin: 6px 0; }
+.pc-tt-who .chip { display: inline-flex; align-items: center; gap: 4px; }
+.pc-tt-who img { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
+.pc-tt-lines { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.pc-tt-lines .chip { display: flex; align-items: center; gap: 6px; text-align: left; padding: 4px 8px 4px 4px; min-height: 48px; }
+.pc-tt-lines .chip:disabled { opacity: .45; }
+.pc-tt-img { width: 40px; height: 40px; object-fit: contain; flex: none; }
+.pc-line.taunt span { color: #ffb36b; }
+.pt-taunt { position: absolute; inset: 0; z-index: 60; display: grid; place-items: center; align-content: center; gap: 4px;
+  background: radial-gradient(circle at 50% 46%, rgba(255, 90, 40, .28), rgba(30, 0, 40, .62) 70%); animation: ptt-bg .3s ease-out; transition: opacity .3s; }
+.pt-taunt.out { opacity: 0; }
+.ptt-rays { position: absolute; left: 50%; top: 46%; width: 160vmax; height: 160vmax; margin: -80vmax 0 0 -80vmax; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 220, 90, .16) 0 8deg, transparent 8deg 20deg); animation: ptt-spin 6s linear infinite; }
+.ptt-who { position: relative; display: flex; align-items: center; gap: 8px; padding: 6px 14px 6px 6px; border-radius: 999px; background: rgba(20, 10, 40, .85);
+  color: #fff; font-size: 18px; box-shadow: 0 2px 10px rgba(0, 0, 0, .4); animation: ptt-drop .35s cubic-bezier(.3, 1.6, .5, 1); }
+.ptt-who img { width: 34px; height: 34px; border-radius: 50%; object-fit: cover; }
+.ptt-who b { color: #ffe14a; }
+.ptt-img { position: relative; width: min(62vw, 300px); max-height: 46vh; object-fit: contain; filter: drop-shadow(0 6px 14px rgba(0, 0, 0, .5));
+  animation: ptt-pop .45s cubic-bezier(.3, 1.7, .5, 1), ptt-wiggle .5s ease-in-out .45s 5 alternate; transform-origin: 50% 90%; }
+.pt-taunt.point .ptt-img { animation: ptt-pop .45s cubic-bezier(.3, 1.7, .5, 1), ptt-jab .22s ease-in-out .45s 11 alternate; }
+.pt-taunt.yawn .ptt-img { animation: ptt-pop .45s cubic-bezier(.3, 1.7, .5, 1), ptt-sway 1.1s ease-in-out .45s 3 alternate; }
+.ptt-say { position: relative; max-width: min(86vw, 420px); padding: 10px 18px; border-radius: 18px; background: #fff; color: #1a1030;
+  font-size: 22px; font-weight: 700; text-align: center; box-shadow: 0 4px 0 #ff7a2a, 0 6px 16px rgba(0, 0, 0, .4); animation: ptt-drop .4s cubic-bezier(.3, 1.6, .5, 1) .2s both; }
+.ptt-say::before { content: ''; position: absolute; left: 50%; top: -12px; margin-left: -10px; border: 10px solid transparent; border-top: 0; border-bottom: 12px solid #fff; }
+.pt-shake { animation: ptt-shake .5s ease-in-out; }
+@keyframes ptt-bg { from { opacity: 0; } }
+@keyframes ptt-spin { to { transform: rotate(360deg); } }
+@keyframes ptt-drop { from { transform: translateY(-30px) scale(.6); opacity: 0; } }
+@keyframes ptt-pop { from { transform: scale(.2) rotate(-20deg); opacity: 0; } }
+@keyframes ptt-wiggle { from { transform: rotate(-6deg); } to { transform: rotate(6deg); } }
+@keyframes ptt-jab { from { transform: translateY(0) scale(1); } to { transform: translateY(-6px) scale(1.06); } }
+@keyframes ptt-sway { from { transform: rotate(-4deg) translateX(-6px); } to { transform: rotate(4deg) translateX(6px); } }
+@keyframes ptt-shake { 0%, 100% { transform: none; } 20% { transform: translate(-6px, 2px); } 40% { transform: translate(6px, -2px); } 60% { transform: translate(-4px, 1px); } 80% { transform: translate(3px, 0); } }
+@media (prefers-reduced-motion: reduce) { .ptt-rays, .ptt-img, .pt-shake { animation: none !important; } }

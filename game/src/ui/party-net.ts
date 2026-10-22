@@ -557,7 +557,7 @@ export class Room {
 
   /** Sends a line (at most 40 characters). */
   say(text: string) {
-    const t = text.trim().slice(0, 40);
+    const t = /^\[t:[^\]]+\]$/.test(text) ? text.slice(0, 80) : text.trim().slice(0, 40); // a taunt names its target's id
     if (!t) return;
     const mine = this.members.find(x => x.id === this.myId);
     const line: ChatLine = { from: this.myId, name: mine?.name ?? this.me.name, character: mine?.character ?? this.me.character, text: t, at: Date.now() };

@@ -22,8 +22,26 @@ const stickerOf = (t: string) => /^\[s:([a-z]+)\]$/.exec(t)?.[1];
 const stickerSrc = (c: number, key: string) => `${PARTY_ART}/sticker-${c}-${key}.webp`;
 const stickerImg = (c: number, key: string, cls: string) => `<img class="${cls}" src="${stickerSrc(c, key)}" alt="${esc(STICKERS.find(s => s[0] === key)?.[1] ?? '')}">`;
 
-function lineHtml(l: ChatLine, face: (c: number) => string): string {
+/**
+ * 嘲諷 (the user 2026-10-22: no effect on the game, only an animation popping up on the taunted player's screen): a
+ * line `[t:<target id>:<n>]` sent like a chat line (so muting the sender mutes it too). The taunted phone plays the
+ * sender's character in one of four taunting poses (party_icons.py prep-taunts) with the words; the others see a
+ * short line. One every 15 s from a phone.
+ */
+export const TAUNTS: [pose: string, text: string][] = [
+  ['tongue', '略略略～追不到我吧！'], ['tongue', '你的錢包在哭泣喔～'], ['point', '就這點本事嗎？'], ['point', '下一個破產的就是你！'],
+  ['yawn', '快點擲啦，我等到睡著了'], ['yawn', '認輸吧，還來得及'], ['beckon', '有種來踩我的地啊！'], ['beckon', '這條街遲早是我的！'],
+];
+const TAUNT_GAP = 15000;
+const tauntOf = (t: string) => { const m = /^\[t:([^:\]]+):(\d+)\]$/.exec(t); return m && TAUNTS[+m[2]] ? { target: m[1], n: +m[2] } : null; };
+const tauntSrc = (c: number, pose: string) => `${PARTY_ART}/taunt-${c}-${pose}.webp`;
+/** The taunting picture; a character without its taunt art yet shows its 大笑 sticker. */
+const tauntImg = (c: number, pose: string, cls: string) => `<img class="${cls}" src="${tauntSrc(c, pose)}" alt="" onerror="this.onerror=null;this.src='${stickerSrc(c, 'laugh')}'">`;
+
+function lineHtml(l: ChatLine, face: (c: number) => string, nameOf: (id: string) => string = () => '對手'): string {
   if (l.character < 0) return `<div class="pc-line sys">${esc(l.text)}</div>`;
+  const tt = tauntOf(l.text);
+  if (tt) return `<div class="pc-line taunt"><img src="${face(l.character)}" alt=""><b>${esc(l.name)}</b><span>嘲諷 ${esc(nameOf(tt.target))}：「${esc(TAUNTS[tt.n][1])}」</span></div>`;
   const st = stickerOf(l.text);
   if (st) return `<div class="pc-line"><img src="${face(l.character)}" alt=""><b>${esc(l.name)}</b>${stickerImg(l.character, st, 'pc-stk')}</div>`;
   return `<div class="pc-line"><img src="${face(l.character)}" alt=""><b>${esc(l.name)}</b><span>${esc(l.text)}</span></div>`;
@@ -36,7 +54,7 @@ export function inlineChat(room: Room, face: (c: number) => string): { el: HTMLE
   el.innerHTML = `<div class="pc-log"></div><div class="pc-phrases">${PHRASES.slice(0, 4).map(p => `<button class="chip" data-say="${esc(p)}">${esc(p)}</button>`).join('')}</div>
     <form class="pc-form"><input maxlength="40" placeholder="說點什麼…（最多40字）"><button class="candy opt">送出</button></form>`;
   const log = el.querySelector<HTMLElement>('.pc-log')!;
-  const draw = () => { log.innerHTML = room.chat.filter(l => !room.muted.has(l.from)).slice(-4).map(l => lineHtml(l, face)).join('') || '<div class="pc-line sys">在這裡和大家打招呼</div>'; };
+  const draw = () => { log.innerHTML = room.chat.filter(l => !room.muted.has(l.from)).slice(-4).map(l => lineHtml(l, face, id => room.nameOf(id))).join('') || '<div class="pc-line sys">在這裡和大家打招呼</div>'; };
   draw();
   el.addEventListener('click', e => { const b = (e.target as HTMLElement).closest<HTMLElement>('[data-say]'); if (b) { e.stopPropagation(); audio.ui('click'); room.say(b.dataset.say!); } });
   el.querySelector('form')!.addEventListener('submit', e => { e.preventDefault(); const i = el.querySelector('input')!; room.say(i.value); i.value = ''; });
@@ -48,7 +66,7 @@ export function inlineChat(room: Room, face: (c: number) => string): { el: HTMLE
 /** 托管 from the bar (main.ts): this phone's seat handed to the computer, or back from the next turn. */
 export interface AutoControl { state(): 'manual' | 'auto' | 'pending' | 'back'; toggle(): void }
 
-type View = 'chat' | 'quick' | 'emoji' | 'people' | 'votes';
+type View = 'chat' | 'quick' | 'emoji' | 'taunt' | 'people' | 'votes';
 
 /**
  * 派對模式's own row of buttons under the toolbar (the user 2026-10-19: the toolbar itself stays as it is): 💬 chat
@@ -62,12 +80,15 @@ export class PartyBar {
   private panel: HTMLElement | null = null;
   private view: View | null = null;
   private unread = 0;
+  /** When this phone may taunt again. */
+  private tauntAt = 0;
+  private tauntTarget = '';
 
   constructor(private stage: HTMLElement, private room: Room, private face: (c: number) => string, private auto: AutoControl) {
     this.el.className = 'party-bar';
     // The icons drawn like the toolbar's (party_icons.py): normal, and lit (-h) when pressed, open or on.
     const icon = (k: string, title: string, extra = '') => `<button data-v="${k}" title="${title}"><img class="pb-n" src="${PARTY_ART}/icon-${k}.webp" alt=""><img class="pb-h" src="${PARTY_ART}/icon-${k}-h.webp" alt="">${extra}</button>`;
-    this.el.innerHTML = icon('chat', '聊天', '<i hidden></i>') + icon('quick', '快捷語') + icon('emoji', '表情') +
+    this.el.innerHTML = icon('chat', '聊天', '<i hidden></i>') + icon('quick', '快捷語') + icon('emoji', '表情') + icon('taunt', '嘲諷') +
       icon('people', '玩家', '<em></em>') + icon('votes', '投票', '<i hidden></i>') + icon('auto', '托管', '<em class="pb-tag"></em>');
     this.el.addEventListener('click', e => {
       e.stopPropagation();
@@ -105,14 +126,32 @@ export class PartyBar {
   private arrive(l: ChatLine) {
     if (this.panel && this.view === 'chat') this.draw(); else if (l.from !== this.room.myId) this.unread++;
     this.refresh();
-    if (this.room.muted.has(l.from) || (this.panel && this.view === 'chat')) return;
+    if (this.room.muted.has(l.from)) return;
+    const tt = tauntOf(l.text);
+    if (tt && tt.target === this.room.myId) { this.taunted(l, tt.n); return; }
+    if (this.panel && this.view === 'chat') return;
     const pop = document.createElement('div');
     const st = stickerOf(l.text), big = !!st;
     pop.className = `pc-pop${big ? ' big' : ''}`;
-    pop.innerHTML = st ? `<b>${esc(l.name)}</b>${stickerImg(l.character, st, 'pc-stk-big')}` : lineHtml(l, this.face);
+    pop.innerHTML = st ? `<b>${esc(l.name)}</b>${stickerImg(l.character, st, 'pc-stk-big')}` : lineHtml(l, this.face, id => this.room.nameOf(id));
     this.pops.append(pop);
     while (this.pops.children.length > 3) this.pops.firstElementChild!.remove();
     setTimeout(() => { pop.classList.add('out'); setTimeout(() => pop.remove(), 400); }, big ? 3000 : 5000);
+  }
+
+  /** This phone's player was taunted: the sender's character pops up big, taunting, with the words (a tap closes it). */
+  private taunted(l: ChatLine, n: number) {
+    const [pose, text] = TAUNTS[n];
+    this.stage.querySelector('.pt-taunt')?.remove();
+    const el = document.createElement('div');
+    el.className = `pt-taunt ${pose}`;
+    el.innerHTML = `<div class="ptt-rays"></div><div class="ptt-who"><img src="${this.face(l.character)}" alt=""><b>${esc(l.name)}</b> 嘲諷你！</div>
+      ${tauntImg(l.character, pose, 'ptt-img')}<div class="ptt-say">${esc(text)}</div>`;
+    el.addEventListener('pointerdown', e => { e.stopPropagation(); el.classList.add('out'); setTimeout(() => el.remove(), 300); });
+    this.stage.append(el);
+    this.stage.classList.remove('pt-shake'); void this.stage.offsetWidth; this.stage.classList.add('pt-shake');
+    audio.ui('no');
+    setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 300); this.stage.classList.remove('pt-shake'); }, 3200);
   }
 
   private toggle(v: View) {
@@ -143,8 +182,18 @@ export class PartyBar {
       const mine = r.members.find(m => m.id === r.myId)?.character ?? 0;
       p.innerHTML = `${head('表情')}<div class="pc-emojis">${STICKERS.map(([k, t]) => `<button data-say="[s:${k}]" title="${t}">${stickerImg(mine, k, '')}</button>`).join('')}</div>`;
     }
+    else if (v === 'taunt') {
+      const mine = r.members.find(m => m.id === r.myId)?.character ?? 0;
+      const others = r.members.filter(m => m.id !== r.myId && !m.away);
+      if (!others.some(m => m.id === this.tauntTarget)) this.tauntTarget = others[0]?.id ?? '';
+      const wait = Math.ceil((this.tauntAt - Date.now()) / 1000);
+      p.innerHTML = `${head('嘲諷')}${others.length ? `<div class="pc-tt-who">${others.map(m => `<button class="chip${m.id === this.tauntTarget ? ' on' : ''}" data-tt="${m.id}"><img src="${this.face(m.character)}" alt="">${esc(m.name)}</button>`).join('')}</div>
+        <div class="pc-tt-lines">${TAUNTS.map(([pose, t], k) => `<button class="chip" data-taunt="${k}"${wait > 0 ? ' disabled' : ''}>${tauntImg(mine, pose, 'pc-tt-img')}<span>${esc(t)}</span></button>`).join('')}</div>
+        <p class="pc-note">${wait > 0 ? `${wait} 秒後可以再嘲諷` : '選一位對手和一句話：對方畫面上會跳出你的嘲諷動畫（不影響遊戲）'}</p>` : '<p class="pc-note">沒有在線的對手</p>'}`;
+      if (wait > 0) setTimeout(() => { if (this.view === 'taunt') this.draw(); }, Math.min(wait, 1) * 1000);
+    }
     else if (v === 'chat') {
-      p.innerHTML = `${head('聊天')}<div class="pc-log">${r.chat.filter(l => !r.muted.has(l.from)).slice(-40).map(l => lineHtml(l, this.face)).join('') || '<div class="pc-line sys">還沒有訊息</div>'}</div>
+      p.innerHTML = `${head('聊天')}<div class="pc-log">${r.chat.filter(l => !r.muted.has(l.from)).slice(-40).map(l => lineHtml(l, this.face, id => r.nameOf(id))).join('') || '<div class="pc-line sys">還沒有訊息</div>'}</div>
         <div class="pc-phrases">${PHRASES.map(t => `<button class="chip" data-say="${esc(t)}">${esc(t)}</button>`).join('')}</div>
         <form class="pc-form"><input maxlength="40" placeholder="說點什麼…（最多40字）"><button class="candy opt">送出</button></form>`;
       const log = p.querySelector<HTMLElement>('.pc-log')!; log.scrollTop = log.scrollHeight;
@@ -172,6 +221,12 @@ export class PartyBar {
       if (t.closest('[data-a=close]')) { audio.ui('no'); this.close(); return; }
       if (say) { audio.ui('click'); r.say(say.dataset.say!); if (v === 'quick' || v === 'emoji') this.close(); return; }
       if (mute) { audio.ui('click'); r.toggleMute(mute.dataset.mute!); this.draw(); return; }
+      const tt = t.closest<HTMLElement>('[data-tt]'), taunt = t.closest<HTMLButtonElement>('[data-taunt]');
+      if (tt) { audio.ui('click'); this.tauntTarget = tt.dataset.tt!; this.draw(); return; }
+      if (taunt && !taunt.disabled && this.tauntTarget && Date.now() >= this.tauntAt) {
+        audio.ui('click'); this.tauntAt = Date.now() + TAUNT_GAP;
+        r.say(`[t:${this.tauntTarget}:${taunt.dataset.taunt}]`); this.close(); return;
+      }
       if (kick && confirm(`發起請出 ${r.nameOf(kick.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(kick.dataset.kick!); }
     };
   }
