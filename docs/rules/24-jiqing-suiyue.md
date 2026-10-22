@@ -50,7 +50,7 @@
 
 ## 1 地图（`editor/jiqing_*.py`，预览 v2）
 
-规模：**160 格路、72 块小地、14 块大型用地、6 家企业、29 个景观**。地图 2304×2304，北在上。和其他城市一样建在原版日本图的槽位上（股票表、6 支绑企业的股票），只在经典模式。
+规模：**160 格路、72 块小地、14 块大型用地、6 家企业、37 个景观**（画风测试后加了 5 个地标和 3 栋赫魯曉夫樓）。地图 2304×2304，北在上。和其他城市一样建在原版日本图的槽位上（股票表、6 支绑企业的股票），只在经典模式。
 
 **槽位**：`site/assets/remake/index.json` 现在有 7 张（东京 100、大阪 101、札幌 102、九州 103、沖繩 104、大富翁城 105、歌舞伎町 106），各自 `replaces` 一个工坊槽；`site/assets/custom/index.json` 有 8 个工坊槽，只剩 **15552408（河港新城310985）** 没被取代。本图用 **id 107、`replaces: [15552408]`**（`jiqing_layout.INDEX`）。工坊地图的文件不删，`assets.ts mapList` 照旧把它们当隐藏地图载入，所以在那张工坊地图上的旧存档照样能读；`game/src` 里没有任何地方写死 15552408 或 107。
 
@@ -163,8 +163,16 @@
 | 廣播喇叭 ×2、大標語 ×2、大字報牆 ×2 | `jq-loud`、`jq-slogan`、`jq-dazibao` | 广场、宣武门外；「工業學大慶」「農業學大寨」；王府井北、宣武門內 |
 | 大學 | `jq-campus` | 通用的大学校门＋红砖教学楼＋大字报栏（真的北大清华在西北很远，这里只是装饰，没有校名校徽） |
 | 胡同 ×2 | `jq-hutong` | 宣武门外、崇文门外的大杂院（煤球堆、车棚） |
+| 北京飯店、民族文化宮、中國美術館、勞動人民文化宮（太廟）、正陽門箭樓 | `jq-beijinghotel`、`jq-minzu`、`jq-artmuseum`、`jq-taimiao`、`jq-jianlou` | 画风测试后加的 5 个（用户：「地標再多加幾個也行」）：東長安街北侧、西單外、五四大街东头、天安門东、前門南 |
+| 赫魯曉夫樓 ×3 | `jq-khrushchyovka` | 用户的点子：几栋五层预制板的苏式住宅楼（灰黄墙板、阳台晾衣服、屋顶红旗和空白标语牌），放在没有格子、地块、地标的空地（反帝路南、西單外、東環外），只是装饰 |
 
 地面：北海、中海、南海（湖）、什剎海（风格化）、故宫的筒子河；景山、天壇是树林；天安門廣場、北京站前是广场；其余都是铺面。
+
+地面美术的要求（用户看了画风测试后，2026-10-22）：
+- **天安門廣場**只有空旷的大石板（四块地面图另加一句提示，`maps.MAPS[107]['extra']`），不画房子。
+- 小地、大型用地的框里只画空地（房子之后由游戏盖上去），其余街区画胡同、四合院的屋顶（用户：「那個胡同房子也挺巧妙的」）。
+- **所有道路**都画成同一种旧的 1970 年代柏油路：裂缝、补丁、褪色断续的白线、路边灰土、干了的水渍、自行车轮印；但黄色边线和格子之间的小刻痕保持清楚（用户：「都用天安門門前的道路……道路是不是可以再做舊一些」）。本图的道路全部来自地面图（游戏只另外画格子之间的刻痕 `step_marks`），所以整张地面重画就没有「普通道路」了。
+- 更「全國一片紅」：胡同里红门、院墙上的红横幅、墙上的红色标语带和贴满纸的墙（空白，没有字）；建筑上更多红旗、红横幅、标语牌、大字报墙。
 
 ## 2 大型用地：五种设施（用户决定）
 
@@ -602,6 +610,40 @@
 - 零件一览：`rich4-redraw-company/jiqing/style-test-parts.png`。
 
 共用工具的小改（都是加新的一项，其他地图不变）：`landmarks.py` 加 `jiqing` 城市（名字、模型清单、画风一句、测试精灵号）；`pads.py` 加 `RICH4_PADS=jiqing`；`ground-redraw/maps.py` 加 `MAPS[107]`；`jiqing_layout.py` 的 `MOATS` 补上内圈的写法（`'stone'`，故宫里是石板地）和 `TEST_SPRITES`。
+
+### 12.2 正式画（全套，2026-10-22；用户看了画风测试后：地标再加几个、空处放几栋赫魯曉夫樓、广场和空地不要房子、红色再多、**所有道路都用天安門前那种做旧的路**）
+
+**185 次请求**（画风测试的 13 次另算；素材空间关着，只记数）。每张结果我都看过，有问题的放进 `rejected-N/`（附 `why.txt`）重画，每张最多再画 2 次：
+
+| 项目 | 请求 | 结果 | 工具 |
+|---|---|---|---|
+| 地面 3 种画风 × 16 块 | 68 | `rich4-redraw-company/map-ground/107/<画风>/tNN/`；拼好的大图在 `rich4-redraw-company/jiqing/ground-build/107/<画风>/`（**没写进** `rich4-ground`） | `ground.py --map 107 prep/run`，`RICH4_GROUND_OUT=… build` |
+| 　其中：第一波 16 块用的是旧提示（路面还不够旧），收到「道路做旧」后作废重画 | (16) | `rejected-N/` | |
+| 　其中：重画 4 次——ghibli t30 第一次被审核拦下（原样重送就过了）；monopoly t03、genshin t01 把大片胡同画成空石板（genshin 第二次好了；monopoly 第三次加了一句这块专用的提示 `maps._JQ_FILL` 才好） | (4) | | |
+| 地标 31 个（画风测试 4 个 + 本次 27 个；新加北京飯店、民族文化宮、中國美術館、太廟、正陽門箭樓、赫魯曉夫樓） | 28 | `rich4-redraw-company/jiqing/landmarks/jq-*/` | `landmarks.py`（`RICH4_CITY=jiqing`） |
+| 　其中：大学（`jq-campus`）一次网络失败（SSL），重送 | (1) | | |
+| 小地房屋 22 张（胡同小店 8 种 × 2、筒子樓 2、蘇式樓 4 级 3 + 5 级 2）+ 设施 20 张（招待所、供銷社、研究所各 5 级，宣傳站 4 张 + 测试的 3 级，人民公園） | 42 | 同上 `jq-lot-*`、`jq-guest-*`、`jq-coop-*`、`jq-lab-*`、`jq-xuan-*`、`jq-park-1` | 同上 |
+| 事件垫 16 个（6 格一张，左上和中上放原版垫子做样子） | 4 | `rich4-redraw-company/jiqing/art/pads-a…d/` | `tools/tycoon-art/jq_art.py` |
+| 选设施招牌、UI 皮肤 4 张（纸纹、横幅和按钮、新闻／大字報框、奖状／日历框）、片头 4 张背景、工具栏小图标 4 个 | 7 | `rich4-redraw-company/jiqing/art/<set>/` | 同上 |
+| 新闻 24、命运 24、公园好坏卡 16、宣傳站小卡 3 = 67 张图，2×2 一次 | 18 | `rich4-redraw-company/jiqing/events/` | `tools/still-redraw/jiqing-events/events.py` |
+| 　其中：大字報那张第一次在墙上画了一个无脸的「领袖像」剪影和一个小签名，改写场景后重画 | (1) | | |
+| 路人 7 种 | 7 | `rich4-redraw-company/jiqing/walkers/` | `kb_walkers.py`（`RICH4_WALKERS=jiqing`） |
+| 车 8 种 + 人群 11 种（举旗、打鼓、横幅、游行、读报、做操、忠字舞、腰鼓、排队、跳皮筋、鸽子） | 8 | `rich4-redraw-company/jiqing/ambient/` | `kb_ambient.py`（`RICH4_AMBIENT=jiqing`） |
+| 街景小物、植物各 16 | 2 | `rich4-redraw-company/jiqing/plants/` | `tools/tokyo-landmarks/jiqing_plants.py` |
+| 地图明信片（3 种取景，东京那张做样子） | 1 | `rich4-redraw-company/tycoon/map-thumbs/cells/jiqing*.png`，选定的 `jiqing-postcard.webp`（600×400） | `map_thumbs.py prep/run/split 2`、`build-jiqing` |
+
+企业建筑没有画：重制版的城市不画企业的楼（资源号 0），所以不需要。
+
+切好的零件（都**还没写进游戏或 editor 的素材**，等实现时再搬）：
+- 精灵（地标、房屋、设施、路人、车、人群、小物、植物；照游戏的 `frames.json` 格式）：`rich4-redraw-company/jiqing/style-test/sprites/NNNN/`，事件垫 `…/sprites/pad-aux-N.png`（N = `city_build.AUX` 的号码，另有 `pad-bank-branch.png`、`pad-spare.png`）。切的命令：`jq_style.py split-landmarks`、`split-pads`；`kb_walkers.py split`、`kb_ambient.py split`、`jiqing_plants.py split props green`（jiqing 这一套的输出目录都改到上面这个暂存目录）。
+- 事件图 67 张：`rich4-redraw-company/jiqing/events/pics/<id>.png`（`events.py split`，一览 `check-sheet.jpg`）。
+- 招牌、UI 零件、片头背景、小图标：`rich4-redraw-company/jiqing/art/cut/*.png`（`jq_art.py cut`，一览 `contact.png`；有形状的零件已去掉底色）。九宫格的切法等实现 UI 皮肤时再定。
+
+全图合成（同画风测试的投影，0 号视角）：`jq_style.py render-map ghibli [--houses]` → `rich4-redraw-company/jiqing/map-render-ghibli.png`（地面＋地标＋新事件垫）、`map-render-ghibli-built.png`（再加中局示意的房屋和设施，等级和设施种类按散列）、`map-render-ghibli-built-closeup.png`（天安門、長安街一带，zoom 1.5）。
+
+共用工具这次的小改（其他地图的输出不变）：`kb_ambient.cut` 在某格切不到东西时才按行列的间隔重新分组（folk-c 那张模型把三行摊满了整张图）；`kb_walkers`、`kb_ambient`、`jiqing_plants` 的 jiqing 输出改到暂存目录；`map_thumbs.py` 加第 2 批（激情歲月）和 `build-jiqing`；`ground-redraw/maps.py` 加 `monopoly:03` 的专用提示。
+
+还没做：约 20 句播音的 TTS（§9.2；要先定用哪个 TTS——macOS 自带的语音按它的授权只能个人非商业使用，放进游戏发行前要确认），以及 UI 皮肤的九宫格切法。
 
 ## 13 实现计划（批准后；照歌舞伎町 §11）
 
