@@ -50,7 +50,7 @@ export const ANNOUNCEMENTS = [
   '天氣預報：明天晴轉多雲，適宜晾曬被褥',
   '請排隊購買郵票，不要擁擠',
   '防空演習通知：聽到警報請有序進入防空洞',
-  '理髮店通知：本週推出新髮型「青年頭」，歡迎光臨',
+  '理髮店通知：本週推出新髮型「青年頭」，歡迎同志們來理髮',
   '失物招領：有同志在長椅上丟了一本語錄，請到廣播站認領',
   '請小朋友們放學後直接回家，不要在馬路上跳皮筋',
   '副食店到了一批鹹菜，數量有限，先到先得',
@@ -62,6 +62,9 @@ const BANNERS = ['熱烈慶祝本市自行車突破一百萬輛', '熱烈慶祝�
 type Pt = [number, number];
 interface Lane { a: Pt; b: Pt; len: number; dx: number; dy: number; avenue: boolean }
 interface Car { res: number; lane: Lane; s: number; speed: number; pace: number; kind: 'car' | 'bike' }
+/** How long each vehicle is along its lane (map px, from the drawn sprites): the gap the next one keeps behind it. */
+const LENGTH: Record<number, number> = { 3411: 46, 3412: 34, 3413: 38, 3414: 30, 3415: 30, 3416: 46, 3417: 66, 3418: 70 };
+const lengthOf = (res: number) => LENGTH[res] ?? 36;
 interface March { lane: Lane; s: number; members: number[]; banner: string; speed: number }
 interface Spot { x: number; y: number }
 
@@ -175,8 +178,11 @@ export class JqStreet {
     if (pack) {
       // A string of bicycles on an avenue, one behind the other (§8.2).
       const lane = (this.avenues.length ? this.avenues : this.lanes)[Math.floor(r() * (this.avenues.length || this.lanes.length))];
+      // One behind the other with a real gap (a bicycle is about 30 px long): never drawn on top of each other.
       const n = 3 + Math.floor(r() * 4), speed = 34 + r() * 8;
-      for (let i = 0; i < n; i++) this.cars.push({ res: JQA.bicycle, lane, s: -i * (9 + r() * 5) + at * lane.len, speed, pace: speed, kind: 'bike' });
+      let s0 = at * lane.len;
+      if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s0) < 120)) return;
+      for (let i = 0; i < n; i++) { this.cars.push({ res: JQA.bicycle, lane, s: s0, speed, pace: speed, kind: 'bike' }); s0 -= lengthOf(JQA.bicycle) + 8 + r() * 14; }
       return;
     }
     const avenue = r() < 0.6 && this.avenues.length;
@@ -187,7 +193,7 @@ export class JqStreet {
       : (u < 0.25 ? JQA.tricycle : u < 0.45 ? JQA.cart : u < 0.62 ? JQA.truck : u < 0.75 ? JQA.jeep : JQA.bicycle);
     const speed = res === JQA.cart ? 14 + r() * 4 : res === JQA.tricycle || res === JQA.bicycle ? 28 + r() * 10 : 46 + r() * 22;
     const s = at * lane.len;
-    if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < 50)) return;
+    if (this.cars.some(c => c.lane === lane && Math.abs(c.s - s) < (lengthOf(c.res) + lengthOf(res)) / 2 + 40)) return;
     this.cars.push({ res, lane, s, speed, pace: speed, kind: res === JQA.bicycle ? 'bike' : 'car' });
   }
 
@@ -210,16 +216,17 @@ export class JqStreet {
       for (const o of this.cars) {
         if (o === c || o.lane !== c.lane) continue;
         const ahead = o.s - c.s;
-        if (ahead > 0 && ahead < (c.kind === 'bike' ? 8 : 34)) c.pace = Math.min(c.pace, o.pace * 0.95);
+        const gap = (lengthOf(c.res) + lengthOf(o.res)) / 2 + 6;
+        if (ahead > 0 && ahead < gap + 14) c.pace = Math.min(c.pace, ahead < gap ? 0 : o.pace * 0.95);
       }
-      if (this.march && this.march.lane === c.lane && this.march.s - c.s > 0 && this.march.s - c.s < 40 + 16 * this.march.members.length) c.pace = Math.min(c.pace, 4);
+      if (this.march && this.march.lane === c.lane && this.march.s - c.s > 0 && this.march.s - c.s < 40 + 12 * this.march.members.length) c.pace = Math.min(c.pace, 4);
       c.s += c.pace * dt;
     }
     this.cars = this.cars.filter(c => c.s < c.lane.len);
     // A march every 2–3 minutes along an avenue (§8.3).
     if (this.march) {
       this.march.s += this.march.speed * dt;
-      if (this.march.s - 75 - this.march.members.length * 8 > this.march.lane.len) this.march = null;
+      if (this.march.s - 100 - this.march.members.length * 10 > this.march.lane.len) this.march = null;
     } else if (this.walkOn && (this.nextMarch -= dt) <= 0 && this.avenues.length) {
       const lane = this.avenues[Math.floor(r() * this.avenues.length)], n = 10 + Math.floor(r() * 9);
       this.march = { lane, s: 0, speed: 13, banner: BANNERS[Math.floor(r() * BANNERS.length)],
@@ -311,9 +318,9 @@ export class JqStreet {
     if (m) {
       const flip = flipOf(m.lane.dx, m.lane.dy);
       m.members.forEach((res, i) => {
-        const s = m.s - (i < 5 ? i * 15 : 75 + Math.floor((i - 5) / 2) * 15);
+        const s = m.s - (i < 5 ? i * 20 : 100 + Math.floor((i - 5) / 2) * 19);
         if (s < 0 || s > m.lane.len) return;
-        const pair = i >= 5 && (i - 5) % 2 === 1 ? 9 : i >= 5 ? -9 : i === 1 ? 9 : i === 0 ? -9 : 0;
+        const pair = i >= 5 && (i - 5) % 2 === 1 ? 12 : i >= 5 ? -12 : i === 1 ? 12 : i === 0 ? -12 : 0;
         const x = m.lane.a[0] + m.lane.dx * s - m.lane.dy * pair, y = m.lane.a[1] + m.lane.dy * s + m.lane.dx * pair, p = v.visible(x, y, 80);
         if (!p) return;
         const fr = Math.floor(t * 4 + i * 0.7) % 4, alpha = Math.max(0, Math.min(1, s / 25, (m.lane.len - s) / 25));
@@ -339,18 +346,18 @@ export class JqStreet {
     const fadeOf = (s: number, len: number) => Math.max(0, Math.min(1, s / 1.5, (len - s) / 1.5));
     const g = this.gym();
     if (g >= 0) {
-      group(JQA.gymnast, { x: S.square.x - 80, y: S.square.y - 75 }, 3, 5, 14, 2.2, fadeOf(g, 25));
-      if (S.campus) group(JQA.gymnast, { x: S.campus.x, y: S.campus.y + 70 }, 2, 4, 14, 2.2, fadeOf(g, 25));
+      group(JQA.gymnast, { x: S.square.x - 85, y: S.square.y - 80 }, 3, 5, 22, 2.2, fadeOf(g, 25));
+      if (S.campus) group(JQA.gymnast, { x: S.campus.x, y: S.campus.y + 70 }, 2, 4, 22, 2.2, fadeOf(g, 25));
     }
     const d = this.dancing();
     if (d >= 0) {
-      group(JQA.dancer, { x: S.square.x + 72, y: S.square.y + 10 }, 2, 5, 17, 3.2, fadeOf(d, 20), 7);
-      if (S.dept) group(JQA.dancer, { x: S.dept.x - 40, y: S.dept.y + 90 }, 2, 4, 17, 3.2, fadeOf(d, 20), 2);
+      group(JQA.dancer, { x: S.square.x + 72, y: S.square.y + 10 }, 2, 5, 23, 3.2, fadeOf(d, 20), 7);
+      if (S.dept) group(JQA.dancer, { x: S.dept.x - 40, y: S.dept.y + 90 }, 2, 4, 23, 3.2, fadeOf(d, 20), 2);
     }
     const dr = this.drums();
-    if (dr >= 0 && S.qianmen) group(JQA.waistdrum, { x: S.qianmen.x + 60, y: S.qianmen.y + 70 }, 1, 6, 14, 3.5, fadeOf(dr, 24));
+    if (dr >= 0 && S.qianmen) group(JQA.waistdrum, { x: S.qianmen.x + 60, y: S.qianmen.y + 70 }, 1, 6, 21, 3.5, fadeOf(dr, 24));
     for (const [wi, w] of S.walls.entries()) for (let i = 0; i < 6; i++) {
-      const x = w.x + (i - 2.5) * 11, y = w.y + 38 + (i % 2) * 8, p = v.visible(x, y, 60);
+      const x = w.x + (i - 2.5) * 17, y = w.y + 38 + (i % 2) * 10, p = v.visible(x, y, 60);
       if (p) add(p.y, () => v.sprite(JQA.reader, Math.floor(t * 0.7 + i * 1.3 + wi) % 4, p.x, p.y, (i + wi) % 3 === 0));
     }
     const queue = (c: Spot, n: number, dx: number, dy: number, key: number) => {
@@ -361,10 +368,10 @@ export class JqStreet {
         if (p) add(p.y, () => v.sprite(JQA.queuer, (i + step + Math.floor(t * 0.5)) % 4, p.x, p.y, dx < 0));
       }
     };
-    if (S.dept) queue({ x: S.dept.x - 30, y: S.dept.y + 52 }, 7, -9, 3, 0);
-    for (const f of this.game.board.facilities) if (f.type === 2 && f.level > 0 && f.owner) queue({ x: f.x - 28, y: f.y + 46 }, 4, -9, 3, f.id * 0.37);
+    if (S.dept) queue({ x: S.dept.x - 30, y: S.dept.y + 52 }, 7, -17, 5, 0);
+    for (const f of this.game.board.facilities) if (f.type === 2 && f.level > 0 && f.owner) queue({ x: f.x - 28, y: f.y + 46 }, 4, -17, 5, f.id * 0.37);
     for (const [hi, h] of S.hutongs.entries()) for (let i = 0; i < 3; i++) {
-      const x = h.x + 46 + i * 12, y = h.y + 40 + (i === 1 ? 6 : 0), p = v.visible(x, y, 60);
+      const x = h.x + 46 + i * 19, y = h.y + 40 + (i === 1 ? 6 : 0), p = v.visible(x, y, 60);
       if (p) add(p.y, () => v.sprite(JQA.skipper, Math.floor(t * 4 + i + hi) % 4, p.x, p.y, i === 2));
     }
     for (const pg of this.pigeons) {

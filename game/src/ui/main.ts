@@ -42,8 +42,9 @@ import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
-import { JQ_MAP, loudspeakerMode, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
+import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { applyJqTheme } from './jq-theme';
+import { setEraLine } from './era-line';
 import { playJqIntro } from './screens/jq-intro';
 import './tycoon-onway';
 import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
@@ -535,6 +536,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     await prepareCityLots(bank, mapId); // the five cities' own shops on the small lots (ui/city-lots.ts)
     if (ty || mapId === FINALE_MAP) await prepareFinale(bank); // 大富翁城's halls (docs/rules/19)
     if (mapId === KB_MAP) prepareKabukicho(bank); // 歌舞伎町's tool icons (docs/rules/21 §7.5)
+    await prepareJiqingPlaces(bank, mapId === JQ_MAP); // 激情歲月's place screens (docs/rules/24 §11.3); off on every other map
     game = make(art.board);
   } catch (e) { firstGround?.dispose(); boot.dispose(); app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
   if (me !== session) { firstGround?.dispose(); return; }
@@ -544,6 +546,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // The original screen (docs/rules/09 §1): toolbar over the map, the player panel and calendar beside it.
   const shell = document.createElement('main');
   shell.className = 'game';
+  setEraLine(null); // a map's own wording of the place screens: only 激情歲月's (below)
   if (mapId === JQ_MAP) applyJqTheme(shell); // 激情歲月's skin and words (docs/rules/24 §3, §11)
   const toolbar = new Toolbar(bank);
   const stage = document.createElement('section');

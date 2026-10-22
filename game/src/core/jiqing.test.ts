@@ -168,6 +168,7 @@ describe.skipIf(!have)('激情歲月 (map 107)', () => {
       const g = new Game(settings(60 + i, [0, 4, 9, 2]), board()), jq = jqRules(g)!;
       for (const q of g.players) { q.placed = true; q.whoPlays = 2; q.cash = 30000; q.bank = 20000; q.cards = [3, 5]; q.tools[0] = 1; }
       const [p, q] = g.players;
+      g.players[3].traffic = 1;   // a rider (批林批孔)
       p.node = g.board.nodes.find(n => n.ref > 2000 && n.ref < 4000)!.id;
       // something to act on: built lots, a park, someone in hospital, an own empty lot, walkers and a child
       for (const l of g.board.lands.slice(0, 20)) { l.owner = 2; l.level = 2; }
@@ -176,7 +177,7 @@ describe.skipIf(!have)('激情歲月 (map 107)', () => {
       q.hospital = 2;
       const out = drain(c.kind === 'news' ? jq.runNews(g, p, c) : jq.runFate(g, p, c));
       expect(out.value, c.id).toBe(true);
-      expect(out.out.some(s => s.t === 'fx' && (s.kind === 'news' || s.kind === 'fate') && s.data?.local === c.id), c.id).toBe(true);
+      expect(out.out.some(s => s.t === 'fx' && (s.kind === 'news' || s.kind === 'fate') && s.data?.local === (c.pic ?? c.id)), c.id).toBe(true);
     }
   });
 

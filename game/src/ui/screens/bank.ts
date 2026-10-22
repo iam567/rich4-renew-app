@@ -8,6 +8,7 @@
  * { withdraw }, the counter { borrow } or { repay }, or from the chairman's room (special financing, only for
  * the controller of the bank's company, 02 §8.7) { finance } or { financeRepay }; undefined leaves.
  */
+import { eraLine } from '../era-line';
 import { CHARACTERS, playerName } from '../../core/characters';
 import { daysBetween, format } from '../../core/date';
 import type { Ask, Player } from '../../core/types';
@@ -515,7 +516,7 @@ function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
       // The bank's lines are voiced (#0075-#0091); the greeting's voice is its second line.
       void audio.voice(voiceOf(text) ?? voiceOf(text.split('\n').slice(1).join('\n')));
       const [box, w] = inRoom && room ? [room.box, room.words] : [bubble, words];
-      w.innerHTML = lines(text);
+      w.innerHTML = lines(eraLine(text));
       box.classList.remove('talk'); void box.offsetWidth; box.classList.add('talk');
       if (ms) await hold(ctx, root, ms);
       return id === talkId;

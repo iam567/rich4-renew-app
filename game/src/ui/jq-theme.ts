@@ -7,6 +7,8 @@
  *   「是 / 否」 on the yes / no buttons become 「同意 / 不同意」. Gods keep their names (the user's decision).
  */
 import { ASSETS } from './assets';
+import { lang, t as toHans } from './lang';
+import { setEraLine } from './era-line';
 import './theme-jq.css';
 
 const ART = (name: string) => `url("${ASSETS}/maps/remake/jiqing/${name}.webp")`;
@@ -23,21 +25,84 @@ const WORDS: [string, string][] = [
     '关牛棚', '招待所', '供销社', '宣传站', '记工分', '挖红薯', '天上掉馅饼', '第一汽车制造厂'].map(w => [w, w] as [string, string]),
   // 繁體
   ['樂透', '有獎銷售'], ['道具店', '黑市小販'], ['百貨公司', '黑市小販'], ['卡片屋', '票證兌換點'], ['點券', '票證'], ['監獄', '牛棚'], ['坐牢', '關牛棚'],
-  ['醫院', '反帝醫院'], ['銀行', '人民銀行'], ['新聞', '廣播站'], ['命運', '大字報'], ['魔法屋', '跳大神'], ['黑市', '投機倒把'], ['股市', '內部認購'],
+  ['醫院', '反帝醫院'], ['銀行', '人民銀行'], ['新聞', '廣播站'], ['魔法屋', '跳大神'], ['占卜師', '神婆'], ['探監', '探牛棚'], ['黑市', '投機倒把'], ['股市', '內部認購'],
   ['買進', '認購'], ['賣出', '轉讓'], ['企鵝挖寶', '挖紅薯'], ['七彩氣球', '民兵打靶'], ['喜從天降', '天上掉餡餅'],
   ['機車', '幸福摩托'], ['汽車', '上海轎車'], ['工程車', '解放卡車'], ['旅館', '招待所'], ['購物中心', '供銷社'], ['加油站', '宣傳站'], ['公園', '人民公園'],
   // 简体
   ['乐透', '有奖销售'], ['卡片屋', '票证兑换点'], ['点券', '票证'], ['监狱', '牛棚'], ['坐牢', '关牛棚'], ['医院', '反帝医院'], ['银行', '人民银行'],
-  ['新闻', '广播站'], ['命运', '大字报'], ['股市', '内部认购'], ['买进', '认购'], ['卖出', '转让'], ['企鹅挖宝', '挖红薯'], ['七彩气球', '民兵打靶'],
+  ['新闻', '广播站'], ['占卜师', '神婆'], ['探监', '探牛棚'], ['股市', '内部认购'], ['买进', '认购'], ['卖出', '转让'], ['企鹅挖宝', '挖红薯'], ['七彩气球', '民兵打靶'],
   ['机车', '幸福摩托'], ['汽车', '上海轿车'], ['工程车', '解放卡车'], ['旅馆', '招待所'], ['购物中心', '供销社'], ['公园', '人民公园'],
 ];
 const MAP = new Map<string, string>();
 for (const [a, b] of WORDS) if (!MAP.has(a)) MAP.set(a, b);
 const RE = new RegExp([...MAP.keys()].sort((a, b) => b.length - a.length).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('|'), 'g');
 
+/**
+ * The place screens' lines in the era's teasing voice (whole lines as the screens write them; the voices keep
+ * playing the original recordings). Matched before the word table.
+ */
+const LINES: Record<string, string> = {
+  // 票證兌換點 (the card shop)
+  '有什麼我能\n為你服務的嗎？': '同志，憑票兌換，\n過期作廢喔！',
+  '請挑選你想要\n兌換的卡片。': '挑一張吧，\n記得帶好票證！',
+  '抱歉！\n你的點數不足！': '同志，你的\n票證不夠啊！',
+  '對不起！\n您的卡片欄已滿！': '同志，口袋\n已經塞滿了！',
+  '歡迎下次再來！': '為人民服務，\n下次再來！',
+  // 黑市小販 (the item shop)
+  '歡迎光臨\n道具店！': '同志，要貨不？\n噓……小聲點！',
+  '您要兌換\n什麼道具？': '要哪件？\n這事可別說出去',
+  '對不起，\n您的點券不夠！': '票證不夠？\n那可不行！',
+  '很抱歉！您的\n道具欄已滿！': '同志，你的\n挎包裝不下啦！',
+  '謝謝惠顧！': '這事可別\n說出去喔！',
+  // 有獎銷售 (the lottery)
+  '哈囉！\n一券在手，\n希望無窮！': '同志，你好！\n買一斤醬油\n抽一次！',
+  // 人民銀行
+  '歡迎光臨\n大富翁銀行！': '同志，你好！\n存款自願，取款自由',
+  '需要我為您\n服務嗎？': '為人民服務！\n同志辦什麼業務？',
+  '謝謝您的惠顧！': '備戰備荒，\n同志慢走！',
+  '董事長親自蒞臨\n不知有何指教？': '同志親自來了，\n有什麼指示？',
+  '董事長您別開玩笑了∼': '同志，可別\n開玩笑了∼',
+  '董事長慢走！': '同志慢走！',
+  // 跳大神 (the magic house)
+  '進來魔法屋，就得\n完全照我的指示！': '噓，別讓人看見……\n進來就得聽我的！',
+  '天靈靈地靈靈∼': '天靈靈地靈靈∼\n破四舊可別說出去！',
+  '你來決定他們的命運∼': '你來決定\n他們的下場∼',
+  // the fate board's title (only the whole word: 「命運」 inside a sentence keeps its meaning)
+  '命運': '大字報',
+  '嘿∼輪到你了！': '同志，\n輪到你了！',
+  // 反帝醫院
+  '您好！請問您要替誰\n辦理出院手續？': '同志，你好！要替誰\n辦理出院手續？',
+};
+/** Forms of address (the user 2026-10-22: 「稱呼全部叫同志」): 董事長 / 先生 / 小姐 / 老闆 / 客人 / 顧客 … → 同志. */
+// (each in 繁體 and 简体: 简体 may have converted a text before this pass sees it)
+const ADDRESS: [RegExp, string][] = [
+  [/董事[長长]室/g, '廠長辦公室'],
+  [/董事[長长](\S{1,8}?) ([請请]付)/g, '$1同志 $2'],
+  [/[歡欢]迎董事[長长]光[臨临]/g, '同志，你好！'],
+  [/(\S+?)董事[長长]，/g, '$1的負責同志，'],
+  [/董事[長长]/g, '同志'],
+  [/^(\S{1,12})您好$/g, '$1同志，你好！'],
+  [/(先生|小姐|女士|老[闆板]|客人|[顧顾]客|客官|大[爺爷])/g, '同志'],
+  [/哈[囉啰]/g, '同志，你好'],
+  [/[歡欢]迎光[臨临]/g, '同志，你好'],
+];
+/** The lines' table in 简体 too (made when the converter is there: lang.ts `t`). */
+let linesHans: Map<string, string> | null = null;
+function lineFor(t: string): string | undefined {
+  const own = LINES[t];
+  if (own !== undefined) return own;
+  if (lang() !== 'hans') return undefined;
+  if (!linesHans || !linesHans.size) linesHans = new Map(Object.entries(LINES).map(([k, v]) => [toHans(k), v]).filter(([k]) => !LINES[k]) as [string, string][]);
+  return linesHans.get(t);
+}
+
 /** A text in this map's words. */
 export function eraText(s: string): string {
-  return s.replace(RE, w => MAP.get(w) ?? w);
+  const t = s.trim(), line = lineFor(t);
+  if (line !== undefined) return s.replace(t, line);
+  let out = s;
+  for (const [re, to] of ADDRESS) out = out.replace(re, to);
+  return out.replace(RE, w => MAP.get(w) ?? w);
 }
 
 const ATTRS = ['title', 'aria-label', 'alt', 'placeholder'];
@@ -71,6 +136,7 @@ function fixTree(root: Node) {
 /** Dresses a game shell in 激情歲月's skin and words; returns the undo (the shell is thrown away with the game anyway). */
 export function applyJqTheme(shell: HTMLElement): () => void {
   shell.classList.add('theme-jq');
+  setEraLine(eraText);
   const vars: Record<string, string> = {
     '--jq-kraft': ART('paper-kraft'), '--jq-newsprint': ART('paper-newsprint'), '--jq-banner': ART('banner'), '--jq-star': ART('badge-star'),
     '--jq-news': ART('frame-news'), '--jq-fate': ART('frame-fate'), '--jq-award': ART('frame-award'), '--jq-calendar': ART('frame-calendar'),
@@ -87,5 +153,5 @@ export function applyJqTheme(shell: HTMLElement): () => void {
     }
   });
   obs.observe(shell, { subtree: true, childList: true, characterData: true, attributes: true, attributeFilter: ATTRS });
-  return () => { obs.disconnect(); shell.classList.remove('theme-jq'); };
+  return () => { obs.disconnect(); shell.classList.remove('theme-jq'); setEraLine(null); };
 }

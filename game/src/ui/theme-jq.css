@@ -85,3 +85,40 @@
 .game.theme-jq .jq-announce .jq-horn { flex: none; width: 30px; height: 30px; background: var(--jq-horn) center / contain no-repeat; }
 @keyframes jq-ann-in { from { opacity: 0; transform: translate(-50%, -14px); } }
 @media (max-width: 480px) { .game.theme-jq .jq-announce { font-size: 12px; top: 6px; } .game.theme-jq .jq-announce .jq-horn { width: 22px; height: 22px; } }
+
+/* ---------------------------------------------------------------- sheets with their own white text (查詢, 系統, 內部認購 …):
+   a dark red lacquered board with the paper's grain, the words stay light (they were written for the blue board). */
+.game.theme-jq .msg.sheet, .game.theme-jq .msg.stocks {
+  color: #fff3d6;
+  background: #5a160f var(--jq-kraft) center / cover;
+  background-blend-mode: multiply;
+  border-color: #e0a92e;
+  box-shadow: 0 0 0 3px #3a0a06, 0 0 0 6px #b3131b, 0 12px 30px rgba(0, 0, 0, .45);
+}
+.game.theme-jq .msg.sheet .msg-text, .game.theme-jq .msg.stocks .msg-text { color: #fff3d6; }
+.game.theme-jq .msg.sheet::before { border-color: rgba(255, 229, 138, .45); }
+.game.theme-jq .stk-table { background: rgba(0, 0, 0, .28); }
+.game.theme-jq .stk-trade { background: rgba(40, 6, 4, .6); }
+.game.theme-jq .stk-trade-box { background: #5a160f var(--jq-kraft) center / cover; background-blend-mode: multiply; border-color: #e0a92e; }
+
+/* ---------------------------------------------------------------- 投機倒把 (the black market board): a hutong stall at night */
+.game.theme-jq .bm { background: radial-gradient(120% 90% at 50% 0%, #4a2a16 0%, #2a170c 60%, #160c06 100%); border-color: #b3131b;
+  box-shadow: 0 0 0 4px #e0a92e, 0 18px 40px rgba(0, 0, 0, .6); }
+.game.theme-jq .bm-sign { background: #c8161d var(--jq-banner) center / 100% 100% no-repeat; color: #ffe58a; border: none; box-shadow: none;
+  font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif; font-weight: 900; }
+.game.theme-jq .bm-item { background: rgba(255, 240, 210, .08); border-color: rgba(224, 169, 46, .55); }
+.game.theme-jq .bm-tag { background: #c8161d; }
+.game.theme-jq .bm-desc { color: #e8d6b0; }
+
+/* ---------------------------------------------------------------- the place screens' surroundings (§11.3): their own pictures
+   come through the sprite bank (ui/jiqing.ts prepareJiqingPlaces); round them, red lacquer and gold instead of purple. */
+.game.theme-jq .bk-atm-ov, .game.theme-jq .bk-counter-ov {
+  background: radial-gradient(circle at 50% 35%, rgba(255, 229, 138, .12) 0 2px, transparent 3px) 0 0 / 26px 26px,
+    radial-gradient(120% 90% at 50% 20%, #9d1f16 0%, #5a110c 55%, #2a0806 100%);
+}
+.game.theme-jq .shop { background: #2a0c08; }
+.game.theme-jq .shop-backdrop::after { background: radial-gradient(circle at 50% 50%, transparent 30%, rgba(60, 10, 6, .6)); }
+.game.theme-jq .shop-canvas { box-shadow: 0 0 0 3px #e0a92e, 0 0 0 6px #b3131b, 0 16px 40px rgba(0, 0, 0, .55); background: #2a0c08; }
+.game.theme-jq .pl-scene { background: radial-gradient(circle at 50% 40%, rgba(110, 22, 14, .85), rgba(30, 6, 4, .95)); }
+.game.theme-jq .pl-scene.in-area { background: radial-gradient(circle at 50% 40%, rgba(110, 22, 14, .85), rgba(30, 6, 4, .95)); }
+.game.theme-jq .bl-panel { background: linear-gradient(#6a1a10, #3a0c08); border-top-color: #e0a92e; }

@@ -4,6 +4,7 @@
  * ornate name labels (#18.6/7/9/10) and the closing spell (FLC Panel #20). The answer is the magic index 0..11,
  * as the plain dialog returned.
  */
+import { eraLine } from '../era-line';
 import type { Ask } from '../../core/types';
 import { MAGIC_GROUPS, MAGIC_NAMES } from '../../core/modules/places';
 import { askScreens, fxScreens, type ScreenContext } from './registry';
@@ -166,7 +167,7 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       const say = (t: string) => {
         const n = ++said;
         void audio.say(t); // the teller's lines are voiced (#0037-#0057)
-        sayText.innerHTML = phrases(t); balloon.hidden = false;
+        sayText.innerHTML = phrases(eraLine(t)); balloon.hidden = false;
         balloon.classList.remove('pl-pop'); void balloon.offsetWidth; balloon.classList.add('pl-pop');
         if (phase === 'pick') void s.sleep(2000).then(() => { if (n === said && phase === 'pick') balloon.hidden = true; });
       };

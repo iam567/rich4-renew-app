@@ -58,6 +58,16 @@ export class SpriteBank {
     return bank;
   }
 
+  /** Frames of the HTML screens shown in another picture on the current map (`setArtOverrides`); null: none. */
+  private artOverrides: Map<string, { src: string; w: number; h: number; ax: number; ay: number; hd: boolean }> | null = null;
+  /**
+   * The current map's own pictures for some frames of the HTML screens (激情歲月's place screens: "Panel/12/1" →
+   * [file, w, h, ax, ay] under `base`), or null for every other map (the bank is shared between games).
+   */
+  setArtOverrides(table: Record<string, [string, number, number, number, number]> | null, base = '') {
+    this.artOverrides = table ? new Map(Object.entries(table).map(([k, [file, w, h, ax, ay]]) => [k, { src: `${base}/${file}`, w, h, ax, ay, hd: true }])) : null;
+  }
+
   private key(archive: Archive, id: number) { return `${archive}/${String(id).padStart(4, '0')}`; }
 
   /**
@@ -82,6 +92,9 @@ export class SpriteBank {
    * Sizes and anchors are in original pixels.
    */
   art(archive: Archive, id: number, frame = 0): { src: string; w: number; h: number; ax: number; ay: number; hd: boolean } | null {
+    // A map's own look of the place screens (激情歲月, docs/rules/24 §11.3): the same size and anchor, another picture.
+    const own = this.artOverrides?.get(`${archive}/${id}/${frame}`);
+    if (own) return own;
     const key = this.key(archive, id);
     // Whole pictures (RAW16: card art, holiday photos) have one image and no frames.
     const hdEntry = this.hd.get(key), origEntry = this.orig.get(key);

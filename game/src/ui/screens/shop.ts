@@ -10,6 +10,7 @@
  *
  * The engine asks one `shop` question per action; the scene stays up between them and is taken down on leaving.
  */
+import { eraLine } from '../era-line';
 import { CHARACTERS, playerName } from '../../core/characters';
 import { cardDef, HAND_LIMIT, cardName, cardPrice, handRoom, handSlots, handStacks, stackOf } from '../../core/modules/cards';
 import { MAX_HELD, TOOLS, sellPrice, type ShopAnswer } from '../../core/modules/tools';
@@ -488,7 +489,7 @@ class ShopScene {
   private say(text: string, ms: number, cross = false, then?: () => void) {
     // The shopkeepers' lines are voiced (#0000-#0010).
     void audio.say(text);
-    this.bubbleText.innerHTML = esc(text).replace(/\n/g, '<br>');
+    this.bubbleText.innerHTML = esc(eraLine(text)).replace(/\n/g, '<br>');
     this.showBubble();
     this.keeper.classList.toggle('cross', cross);
     this.keeper.classList.remove('talk');

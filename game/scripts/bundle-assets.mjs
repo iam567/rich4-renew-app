@@ -95,6 +95,14 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   // 激情歲月 (docs/rules/24): the facility plates, the UI skin, the intro's backgrounds and the icons (maps/remake/jiqing/);
   // its houses, facilities, walkers, street life and pads come with its map file's sprites, its cards' pictures with events/.
   if (existsSync(join(src, 'maps/remake/jiqing'))) for (const f of readdirSync(join(src, 'maps/remake/jiqing'))) if (f.endsWith('.webp')) copy(`maps/remake/jiqing/${f}`);
+  // …and its place screens' backgrounds and hostesses (tools/tycoon-art/jq_places.py): places.json + places/NNNN/frame-XXX.webp.
+  if (existsSync(join(src, 'maps/remake/jiqing/places/places.json'))) {
+    copy('maps/remake/jiqing/places/places.json');
+    for (const d of readdirSync(join(src, 'maps/remake/jiqing/places'))) {
+      if (!/^\d{4}$/.test(d)) continue;
+      for (const f of readdirSync(join(src, `maps/remake/jiqing/places/${d}`))) if (f.endsWith('.webp')) copy(`maps/remake/jiqing/places/${d}/${f}`);
+    }
+  }
   for (const n of [617, 618]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
   for (const n of [607, 608]) if (existsSync(join(src, `maps/remake/cards/0${n}.webp`))) copy(`maps/remake/cards/0${n}.webp`);
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.

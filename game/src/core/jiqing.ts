@@ -419,7 +419,7 @@ export class JiqingRules implements MapRules {
     switch (c.id) {
       case 'jq-n-satellite': yield* pointsAll(20); return true;
       case 'jq-n-exercise': yield* pointsAll(10); return true;
-      case 'jq-n-grain': yield* pointsAll(20); return true;
+      case 'jq-n-zaoqing': yield* pointsAll(20); return true;
       case 'jq-n-bridge': {
         yield* show(); const lines: ResultLine[] = [];
         for (const q of all) { const id = yield* g.cards.receiveRandom(q); if (id) { yield { t: 'fx', kind: 'card-received', p: q.id, data: { card: id } }; lines.push({ p: q.id, text: '得到一張卡片' }); } }
@@ -432,7 +432,7 @@ export class JiqingRules implements MapRules {
       }
       case 'jq-n-nixon': yield* show(); days('nixon', 3); yield* this.result(g, p, c, 'bonus', [{ text: '招待所3天收費×2' }]); return true;
       case 'jq-n-opera': yield* show(); days('opera', 3); yield* this.result(g, p, c, 'bonus', [{ text: '宣傳站3天罰款×2' }]); return true;
-      case 'jq-n-dazibao': yield* show(); days('dazibao', 3); yield* this.result(g, p, c, 'none', [{ text: '3天過路費減半' }]); return true;
+      case 'jq-n-fanan': yield* show(); days('dazibao', 3); yield* this.result(g, p, c, 'none', [{ text: '3天過路費減半' }]); return true;
       case 'jq-n-chuanlian': yield* show(); days('chuanlian', 3); yield* this.result(g, p, c, 'none', [{ text: '招待所3天免費住' }]); return true;
       case 'jq-n-supply': yield* show(); days('supply', 3); yield* this.result(g, p, c, 'bonus', [{ text: '供銷社3天消費×2' }]); return true;
       case 'jq-n-panda': {
@@ -468,12 +468,12 @@ export class JiqingRules implements MapRules {
         for (const q of who) q.hospital = 0x80;
         yield* show(); yield* this.result(g, p, c, 'release', who.map(q => ({ p: q.id, text: '提前出院' })), { focus: who.map(q => q.id) }); return true;
       }
-      case 'jq-n-cloth': {
+      case 'jq-n-yida': {
         yield* show(); const lines: ResultLine[] = [];
         for (const q of all) { const a = Math.min(Math.trunc(q.cash * 0.05), 20000 * F); if (a > 0) { yield* g.transfer(q.id, -1, a, 0, '布票', true); lines.push({ p: q.id, text: '繳交現金5%', amount: -a }); } }
         yield* this.result(g, p, c, 'tax', lines.length ? lines : [{ text: '沒有人有現金' }]); return true;
       }
-      case 'jq-n-saving': {
+      case 'jq-n-dousi': {
         const got: ResultLine[] = [];
         for (const q of all) if (q.loan === 0) { const x = Math.trunc(q.bank * 0.1); if (x > 0) { q.bank += x; got.push({ p: q.id, text: '有獎儲蓄', amount: x }); } }
         yield* show(); yield* this.result(g, p, c, 'bonus', got.length ? got : [{ text: '有貸款的人拿不到' }]); return true;
@@ -494,7 +494,7 @@ export class JiqingRules implements MapRules {
         yield { t: 'board' };
         yield* this.result(g, p, c, 'quake', [{ text: `${name}${built.length}棟房屋各降一級` }], { refs: lots.map(l => l.id + 2000), node: this.nodeOfRef(lots[0].id + 2000) }); return true;
       }
-      case 'jq-n-wudou': {
+      case 'jq-n-wudou': {   // (no longer in the deck: 批林批孔 took its place; kept for a fate-like use)
         const refs = [...b.lands.filter(l => l.level > 0).map(l => l.id + 2000), ...b.facilities.filter(f => f.level > 0).map(f => f.id + 4000)];
         if (!refs.length) return false;
         const center = refs[this.stream(0xd0d, p.id).below(refs.length)], cc = this.refXY(center), name = this.refName(center);
@@ -506,14 +506,20 @@ export class JiqingRules implements MapRules {
         yield { t: 'board' };
         yield* this.result(g, p, c, 'typhoon', lines.length ? lines : [{ text: `${name}一帶所幸沒有房屋受損` }], { refs: changed, node: this.nodeOfRef(center) }); return true;
       }
-      case 'jq-n-pidou': {
+      case 'jq-n-qingli': {
         const q = [...all].filter(x => !g.offRoad(x)).sort((a, b2) => g.wealth(b2) - g.wealth(a))[0];
         if (!q) return false;
         yield* this.board(p, c, this.fill(this.minor(q) && c.kid ? c.kid : c.text, { name: g.name(q.id) }));
         const r = yield* this.misfortune(g, q);
         if (!r) { yield* this.result(g, p, c, 'blessed', this.escaped(g, q), { focus: [q.id] }); return true; }
         q.stay = 2 * r;
-        yield* this.result(g, p, c, 'jam', [{ p: q.id, text: this.minor(q) ? `罰站${2 * r}回合` : `戴高帽，停留${2 * r}回合` }], { focus: [q.id] }); return true;
+        yield* this.result(g, p, c, 'jam', [{ p: q.id, text: this.minor(q) ? `罰站${2 * r}回合` : `查成分，停留${2 * r}回合` }], { focus: [q.id] }); return true;
+      }
+      case 'jq-n-pilin': {
+        const who = g.locals().filter(q => q.traffic !== 0 && !g.offRoad(q));
+        if (!who.length) return false;
+        yield* show(); for (const q of who) q.stay = 1;
+        yield* this.result(g, p, c, 'jam', who.map(q => ({ p: q.id, text: '開學習會，停留一回合' })), { focus: who.map(q => q.id) }); return true;
       }
       case 'jq-n-sijiu': {
         const who = all.filter(q => q.cards.length);
@@ -561,7 +567,6 @@ export class JiqingRules implements MapRules {
       case 'jq-f-fenhong': yield* money(4000 * F, true); return true;
       case 'jq-f-tijian': yield* money(2000 * F, true); return true;
       case 'jq-f-biaoyang': yield* money(3000 * F, true); return true;
-      case 'jq-f-butiao': yield* money(1000 * F, false); return true;
       case 'jq-f-dazibao': yield* money(3000 * F, false); return true;
       case 'jq-f-chicken': yield* money(1500 * F, false); return true;
       case 'jq-f-yulu': yield* points(30); return true;
@@ -594,6 +599,7 @@ export class JiqingRules implements MapRules {
       }
       case 'jq-f-pidou': yield* hold(2); return true;
       case 'jq-f-yikufan': yield* hold(1); return true;
+      case 'jq-f-pingfa': yield* hold(1); return true;
       case 'jq-f-paidui': yield* hold(1); return true;
       case 'jq-f-chaojia': {
         const tools = p.tools.map((n, i) => (n > 0 && i < 13 ? i + 1 : 0)).filter(Boolean);

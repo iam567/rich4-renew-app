@@ -13,6 +13,8 @@ import type { Player } from '../core/types';
 import { year } from '../core/date';
 import { memTier } from './mem-tier';
 import type { BoardNode } from '../core/board';
+import type { SpriteBank } from './sprites';
+import { ASSETS } from './assets';
 
 export { jqRules, JQ_MAP };
 
@@ -126,3 +128,18 @@ export const onJqSettings = (f: () => void) => { listeners.add(f); return () => 
 
 /** The walkers' count by memory tier (§8.1: as 歌舞伎町's: low 30 / mid 60 / high 100). */
 export const jqTier = () => memTier();
+
+// ------------------------------------------------------------------ the place screens (§11.3)
+
+/**
+ * The place screens' backgrounds and hostesses in the era's look on this map (tools/tycoon-art/jq_places.py →
+ * maps/remake/jiqing/places/places.json); any other map: the originals (the sprite bank is shared between games).
+ */
+export async function prepareJiqingPlaces(bank: SpriteBank, on: boolean): Promise<void> {
+  if (!on) { bank.setArtOverrides(null); return; }
+  const base = `${ASSETS}/maps/remake/jiqing/places`;
+  try {
+    const r = await fetch(`${base}/places.json`);
+    bank.setArtOverrides(r.ok ? await r.json() as Record<string, [string, number, number, number, number]> : null, base);
+  } catch { bank.setArtOverrides(null); }
+}
