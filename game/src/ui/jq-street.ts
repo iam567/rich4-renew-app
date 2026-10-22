@@ -261,7 +261,7 @@ export class JqStreet {
         this.announce(ANNOUNCEMENTS[Math.floor(this.r() * ANNOUNCEMENTS.length)]);
       }
     }
-    if ((this.nextAnnounce -= dt) <= 0) { this.nextAnnounce = 45 + this.r() * 40; if (this.loudOn) this.announce(ANNOUNCEMENTS[Math.floor(this.r() * ANNOUNCEMENTS.length)]); }
+    if ((this.nextAnnounce -= dt) <= 0) { this.nextAnnounce = 90 + this.r() * 60; if (this.loudOn) this.announce(ANNOUNCEMENTS[Math.floor(this.r() * ANNOUNCEMENTS.length)]); }
   }
 
   /** An announcement's text as a banner over the map (§9.2: no voice yet), about 6 s. */
@@ -273,7 +273,8 @@ export class JqStreet {
     const el = document.createElement('div');
     el.className = 'jq-announce';
     el.innerHTML = '<i class="jq-horn"></i><span></span>';
-    el.querySelector('span')!.textContent = `廣播站：${text}`;
+    // 「大喇叭」, not 「廣播站」: these are the street's loudspeakers, not the 廣播站 square's news (that one has its card).
+    el.querySelector('span')!.textContent = `大喇叭：${text}`;
     stage.append(el);
     this.banner = el;
     setTimeout(() => { el.classList.add('out'); setTimeout(() => el.remove(), 600); }, 6500);

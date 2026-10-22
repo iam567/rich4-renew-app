@@ -75,6 +75,12 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   for (const f of [...cards, ...tools, ...shots, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {
     if (existsSync(join(src, `maps/remake/${f}`))) copy(`maps/remake/${f}`);
   }
+  // The tools' and high-end cards' films (ui/tool-cinema.ts, tools/tycoon-art/cinema_art.py): cinema/<key>/shot-N.webp.
+  // (Missing from v0.7.0's app bundles: the films played black with broken pictures on the phone.)
+  if (existsSync(join(src, 'maps/remake/cinema'))) for (const d of readdirSync(join(src, 'maps/remake/cinema'))) {
+    if (!statSync(join(src, `maps/remake/cinema/${d}`)).isDirectory()) continue;
+    for (const f of readdirSync(join(src, `maps/remake/cinema/${d}`))) if (f.endsWith('.webp')) copy(`maps/remake/cinema/${d}/${f}`);
+  }
   // 大富翁城 (docs/rules/19): the five halls' sprites (map/1601..1645, read at run time) and the casino screens' art.
   for (let t = 0; t < 5; t++) for (let k = 1; k <= 5; k++) {
     const fj = `maps/remake/sprites/${1600 + t * 10 + k}/frames.json`;

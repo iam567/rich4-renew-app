@@ -22,6 +22,8 @@ describe('激情歲月 words', () => {
     expect(eraText('歡迎光臨\n道具店！')).toBe('同志，要貨不？\n噓……小聲點！');
     expect(eraText('收音機廠董事長，坐牢5天')).toBe('收音機廠的負責同志，關牛棚5天');
     expect(eraText('命運')).toBe('大字報');
+    expect(eraText('11月份 銀行結算')).toBe('十一月份 月底評比');
+    expect(eraText('本月冠軍是．．。')).toBe('本月的勞動模範是……');
     expect(eraText('改變命運的機會')).toBe('改變命運的機會');
   });
 });

@@ -88,7 +88,7 @@
 
 /* ---------------------------------------------------------------- sheets with their own white text (查詢, 系統, 內部認購 …):
    a dark red lacquered board with the paper's grain, the words stay light (they were written for the blue board). */
-.game.theme-jq .msg.sheet, .game.theme-jq .msg.stocks {
+.game.theme-jq .msg.sheet, .game.theme-jq .msg.stocks, .game.theme-jq .msg.rs-box {
   color: #fff3d6;
   background: #5a160f var(--jq-kraft) center / cover;
   background-blend-mode: multiply;
@@ -127,3 +127,27 @@
   padding: 3px 12px 4px; color: #b3131b; font-weight: 800; background: #fff8e4; border: 2px solid #b3131b; border-radius: 3px;
   box-shadow: 0 3px 6px rgba(0, 0, 0, .35); transform: translate(-50%, -50%) rotate(-2deg);
 }
+
+/* ---------------------------------------------------------------- the calendar: an old tear-off calendar (no landscape photo) */
+.game.theme-jq .cal { background: linear-gradient(#c8161d 0 15%, #a50f15 15% 16%, #fff8ea 16%), #fff8ea; border-radius: 4px;
+  box-shadow: inset 0 0 0 2px #b3131b, 0 2px 6px rgba(0, 0, 0, .3); }
+.game.theme-jq .cal-bg { visibility: hidden; }
+.game.theme-jq .cal-year { color: #ffe58a; text-shadow: none; top: 4px; }
+.game.theme-jq .cal-month { color: #b3131b; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
+.game.theme-jq .cal-day, .game.theme-jq .cal-wd { text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; }
+.game.theme-jq .cal-day { color: #2a1406; }
+.game.theme-jq .cal-d { color: #2a1406; }
+
+/* ---------------------------------------------------------------- the month report (月底評比): its own background and girl come
+   through the sprite bank; the title and the board under it in red and gold */
+.game.theme-jq .mr-title { color: #ffe58a; }
+.game.theme-jq .mr-title b { color: #ffe58a; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
+.game.theme-jq .mr-row { background: rgba(120, 20, 12, .55); border-color: #e0a92e; }
+.game.theme-jq .mr-scene .pl-stage { background: #6a160f; }
+.game.theme-jq .rs-cover, .game.theme-jq .rs-cover.won { background: radial-gradient(circle at 50% 14%, #b0302a, #3a0806 62%); }
+/* 上市公司分紅 → 國營企業年終分紅 on a red board */
+.game.theme-jq .dv-ov { background: radial-gradient(90% 90% at 50% 40%, rgba(90, 14, 8, .55), rgba(20, 3, 2, .82)); }
+.game.theme-jq .dv-board { background: linear-gradient(180deg, #8a1a12, #5e110b 55%, #3a0a06); border-color: #e0a92e;
+  box-shadow: 0 0 0 4px #b3131b, 0 8px 0 4px #4a0a06, 0 18px 40px rgba(0, 0, 0, .55); }
+.game.theme-jq .dv-ribbon { border-radius: 0; border: none; background: #c8161d var(--jq-banner) center / 100% 100% no-repeat; box-shadow: none; }
+.game.theme-jq .dv-ribbon span { color: #ffe58a; text-shadow: 0 2px 0 #5a0808; font-family: "Noto Serif TC", "Songti TC", serif; }

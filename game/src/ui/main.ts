@@ -1234,7 +1234,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       case 'day':
         // Holiday music counts its days down, then today's holiday may start (fcn_0041cf67 / fcn_00452444).
         {
-          const h = holidayMusic(s.date, game.mapSlot);
+          // 激情歲月 (docs/rules/24): no Christmas or New-Year music in 1966 Beijing's map (it is built on the Japan slot).
+          const h = game.settings.mapId === JQ_MAP ? null : holidayMusic(s.date, game.mapSlot);
           audio.newDay(h?.music ?? null, h?.days);
         }
         hud.refresh();

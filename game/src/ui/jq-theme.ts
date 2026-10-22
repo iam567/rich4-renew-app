@@ -11,7 +11,9 @@ import { lang, t as toHans } from './lang';
 import { setEraLine } from './era-line';
 import './theme-jq.css';
 
-const ART = (name: string) => `url("${ASSETS}/maps/remake/jiqing/${name}.webp")`;
+/** An absolute URL: a url() in a custom property resolves against the stylesheet that uses it (dist/assets/ in a build). */
+const abs = (path: string) => `url("${new URL(path, location.href).href}")`;
+const ART = (name: string) => abs(`${ASSETS}/maps/remake/jiqing/${name}.webp`);
 
 /**
  * The renames: [original, this map's] in 繁體 and their 简体 forms (lang.ts may already have converted a text).
@@ -72,10 +74,27 @@ const LINES: Record<string, string> = {
   '嘿∼輪到你了！': '同志，\n輪到你了！',
   // 反帝醫院
   '您好！請問您要替誰\n辦理出院手續？': '同志，你好！要替誰\n辦理出院手續？',
+  // 月底評比 (the month report: the bank's monthly settlement as the month-end award meeting)
+  '各位客戶辛苦了！\n又到了每月銀行\n結算的日子。': '各位同志你好！\n又到了月底評\n先進工作者的時候！',
+  '大富翁銀行將\n根據您的存款，\n加發１０％的儲金利息。': '人民銀行發儲蓄利息：\n存款加發１０％，\n備戰備荒為人民！',
+  '本月悲情人物是．．。': '本月「拖後腿」\n的同志是……',
+  '別灰心，\n再加油喔！': '別灰心，\n下個月爭當先進！',
+  '本月冠軍是．．。': '本月的勞動模範是……',
+  '其他人還要\n更努力喔！': '其他同志還要\n向他學習喔！',
+  '大富翁銀行・存款加發 10% 利息': '人民銀行發儲蓄利息・存款加發 10%',
+  '本月最倒楣': '拖後腿（最倒楣）',
+  '總資產最多': '勞動模範（總資產最多）',
+  '獲獎原因：': '評比結果：',
+  // the 15th's dividends and the end of the game
+  '上市公司分紅': '國營企業年終分紅',
+  '遊戲結算': '年終總結評比',
 };
+/** 一 … 十二 for the month titles. */
+const CN_MONTH = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
 /** Forms of address (the user 2026-10-22: 「稱呼全部叫同志」): 董事長 / 先生 / 小姐 / 老闆 / 客人 / 顧客 … → 同志. */
 // (each in 繁體 and 简体: 简体 may have converted a text before this pass sees it)
-const ADDRESS: [RegExp, string][] = [
+const ADDRESS: [RegExp, string | ((...m: string[]) => string)][] = [
+  [/^(\d{1,2})月份 [銀银]行[結结]算$/, (_, m) => `${CN_MONTH[Number(m)] ?? m}月份 月底評比`],
   [/董事[長长]室/g, '廠長辦公室'],
   [/董事[長长](\S{1,8}?) ([請请]付)/g, '$1同志 $2'],
   [/[歡欢]迎董事[長长]光[臨临]/g, '同志，你好！'],
@@ -101,7 +120,7 @@ export function eraText(s: string): string {
   const t = s.trim(), line = lineFor(t);
   if (line !== undefined) return s.replace(t, line);
   let out = s;
-  for (const [re, to] of ADDRESS) out = out.replace(re, to);
+  for (const [re, to] of ADDRESS) out = out.replace(re, to as string);
   return out.replace(RE, w => MAP.get(w) ?? w);
 }
 
@@ -141,7 +160,7 @@ export function applyJqTheme(shell: HTMLElement): () => void {
     '--jq-kraft': ART('paper-kraft'), '--jq-newsprint': ART('paper-newsprint'), '--jq-banner': ART('banner'), '--jq-star': ART('badge-star'),
     '--jq-news': ART('frame-news'), '--jq-fate': ART('frame-fate'), '--jq-award': ART('frame-award'), '--jq-calendar': ART('frame-calendar'),
     '--jq-ok': ART('button-ok'), '--jq-cancel': ART('button-cancel'), '--jq-board': ART('board'),
-    '--jq-horn': `url("${ASSETS}/maps/remake/sprites/9103/frame-000.webp")`,
+    '--jq-horn': abs(`${ASSETS}/maps/remake/sprites/9103/frame-000.webp`),
   };
   for (const [k, v] of Object.entries(vars)) shell.style.setProperty(k, v);
   fixTree(shell);
