@@ -13,6 +13,7 @@ import type { Frame } from '../sprites';
 import { fxScreens, type ScreenContext } from './registry';
 import { el, money, openScene, preload, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
+import { eraLine, eraOn } from '../era-line';
 import { centreWords } from '../bubble-text';
 import './month-report.css';
 
@@ -247,6 +248,10 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
       if (P) world.style.transform = `scale(${440 / 640})`;
       const W = world;
       s.art('Panel', 25, 0, 0, 0, 'mr-bg', W);
+      // 激情歲月 (docs/rules/24 §11): the month's headline on the stage's red banner, in the era's loud lettering.
+      // (on the banner at the top; while the girl's big balloons cover it, on the stage's front drape; not under the heart one)
+      const low = !!view.balloon && view.balloon.frame !== 4;
+      if (eraOn() && !P && view.balloon?.frame !== 4) s.box(`mr-era-title${low ? ' low' : ''}`, 150, low ? 392 : 24, 450, 56, `<b>${eraLine(`${month(g.date)}月份 銀行結算`)}</b>`, W);
       if (view.phase === 'stage' && view.spot >= 0) {
         const f = SPOT_F[n][view.spot];
         // Over the redrawn background the columns' baked-in pattern would show as a panel: always the drawn beam.
@@ -287,7 +292,8 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
         const w = a?.w ?? 290, h = a?.h ?? 200;
         const box = s.box(`mr-balloon f${view.balloon.frame}${pop(`b${view.balloon.frame}:${view.balloon.text}`)}`, b.x, b.y, w, h, '', W);
         if (a) box.style.backgroundImage = `url('${a.src}')`;
-        const t = el('div', 'mr-say', view.balloon.text.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
+        const said = eraLine(view.balloon.text);
+        const t = el('div', `mr-say${eraOn() && /^本月勞動模範/.test(said) ? ' loud' : ''}`, said.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
         centreWords(t, `Panel/25/${view.balloon.frame}`);
         box.append(t);
       }

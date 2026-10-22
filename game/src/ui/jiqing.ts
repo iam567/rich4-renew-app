@@ -10,7 +10,7 @@
 import { jqRules, JQ_MAP } from '../core/jiqing'; // also registers map 107's rules for a normal game
 import type { Game } from '../core/game';
 import type { Player } from '../core/types';
-import { year } from '../core/date';
+import { day, month, year } from '../core/date';
 import { memTier } from './mem-tier';
 import type { BoardNode } from '../core/board';
 import type { SpriteBank } from './sprites';
@@ -105,6 +105,11 @@ export function jqPanelTags(game: Game, p: Player): string {
 /** The year the calendar shows (§10): from 1966 on this map (only shown; the rules' dates are the game's). */
 export function shownYear(game: Game, d: number): number {
   return jqRules(game) ? year(d) - year(game.settings.startDate) + 1966 : year(d);
+}
+
+/** The weekday the calendar shows (§10): that of the shown year's date (1966-10-22 was a Saturday), 0 = Sunday. */
+export function shownWeekday(game: Game, d: number): number {
+  return new Date(Date.UTC(shownYear(game, d), month(d) - 1, day(d))).getUTCDay();
 }
 
 // ------------------------------------------------------------------ settings

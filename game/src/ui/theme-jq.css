@@ -128,15 +128,31 @@
   box-shadow: 0 3px 6px rgba(0, 0, 0, .35); transform: translate(-50%, -50%) rotate(-2deg);
 }
 
-/* ---------------------------------------------------------------- the calendar: an old tear-off calendar (no landscape photo) */
-.game.theme-jq .cal { background: linear-gradient(#c8161d 0 15%, #a50f15 15% 16%, #fff8ea 16%), #fff8ea; border-radius: 4px;
-  box-shadow: inset 0 0 0 2px #b3131b, 0 2px 6px rgba(0, 0, 0, .3); }
-.game.theme-jq .cal-bg { visibility: hidden; }
-.game.theme-jq .cal-year { color: #ffe58a; text-shadow: none; top: 4px; }
-.game.theme-jq .cal-month { color: #b3131b; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
-.game.theme-jq .cal-day, .game.theme-jq .cal-wd { text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; }
-.game.theme-jq .cal-day { color: #2a1406; }
-.game.theme-jq .cal-d { color: #2a1406; }
+/* ---------------------------------------------------------------- the calendar: a 1970s tear-off desk calendar (撕頁日曆,
+   ui/side.ts tearOff): the red header with the year and the month, the big day, the weekday, the weather; 200 × 200 */
+.game.theme-jq .cal { background: none; }
+.game.theme-jq .tc { position: absolute; inset: 4px 6px 6px; border-radius: 3px; overflow: hidden; color: #2a1406;
+  background: repeating-linear-gradient(#fffaf0 0 3px, #fbf3e2 3px 4px); box-shadow: 0 1px 0 #e5d6b5, 0 2px 0 #fbf3e2, 0 3px 0 #e5d6b5, 0 5px 8px rgba(0, 0, 0, .35); }
+.game.theme-jq .tc-rings { position: absolute; left: 0; right: 0; top: 3px; height: 6px; z-index: 2;
+  background: radial-gradient(circle, #3a3a3a 0 2.4px, transparent 2.6px) 0 0 / 22px 6px repeat-x; }
+.game.theme-jq .tc-head { position: absolute; left: 0; right: 0; top: 0; height: 46px; display: flex; align-items: flex-end; justify-content: space-between;
+  padding: 0 10px 5px; background: linear-gradient(#d7141a, #a50f15); color: #ffe58a; font-family: "Songti TC", "STSong", "Noto Serif CJK TC", "Noto Serif TC", serif; }
+.game.theme-jq .tc-head b { font-size: 22px; font-weight: 900; letter-spacing: 1px; }
+.game.theme-jq .tc-head span { font-size: 22px; font-weight: 900; }
+.game.theme-jq .tc-day { position: absolute; left: 0; right: 0; top: 46px; height: 96px; text-align: center; font-size: 84px; line-height: 96px; font-weight: 900;
+  font-family: "Songti TC", "STSong", "Noto Serif CJK TC", "Noto Serif TC", serif; color: #1b1b1b; }
+.game.theme-jq .tc-wd { position: absolute; left: 10px; bottom: 10px; font-size: 20px; line-height: 24px; font-weight: 900;
+  font-family: "Songti TC", "STSong", "Noto Serif CJK TC", "Noto Serif TC", serif; }
+.game.theme-jq .tc .red { color: #d7141a; }
+.game.theme-jq .tc-wx { position: absolute; right: 6px; bottom: 6px; display: flex; flex-direction: column; align-items: center; }
+.game.theme-jq .tc-wx svg { width: 38px; height: 38px; }
+.game.theme-jq .tc-wx span { font-size: 11px; line-height: 13px; padding: 0 5px; border-radius: 6px; border: 1px solid #b3131b; color: #b3131b; background: #fff8ea; }
+.game.theme-jq .tc-grid { position: absolute; left: 8px; right: 8px; top: 52px; bottom: 6px; display: grid; grid-template-columns: repeat(7, 1fr);
+  align-content: start; row-gap: 2px; text-align: center; font-size: 12px; line-height: 16px; }
+.game.theme-jq .tc-grid b { font-size: 11px; color: #5a3a20; }
+.game.theme-jq .tc-grid .today { outline: 1.5px solid #d7141a; border-radius: 2px; font-weight: 900; }
+.game.theme-jq .tc-hit { left: 0; top: 0; width: 100%; height: 100%; border-radius: 0; z-index: 3; }
+.game.theme-jq .st-date { font-size: 12px; }
 
 /* ---------------------------------------------------------------- the month report (月底評比): its own background and girl come
    through the sprite bank; the title and the board under it in red and gold */
@@ -151,3 +167,20 @@
   box-shadow: 0 0 0 4px #b3131b, 0 8px 0 4px #4a0a06, 0 18px 40px rgba(0, 0, 0, .55); }
 .game.theme-jq .dv-ribbon { border-radius: 0; border: none; background: #c8161d var(--jq-banner) center / 100% 100% no-repeat; box-shadow: none; }
 .game.theme-jq .dv-ribbon span { color: #ffe58a; text-shadow: 0 2px 0 #5a0808; font-family: "Noto Serif TC", "Songti TC", serif; }
+
+/* ---------------------------------------------------------------- 先進工作者評比: the era's loud headline lettering (huge, ultra
+   bold, red with a gold outline and a heavy shadow, slanted and stretched, a gold star beside), with the system's heavy
+   serif / sans (no web font: 宋體 / 黑體 as on 獎狀 and posters) */
+.game.theme-jq .mr-era-title { position: absolute; display: flex; align-items: center; justify-content: center; z-index: 2; pointer-events: none; }
+.game.theme-jq .mr-era-title b, .game.theme-jq .mr-title b, .game.theme-jq .mr-say.loud {
+  font-family: "Heiti TC", "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif; font-weight: 900; color: #e3141b;
+  -webkit-text-stroke: 1.6px #ffd93a; paint-order: stroke fill;
+  text-shadow: 0 0 1px #ffd93a, 2px 3px 0 #6a0606, 3px 5px 0 #3a0303, 0 0 10px rgba(255, 210, 60, .6);
+  letter-spacing: 2px; white-space: nowrap; }
+.game.theme-jq .mr-era-title b { font-size: 34px; color: #ffe14a; -webkit-text-stroke: 1.4px #7a0606; text-shadow: 2px 3px 0 #3a0303, 0 0 8px rgba(0, 0, 0, .4);
+  transform: skewX(-8deg) scaleY(1.18); }
+.game.theme-jq .mr-era-title::before, .game.theme-jq .mr-era-title::after { content: ''; width: 36px; height: 36px; margin: 0 6px; flex: none;
+  background: var(--jq-star) center / contain no-repeat; filter: drop-shadow(1px 2px 0 #3a0303); }
+.game.theme-jq .mr-title b { display: inline-flex; align-items: center; gap: 4px; font-size: 27px; letter-spacing: 1px; transform: skewX(-8deg) scaleY(1.15); }
+.game.theme-jq .mr-title b::before, .game.theme-jq .mr-title b::after { content: ''; width: 24px; height: 24px; flex: none; background: var(--jq-star) center / contain no-repeat; }
+.game.theme-jq .mr-say.loud { font-size: 28px; line-height: 1.15; font-style: italic; white-space: pre-line; }

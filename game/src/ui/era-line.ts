@@ -5,3 +5,5 @@
 let filter: ((s: string) => string) | null = null;
 export const eraLine = (s: string): string => (filter ? filter(s) : s);
 export function setEraLine(f: ((s: string) => string) | null) { filter = f; }
+/** Whether the current map has its own wording (激情歲月): screens may then add the era's headlines. */
+export const eraOn = (): boolean => filter !== null;

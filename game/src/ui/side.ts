@@ -4,7 +4,7 @@
  */
 import { blindsTag, chipMode } from './finale';
 import { kbPanelTags } from './kabukicho'; // 歌舞伎町's signs (docs/rules/21)
-import { jqPanelTags, shownYear } from './jiqing'; // 激情歲月's 學習班 sign, the year from 1966 (docs/rules/24)
+import { jqPanelTags, jqRules, shownWeekday, shownYear } from './jiqing'; // 激情歲月's 學習班 sign, the year from 1966 (docs/rules/24)
 import { CHARACTERS, playerName } from '../core/characters';
 import { day, month, weekday, year, daysInMonth, pack } from '../core/date';
 import type { Game } from '../core/game';
@@ -140,6 +140,7 @@ export class Calendar {
   }
 
   update() {
+    if (jqRules(this.game)) { this.tearOff(); return; }
     const d = this.game.date, m = month(d), w = weekday(d), red = w === 0;
     const photo = this.bank.art('Panel', 2, (this.monthView ? 4 : 0) + SEASON[m - 1]);
     let body = '';
@@ -163,6 +164,28 @@ export class Calendar {
       <button class="cal-hit" data-view="month" style="left:38px" aria-label="月視圖"></button>
       <div class="cal-year">${shownYear(this.game, d)}</div><div class="cal-month">${m}月</div>${body}${wxBox}`;
   }
+
+  /**
+   * 激情歲月 (docs/rules/24 §11): a 1970s tear-off desk calendar instead of the photo calendar — a red header with the
+   * year and the month, the big day, the weekday (of the shown year: 1966-10-22 is a Saturday), today's weather; the
+   * month view a plain grid under the header. A tap anywhere switches the views. Only shown: the rules' dates are the game's.
+   */
+  private tearOff() {
+    const g = this.game, d = g.date, m = month(d), y = shownYear(g, d), w = shownWeekday(g, d), red = w === 0;
+    const wx = weatherMode() === 2 ? null : todayWeather(g);
+    const CN = ['', '一', '二', '三', '四', '五', '六', '七', '八', '九', '十', '十一', '十二'];
+    let body = '';
+    if (this.monthView) {
+      const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay(), n = new Date(Date.UTC(y, m, 0)).getUTCDate();
+      body = `<div class="tc-grid">${['日', '一', '二', '三', '四', '五', '六'].map((h, i) => `<b class="${i ? '' : 'red'}">${h}</b>`).join('')}${
+        '<i></i>'.repeat(first)}${Array.from({ length: n }, (_, i) => { const c = (first + i) % 7; return `<span class="${c ? '' : 'red'}${i + 1 === day(d) ? ' today' : ''}">${i + 1}</span>`; }).join('')}</div>`;
+    } else {
+      body = `<div class="tc-day${red ? ' red' : ''}">${day(d)}</div><div class="tc-wd${red ? ' red' : ''}">${WEEKDAYS[w]}</div>
+        ${wx ? `<div class="tc-wx" data-wx="${wx.kind}" title="今日天氣：${WEATHER_NAME[wx.kind]}">${weatherIcon(wx.kind)}<span>${WEATHER_NAME[wx.kind]}</span></div>` : ''}`;
+    }
+    this.el.innerHTML = `<div class="tc${this.monthView ? ' month' : ''}"><i class="tc-rings"></i><div class="tc-head"><b>${y}</b><span>${CN[m]}月</span></div>${body}
+      <button class="cal-hit tc-hit" data-view="${this.monthView ? 'day' : 'month'}" aria-label="${this.monthView ? '日視圖' : '月視圖'}"></button></div>`;
+  }
 }
 
 /**
@@ -181,7 +204,7 @@ export class SideToday {
   }
 
   update() {
-    const g = this.game, d = g.date, w = weekday(d);
+    const g = this.game, d = g.date, w = jqRules(g) ? shownWeekday(g, d) : weekday(d);
     const wx = weatherMode() === 2 ? null : todayWeather(g);
     const html = `${wx ? `<div class="st-wx" data-wx="${wx.kind}" title="今日天氣：${WEATHER_NAME[wx.kind]}">${weatherIcon(wx.kind)}<span>${WEATHER_NAME[wx.kind]}</span></div>` : ''}
       <div class="st-date">${month(d)}月${day(d)}日</div><div class="st-wd${w === 0 ? ' red' : ''}">${WEEKDAYS[w]}</div>
