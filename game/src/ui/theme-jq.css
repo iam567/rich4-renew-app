@@ -179,7 +179,7 @@
     repeating-linear-gradient(90deg, rgba(0, 0, 0, 0) 0 46px, rgba(0, 0, 0, .12) 52px, rgba(255, 255, 255, .05) 58px, rgba(0, 0, 0, 0) 64px),
     linear-gradient(#b8121a, #a10e16 45%, #880a10 85%, #6e080c);
   box-shadow: 0 4px 6px rgba(0, 0, 0, .35), inset 0 2px 0 rgba(255, 255, 255, .12), inset 0 -3px 0 rgba(0, 0, 0, .25); }
-.game.theme-jq .mr-cloth-words b, .game.theme-jq .mr-say.loud b { color: #f8dc84; font-size: 30px; line-height: 1; font-weight: 900; font-style: normal;
+.game.theme-jq .mr-cloth-words b { color: #f8dc84; font-size: 30px; line-height: 1; font-weight: 900; font-style: normal;
   font-family: "Heiti TC", "STHeiti", "PingFang TC", "Noto Sans CJK TC", "Microsoft JhengHei", sans-serif;
   -webkit-text-stroke: 1.2px #f8dc84; text-shadow: 0 1px 1px rgba(60, 0, 0, .5); transform: scaleY(1.08); }
 .game.theme-jq .mr-cloth .tie { flex: none; width: 18px; position: relative;
@@ -202,6 +202,3 @@
 /* (portrait: smaller flags right at the cloth's ends, over the ties) */
 .game.theme-jq .mr-title.era .mr-cloth::before { bottom: -40px; left: 0; transform: rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
 .game.theme-jq .mr-title.era .mr-cloth::after { bottom: -40px; right: 0; transform: scaleX(-1) rotate(-8deg) scale(.7); transform-origin: 4px 100%; }
-.game.theme-jq .mr-say.loud { display: inline-flex; flex-wrap: wrap; justify-content: center; gap: 2px 4px; max-width: 250px; padding: 8px 12px; border-radius: 2px;
-  background: linear-gradient(#b8121a, #880a10); box-shadow: 0 3px 5px rgba(0, 0, 0, .3); }
-.game.theme-jq .mr-say.loud b { font-size: 30px; }

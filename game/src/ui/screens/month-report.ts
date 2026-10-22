@@ -295,9 +295,8 @@ function report(ctx: ScreenContext, fx: Fx): Promise<void> {
         const box = s.box(`mr-balloon f${view.balloon.frame}${pop(`b${view.balloon.frame}:${view.balloon.text}`)}`, b.x, b.y, w, h, '', W);
         if (a) box.style.backgroundImage = `url('${a.src}')`;
         const said = eraLine(view.balloon.text);
-        const loud = eraOn() && /^本月勞動模範/.test(said);
-        const t = el('div', `mr-say${loud ? ' loud' : ''}`, loud ? [...said.replace(/\s+/g, '')].map(c => `<b>${c.replace(/[&<>]/g, '')}</b>`).join('')
-          : said.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
+        // (本月勞動模範 too in the ordinary balloon lettering — the user 2026-10-22: only the meeting's banner is big.)
+        const t = el('div', 'mr-say', said.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]!));
         centreWords(t, `Panel/25/${view.balloon.frame}`);
         box.append(t);
       }
