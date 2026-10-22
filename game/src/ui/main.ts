@@ -581,7 +581,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   hud.shell = shell;
   for (const c of ty?.world.cities ?? [game]) c.animation = miniGameMode() === 0;
   // Debug handle for screenshots and tests: open any screen without playing up to it.
-  (window as unknown as { __rich4: unknown }).__rich4 = { game, hud, view, weather, ctx: () => hud.context(shell), askScreens, fxScreens, world: ty?.world,
+  (window as unknown as { __rich4: unknown }).__rich4 = { game, hud, view, weather, room, ctx: () => hud.context(shell), askScreens, fxScreens, world: ty?.world,
     ending: ty ? (winner: number) => tycoonEnding(hud.context(shell), ty.world, winner) : undefined,
     results: (winner: number) => (ty ? tycoonEnding(hud.context(shell), ty.world, winner, () => Promise.resolve(false))
       : showResults(bank!, shell, gameResults(game, winner), { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, game.players.filter(p => p.human).map(p => p.character), game.settings.mapId) })) };
@@ -859,6 +859,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   waiting.className = 'pt-waiting'; waiting.hidden = true;
   if (room) {
     stage.append(waiting);
+    // The richest player can't be voted out (the same game state on every phone, so the same answer everywhere); a
+    // tie (the start) protects nobody.
+    room.richest = seat => {
+      const me2 = game.players[seat];
+      if (!me2 || me2.bankrupt || !me2.whoPlays) return false;
+      const w = game.wealth(me2);
+      return game.players.every(q => q === me2 || q.bankrupt || !q.whoPlays || game.wealth(q) < w);
+    };
     room.onStatus = t => {
       if (room.kicked) {
         // Its own notice over everything (a box could queue behind the game's), then back to the title.
@@ -924,11 +932,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     return new Promise(res => setTimeout(res, Math.max(0, turnDeadline - Date.now())));
   };
   /** `ui` or, when the clock runs out first, `late()`. */
+  // `late` runs only while this question is still open: the clock of a question answered in time used to fire anyway
+  // later and close whatever was open then (a card menu, the stock market) and hide the next GO (issue #4).
   const timed = async <T,>(ui: Promise<T>, clockRun: Promise<void> | null, late: () => T): Promise<T> => {
     if (!clockRun) return ui;
-    let out = false;
-    const r = await Promise.race([ui, clockRun.then(() => { out = true; return late(); })]);
-    void out;
+    let settled = false;
+    const never = new Promise<T>(() => {});
+    const r = await Promise.race([ui.then(v => { settled = true; return v; }), clockRun.then(() => (settled ? never : late()))]);
+    settled = true;
     return r;
   };
   const dropped = new Map<number, number>();

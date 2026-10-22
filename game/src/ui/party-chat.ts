@@ -154,14 +154,14 @@ export class PartyBar {
         const me = m.id === r.myId, votes = r.votes.get(m.id)?.size ?? 0, isHost = m.id === r.members[0]?.id, voted = r.votes.get(m.id)?.has(r.myId);
         return `<div class="pc-person${m.away ? ' away' : ''}"><img src="${this.face(m.character)}" alt=""><b><i class="pc-dot${m.away ? ' off' : ''}"></i>${esc(m.name)}${me ? '<small>你</small>' : ''}${isHost ? '<small>房主</small>' : ''}${m.region ? `<small>${esc(m.region)}</small>` : ''}${m.away ? '<small>斷線中</small>' : ''}</b>
           ${me ? '<span></span><span></span>' : `<button class="chip${r.muted.has(m.id) ? ' on' : ''}" data-mute="${m.id}">${r.muted.has(m.id) ? '已靜音' : '靜音'}</button>
-          <button class="chip${voted ? ' on' : ''}" data-kick="${m.id}"${voted ? ' disabled' : ''}>請出 ${votes}/2</button>`}</div>`;
-      }).join('')}</div><p class="pc-note">請出某人（房主也可以）需要另外兩位玩家同意；被請出的人由電腦接手，房主走了由下一位接任</p>`;
+          ${r.protectedId(m.id) ? '<button class="chip" disabled>首富・不能請出</button>' : `<button class="chip${voted ? ' on' : ''}" data-kick="${m.id}"${voted ? ' disabled' : ''}>請出 ${votes}/2</button>`}`}</div>`;
+      }).join('')}</div><p class="pc-note">請出某人（房主也可以）需要另外兩位玩家同意；總資產最多的玩家不能被請出。被請出的人由電腦接手繼續玩（土地不拍賣），房主走了由下一位接任</p>`;
     } else {
       const list = [...r.votes.entries()].filter(([, s]) => s.size);
       p.innerHTML = `${head('投票')}${list.length ? `<div class="pc-votes">${list.map(([target, s]) => {
         const voted = s.has(r.myId), mine = target === r.myId;
         return `<div class="pc-vote"><b>請出 ${esc(r.nameOf(target))}</b><span>${s.size}/2 票・${[...s].map(id => esc(r.nameOf(id))).join('、')}</span>
-          ${mine ? '<em>大家在投你</em>' : `<button class="chip${voted ? ' on' : ''}" data-kick="${target}"${voted ? ' disabled' : ''}>${voted ? '已投票' : '我也同意'}</button>`}</div>`;
+          ${mine ? '<em>大家在投你</em>' : r.protectedId(target) ? '<em>首富・不能請出</em>' : `<button class="chip${voted ? ' on' : ''}" data-kick="${target}"${voted ? ' disabled' : ''}>${voted ? '已投票' : '我也同意'}</button>`}</div>`;
       }).join('')}</div>` : '<p class="pc-note">現在沒有進行中的投票</p>'}<p class="pc-note">要發起請出，請到「玩家」按「請出」</p>`;
       void others;
     }

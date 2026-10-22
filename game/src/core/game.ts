@@ -246,6 +246,14 @@ export const REMAKE_CARD_POOL = { on: true };
  */
 export const REMAKE_FREE_BUILD = { on: true };
 
+/**
+ * The walk out of the hospital / prison as in the original (GitHub issue #2, 2026-10-22; docs/rules/06 §9.3.1): the one
+ * released at the turn start first steps onto the door square, which is resolved (a mine there sends them back), and
+ * only then plays the turn. `on: false` is a test hook only: the remake's earlier release (out on the square at the
+ * turn start, nothing resolved there), with which the golden test proves that nothing else changed.
+ */
+export const DOOR_STEP = { on: true };
+
 export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
@@ -813,8 +821,8 @@ export class Game {
     if (p.hotel === 0x80) { p.hotel = 0; yield { t: 'fx', kind: 'leave-hotel', p: p.id }; yield* this.checkOut(p); } else p.hotel = tick(p.hotel);
     if (p.vanish & 0x80) { const alien = (p.vanish & 0x40) !== 0; p.vanish = 0; yield { t: 'fx', kind: 'reappear', p: p.id, data: { alien } }; }
     else if (p.vanish) { p.vanish = ((p.vanish & 0x3f) - 1) ? p.vanish - 1 : p.vanish | 0x80; }
-    if (p.prison === 0x80) { p.prison = 0; yield { t: 'fx', kind: 'leave-prison', p: p.id }; } else p.prison = tick(p.prison);
-    if (p.hospital === 0x80) { p.hospital = 0; yield { t: 'fx', kind: 'leave-hospital', p: p.id }; } else p.hospital = tick(p.hospital);
+    if (p.prison === 0x80) yield* this.release(p, 'prison'); else p.prison = tick(p.prison);
+    if (p.hospital === 0x80) yield* this.release(p, 'hospital'); else p.hospital = tick(p.hospital);
     if (!this.offRoad(p)) {
       if (p.sleep === 0x80) p.sleep = 0;
       if (p.sleepwalk === 0x80) {
@@ -851,6 +859,38 @@ export class Game {
     }
   }
 
+  /**
+   * A hospital / prison stay ends at the turn start: _rich4_release_player_from_hospital|prison → fcn_0040d6be
+   * (hospital_utils.asm:202-213, player_utils.asm:469-508) only sets who_plays 0x10 and faces the door square; the
+   * byte stays 0x80 (so the rest of this turn start counts no sleep / sleepwalk / turtle, core_actions.asm:4199) until
+   * the walk out at the dispatch (walkOut, docs/rules/06 §9.3.1).
+   */
+  private *release(p: Player, place: 'hospital' | 'prison'): Flow {
+    if (!DOOR_STEP.on) { p[place] = 0; yield { t: 'fx', kind: place === 'hospital' ? 'leave-hospital' : 'leave-prison', p: p.id }; return; }
+    p.leaving = place;
+  }
+
+  /**
+   * The walk out (docs/rules/06 §9.3.1): fcn_0040c912 sees 0x10 and calls fcn_0040dd1f (rich4.asm:6584-6587), one step
+   * with no dice from the building onto the door square p.node (fcn_0040c05c 0x10 branch, rich4.asm:5929-5941; the
+   * stay bytes +50..+53 are cleared on the way, rich4.asm:6142-6146). That step is handled as the last step of a walk
+   * (R = 0, _rich4_player_move_one_step_done): beggar, the carried bomb, the object on the square (mine, roadblock,
+   * dog, gift, chest, time bomb, gods). There is no stop event (fcn_00418e7f: fcn_0040c912(1) is 0 with 0x30). The end
+   * of that walk (fcn_00418ebd, rich4.asm:11729-11764) runs fcn_0040f381 and fcn_00448a7e on the square, clears 0x30
+   * and gives the same player the turn again — unless the square sent them back in (admission clears 0x30,
+   * hospital_utils.asm:66), which ends the turn.
+   */
+  private *walkOut(p: Player): Flow {
+    const place = p.leaving!;
+    delete p.leaving;
+    this.clearStays(p);
+    yield { t: 'fx', kind: place === 'hospital' ? 'leave-hospital' : 'leave-prison', p: p.id };
+    yield* this.stepDone(p, 0);
+    if (!p.whoPlays || this.over || this.offRoad(p)) return;
+    yield* this.objects.landEffect(p); // fcn_0040f381 (rich4.asm:11750): nothing on a hospital / prison square
+    yield* this.tools.construction(p); // fcn_00448a7e (rich4.asm:11758): likewise
+  }
+
   // ---------------------------------------------------------------- one turn
 
   /** Dispatch fcn_00418c55 (docs/rules/01 §3.3-§3.5). */
@@ -860,6 +900,11 @@ export class Game {
     // 派對模式: 取消托管 is an answer, so every phone takes it at the same point (the user 2026-10-19).
     if (this.settings.party && p.whoPlays === 1 && p.autopilot && (yield ask({ t: 'auto-turn', p: p.id })) === 1) p.autopilot = false; // 1 = 取消托管
     if (!p.placed) yield* this.airdrop(p);
+    if (p.leaving) {
+      // Out of the hospital / prison: the door square first; sent back in by it, the turn is over (06 §9.3.1).
+      yield* this.walkOut(p);
+      if (this.over || !p.whoPlays || this.offRoad(p) || (this.world && !this.here(p))) return;
+    }
     if (this.offRoad(p) || p.sleep) {
       const [what, n] = p.hotel ? [this.rules?.stayLabel?.(this, p) ?? '住宿中', p.hotel] : p.prison ? ['坐牢中', p.prison] : p.hospital ? ['住院中', p.hospital] : p.sleep ? ['冬眠中', p.sleep] : ['消失中', p.vanish & 0x3f];
       this.tools.storeState(p);

@@ -21,7 +21,8 @@
 import Peer, { type DataConnection } from 'peerjs';
 import { CHARACTERS } from '../core/characters';
 
-const PREFIX = 'rich4-party-v1-';
+// v2 (2026-10-22): with the heartbeat (issue #4); phones of v1 have their own rooms and list.
+const PREFIX = 'rich4-party-v2-';
 // v2 (2026-10-20): the list also counts private rooms and seekers; older versions keep their own list (v1).
 export const LOBBY = `${PREFIX}lobby-v2`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
@@ -75,7 +76,8 @@ type Msg =
   | { t: 'vote'; target: string; voter: string }
   | { t: 'votes'; target: string; voters: string[] }
   | { t: 'kicked'; id: string; seat?: number }
-  | { t: 'bye'; why?: string };
+  | { t: 'bye'; why?: string }
+  | { t: 'ping' };
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -242,6 +244,16 @@ export class Room {
   /** Kick votes: target → voters; two others agreeing send anyone (the host too) away. */
   votes = new Map<string, Set<string>>();
   onVotes: () => void = () => {};
+  /**
+   * The seat with the most assets right now (several on a tie), set by the game screen: it cannot be voted out (the
+   * user 2026-10-22: a few players agreeing to send the richest away would only start a fight).
+   */
+  richest: (seat: number) => boolean = () => false;
+  /** Whether `id` cannot be voted out now (the game going on, and its player the richest). */
+  protectedId(id: string): boolean {
+    const seat = this.started?.seats[id];
+    return seat !== undefined && this.richest(seat);
+  }
   /** Seats of players sent away: the host answers them for the computer (托管 at their next turn). */
   kickedSeats = new Set<number>();
   /** This phone was sent away (the game screen goes back to the title). */
@@ -250,6 +262,17 @@ export class Room {
 
   private peer: Peer | null = null;
   private guests = new Map<string, DataConnection>();
+  /**
+   * The heartbeat (issue #4: a phone that quits without a word left everyone 「等待 … 操作」 for good — a closed app's
+   * connection may never report closing): host and guests ping each other every PING_MS; a side silent for
+   * SILENT_MS counts as gone at once (a guest: dropped, its seat played by the computer after the 10 s rule; the host:
+   * the hand-over starts).
+   */
+  private static readonly PING_MS = 3000;
+  private static readonly SILENT_MS = 10000;
+  private lastSeen = new Map<string, number>();
+  private hostSeen = 0;
+  private beat = 0;
   private toHost: DataConnection | null = null;
   private lostHost = '';
   private rejoining = false;
@@ -310,6 +333,14 @@ export class Room {
 
   /** A player's peer id changed (a phone that became the host, or came back with a new connection). */
   private rename(prev: string, id: string) {
+    // The id may still be the lost host's (a new host takes over the room's id): that member and seat are kept apart
+    // first, as gone — they used to be overwritten, so the old host's seat counted as connected and nobody played it
+    // (issue #4: everyone waited 「等待 … 操作」 after the host quit).
+    if (id !== prev) {
+      const gone = `gone-${id}-${Date.now()}`;
+      for (const m of this.members) if (m.id === id) { m.id = gone; m.away = true; }
+      if (this.started && id in this.started.seats) { this.started.seats[gone] = this.started.seats[id]; delete this.started.seats[id]; }
+    }
     for (const m of this.members) if (m.id === prev) m.id = id;
     if (this.started && prev in this.started.seats) { this.started.seats[id] = this.started.seats[prev]; delete this.started.seats[prev]; }
   }
@@ -348,7 +379,9 @@ export class Room {
     const c = this.peer && await connect(this.peer, roomId(this.code));
     if (!c) return false;
     this.toHost = c;
-    c.on('data', d => this.fromHost(d as Msg));
+    this.hostSeen = Date.now();
+    this.startBeat();
+    c.on('data', d => { this.hostSeen = Date.now(); if ((d as Msg).t !== 'ping') this.fromHost(d as Msg); });
     c.on('close', () => { if (this.toHost === c) { this.toHost = null; if (!this.closed && !this.host) void this.rejoin(); } });
     c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, nick: this.me.nick, have: this.started ? this.log.length : undefined, prev } satisfies Msg);
     for (const w of this.connWaiters.splice(0)) w();
@@ -380,8 +413,12 @@ export class Room {
   }
 
   private guest(c: DataConnection) {
+    this.lastSeen.set(c.peer, Date.now());
+    this.startBeat();
     c.on('data', d => {
       const m = d as Msg;
+      this.lastSeen.set(c.peer, Date.now());
+      if (m.t === 'ping') return;
       if (this.kickedIds.has(c.peer)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
       if (m.t === 'hi') {
         if (m.prev && this.kickedIds.has(m.prev)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
@@ -413,12 +450,17 @@ export class Room {
         this.voted(m.target, c.peer);
       }
     });
-    c.on('close', () => {
-      if (this.guests.get(c.peer) !== c) return;
-      this.guests.delete(c.peer);
-      if (!this.started) { this.members = this.members.filter(x => x.id !== c.peer); this.lobbyChanged(); }
-      else if (!this.closed) { for (const x of this.members) if (x.id === c.peer) x.away = true; this.lobbyChanged(); this.onStatus('有玩家斷線，等待他回來…'); }
-    });
+    c.on('close', () => this.dropGuest(c));
+  }
+
+  /** A guest's connection closed, or it went silent (heartbeat): it is gone until it comes back. */
+  private dropGuest(c: DataConnection) {
+    if (this.guests.get(c.peer) !== c) return;
+    this.guests.delete(c.peer);
+    this.lastSeen.delete(c.peer);
+    try { c.close(); } catch { /* already closed */ }
+    if (!this.started) { this.members = this.members.filter(x => x.id !== c.peer); this.lobbyChanged(); }
+    else if (!this.closed) { for (const x of this.members) if (x.id === c.peer) x.away = true; this.lobbyChanged(); this.onStatus('有玩家斷線，等待他回來…'); }
   }
 
   freeCharacter(want: number, id: string): number {
@@ -541,6 +583,16 @@ export class Room {
   /** Host: counts a vote (even against itself); two others agreeing send the player away. */
   private voted(target: string, voter: string) {
     if (!this.host || voter === target || !this.members.some(x => x.id === target)) return;
+    if (this.protectedId(target)) {
+      // The richest can't be sent away: its votes are dropped, everyone is told.
+      this.votes.delete(target);
+      for (const c of this.guests.values()) c.open && c.send({ t: 'votes', target, voters: [] } satisfies Msg);
+      this.onVotes();
+      const line: ChatLine = { from: '', name: '系統', character: -1, text: `${this.nameOf(target)}目前總資產最多，不能被請出`, at: Date.now() };
+      this.heard(line);
+      for (const c of this.guests.values()) c.open && c.send({ t: 'chat', line } satisfies Msg);
+      return;
+    }
     const v = this.votes.get(target) ?? new Set<string>();
     v.add(voter);
     this.votes.set(target, v);
@@ -576,8 +628,31 @@ export class Room {
   }
   nameOf(id: string) { return this.members.find(x => x.id === id)?.name ?? '玩家'; }
 
+  /** Every PING_MS: ping the other side(s); whoever has been silent for SILENT_MS is taken as gone. */
+  private startBeat() {
+    if (this.beat) return;
+    this.beat = window.setInterval(() => {
+      if (this.closed) { clearInterval(this.beat); this.beat = 0; return; }
+      const now = Date.now(), ping: Msg = { t: 'ping' };
+      if (this.host) {
+        for (const c of [...this.guests.values()]) {
+          if (now - (this.lastSeen.get(c.peer) ?? now) > Room.SILENT_MS) { this.dropGuest(c); continue; }
+          try { if (c.open) c.send(ping); } catch { /* closing */ }
+        }
+      } else if (this.toHost) {
+        const c = this.toHost;
+        if (now - this.hostSeen > Room.SILENT_MS) {
+          this.toHost = null;
+          try { c.close(); } catch { /* already closed */ }
+          if (!this.closed) void this.rejoin();
+        } else { try { if (c.open) c.send(ping); } catch { /* closing */ } }
+      }
+    }, Room.PING_MS);
+  }
+
   close() {
     this.closed = true;
+    if (this.beat) { clearInterval(this.beat); this.beat = 0; }
     for (const c of this.guests.values()) c.close();
     this.toHost?.close();
     this.peer?.destroy();

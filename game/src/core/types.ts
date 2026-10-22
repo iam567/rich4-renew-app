@@ -54,6 +54,12 @@ export interface Player {
   vanish: number;
   prison: number;
   hospital: number;
+  /**
+   * Released from there at this turn start (who_plays 0x10, fcn_0040d6be; the byte above stays 0x80 meanwhile): the
+   * walk out onto the door square, which is resolved first, comes at the dispatch (docs/rules/06 §9.3.1). Set only
+   * between the two, so never in a save.
+   */
+  leaving?: 'hospital' | 'prison';
   sleep: number;
   sleepwalk: number;
   stay: number;

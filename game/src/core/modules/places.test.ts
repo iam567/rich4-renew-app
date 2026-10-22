@@ -4,9 +4,10 @@ import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from '../board';
 import { pack } from '../date';
 import type { Flow } from '../flow';
-import { Game } from '../game';
+import { DOOR_STEP, Game } from '../game';
 import { Rng } from '../rng';
 import type { Answer, Ask, GameEvent, GameSettings } from '../types';
+import { OBJ } from './objects';
 import { BAIL, LOTTERY_PRICE } from './places';
 
 const mapFile = (id: number) => fileURLToPath(new URL(`../../../../editor/site/assets/map-${id}.json`, import.meta.url));
@@ -460,6 +461,69 @@ describe.skipIf(!haveMaps)('places', () => {
     g.places.returnNpcsOf(g.players[1]);
     expect(g.places.npcs.map(n => n.where)).toEqual([1, 1, 2, 2]);
     expect(g.places.npcs.every(n => n.owner === -1)).toBe(true);
+  });
+
+  it('released from the hospital, the patient first steps onto the door square: a mine there sends them back in (issue #2)', () => {
+    const g = newGame([{ character: 0, human: false }, { character: 4, human: false }]);
+    const p = g.players[0], door = g.hospitalNode().id;
+    g.current = 0;
+    drive(g.sendTo(p, 'hospital', 1));
+    expect(p.node).toBe(door);
+    drive(g.turnStart(p)); // 1 → 0x80: still inside this turn
+    expect(p.hospital).toBe(0x80);
+    expect(drive(g.playerTurn(p)).events.some(e => e.t === 'dice')).toBe(false);
+    expect(g.objects.place(OBJ.Mine, door)).toBe(true); // the classic mine at the door
+    p.turtle = 2;
+    drive(g.turnStart(p)); // released: who_plays 0x10, the byte stays 0x80 until the walk out
+    expect(p.leaving).toBe('hospital');
+    expect(p.hospital).toBe(0x80);
+    expect(p.turtle).toBe(2); // not counted at this turn start (+50..+53 still non-zero, core_actions.asm:4199)
+    const { events } = drive(g.playerTurn(p));
+    const kinds = events.map(e => (e.t === 'fx' ? e.kind : e.t));
+    expect(kinds.indexOf('leave-hospital')).toBeLessThan(kinds.indexOf('mine'));
+    expect(kinds).not.toContain('dice'); // back in: the turn is over
+    expect(p.leaving).toBeUndefined();
+    expect(p.hospital).toBe(3);
+    expect(p.node).toBe(door);
+    expect(g.objects.at(door)).toBeUndefined();
+  });
+
+  it('released from prison, the door square is resolved before the turn (a roadblock there is taken away)', () => {
+    const g = newGame([{ character: 0, human: false }, { character: 4, human: false }]);
+    const p = g.players[0], door = g.prisonNode().id;
+    g.current = 0;
+    drive(g.sendTo(p, 'prison', 2));
+    p.prison = 0x80; // bailed out (06 §9.5)
+    expect(g.objects.place(OBJ.Roadblock, door)).toBe(true);
+    drive(g.turnStart(p));
+    expect(p.leaving).toBe('prison');
+    const { events } = drive(g.playerTurn(p));
+    const kinds = events.map(e => (e.t === 'fx' ? e.kind : e.t));
+    expect(kinds.indexOf('leave-prison')).toBeGreaterThanOrEqual(0);
+    expect(kinds.indexOf('leave-prison')).toBeLessThan(kinds.indexOf('roadblock'));
+    expect(kinds.indexOf('roadblock')).toBeLessThan(kinds.indexOf('dice')); // then the turn as usual
+    expect(p.prison).toBe(0);
+    expect(p.leaving).toBeUndefined();
+    expect(g.objects.at(door)).toBeUndefined();
+  });
+
+  it('with DOOR_STEP off the earlier release stands: out at the turn start, the door square not resolved', () => {
+    DOOR_STEP.on = false;
+    try {
+      const g = newGame([{ character: 0, human: false }, { character: 4, human: false }]);
+      const p = g.players[0], door = g.hospitalNode().id;
+      g.current = 0;
+      drive(g.sendTo(p, 'hospital', 1));
+      p.hospital = 0x80;
+      g.objects.place(OBJ.Mine, door);
+      drive(g.turnStart(p));
+      expect(p.hospital).toBe(0);
+      expect(p.leaving).toBeUndefined();
+      const kinds = drive(g.playerTurn(p)).events.map(e => (e.t === 'fx' ? e.kind : e.t));
+      expect(kinds).not.toContain('mine');
+      expect(kinds).toContain('dice');
+      expect(g.objects.at(door)?.type).toBe(OBJ.Mine);
+    } finally { DOOR_STEP.on = true; }
   });
 
   it('mini games give a computer 50..69 points', () => {

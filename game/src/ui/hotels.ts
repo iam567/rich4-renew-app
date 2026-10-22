@@ -26,7 +26,14 @@ export function prepareHotels(bank: SpriteBank): Promise<void> {
   return done;
 }
 
-/** The redrawn hotel's sprite for a 旅館 (facility type 1) of level 4 or 5, else null. */
-export function hotelSprite(fa: { type: number; level: number }): number | null {
+/**
+ * The original theme maps keep their own hotels (issue #3, the user 2026-10-22: 星座, 武侠, 恐龍 and the fourth themed
+ * map — maps 4..7, the original's second stage): a hotel there is part of the theme.
+ */
+const THEMED_MAPS = new Set([4, 5, 6, 7]);
+
+/** The redrawn hotel's sprite for a 旅館 (facility type 1) of level 4 or 5 on `mapId`, else null. */
+export function hotelSprite(fa: { type: number; level: number }, mapId: number): number | null {
+  if (THEMED_MAPS.has(mapId)) return null;
   return fa.type === 1 && ready.has(fa.level) ? res(fa.level) : null;
 }

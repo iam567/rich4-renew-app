@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
-import { Game, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
+import { DOOR_STEP, Game, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
 import { REMAKE_CARD_SUPPLY } from './modules/cards';
@@ -21,6 +21,14 @@ import type { GameSettings } from './types';
  * the relative 直走/左轉/右轉), which changes every path and so every hash: `GOLDEN` was taken once then. With the
  * test hook `Forks.legacy` (the earlier rule) the runs must still give the hashes taken before, bit for bit — the
  * proof that nothing but the fork choices changed.
+ *
+ * 2026-10-22 the release from the hospital / prison changed on purpose (GitHub issue #2; docs/rules/06 §9.3.1): the one
+ * released walks out onto the door square first and that square is resolved (a mine there sends them back in), as the
+ * original's who_plays 0x10 step does. Every map's hash changed: on all of them the 'leave-hospital' / 'leave-prison'
+ * event now comes at the walk out (after the 'turn' event) instead of at the turn start, and on all but 100 東京 the
+ * runs then differ (a mine, a god, a time bomb on a door square, a carried bomb counting the walk-out step). `GOLDEN`
+ * was taken again then; with the test hook `DOOR_STEP` off every map gives the hashes taken before (ONE_CARD), and the
+ * further tests below turn it off too — the proof that nothing but the release changed.
  */
 const KEYS: Record<number, string> = { 100: 'tokyo', 101: 'osaka', 102: 'sapporo', 103: 'kyushu', 104: 'okinawa' };
 const mapFile = (id: number) => fileURLToPath(new URL(id >= 100 ? `../../../editor/site/assets/remake/${KEYS[id]}.json` : `../../../editor/site/assets/map-${id}.json`, import.meta.url));
@@ -55,12 +63,20 @@ export function goldenRun(mapId: number, days: number): string {
   return h.digest('hex').slice(0, 16);
 }
 
-/**
- * Hashes with the computer buying at most one copy of each card per shop visit (REMAKE_AI_ONE_CARD, the user
- * 2026-10-19; docs/rules/05 §10.2). Every map but 5 and 100 東京 changed (a computer bought a second copy there);
- * with it off every map gives the hashes below (CARD_SUPPLY), checked by the second test.
- */
+/** Hashes with the walk out of the hospital / prison onto the door square (DOOR_STEP, 2026-10-22, issue #2). */
 const GOLDEN: Record<number, string> = {
+  0: '97a67828cad8a731', 1: 'b991e6216bfd844c', 2: '2619bcb644c36d24', 3: 'c6613ce9f78f8925', 4: 'ca625138d6bc7d25',
+  5: '7780a6cbf7941d44', 6: '79fb33090daf03b0', 7: '4e55a87a04404326', 100: '080f2b186fcfa504', 101: '2690839886b9a9b9',
+  102: '6e57556a29412ec0', 103: '3715540a1c34196c', 104: '83bed89b24d5bd5d',
+};
+
+/**
+ * Before DOOR_STEP (the GOLDEN of 2026-10-19 to 2026-10-21): hashes with the computer buying at most one copy of each
+ * card per shop visit (REMAKE_AI_ONE_CARD, the user 2026-10-19; docs/rules/05 §10.2). Every map but 5 and 100 東京
+ * changed (a computer bought a second copy there); with it off every map gives the hashes below (CARD_SUPPLY),
+ * checked by the third test.
+ */
+const ONE_CARD: Record<number, string> = {
   0: 'e4d97f7dcf97b2a1', 1: '839e37c9749bdfed', 2: '8029ac451da73f4a', 3: '3847d9339f293381', 4: 'dacacfce21273218',
   5: 'b23b5f88b3913d53', 6: '4717d843c10d42cc', 7: 'fbc0eec86fe619b4', 100: 'cff54e1e7cf1b3a3', 101: '67bd4827025f8489',
   102: 'f6ff562ee131cd4e', 103: '5d85c5989bca43fa', 104: '47f91258b25626f2',
@@ -69,7 +85,7 @@ const GOLDEN: Record<number, string> = {
 /**
  * Hashes with the remake's copies per card (REMAKE_CARD_SUPPLY, the user 2026-10-19; docs/rules/04 §1): every map's
  * pool differs from day one, so every hash changed. With the original copies every map gives the hashes below
- * (CARD_POOL), checked by the third test.
+ * (CARD_POOL), checked by the fourth test.
  */
 const CARD_SUPPLY: Record<number, string> = {
   0: '3ee254372c8f6c42', 1: '9e27482c05e1ecf1', 2: 'c835a5214aa866fb', 3: '9ca87d7996071b2d', 4: 'a999b750a731a053',
@@ -81,7 +97,7 @@ const CARD_SUPPLY: Record<number, string> = {
  * Hashes with the card pool that stops at 0 (REMAKE_CARD_POOL, 2026-10-19; docs/rules/04 §2.1): the original's byte
  * wrapped a card handed out when none was left to 255 copies, which then filled the whole draw pool (the user's
  * shelves and draws were all 均富卡). Two maps hit it in these runs: 3 and 100 東京. With it off every map gives the
- * hashes below (FREE_BUILD), checked by the third test.
+ * hashes below (FREE_BUILD), checked by the fifth test.
  */
 const CARD_POOL: Record<number, string> = {
   0: 'ff64da19cc51dc47', 1: 'f0246854a78ee808', 2: 'e3fcb95c703f1d06', 3: '402fe158a58989ee', 4: '7e01b1cee5d1146e',
@@ -91,7 +107,7 @@ const CARD_POOL: Record<number, string> = {
 
 /**
  * Hashes with the construction company's free floors on large plots too (REMAKE_FREE_BUILD, the user 2026-10-18;
- * docs/rules/02 §5): with them off every map gives the hashes below (HOTEL), checked by the second test. Four maps
+ * docs/rules/02 §5): with them off every map gives the hashes below (HOTEL), checked by the sixth test. Four maps
  * changed: 2 (day 193), 100 東京 (days 152, 187) and 101 大阪 (days 73, 124) only in the fireworks flag of a floor
  * that topped a property out on the second step (everything else bit for bit); 102 札幌 from day 17, where the
  * computer's free floors went on an empty large plot (#4005) instead of its level-2 facility.
@@ -106,7 +122,7 @@ const FREE_BUILD: Record<number, string> = {
  * Before REMAKE_FREE_BUILD: hashes with the fork choices of 2026-10-18 (docs/rules/14 §2) and the remake's hotel
  * rules of the same day (REMAKE_HOTEL: 免費卡 / 嫁禍卡 on a stay, 土地公 at check-out; docs/rules/02 §4.3, 06 §5.5).
  * Maps 0, 7, 102 and 103 changed with the hotel rules (a stay framed or a hotel taken at check-out in those runs);
- * with them off every map gives the fork-rule hashes below (FORKS_ONLY), checked by the third test.
+ * with them off every map gives the fork-rule hashes below (FORKS_ONLY), checked by the seventh test.
  */
 const HOTEL: Record<number, string> = {
   0: 'ff64da19cc51dc47', 1: 'f0246854a78ee808', 2: 'bda32fecd5e7d8d1', 3: '3531ca59818d688a', 4: '7e01b1cee5d1146e',
@@ -135,51 +151,59 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
     for (const id of MAPS) expect(got[id], `map ${id}`).toBe(GOLDEN[id]);
   }, 120_000);
 
+  it('with the earlier release from the hospital / prison every map plays bit for bit as before 2026-10-22', () => {
+    DOOR_STEP.on = false;
+    try {
+      const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
+      for (const id of MAPS) expect(got[id], `map ${id} (door step off)`).toBe(ONE_CARD[id]);
+    } finally { DOOR_STEP.on = true; }
+  }, 120_000);
+
   it('with the computer buying as in the original every map plays as with the remake copies per card', () => {
-    REMAKE_AI_ONE_CARD.on = false;
+    DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (computer buys every copy)`).toBe(CARD_SUPPLY[id]);
-    } finally { REMAKE_AI_ONE_CARD.on = true; }
+    } finally { DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; }
   }, 120_000);
 
   it('with the original copies per card every map plays as with the card pool fix', () => {
-    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false;
+    DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (original copies)`).toBe(CARD_POOL[id]);
-    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; }
+    } finally { DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; }
   }, 120_000);
 
   it('with the card pool wrapping as in the original every map plays as with the free floors', () => {
-    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false;
+    DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (card pool wraps)`).toBe(FREE_BUILD[id]);
-    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; }
+    } finally { DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; }
   }, 120_000);
 
   it('with the free floors on large plots off every map plays as with the hotel rules', () => {
-    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_FREE_BUILD.on = false;
+    DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (free floors on large plots off)`).toBe(HOTEL[id]);
-    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the hotel rules off (and the free floors on large plots) every map plays as with the fork rule alone', () => {
-    REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (hotel rules off)`).toBe(FORKS_ONLY[id]);
-    } finally { REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 
   it('with the earlier fork rule (and the remake rules above off) every map still plays bit for bit as before 2026-10-18', () => {
-    Forks.legacy = true; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
+    Forks.legacy = true; DOOR_STEP.on = false; REMAKE_AI_ONE_CARD.on = false; REMAKE_CARD_SUPPLY.on = false; REMAKE_CARD_POOL.on = false; REMAKE_HOTEL.on = false; REMAKE_FREE_BUILD.on = false;
     try {
       const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
       for (const id of MAPS) expect(got[id], `map ${id} (legacy forks)`).toBe(LEGACY[id]);
-    } finally { Forks.legacy = false; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
+    } finally { Forks.legacy = false; DOOR_STEP.on = true; REMAKE_AI_ONE_CARD.on = true; REMAKE_CARD_SUPPLY.on = true; REMAKE_CARD_POOL.on = true; REMAKE_HOTEL.on = true; REMAKE_FREE_BUILD.on = true; }
   }, 120_000);
 });
