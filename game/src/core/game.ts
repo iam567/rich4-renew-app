@@ -17,6 +17,7 @@ import { Places } from './modules/places';
 import { Stocks } from './modules/stocks';
 import { Tools, type ToolDef } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
+import { SmartAi } from './smart-ai';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
@@ -274,6 +275,8 @@ export class Game {
   readonly blackMarket: BlackMarket;
   /** 岔路箭頭: the remake's arrows at forks and crossroads (docs/rules/14). */
   readonly forks: Forks;
+  /** 派對模式's smarter computer (core/smart-ai.ts), only for the seats `smartAi` names. */
+  readonly smart: SmartAi;
   date: PackedDate;
   daysElapsed = 0;
   monthsElapsed = 0;
@@ -331,6 +334,7 @@ export class Game {
     this.places = new Places(this);
     this.blackMarket = new BlackMarket(this);
     this.forks = new Forks(this);
+    this.smart = new SmartAi(this);
     this.cards.init();
     this.tools.init();
     this.places.init();
@@ -354,6 +358,20 @@ export class Game {
   get mapSlot(): number { return this.settings.mapId >= 8 && this.settings.mapId < 1000 ? this.board.mapId : this.settings.mapId; }
   name(p: number): string { return playerName(this.players[p]); }
   isHuman(p: Player): boolean { return p.whoPlays === 1 && !p.autopilot; }
+  /**
+   * Test hook only (never set by the game): the seats that play the smart computer in 派對模式; undefined = every
+   * computer-played seat. The simulation (scripts/ai-sim.ts, smart-ai.test.ts) pits smart seats against classic ones.
+   */
+  smartSeats?: ReadonlySet<number>;
+  /**
+   * 派對模式's smarter computer (core/smart-ai.ts; the user 2026-10-22): a seat the computer plays there — a computer
+   * seat, a human on 托管, a player voted out or dropped (their seat goes on 托管). Everywhere else (a normal game,
+   * 大富豪模式) false: the computer plays the original's rules, bit for bit.
+   */
+  smartAi(p: Player): boolean {
+    if (!this.settings.party || this.world || this.isHuman(p) || !p.whoPlays) return false;
+    return this.smartSeats ? this.smartSeats.has(p.id) : true;
+  }
   /** Not on the road: hotel, vanished, prison or hospital (+50..+53). */
   offRoad(p: Player): boolean { return p.hotel !== 0 || p.vanish !== 0 || p.prison !== 0 || p.hospital !== 0 || !!p.trip; }
   living(): Player[] { return this.players.filter(p => p.whoPlays !== 0); }
@@ -592,7 +610,7 @@ export class Game {
     const only = this.isHuman(p) && this.rules?.pickFacilityType ? yield* this.rules.pickFacilityType(this, p, f) : this.rules?.facilityType?.(f);
     f.type = only !== undefined ? only : this.isHuman(p)
       ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
-      : f.owner === p.id + 1 ? this.rng.rand() % 4 + 1 : 0;
+      : f.owner === p.id + 1 ? (this.smartAi(p) ? this.smart.facilityType() : this.rng.rand() % 4 + 1) : 0;
     f.level = 1;
     return 1 | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
   }
@@ -939,7 +957,15 @@ export class Game {
       }
       human = this.isHuman(p);
     }
-    if (!human) {
+    if (!human && this.smartAi(p)) {
+      // 派對模式's smarter computer (core/smart-ai.ts): its own stock, card and tool play, then its dice.
+      yield* this.smart.beforeDice(p);
+      if (this.over || !p.whoPlays || this.offRoad(p) || p.sleep || p.sleepwalk) return;
+      const pending = this.tools.pending;
+      this.tools.pending = 'none';
+      if (pending === 'land') { yield* this.land(p); return; }
+      if (pending !== 'depart') this.smart.chooseDice(p);
+    } else if (!human) {
       // Computer turn (01 §3.5): stocks, then a card or a tool, then dice.
       yield* this.stocks.aiTrade(p);
       if (this.over) return;
@@ -1110,7 +1136,7 @@ export class Game {
       if (price > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-land', text: `${land.name}\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
-        : this.aiCanAfford(p, price);
+        : this.smartAi(p) ? this.smart.wantsToBuy(p, price, land) : this.aiCanAfford(p, price);
       if (!yes) return;
       if (yield* this.investmentBlocked(p)) return;
       land.owner = me;
@@ -1126,7 +1152,7 @@ export class Game {
       if (cost > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'upgrade-land', text: `${land.name}\n\n升級費用:${cost}元\n\n是否升級？`, price: cost })) as boolean
-        : true; // computers always build when they have the cash
+        : this.smartAi(p) ? this.smart.wantsToBuild(p, cost) : true; // computers always build when they have the cash
       if (!yes) return;
       if (yield* this.investmentBlocked(p)) return;
       p.cash -= cost;
@@ -1258,7 +1284,7 @@ export class Game {
       if (price > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
-        : this.aiCanAfford(p, price);
+        : this.smartAi(p) ? this.smart.wantsToBuy(p, price) : this.aiCanAfford(p, price);
       if (!yes) return;
       if (yield* this.investmentBlocked(p)) return;
       f.owner = me;
@@ -1272,11 +1298,12 @@ export class Game {
       if (f.level === 0) {
         const cost = f.price * this.priceIndex;
         if (cost > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
+        if (this.smartAi(p) && !this.smart.wantsToBuild(p, cost)) return;
         const resort = this.world ? this.world.hooks.resort(this) : 1;
         f.type = this.isHuman(p)
           ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: cost,
             ...(resort > 1 ? { text: `建設費用 ${cost} 元・度假勝地：旅館收入×${resort}` } : {}) })) || 0))
-          : this.rng.rand() % 4 + 1;
+          : this.smartAi(p) ? this.smart.facilityType() : this.rng.rand() % 4 + 1;
         // A computer builds a hotel in a resort city (the draw above is kept, so the rand() sequence is the same).
         if (resort > 1 && !this.isHuman(p)) f.type = 1;
         if (yield* this.investmentBlocked(p)) return;
@@ -1291,7 +1318,7 @@ export class Game {
       if (cost > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'upgrade-facility', text: `${f.name}\n\n升級費用:${cost}元\n\n是否升級？`, price: cost })) as boolean
-        : true;
+        : this.smartAi(p) ? this.smart.wantsToBuild(p, cost) : true;
       if (!yes) return;
       if (yield* this.investmentBlocked(p)) return;
       p.cash -= cost;
@@ -1434,6 +1461,7 @@ export class Game {
       yield { t: 'bank', p: p.id };
       return;
     }
+    if (this.smartAi(p)) { this.smart.atm(p); yield { t: 'bank', p: p.id }; yield* this.financeReserve(p); return; }
     // Computer ATM: steer cash towards the character's cash ratio (more early in the month, less late).
     const total = p.cash + p.bank;
     if (total <= 0) return;
@@ -1497,6 +1525,7 @@ export class Game {
       yield { t: 'bank', p: p.id };
       return;
     }
+    if (this.smartAi(p)) { this.smart.bankCounter(p); yield { t: 'bank', p: p.id }; return; }
     const ch = CHARACTERS[p.character], money = p.cash + p.bank;
     // 大富豪模式 (the user 2026-10-19: computers borrowed against their land and went bankrupt at the due date): it repays
     // as soon as it can, borrows only when short, and never more than the money it already has.

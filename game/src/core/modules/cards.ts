@@ -340,6 +340,18 @@ export class Cards {
     }
   }
 
+  /**
+   * 派對模式's smarter computer (core/smart-ai.ts) plays card `id` at its own targets (as aiArg0 / aiArg1 for the
+   * original's computer). False when nothing happened (the card is kept).
+   */
+  *playAs(p: Player, id: number, arg0: number, arg1 = 0): Flow<boolean> {
+    if (!this.has(p, id)) return false;
+    this.aiArg0 = arg0; this.aiArg1 = arg1;
+    yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
+    yield* this.say(p, `使用${cardName(id)}`);
+    return yield* this.play(p, id, false);
+  }
+
   /** Human picks and plays a card from the turn menu (04 §2.2, §2.4): failures and cancels keep the card. */
   *humanUse(p: Player): Flow {
     for (;;) {
@@ -861,7 +873,7 @@ export class Cards {
     let who = payer.id;
     if (big() && this.has(payer, 20) && (yield* this.tryFree(payer, ownerId, amount))) amount = 0;
     if (big() && this.has(payer, 19)) {
-      const r = yield* this.tryFrame(payer, 1, amount);
+      const r = yield* this.tryFrame(payer, 1, amount, false, ownerId);
       if (r >= 0) who = r;
     }
     return { payer: who, amount };
@@ -893,7 +905,7 @@ export class Cards {
     const g = this.g;
     const use = g.isHuman(p)
       ? (yield ask({ t: 'yesno', p: p.id, kind: 'free-card', text: table?.text ?? `需付${fee}元\n\n是否使用免費卡？` })) === true
-      : table ? true : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
+      : table ? true : g.smartAi(p) ? g.smart.useFreeCard(p, fee) : fee > p.cash || (g.rng.rand() % 3000 + 3000) * g.priceIndex < fee;
     if (!use) return false;
     this.consume(p, 20);
     yield { t: 'fx', kind: 'card', p: p.id, data: { card: 20 } };
@@ -906,9 +918,10 @@ export class Cards {
   /**
    * _rich4_try_use_card_jiahuoka (04 §2.6): mode 0 punishment, 1 fee, 2 tax. Returns the new sufferer or -1.
    * A human picks among the other living players (the attacker included); with one candidate a yes/no question.
-   * `local` (大富豪模式's magic house): only the players in this city.
+   * `local` (大富豪模式's magic house): only the players in this city. `payee`: who a fee goes to (-1 none), for
+   * 派對模式's smarter computer.
    */
-  *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number, local = false): Flow<number> {
+  *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number, local = false, payee = -1): Flow<number> {
     if (!this.has(p, 19)) return -1;
     const g = this.g, pi = g.priceIndex;
     let target: number;
@@ -924,6 +937,9 @@ export class Cards {
         if (typeof a !== 'number' || !cands.some(q => q.id === a)) return -1;
         target = a;
       }
+    } else if (g.smartAi(p)) {
+      target = g.smart.frameTarget(p, mode, amount, payee, local); // 派對模式's smarter computer (core/smart-ai.ts)
+      if (target < 0) return -1;
     } else {
       const use = mode === 0 ? true
         : mode === 1 ? amount > p.cash || (g.rng.rand() % 4000 + 4000) * pi < amount
@@ -956,6 +972,9 @@ export class Cards {
     if (d === 1 && this.g.rng.rand() % 3 !== 0) return false;
     return this.aiJudge(p, id);
   }
+
+  /** The original computer's own rule for card `id` without the personality limit (core/smart-ai.ts); sets aiArg0 / aiArg1. */
+  judgeFor(p: Player, id: number): boolean { return this.aiJudge(p, id); }
 
   private aiJudge(p: Player, id: number): boolean {
     const g = this.g, pi = g.priceIndex, me = p.id + 1;
