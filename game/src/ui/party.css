@@ -29,6 +29,7 @@
 .pt-room b { display: block; font-weight: 400; font-size: 16px; } .pt-room small { font-size: 12px; opacity: .8; }
 .pt-room em { font-style: normal; padding: 4px 12px; border-radius: 999px; color: #fff; background: #2fae4a; }
 .pt-room:disabled { opacity: .55; } .pt-room:disabled em { background: #999; }
+.pt-room.other:disabled em { background: #c27a2c; } /* another version (party-version.ts) */
 /* while another phone's player decides */
 .pt-waiting { position: absolute; left: 50%; top: 56px; transform: translateX(-50%); z-index: 15; padding: 6px 16px; border-radius: 999px; font-size: 14px; color: #fff;
   background: rgba(20, 30, 80, .82); border: 2px solid #ffe14a; white-space: nowrap; pointer-events: none; }

@@ -17,6 +17,15 @@ import './magic.css';
 
 type Choose = Extract<Ask, { t: 'choose' }>;
 
+/**
+ * 魔法屋提示對象 (issue #8): the box naming who the teller's group is right now, with their faces, is the remake's own
+ * help — the original shows only the group, the players judge for themselves. 0 開 (the default, as before), 1 關:
+ * the box is not shown (every map, 激情歲月's too); nothing else changes. Kept for every game.
+ */
+const HINT_KEY = 'rich4.magichint';
+export const magicHintMode = (): number => { try { return localStorage.getItem(HINT_KEY) === '1' ? 1 : 0; } catch { return 0; } };
+export const setMagicHintMode = (v: number) => { try { localStorage.setItem(HINT_KEY, v === 1 ? '1' : '0'); } catch { /* not kept */ } };
+
 /** Symbol centres (`ref_004756e8`) and name labels {frame, x, y} (`_rich4_magic_house_function_info`), magic 0..11. */
 const SYMBOLS: [number, number][] = [[322, 91], [414, 82], [453, 157], [509, 242], [458, 314], [415, 387], [322, 394], [239, 393], [188, 316], [131, 222], [184, 161], [225, 83]];
 /**
@@ -341,8 +350,10 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       if (manyWho) who.style.height = 'auto';
       const whoHtml = () => `<b>${esc(GROUP_LINES[group])}</b><span class="mg-faces">${targets.map(q =>
         `<span class="mg-face" style="--c:${charColor(ctx, q.id)}" title="${esc(nameOf(ctx, q.id))}">${face(ctx, q.character)}${P ? `<i>${esc(nameOf(ctx, q.id))}</i>` : ''}</span>`).join('')}</span>`;
-      who.innerHTML = phase === 'intro' ? '' : whoHtml();
-      who.hidden = phase === 'intro';
+      // 魔法屋提示對象 關: never shown (read when the scene is drawn, so a change in 系統 applies from the next visit).
+      const hint = magicHintMode() === 0;
+      who.innerHTML = phase === 'intro' || !hint ? '' : whoHtml();
+      who.hidden = phase === 'intro' || !hint;
       castBtn = el('button', 'candy yes mg-cast');
       castBtn.textContent = '施法！';
       castBtn.hidden = pick < 0 || phase !== 'pick';
@@ -405,9 +416,11 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       glowEyes.remove();
       showGroup();
       say(`${GROUP_LINES[group]}`);
-      who.innerHTML = whoHtml();
-      who.hidden = false;
-      who.classList.add('pl-pop');
+      if (hint) {
+        who.innerHTML = whoHtml();
+        who.hidden = false;
+        who.classList.add('pl-pop');
+      }
       await s.wait(1300);
       if (!alive()) return;
       phase = 'pick';

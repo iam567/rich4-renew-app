@@ -20,6 +20,10 @@
  */
 import Peer, { type DataConnection } from 'peerjs';
 import { CHARACTERS } from '../core/characters';
+import { hostMismatch, partyVersion, refuseGuest, statsByVersion } from './party-version';
+
+/** This app's version in 派對模式 (party-version.ts; null only when a dev test plays an old phone). */
+export const PARTY_VERSION = partyVersion();
 
 // v2 (2026-10-22): with the heartbeat (issue #4); phones of v1 have their own rooms and list.
 const PREFIX = 'rich4-party-v2-';
@@ -39,7 +43,7 @@ const named = (m: Member) => { m.nick = cleanNick(m.nick) || undefined; m.name =
 export const ROOM_MAX = 8;
 
 /** A room in the list. `private`: a 私享 room counted only (its code is a random token, never shown or joinable). */
-export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string; private?: boolean }
+export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string; private?: boolean; /** The host's app version (v0.7.4 on; none: older). */ ver?: string }
 /** The title button's figures (the user 2026-10-20): 私享 rooms open now, and people waiting for partners (the players
  * in shared rooms not started, plus those looking at 「尋找夥伴」). */
 export interface LobbyStats { privateRooms: number; waiting: number }
@@ -65,9 +69,9 @@ export function myRegion(): string {
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
 
 type Msg =
-  | { t: 'hi'; name: string; character: number; have?: number; region?: string; prev?: string; nick?: string }
+  | { t: 'hi'; name: string; character: number; have?: number; region?: string; prev?: string; nick?: string; /** v0.7.4 on (party-version.ts). */ ver?: string }
   | { t: 'char'; character: number; nick?: string }
-  | { t: 'lobby'; members: Member[]; map: string; shared: boolean }
+  | { t: 'lobby'; members: Member[]; map: string; shared: boolean; /** The host's version (v0.7.4 on). */ ver?: string }
   | { t: 'start'; start: StartMsg }
   | { t: 'ans'; seq: number; v: unknown; u?: boolean }
   | { t: 'log'; from: number; answers: [unknown, boolean][]; total: number }
@@ -76,7 +80,7 @@ type Msg =
   | { t: 'vote'; target: string; voter: string }
   | { t: 'votes'; target: string; voters: string[] }
   | { t: 'kicked'; id: string; seat?: number }
-  | { t: 'bye'; why?: string }
+  | { t: 'bye'; why?: string; /** v0.7.4 on: the host's version, and `version` when that is why. */ ver?: string; reason?: 'version' }
   | { t: 'ping' };
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
@@ -134,10 +138,17 @@ export class Lobby {
   private mine: RoomInfo | null = null;
   /** This phone looks at 「尋找夥伴」 (counted as waiting for partners). */
   seeking = false;
-  /** Seekers by connection (the holder's bookkeeping), last seen. */
-  private seekers = new Map<DataConnection, number>();
+  /** Seekers by connection (the holder's bookkeeping), last seen and their version (none: an old phone). */
+  private seekers = new Map<DataConnection, { at: number; ver?: string }>();
   stats: LobbyStats = { privateRooms: 0, waiting: 0 };
   onStats: (s: LobbyStats) => void = () => {};
+
+  /**
+   * `ver`: this phone's version (party-version.ts). The list is shared by every version (an old phone may hold it):
+   * the rooms carry their version (party.ts shows another's 「版本不同」), and the title's figures count this
+   * version's only — the holder sends them for each version (`byVer`); an old holder sends only the total.
+   */
+  constructor(readonly ver: string | null = PARTY_VERSION) {}
 
   /** Starts watching (and announcing `room` every 8 s while set). */
   async start(room?: RoomInfo, seeking = false): Promise<void> {
@@ -156,22 +167,33 @@ export class Lobby {
   private list(): RoomInfo[] { return this.all().filter(r => !r.private); }
   private count(): LobbyStats {
     const now = Date.now();
-    for (const [c, at] of this.seekers) if (!c.open || now - at > 25000) this.seekers.delete(c);
+    for (const [c, s] of this.seekers) if (!c.open || now - s.at > 25000) this.seekers.delete(c);
     const rooms = this.all();
     return {
       privateRooms: rooms.filter(r => r.private).length,
       waiting: rooms.filter(r => !r.private).reduce((a, r) => a + r.players, 0) + this.seekers.size + (this.seeking ? 1 : 0),
     };
   }
+  /** The figures for each version (count() first: it drops the stale seekers). */
+  private countByVer(): Record<string, LobbyStats> {
+    return statsByVersion(this.all(), [...[...this.seekers.values()].map(s => s.ver), ...(this.seeking ? [this.ver] : [])]);
+  }
+  /** This phone's figures from the holder's: its version's (an old holder: the total; an old test phone: the total). */
+  private mineOf(stats: LobbyStats, byVer?: Record<string, LobbyStats>): LobbyStats {
+    if (this.ver === null || !byVer) return stats;
+    return byVer[this.ver] ?? { privateRooms: 0, waiting: 0 };
+  }
   private push() {
     if (this.holder) {
-      if (this.mine) this.rooms.set(this.mine.code, { ...this.mine, at: Date.now() });
-      const rooms = this.list(), stats = this.count();
-      for (const c of this.conns) c.open && c.send({ t: 'rooms', rooms, stats });
+      if (this.mine) this.rooms.set(this.mine.code, { ...this.mine, ...(this.ver ? { ver: this.ver } : {}), at: Date.now() });
+      const rooms = this.list(), stats = this.count(), byVer = this.ver === null ? undefined : this.countByVer();
+      for (const c of this.conns) c.open && c.send(byVer ? { t: 'rooms', rooms, stats, byVer } : { t: 'rooms', rooms, stats });
       this.onRooms(rooms);
-      this.stats = stats; this.onStats(stats);
+      const own = this.mineOf(stats, byVer);
+      this.stats = own; this.onStats(own);
     } else if (this.toHolder?.open) {
-      this.toHolder.send(this.mine ? { t: 'room', room: { ...this.mine, at: Date.now() } } : { t: 'list', seek: this.seeking });
+      const ver = this.ver ?? undefined;
+      this.toHolder.send(this.mine ? { t: 'room', room: { ...this.mine, ...(ver ? { ver } : {}), at: Date.now() } } : { t: 'list', seek: this.seeking, ...(ver ? { ver } : {}) });
     }
   }
 
@@ -184,9 +206,9 @@ export class Lobby {
         if (c) {
           this.toHolder = c;
           c.on('data', d => {
-            const m = d as { t: string; rooms?: RoomInfo[]; stats?: LobbyStats };
+            const m = d as { t: string; rooms?: RoomInfo[]; stats?: LobbyStats; byVer?: Record<string, LobbyStats> };
             if (m.t === 'rooms' && m.rooms) { this.rooms = new Map(m.rooms.map(r => [r.code, r])); this.onRooms(this.list()); }
-            if (m.t === 'rooms' && m.stats) { this.stats = m.stats; this.onStats(m.stats); }
+            if (m.t === 'rooms' && m.stats) { const own = this.mineOf(m.stats, m.byVer); this.stats = own; this.onStats(own); }
           });
           c.on('close', () => { this.toHolder = null; });
         } else {
@@ -196,10 +218,10 @@ export class Lobby {
             h.on('connection', c2 => {
               this.conns.add(c2);
               c2.on('data', d => {
-                const m = d as { t: string; room?: RoomInfo; code?: string; seek?: boolean };
+                const m = d as { t: string; room?: RoomInfo; code?: string; seek?: boolean; ver?: string };
                 if (m.t === 'room' && m.room) this.rooms.set(m.room.code, { ...m.room, at: Date.now() });
                 if (m.t === 'room-off' && m.code) this.rooms.delete(m.code);
-                if (m.t === 'list') { if (m.seek) this.seekers.set(c2, Date.now()); else this.seekers.delete(c2); }
+                if (m.t === 'list') { if (m.seek) this.seekers.set(c2, { at: Date.now(), ver: typeof m.ver === 'string' ? m.ver : undefined }); else this.seekers.delete(c2); }
                 this.push();
               });
               c2.on('close', () => { this.conns.delete(c2); this.seekers.delete(c2); });
@@ -258,6 +280,10 @@ export class Room {
   kickedSeats = new Set<number>();
   /** This phone was sent away (the game screen goes back to the title). */
   kicked = false;
+  /** This phone and the room's host have different versions (party-version.ts): it left; the reason went to onStatus. */
+  refused = false;
+  /** join(): waiting for the host's first answer (its `lobby`, or a `bye`); called with '' or the reason to fail. */
+  private replied: ((why: string) => void) | null = null;
   private kickedIds = new Set<string>();
 
   private peer: Peer | null = null;
@@ -282,7 +308,8 @@ export class Room {
   private closed = false;
   myId = '';
 
-  constructor(readonly me: { name: string; character: number; region?: string; nick?: string }) {}
+  /** `ver`: this phone's version, sent and checked in the handshake (party-version.ts); null only in a dev test of an old phone. */
+  constructor(readonly me: { name: string; character: number; region?: string; nick?: string }, readonly ver: string | null = PARTY_VERSION) {}
 
   /** Host: a new room; resolves with its code. */
   async create(map: string, shared: boolean): Promise<string> {
@@ -352,6 +379,14 @@ export class Room {
     if (!peer) throw new Error('網路連不上');
     this.asGuest(peer);
     if (!(await this.reach())) throw new Error('連不上這個房間\n（房間碼不對，或兩邊的網路無法直接連線：可以試試連同一個 Wi-Fi）');
+    if (this.ver === null) return; // (a dev test of an old phone: it did not wait)
+    // The host's first answer: its room (with its version: the same one, or the mismatch is shown), or why not.
+    const why = await new Promise<string>(resolve => {
+      this.replied = resolve;
+      setTimeout(() => resolve('房間沒有回應，請再試一次'), 12000);
+    });
+    this.replied = null;
+    if (why) { this.close(); throw new Error(why); }
   }
 
   private asGuest(peer: Peer) {
@@ -383,7 +418,7 @@ export class Room {
     this.startBeat();
     c.on('data', d => { this.hostSeen = Date.now(); if ((d as Msg).t !== 'ping') this.fromHost(d as Msg); });
     c.on('close', () => { if (this.toHost === c) { this.toHost = null; if (!this.closed && !this.host) void this.rejoin(); } });
-    c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, nick: this.me.nick, have: this.started ? this.log.length : undefined, prev } satisfies Msg);
+    c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, nick: this.me.nick, have: this.started ? this.log.length : undefined, prev, ...(this.ver !== null ? { ver: this.ver } : {}) } satisfies Msg);
     for (const w of this.connWaiters.splice(0)) w();
     return true;
   }
@@ -415,11 +450,26 @@ export class Room {
   private guest(c: DataConnection) {
     this.lastSeen.set(c.peer, Date.now());
     this.startBeat();
+    /** Another version's phone: told why, nothing more taken from it. */
+    let refused = false;
     c.on('data', d => {
       const m = d as Msg;
+      if (refused) return;
       this.lastSeen.set(c.peer, Date.now());
       if (m.t === 'ping') return;
       if (this.kickedIds.has(c.peer)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
+      if (m.t === 'hi' && this.ver !== null) {
+        // The version check (party-version.ts): another version (or an old phone, which sends none) is refused.
+        const no = refuseGuest(this.ver, m.ver, named({ id: '', name: m.name, character: m.character, nick: m.nick }).name);
+        if (no) {
+          refused = true;
+          this.lastSeen.delete(c.peer);
+          c.send({ t: 'bye', why: no.why, ver: this.ver, reason: 'version' } satisfies Msg);
+          this.heard({ from: '', name: '系統', character: -1, text: no.line, at: Date.now() });
+          setTimeout(() => { try { c.close(); } catch { /* already closed */ } }, 1500);
+          return;
+        }
+      }
       if (m.t === 'hi') {
         if (m.prev && this.kickedIds.has(m.prev)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
         if (m.prev) this.rename(m.prev, c.peer);
@@ -471,7 +521,7 @@ export class Room {
   }
 
   private lobbyChanged() {
-    const m: Msg = { t: 'lobby', members: this.members, map: this.map, shared: this.shared };
+    const m: Msg = { t: 'lobby', members: this.members, map: this.map, shared: this.shared, ...(this.ver !== null ? { ver: this.ver } : {}) };
     for (const c of this.guests.values()) c.open && c.send(m);
     this.onLobby();
   }
@@ -484,7 +534,13 @@ export class Room {
   }
 
   private fromHost(m: Msg) {
-    if (m.t === 'lobby') { this.members = m.members; this.map = m.map; this.shared = m.shared; this.onLobby(); this.onVotes(); }
+    if (m.t === 'lobby') {
+      // The host's version (an old host sends none): another one, and this phone leaves with the reason.
+      const bad = this.ver !== null ? hostMismatch(this.ver, m.ver) : null;
+      if (bad) { this.leaveRefused(bad); return; }
+      this.members = m.members; this.map = m.map; this.shared = m.shared; this.onLobby(); this.onVotes();
+      this.replied?.('');
+    }
     else if (m.t === 'start') { this.begin(m.start); }
     else if (m.t === 'ans') this.record(m.seq, m.u ? undefined : m.v, false);
     else if (m.t === 'log') {
@@ -496,7 +552,18 @@ export class Room {
     else if (m.t === 'chat') this.heard(m.line);
     else if (m.t === 'votes') { this.votes.set(m.target, new Set(m.voters)); this.onVotes(); }
     else if (m.t === 'kicked') this.away(m.id, m.seat);
-    else if (m.t === 'bye') { this.kicked = /請出/.test(m.why ?? ''); this.onStatus(m.why ?? '房間已滿'); this.close(); }
+    else if (m.t === 'bye') {
+      if (m.reason === 'version' && this.ver !== null) { this.leaveRefused(m.why ?? hostMismatch(this.ver ?? '', m.ver) ?? '版本不同'); return; }
+      this.kicked = /請出/.test(m.why ?? '');
+      if (this.replied) this.replied(m.why ?? '房間已滿'); else this.onStatus(m.why ?? '房間已滿');
+      this.close();
+    }
+  }
+  /** Not the host's version: this phone leaves, the reason shown (join() fails with it, or onStatus). */
+  private leaveRefused(why: string) {
+    this.refused = true;
+    if (this.replied) this.replied(why); else this.onStatus(why);
+    this.close();
   }
 
   /** Someone was voted out (told by the host): this phone leaves, or forgets them (the host's leaving starts the hand-over). */

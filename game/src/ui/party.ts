@@ -9,7 +9,8 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { cleanNick, Lobby, myRegion, NICK_MAX, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
+import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
+import { sameVersion, verOf } from './party-version';
 import { inlineChat } from './party-chat';
 import { checkNetwork } from './party-check';
 import type { SpriteBank } from './sprites';
@@ -86,7 +87,7 @@ export function openParty(d: PartyDeps): void {
   /** A private room's token in the list (never its code). */
   const token = `p-${Math.random().toString(36).slice(2, 10)}`;
   const info = (r: Room): RoomInfo => r.shared ? infoShared(r) : { ...infoShared(r), code: token, host: '', map: '', private: true };
-  const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region });
+  const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region, ...(r.ver ? { ver: r.ver } : {}) });
 
   function roomView(r: Room) {
     /** Computers up to this many players (4 or 8), or 0: players only. */
@@ -136,7 +137,7 @@ export function openParty(d: PartyDeps): void {
     };
     r.onLobby = () => { render(); if (r.members[0]?.id === r.myId) lobby?.announce(info(r)); };
     r.onVotes = () => render();
-    r.onStatus = t => { if (t && !r.started && r.kicked || t && !r.started && /滿/.test(t)) { audio.ui('error'); home(`<p class="pt-err">${esc(t)}</p>`); box.onclick = menu; } };
+    r.onStatus = t => { if (t && !r.started && (r.kicked || r.refused || /滿/.test(t))) { audio.ui('error'); home(`<p class="pt-err">${esc(t).replace(/\n/g, '<br>')}</p>`); box.onclick = menu; } };
     r.onStart = (s: StartMsg) => { lobby?.close(); lobby = null; overlay.remove(); d.play(s.settings, r); };
     render();
     box.onclick = e => {
@@ -191,11 +192,18 @@ export function openParty(d: PartyDeps): void {
   function find() {
     show('尋找夥伴', '<p class="pt-lead">正在找想一起玩的人…</p>');
     lobby = new Lobby();
-    const render = (rooms: RoomInfo[]) => show('尋找夥伴', `
-      ${rooms.length ? `<div class="pt-rooms">${rooms.map(x => `<button class="pt-room" data-code="${x.code}"${x.players >= x.max ? ' disabled' : ''}>
-        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${x.region ? `${esc(x.region)}・` : ''}${esc(x.map)}・${x.players}/${x.max} 人</small></span><em>${x.players >= x.max ? '已滿' : '加入'}</em></button>`).join('')}</div>`
+    // Rooms of another version (v0.7.4 on, party-version.ts) are listed after this version's, 「版本不同」 and not joinable.
+    const render = (all: RoomInfo[]) => {
+      const rooms = [...all.filter(x => sameVersion(x, PARTY_VERSION)), ...all.filter(x => !sameVersion(x, PARTY_VERSION))];
+      show('尋找夥伴', `
+      ${rooms.length ? `<div class="pt-rooms">${rooms.map(x => {
+        const other = !sameVersion(x, PARTY_VERSION), full = x.players >= x.max;
+        return `<button class="pt-room${other ? ' other' : ''}"${other ? '' : ` data-code="${x.code}"`}${full || other ? ' disabled' : ''}>
+        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${x.region ? `${esc(x.region)}・` : ''}${esc(x.map)}・${x.players}/${x.max} 人${other ? `・${verOf(x.ver) ? `v${esc(verOf(x.ver)!)}` : '舊版'}` : ''}</small></span><em>${other ? '版本不同' : full ? '已滿' : '加入'}</em></button>`;
+      }).join('')}</div>`
         : '<p class="pt-lead">目前沒有人在找夥伴<br>可以自己建一個共享房間，等別人加入</p>'}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy opt" data-a="create">建立共享房間</button></div>`);
+    };
     lobby.onRooms = rooms => { if (lobby) render(rooms); };
     void lobby.start(undefined, true);
     setTimeout(() => { if (lobby && !box.querySelector('.pt-rooms, .pt-room')) render([]); }, 6000);

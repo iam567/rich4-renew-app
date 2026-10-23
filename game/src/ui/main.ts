@@ -50,6 +50,7 @@ import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeake
 import { applyJqTheme } from './jq-theme';
 import { setEraLine } from './era-line';
 import { playJqIntro } from './screens/jq-intro';
+import { magicHintMode, setMagicHintMode } from './screens/magic'; // 魔法屋提示對象 (issue #8)
 import './tycoon-onway';
 import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
@@ -252,6 +253,8 @@ function options() {
       stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
       stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
       stored('自動買地', AUTO_BUY_KEY, AUTO_BUY_MODES),
+      // issue #8: the magic house's box naming who its group hits (on by default; off as in the original)
+      { label: '魔法屋提示對象', opts: STREET_MODES, cur: () => magicHintMode(), pick: i => setMagicHintMode(i) },
       { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => { write('rich4.orientation', i); void applyOrientation(); } },
       { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => write('rich4.weather', i) },
       // 歌舞伎町's living street (docs/rules/21 §8): kept for every game, used on that map only.
@@ -764,6 +767,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
             try { localStorage.setItem('rich4.minigame', String(i)); } catch { /* not kept */ }
           } },
           { label: '自動買地', opts: AUTO_BUY_MODES, cur: () => (autoBuy() ? 1 : 0), pick: i => { try { localStorage.setItem(AUTO_BUY_KEY, String(i)); } catch { /* not kept */ } } },
+          { label: '魔法屋提示對象', opts: STREET_MODES, cur: () => magicHintMode(), pick: i => setMagicHintMode(i) },
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
           // 歌舞伎町's living street (docs/rules/21 §8).
@@ -965,13 +969,15 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       return game.players.every(q => q === me2 || q.bankrupt || !q.whoPlays || game.wealth(q) < w);
     };
     room.onStatus = t => {
-      if (room.kicked) {
-        // Its own notice over everything (a box could queue behind the game's), then back to the title.
+      if (room.kicked || room.refused) {
+        // Its own notice over everything (a box could queue behind the game's), then back to the title. (refused: the
+        // room's host turned out to be another version, party-version.ts — it says which, so it stays longer.)
         const out = document.createElement('div');
         out.className = 'pt-out';
-        out.innerHTML = '<div class="msg"><div class="msg-text">你已被投票請出房間<br>返回標題畫面…</div></div>';
+        const why = room.kicked ? '你已被投票請出房間' : t.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!).replace(/\n/g, '<br>');
+        out.innerHTML = `<div class="msg"><div class="msg-text">${why}<br>返回標題畫面…</div></div>`;
         document.body.append(out);
-        setTimeout(() => location.reload(), 2500);
+        setTimeout(() => location.reload(), room.kicked ? 2500 : 6000);
         return;
       }
       if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true;
