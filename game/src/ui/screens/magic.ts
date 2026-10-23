@@ -20,14 +20,15 @@ type Choose = Extract<Ask, { t: 'choose' }>;
 /** Symbol centres (`ref_004756e8`) and name labels {frame, x, y} (`_rich4_magic_house_function_info`), magic 0..11. */
 const SYMBOLS: [number, number][] = [[322, 91], [414, 82], [453, 157], [509, 242], [458, 314], [415, 387], [322, 394], [239, 393], [188, 316], [131, 222], [184, 161], [225, 83]];
 /**
- * 激情歲月 (docs/rules/24 §11.3): the redrawn 八卦 table has no hexagram points; the twelve icons sit evenly on its
- * decorated outer ring (centre (320, 226), measured on the picture), clockwise from the top, each name label just
- * inside its icon.
+ * 激情歲月 (docs/rules/24 §11.3): the 八卦 table has twelve empty brass roundels set into its ring (the user 2026-10-23:
+ * 「融合的還是不夠自然」), evenly over the ring's upper 250° (none behind the teller's box), clockwise from the lower left;
+ * each spell's inlay sits in its roundel, its name label just inside it. The same positions as the picture's
+ * (tools/tycoon-art/jq_places.py SLOT_RING / SLOT_ARC).
  */
-const ERA_RING = { cx: 320, cy: 226, rx: 186, ry: 178 };
+const ERA_RING = { cx: 319, cy: 224, r: 186, from: -215, to: 35 };
 const eraSym = (i: number): [number, number] => {
-  const a = (-90 + 30 * i) * Math.PI / 180;
-  return [Math.round(ERA_RING.cx + ERA_RING.rx * Math.cos(a)), Math.round(ERA_RING.cy + ERA_RING.ry * Math.sin(a))];
+  const a = (ERA_RING.from + (ERA_RING.to - ERA_RING.from) * i / 11) * Math.PI / 180;
+  return [Math.round(ERA_RING.cx + ERA_RING.r * Math.cos(a)), Math.round(ERA_RING.cy + ERA_RING.r * Math.sin(a))];
 };
 const LABELS: [number, number, number][] = [[9, 208, 167], [10, 510, 150], [7, 545, 88], [7, 568, 147], [7, 550, 234], [7, 510, 320], [7, 422, 320], [6, 134, 318], [6, 92, 250], [6, 72, 130], [6, 77, 85], [9, 122, 154]];
 /** The teller's names for the twelve groups (#46-#57). */
@@ -161,7 +162,7 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
         label?.remove();
         let [f, x, y] = LABELS[i];
         if (era) {
-          // the label (its box's anchor) 40 % of the way from the icon towards the centre
+          // the label (its box's anchor) 42 % of the way from the roundel towards the centre
           const [sx, sy] = eraSym(i);
           x = Math.round(sx + (ERA_RING.cx - sx) * 0.42); y = Math.round(sy + (ERA_RING.cy - sy) * 0.42);
         }
@@ -177,7 +178,9 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       const showGroup = () => { ball?.remove(); ball = s.art('Panel', 18, 11 + group, 326, 296, 'mg-ball pl-pop'); };
       // Her lines in the remake's message box (style.css .msg, the teller's name on the ribbon) where the original drew
       // its board #18.8 centred on (320,384).
-      const balloon = s.box('msg scene-msg mg-say', 320 - 150, 384 - 64, 300, 128, '<div class="ribbon">占卜師</div><div class="scene-msg-text"></div>');
+      // 激情歲月: a smaller box under the teller, clear of the roundels and of her drum.
+      const balloon = era ? s.box('msg scene-msg mg-say era', 205, 376, 230, 96, '<div class="ribbon">占卜師</div><div class="scene-msg-text"></div>')
+        : s.box('msg scene-msg mg-say', 320 - 150, 384 - 64, 300, 128, '<div class="ribbon">占卜師</div><div class="scene-msg-text"></div>');
       const sayText = balloon.querySelector<HTMLElement>('.scene-msg-text')!;
       // The balloon covers the lower symbols: while picking it goes away after the line, as the original's does.
       let said = 0;
@@ -191,7 +194,9 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
       // Who the group is: faces of the targets (not drawn by the original, which shows only the icon).
       // More than four (大富豪模式's eleven rivals): a grid of smaller faces, names beside them in portrait.
       const manyWho = targets.length > 4;
-      const who = P ? s.box(`mg-who${manyWho ? ' many' : ''}`, 20, 492, 600, 112) : s.box(`mg-who${manyWho ? ' many' : ''}`, 8, 8, manyWho ? 236 : 196, 70);
+      // (激情歲月, landscape: in the bottom left corner, the roundels take the top of the ring)
+      const who = P ? s.box(`mg-who${manyWho ? ' many' : ''}`, 20, 492, 600, 112)
+        : s.box(`mg-who${manyWho ? ' many' : ''}`, 8, era ? 400 : 8, manyWho ? 236 : 196, 70);
       if (manyWho) who.style.height = 'auto';
       const whoHtml = () => `<b>${esc(GROUP_LINES[group])}</b><span class="mg-faces">${targets.map(q =>
         `<span class="mg-face" style="--c:${charColor(ctx, q.id)}" title="${esc(nameOf(ctx, q.id))}">${face(ctx, q.character)}${P ? `<i>${esc(nameOf(ctx, q.id))}</i>` : ''}</span>`).join('')}</span>`;

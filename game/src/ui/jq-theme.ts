@@ -74,7 +74,8 @@ const LINES: Record<string, string> = {
   '董事長慢走！': '同志慢走！',
   // 跳大神 (the magic house)
   '進來魔法屋，就得\n完全照我的指示！': '噓，別讓人看見……\n進來就得聽我的！',
-  '天靈靈地靈靈∼': '天靈靈地靈靈∼\n破四舊可別說出去！',
+  // (its first line must not be a key itself: the page's text pass would add the second line again)
+  '天靈靈地靈靈∼': '天靈靈，地靈靈∼\n破四舊可別說出去！',
   '你來決定他們的命運∼': '你來決定\n他們的下場∼',
   // the fate board's title (only the whole word: 「命運」 inside a sentence keeps its meaning)
   '命運': '大字報',
