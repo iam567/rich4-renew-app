@@ -17,12 +17,16 @@ const files = new Map<string, Buffer>();
 const bridge: number[] = [];
 let cutWrites = false;
 let hang = '';
-vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => true } }));
+let platform = 'android';
+/** Every file-system call: what, which path, which encoding. */
+const calls: string[] = [];
+vi.mock('@capacitor/core', () => ({ Capacitor: { isNativePlatform: () => platform !== 'web', getPlatform: () => platform } }));
 vi.mock('@capacitor/filesystem', () => ({
   Directory: { Data: 'DATA' },
   Encoding: { UTF8: 'utf8' },
   Filesystem: {
     async readFile({ path, encoding }: { path: string; encoding?: string }) {
+      calls.push(`read ${path} ${encoding ?? 'base64'}`);
       if (path === hang) return new Promise(() => {});
       const f = files.get(path);
       if (!f) throw new Error('File does not exist.');
@@ -30,19 +34,22 @@ vi.mock('@capacitor/filesystem', () => ({
       bridge.push(data.length);
       return { data };
     },
-    async writeFile({ path, data, encoding }: { path: string; data: string; encoding?: string }) {
+    async writeFile({ path, data, encoding, recursive }: { path: string; data: string; encoding?: string; recursive?: boolean }) {
+      calls.push(`write ${path} ${encoding ?? 'base64'}${recursive ? ' recursive' : ''}`);
       bridge.push(data.length);
       const b = encoding ? Buffer.from(data, 'utf8') : Buffer.from(data, 'base64');
       files.set(path, cutWrites ? b.subarray(0, b.length >> 1) : b);
       return { uri: path };
     },
     async stat({ path }: { path: string }) {
+      calls.push(`stat ${path}`);
       const f = files.get(path);
       if (!f) throw new Error('File does not exist.');
       return { size: f.length, type: 'file' };
     },
-    async deleteFile({ path }: { path: string }) { if (!files.delete(path)) throw new Error('File does not exist.'); },
+    async deleteFile({ path }: { path: string }) { calls.push(`delete ${path}`); if (!files.delete(path)) throw new Error('File does not exist.'); },
     async rename({ from, to }: { from: string; to: string }) {
+      calls.push(`rename ${from} ${to}`);
       const f = files.get(from);
       if (!f) throw new Error('File does not exist.');
       files.delete(to); files.set(to, f); files.delete(from);
@@ -66,7 +73,7 @@ const corrupt = (p: string, how: 'cut' | 'flip') => {
   if (how === 'flip') { f[f.length - 9] ^= 0xff; files.set(p, f); } else files.set(p, f.subarray(0, f.length - 7));
 };
 
-describe.skipIf(!existsSync(mapFile))('save slots in the app (issue #7)', () => {
+describe.skipIf(!existsSync(mapFile))('save slots on Android (issue #7)', () => {
   beforeAll(() => {
     const g = new Game({ mapId: 2, players: [0, 4, 9, 11].map(character => ({ character, human: false })), fundIndex: 1, traffic: 1,
       landLimitIndex: 2, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 14), seed: 77 }, parseBoard(JSON.parse(readFileSync(mapFile, 'utf8')) as RawMap));
@@ -76,7 +83,7 @@ describe.skipIf(!existsSync(mapFile))('save slots in the app (issue #7)', () => 
     base = JSON.parse(JSON.stringify(saveGame(g)));
   });
   beforeEach(async () => {
-    files.clear(); store.clear(); bridge.length = 0; cutWrites = false; hang = '';
+    files.clear(); store.clear(); bridge.length = 0; calls.length = 0; cutWrites = false; hang = ''; platform = 'android';
     vi.useRealTimers();
     vi.resetModules();
     saves = await import('./saves');
@@ -188,5 +195,75 @@ describe.skipIf(!existsSync(mapFile))('save slots in the app (issue #7)', () => 
     saves.markLoading(4);
     saves.markLoading(null);
     expect(saves.interruptedLoad()).toBeNull();
+  });
+});
+
+/**
+ * iOS keeps 0.7.3's saves exactly (the user 2026-10-23: 「iPhone存檔這東西，如果iPhone沒問題的話，最好不要修，就把安卓修一下得了」):
+ * the same JSON files, written and read with the same calls in the same order, nothing compressed or converted.
+ */
+describe.skipIf(!existsSync(mapFile))('save slots on iOS: exactly as 0.7.3', () => {
+  beforeAll(() => {
+    const g = new Game({ mapId: 2, players: [0, 4, 9, 11].map(character => ({ character, human: false })), fundIndex: 1, traffic: 1,
+      landLimitIndex: 2, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 14), seed: 77 }, parseBoard(JSON.parse(readFileSync(mapFile, 'utf8')) as RawMap));
+    const f = g.run();
+    for (let r = f.next(); !r.done && g.daysElapsed < 20 && !g.over; r = f.next());
+    base = JSON.parse(JSON.stringify(saveGame(g)));
+  });
+  beforeEach(async () => {
+    files.clear(); store.clear(); bridge.length = 0; calls.length = 0; cutWrites = false; hang = ''; platform = 'ios';
+    store.set('rich4.savesToFiles', '1'); // an iOS player of 0.7.x: IndexedDB already copied to files
+    vi.useRealTimers();
+    vi.resetModules();
+    saves = await import('./saves');
+  });
+  const text = (p: string) => files.get(p)?.toString('utf8');
+
+  it('writes the JSON text to saves/slot-N.json through a temporary file, read back, the old one kept as .prev', async () => {
+    await saves.writeSlot(2, save(1));
+    expect(calls).toEqual([
+      'write saves/slot-2.tmp.json utf8 recursive', 'read saves/slot-2.tmp.json utf8', 'stat saves/slot-2.json',
+      'rename saves/slot-2.tmp.json saves/slot-2.json',
+    ]);
+    calls.length = 0;
+    await saves.writeSlot(2, save(2));
+    await saves.writeSlot(2, save(3));
+    expect(calls.slice(-7)).toEqual([
+      'write saves/slot-2.tmp.json utf8 recursive', 'read saves/slot-2.tmp.json utf8', 'stat saves/slot-2.json',
+      'stat saves/slot-2.prev.json', 'delete saves/slot-2.prev.json', 'rename saves/slot-2.json saves/slot-2.prev.json',
+      'rename saves/slot-2.tmp.json saves/slot-2.json',
+    ]);
+    expect([...files.keys()].sort()).toEqual(['saves/slot-2.json', 'saves/slot-2.prev.json']);
+    expect(text('saves/slot-2.json')).toBe(JSON.stringify(save(3)));
+    expect(text('saves/slot-2.prev.json')).toBe(JSON.stringify(save(2)));
+    expect(calls.some(c => c.includes('.r4z') || c.includes('base64'))).toBe(false);
+  });
+
+  it('reads the existing JSON saves as they are (file, else .tmp, else .prev), converts nothing', async () => {
+    files.set('saves/slot-3.json', Buffer.from(JSON.stringify(save(4)), 'utf8'));
+    files.set('saves/slot-5.prev.json', Buffer.from(JSON.stringify(save(5)), 'utf8'));
+    files.set('saves/slot-1002.json', Buffer.from(JSON.stringify(save(6)), 'utf8'));
+    const before = new Map(files);
+    expect(await saves.loadSlot(3)).toEqual({ save: save(4), damaged: false });
+    expect(await saves.readSlot(5)).toEqual(save(5));
+    expect((await saves.previewSlot(3))?.savedAt).toBe(1004);
+    expect((await saves.autoSaves(0)).map(a => [a.id, a.save.savedAt])).toEqual([[1002, 1006]]);
+    expect((await saves.listSlots()).map(p => p?.savedAt)).toEqual([undefined, undefined, undefined, 1004, undefined, 1005, undefined]);
+    // Reads only: the same files, the same bytes, no flag of the Android conversion.
+    expect(files).toEqual(before);
+    expect(calls.every(c => c.startsWith('read ') && c.endsWith('.json utf8'))).toBe(true);
+    expect(store.has('rich4.savesPacked')).toBe(false);
+    // A damaged file is passed over for the next as before (no notice: 0.7.3 had none).
+    files.set('saves/slot-3.prev.json', Buffer.from(JSON.stringify(save(7)), 'utf8'));
+    files.set('saves/slot-3.json', Buffer.from('{"version":1,', 'utf8'));
+    expect(await saves.loadSlot(3)).toEqual({ save: save(7), damaged: false });
+  });
+
+  it('the automatic ring writes the same JSON files in the same order', async () => {
+    for (let k = 0; k < 6; k++) await saves.writeAuto(0, save(20 + k), `t${k}`);
+    expect([...files.keys()].filter(p => !p.includes('.prev')).sort()).toEqual(
+      ['saves/slot-0.json', 'saves/slot-1000.json', 'saves/slot-1001.json', 'saves/slot-1002.json', 'saves/slot-1003.json']);
+    expect(text('saves/slot-0.json')).toBe(JSON.stringify(save(25)));
+    expect((await saves.autoSaves(0)).map(a => a.save.savedAt)).toEqual([1025, 1024, 1023, 1022, 1021]);
   });
 });

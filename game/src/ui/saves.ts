@@ -1,15 +1,17 @@
 /**
- * Save slots and the slot picker. In the app (iOS / Android) every slot is a file in the app's own data folder
- * (`saves/slot-N.r4z`, written to a temporary file first and swapped in, the previous version kept as
- * `slot-N.prev.r4z`): iOS WebKit's IndexedDB can lose its connection after the app was in the background and then
- * fails or hangs on every write — the user lost an hour of play that way (2026-10-19). IndexedDB stays for the
- * browser, and for the slots saved before (copied over to files once, the first time the slots are read).
+ * Save slots and the slot picker. In the app (iOS / Android) every slot is a file in the app's own data folder,
+ * written to a temporary file first and swapped in, the previous version kept as `.prev`: iOS WebKit's IndexedDB can
+ * lose its connection after the app was in the background and then fails or hangs on every write — the user lost an
+ * hour of play that way (2026-10-19). IndexedDB stays for the browser, and for the slots saved before (copied over to
+ * files once, the first time the slots are read).
  *
- * The files are compressed (ui/save-codec.ts, issue #7: 「安卓版經常出現讀取存檔失敗，然後閃退」 on HarmonyOS 4.2): the bridge
- * carries a small base64 string instead of the whole JSON, the slot list reads only each file's preview, and a file
- * that is cut or damaged is noticed and its previous copy read instead. The JSON files of 0.7.3 and before
- * (`slot-N.json`) are converted once, one at a time, and left in place (an older version still finds its own saves);
- * they are read when a slot has no compressed file that can be read.
+ * iOS: `saves/slot-N.json`, the save's JSON text, exactly as 0.7.3 (the user 2026-10-23: leave iPhone saves alone).
+ *
+ * Android: `saves/slot-N.r4z`, compressed (ui/save-codec.ts, issue #7: 「安卓版經常出現讀取存檔失敗，然後閃退」 on HarmonyOS
+ * 4.2): the bridge carries a small base64 string instead of the whole JSON, the slot list reads only each file's
+ * preview, and a file that is cut or damaged is noticed and its previous copy read instead. The JSON files of 0.7.3 and
+ * before are converted once, one at a time, and left in place (an older version still finds its own saves); they are
+ * read when a slot has no compressed file that can be read.
  */
 import { Capacitor } from '@capacitor/core';
 import { CHARACTERS } from '../core/characters';
@@ -29,6 +31,11 @@ const isAuto = (i: number) => i === AUTO_SLOT || i === TYCOON_AUTO_SLOT;
 
 const DB = 'rich4', STORE = 'saves';
 const native = () => Capacitor.isNativePlatform();
+/**
+ * The compressed files are Android's only (the user 2026-10-23: 「iPhone存檔這東西，如果iPhone沒問題的話，最好不要修，就把安卓修一下得了」):
+ * iOS keeps the JSON files exactly as 0.7.3 wrote and read them (`ios*` below), the browser its IndexedDB.
+ */
+const android = () => Capacitor.getPlatform() === 'android';
 
 /** A promise that gives up after `ms` (a stuck IndexedDB or bridge never answers). */
 function within<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
@@ -185,10 +192,62 @@ function migrate(): Promise<void> {
   })().catch(() => { migration = null; }));
 }
 
+// ---------------------------------------------------------------- iOS: the JSON files, exactly as 0.7.3
+
+/** iOS: a slot's JSON file (`kind` '.tmp' / '.prev'), as 0.7.3. */
+const iosPath = (slot: number, kind = '') => `saves/slot-${slot}${kind}.json`;
+
+async function iosFileRead(p: string): Promise<SaveData | undefined> {
+  const { Filesystem, Directory, Encoding } = await fs();
+  try {
+    const r = await Filesystem.readFile({ path: p, directory: Directory.Data, encoding: Encoding.UTF8 });
+    return JSON.parse(typeof r.data === 'string' ? r.data : await r.data.text()) as SaveData;
+  } catch { return undefined; }
+}
+
+async function iosFileWrite(slot: number, data: SaveData): Promise<void> {
+  const { Filesystem, Directory, Encoding } = await fs();
+  const dir = Directory.Data, text = JSON.stringify(data);
+  const tmp = iosPath(slot, '.tmp'), cur = iosPath(slot), prev = iosPath(slot, '.prev');
+  await Filesystem.writeFile({ path: tmp, data: text, directory: dir, encoding: Encoding.UTF8, recursive: true });
+  // Read it back before it replaces anything: a slot is never left without a whole save.
+  const back = await Filesystem.readFile({ path: tmp, directory: dir, encoding: Encoding.UTF8 });
+  if ((typeof back.data === 'string' ? back.data.length : -1) !== text.length) throw new Error('save file incomplete');
+  const exists = async (p: string) => Filesystem.stat({ path: p, directory: dir }).then(() => true, () => false);
+  if (await exists(cur)) {
+    if (await exists(prev)) await Filesystem.deleteFile({ path: prev, directory: dir });
+    await Filesystem.rename({ from: cur, to: prev, directory: dir, toDirectory: dir });
+  }
+  await Filesystem.rename({ from: tmp, to: cur, directory: dir, toDirectory: dir });
+}
+
+/** iOS: slots saved in IndexedDB before the files, copied to files once (as 0.7.3). */
+let iosMigration: Promise<void> | null = null;
+function iosMigrate(): Promise<void> {
+  return (iosMigration ??= (async () => {
+    try { if (localStorage.getItem(MIGRATED)) return; } catch { /* no storage: try below */ }
+    for (let slot = 0; slot < SLOTS; slot++) {
+      if (await iosFileRead(iosPath(slot))) continue;
+      const old = await idb<SaveData | undefined>('readonly', s => s.get(slot)).catch(() => undefined);
+      if (old) await iosFileWrite(slot, old);
+    }
+    try { localStorage.setItem(MIGRATED, '1'); } catch { /* tried again next start */ }
+  })().catch(() => { iosMigration = null; }));
+}
+
+/** iOS: the slot's save: the file, else an interrupted swap's temporary file, else the previous version (as 0.7.3). */
+async function iosRead(slot: number): Promise<SaveData | undefined> {
+  await iosMigrate();
+  for (const kind of ['', '.tmp', '.prev']) { const d = await iosFileRead(iosPath(slot, kind)); if (d) return d; }
+  return undefined;
+}
+
 let writing: Promise<unknown> = Promise.resolve();
 /** Writes a slot (one write at a time, in order); resolves once the save is really stored. */
 export function writeSlot(slot: number, data: SaveData): Promise<void> {
-  const run = () => (native() ? migrate().then(() => within(fileWrite(slot, data), 15000, 'save file')) : idb('readwrite', s => s.put(data, slot)).then(() => {}));
+  const run = () => (android() ? migrate().then(() => within(fileWrite(slot, data), 15000, 'save file'))
+    : native() ? within(iosFileWrite(slot, data), 15000, 'save file')
+    : idb('readwrite', s => s.put(data, slot)).then(() => {}));
   const p = writing.then(run, run);
   writing = p.catch(() => {});
   return p;
@@ -196,16 +255,18 @@ export function writeSlot(slot: number, data: SaveData): Promise<void> {
 
 /** The slot's whole save, and whether a newer copy was damaged (then the save is the one before it). */
 export async function loadSlot(slot: number): Promise<Loaded<SaveData>> {
-  if (native()) return nativeRead(slot, decodeSave, s => s);
+  if (android()) return nativeRead(slot, decodeSave, s => s);
+  if (native()) return { save: await iosRead(slot), damaged: false };
   return { save: await idb<SaveData | undefined>('readonly', s => s.get(slot)), damaged: false };
 }
 export const readSlot = (slot: number): Promise<SaveData | undefined> => loadSlot(slot).then(r => r.save);
 
-/** What the slot list shows of a slot (in the app only the file's preview is read, never the whole save). */
+/** What the slot list shows of a slot (on Android only the file's preview is read, never the whole save). */
 export async function previewSlot(slot: number): Promise<SlotPreview | undefined> {
   try {
-    if (native()) return (await nativeRead(slot, peekSave, previewOf)).save;
-    const s = await idb<SaveData | undefined>('readonly', st => st.get(slot));
+    if (android()) return (await nativeRead(slot, peekSave, previewOf)).save;
+    // iOS and the browser read the whole save, as before; the list keeps only its preview.
+    const s = native() ? await iosRead(slot) : await idb<SaveData | undefined>('readonly', st => st.get(slot));
     return s ? previewOf(s) : undefined;
   } catch { return undefined; }
 }
@@ -253,9 +314,9 @@ export function writeAuto(slot: number, data: SaveData, turn: string): Promise<v
   return p;
 }
 
-/** The previews of the slots (`skip`: slots not read, left undefined). */
+/** The previews of the slots (`skip`: on Android, slots not read, left undefined; iOS and the browser read all, as before). */
 export async function listSlots(skip: (i: number) => boolean = () => false): Promise<(SlotPreview | undefined)[]> {
-  try { return await Promise.all(Array.from({ length: SLOTS }, (_, i) => (skip(i) ? undefined : previewSlot(i)))); }
+  try { return await Promise.all(Array.from({ length: SLOTS }, (_, i) => (skip(i) && android() ? undefined : previewSlot(i)))); }
   catch { return new Array(SLOTS).fill(undefined); }
 }
 

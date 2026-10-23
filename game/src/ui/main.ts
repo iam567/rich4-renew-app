@@ -199,7 +199,7 @@ function afterLoadTrouble() {
   if (note) { const n = note; void notice(app, n.text).then(() => { if (n.reopenLoad) void openLoad(); }); return; }
   if (interruptedLoad() === null) return;
   // Killed while loading: on a phone that is nearly always memory. The app draws with less from now on.
-  const lower = Capacitor.isNativePlatform() ? lowerTier() : null;
+  const lower = Capacitor.getPlatform() === 'android' ? lowerTier() : null; // Android only (iOS left as it was)
   void notice(app, `上次讀取存檔時，遊戲還沒載入完就被系統關掉了（多半是手機記憶體不夠）。\n存檔沒有損壞，可以再讀取一次。${lower ? '\n已把畫面細節調低一級，比較不佔記憶體。' : '\n讀取前可以先關掉其他程式。'}`)
     .then(() => openLoad());
 }
