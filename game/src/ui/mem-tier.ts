@@ -99,3 +99,15 @@ export function memTier(): MemTier {
   current = TIERS[name ?? detectTier()];
   return current;
 }
+
+/**
+ * One tier lower for this device from now on (issue #7: the app was closed by the system while it loaded a save,
+ * nearly always for memory). The new tier, or null when it already is the lowest (or there is no storage to keep it).
+ */
+export function lowerTier(): TierName | null {
+  const now = memTier().name, next: TierName | null = now === 'high' ? 'mid' : now === 'mid' ? 'low' : null;
+  if (!next) return null;
+  try { localStorage.setItem(KEY, next); } catch { return null; }
+  current = TIERS[next];
+  return next;
+}

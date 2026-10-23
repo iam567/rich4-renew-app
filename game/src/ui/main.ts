@@ -1,5 +1,7 @@
 /** Title/setup screen and the game controller that plays the engine's flow on screen. */
+import './compat'; // older Android / vendor WebViews (issue #7): first, before anything runs
 import '@fontsource/huninn/index.css';
+import { Capacitor } from '@capacitor/core';
 import { CHARACTERS, playerName } from '../core/characters';
 import { format, today } from '../core/date';
 import { Game, SPEED } from '../core/game';
@@ -17,7 +19,8 @@ import { askScreens, fxScreens } from './screens/registry';
 import { PartyBar } from './party-chat';
 import { openParty } from './party';
 import { Lobby, type Room } from './party-net';
-import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
+import { AUTO_SLOT, TYCOON_AUTO_SLOT, interruptedLoad, loadSlot, markLoading, notice, pickSlot, writeAuto, writeSlot, type Loaded } from './saves';
+import { lowerTier } from './mem-tier';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
 import { audio, Sfx, Theme } from './audio';
@@ -163,12 +166,42 @@ function title() {
     if (act) stopWatchingParty();
     if (act === 'start') newGame();
     if (act === 'party') openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} });
-    if (act === 'load') {
-      const slot = await pickSlot(app, 'load', mapName, bank, thumbOf);
-      if (slot >= 0) resume(slot);
-    }
+    if (act === 'load') void openLoad();
     if (act === 'option') options();
   };
+  afterLoadTrouble();
+}
+
+/** The title's 讀取進度: the slot list, then the game; a slot that can't be loaded says so and the list comes back. */
+async function openLoad() {
+  const slot = await pickSlot(app, 'load', mapName, bank, thumbOf);
+  if (slot >= 0) void resume(slot, app, openLoad);
+}
+
+/**
+ * Issue #7 (「安卓版經常出現讀取存檔失敗，然後閃退」): a load that went wrong after the screen had changed comes back to the
+ * title (a fresh page: everything the failed load held is freed) and says why there, then the slot list opens again.
+ */
+const AFTER_RELOAD = 'rich4.afterReload';
+function backToTitle(text: string, reopenLoad: boolean) {
+  markLoading(null);
+  try { sessionStorage.setItem(AFTER_RELOAD, JSON.stringify({ text, reopenLoad })); } catch { /* the title without the note */ }
+  location.reload();
+}
+/** On the title: the note of a failed load, or of a load the app did not live through (the system closed it). */
+function afterLoadTrouble() {
+  let note: { text: string; reopenLoad: boolean } | null = null;
+  try {
+    const v = sessionStorage.getItem(AFTER_RELOAD);
+    sessionStorage.removeItem(AFTER_RELOAD);
+    if (v) note = JSON.parse(v) as { text: string; reopenLoad: boolean };
+  } catch { /* none */ }
+  if (note) { const n = note; void notice(app, n.text).then(() => { if (n.reopenLoad) void openLoad(); }); return; }
+  if (interruptedLoad() === null) return;
+  // Killed while loading: on a phone that is nearly always memory. The app draws with less from now on.
+  const lower = Capacitor.isNativePlatform() ? lowerTier() : null;
+  void notice(app, `上次讀取存檔時，遊戲還沒載入完就被系統關掉了（多半是手機記憶體不夠）。\n存檔沒有損壞，可以再讀取一次。${lower ? '\n已把畫面細節調低一級，比較不佔記憶體。' : '\n讀取前可以先關掉其他程式。'}`)
+    .then(() => openLoad());
 }
 
 /**
@@ -468,7 +501,7 @@ async function nextGame(root: HTMLElement, carried: CarriedSettings, humans: num
 async function startTycoon(settings: import('../core/world').TycoonSettings, world?: World) {
   if (!world) bootScreen('大富豪模式', '', '建立大富豪世界中…');
   let w: World;
-  try { w = world ?? await newWorld(settings); } catch (e) { app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
+  try { w = world ?? await newWorld(settings); } catch (e) { backToTitle(`無法建立大富豪世界：${(e as Error).message}`, false); return; }
   if (!ledgerOf(w.players)) attachLedger(w.players); // statistics (core/stats.ts); an old save starts an empty one
   const flow = w.run();
   showCity(w, flow, !!world);
@@ -480,20 +513,36 @@ function showCity(w: World, flow: ReturnType<World['run']>, loaded: boolean) {
   begin(w.mapId(v), () => w.cities[v], loaded, { world: w, flow });
 }
 
-async function resume(slot: number) {
-  let data: SaveData | undefined;
-  try { data = await readSlot(slot); } catch { /* reported below */ }
-  if (!data) { alert('無法讀取這個存檔'); return; }
-  if (isWorldSave(data)) {
-    const save = data;
-    bootScreen('大富豪模式', '', '讀取大富豪世界中…');
-    try { void startTycoon(save.settings, await resumeWorld(save)); } catch (e) { alert((e as Error).message); }
+/**
+ * Loads a slot. Nothing that goes wrong here may stop the app (issue #7): a slot that can't be read says so over
+ * `parent` and `back` follows (the title's slot list again; in a game the game goes on); a damaged newest copy is
+ * replaced by the one before it, with a word; a failure once the loading screen is up goes back to the title.
+ */
+async function resume(slot: number, parent: HTMLElement, back?: () => void) {
+  let got: Loaded<SaveData> = { damaged: false };
+  try { got = await loadSlot(slot); } catch { /* reported below */ }
+  const data = got.save;
+  if (!data) {
+    await notice(parent, got.damaged ? '這個存檔的檔案損壞了，讀不出來。\n請改選其他存檔或自動存檔。' : '無法讀取這個存檔。\n請改選其他存檔或自動存檔。');
+    back?.();
     return;
   }
-  const saved = data;
+  if (got.damaged) await notice(parent, '這個存檔最新的一份檔案損壞了，\n已改讀它的上一份備份（進度會早一點）。');
+  markLoading(slot);
+  if (isWorldSave(data)) {
+    bootScreen('大富豪模式', '', '讀取大富豪世界中…');
+    let w: World;
+    try { w = await resumeWorld(data); } catch (e) { backToTitle(`讀取大富豪世界失敗：${(e as Error).message}\n請改選其他存檔或自動存檔。`, true); return; }
+    void startTycoon(data.settings, w);
+    return;
+  }
+  let saved: SaveData | null = data;
   // Names of stocks and companies from the map as it is now (a city that got its own local firms later).
-  begin(saved.settings.mapId, board => {
-    const g = loadGame(saved, board);
+  begin(data.settings.mapId, board => {
+    // The parsed save is not kept for the whole game once the game is built from it (memory on a small phone).
+    const s = saved!;
+    saved = null;
+    const g = loadGame(s, board);
     reshuffleGame(g, crypto.getRandomValues(new Uint32Array(1))[0]); // issue #5: not the same dice as the last time from this save
     if (!ledgerOf(g.players)) attachLedger(g.players);
     return g;
@@ -545,7 +594,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     if (mapId === KB_MAP) prepareKabukicho(bank); // 歌舞伎町's tool icons (docs/rules/21 §7.5)
     await prepareJiqingPlaces(bank, mapId === JQ_MAP); // 激情歲月's place screens (docs/rules/24 §11.3); off on every other map
     game = make(art.board);
-  } catch (e) { firstGround?.dispose(); boot.dispose(); app.innerHTML = `<div class="error">${(e as Error).message}</div>`; return; }
+  } catch (e) {
+    firstGround?.dispose(); boot.dispose();
+    if (me !== session) return;
+    backToTitle(`${loaded ? '讀取存檔失敗' : '無法開始這局遊戲'}：${(e as Error).message}${loaded ? '\n請改選其他存檔或自動存檔。' : ''}`, loaded);
+    return;
+  }
   if (me !== session) { firstGround?.dispose(); return; }
   app.replaceChildren(boot.el);
   // The original's slot sounds for this map's loops are not left running from an old game.
@@ -673,7 +727,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       }
       case 'load': {
         const slot = await pickSlot(shell, 'load', mapName, bank, thumb);
-        if (slot >= 0) resume(slot);
+        if (slot >= 0) void resume(slot, shell);
         return;
       }
       case 'card': case 'tool': case 'stock': case 'trade':
@@ -870,6 +924,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   if (!sameWorld) audio.background(loaded ? 0 : 1);
   // The game goes on once the board shows whole (its first move would otherwise start under the fading screen).
   await boot.close();
+  markLoading(null); // the load lived through (issue #7: a note left means the app was closed while loading)
   if (me !== session) return;
   // 激情歲月's 「穿越」 intro (docs/rules/24 §10): once when a new game on the map starts, never for a loaded one.
   if (mapId === JQ_MAP && !loaded && !ty) { await playJqIntro(shell, game, bank!, scale()); if (me !== session) return; audio.fanfare(); }

@@ -1,15 +1,24 @@
 /**
  * Save slots and the slot picker. In the app (iOS / Android) every slot is a file in the app's own data folder
- * (`saves/slot-N.json`, written to a temporary file first and swapped in, the previous version kept as
- * `slot-N.prev.json`): iOS WebKit's IndexedDB can lose its connection after the app was in the background and then
+ * (`saves/slot-N.r4z`, written to a temporary file first and swapped in, the previous version kept as
+ * `slot-N.prev.r4z`): iOS WebKit's IndexedDB can lose its connection after the app was in the background and then
  * fails or hangs on every write — the user lost an hour of play that way (2026-10-19). IndexedDB stays for the
  * browser, and for the slots saved before (copied over to files once, the first time the slots are read).
+ *
+ * The files are compressed (ui/save-codec.ts, issue #7: 「安卓版經常出現讀取存檔失敗，然後閃退」 on HarmonyOS 4.2): the bridge
+ * carries a small base64 string instead of the whole JSON, the slot list reads only each file's preview, and a file
+ * that is cut or damaged is noticed and its previous copy read instead. The JSON files of 0.7.3 and before
+ * (`slot-N.json`) are converted once, one at a time, and left in place (an older version still finds its own saves);
+ * they are read when a slot has no compressed file that can be read.
  */
 import { Capacitor } from '@capacitor/core';
 import { CHARACTERS } from '../core/characters';
 import type { SaveData } from '../core/save';
 import type { SpriteBank } from './sprites';
 import { audio } from './audio';
+import { decodeSave, encodeSave, fromBase64, peekSave, previewOf, sameBytes, toBase64, type SlotPreview } from './save-codec';
+
+export type { SlotPreview } from './save-codec';
 
 export const SLOTS = 7;
 /** Slot 0 is the automatic save, as SAVE0.DAT in the original. */
@@ -17,13 +26,11 @@ export const AUTO_SLOT = 0;
 /** 大富豪模式 saves itself into its own slot, so a world never overwrites a normal game's automatic save. */
 export const TYCOON_AUTO_SLOT = 6;
 const isAuto = (i: number) => i === AUTO_SLOT || i === TYCOON_AUTO_SLOT;
-/** A 大富豪 world's save (core/save.ts WorldSaveData) in a slot: its date, current city and twelve players. */
-type AnySave = SaveData & { kind?: 'tycoon'; world?: { date: number; current: number }; cities?: { game: { date: number } }[] };
 
 const DB = 'rich4', STORE = 'saves';
 const native = () => Capacitor.isNativePlatform();
 
-/** A promise that gives up after `ms` (a stuck IndexedDB never answers). */
+/** A promise that gives up after `ms` (a stuck IndexedDB or bridge never answers). */
 function within<T>(p: Promise<T>, ms: number, what: string): Promise<T> {
   return new Promise((resolve, reject) => {
     const t = setTimeout(() => reject(new Error(`${what} timed out`)), ms);
@@ -68,25 +75,48 @@ async function idb<T>(mode: IDBTransactionMode, run: (s: IDBObjectStore) => IDBR
 type FS = typeof import('@capacitor/filesystem');
 let fsMod: Promise<FS> | null = null;
 const fs = () => (fsMod ??= import('@capacitor/filesystem'));
-const path = (slot: number, kind = '') => `saves/slot-${slot}${kind}.json`;
+/** A slot's compressed file; `kind` '.tmp' (a write not yet swapped in) or '.prev' (the version before). */
+const path = (slot: number, kind = '') => `saves/slot-${slot}${kind}.r4z`;
+/** The JSON file of 0.7.3 and before. */
+const oldPath = (slot: number, kind = '') => `saves/slot-${slot}${kind}.json`;
+const KINDS = ['', '.tmp', '.prev'];
+/** A bridge call that does not answer in this time counts as failed (the slot list and a load never hang). */
+const IO_MS = 15000;
 
-async function fileRead(p: string): Promise<SaveData | undefined> {
-  const { Filesystem, Directory, Encoding } = await fs();
+async function exists(p: string): Promise<boolean> {
+  const { Filesystem, Directory } = await fs();
+  return within(Filesystem.stat({ path: p, directory: Directory.Data }), IO_MS, 'stat').then(() => true, () => false);
+}
+
+/** A file's bytes (sent across the bridge as base64), or undefined when there is none or it can't be read. */
+async function readBytes(p: string): Promise<Uint8Array | undefined> {
+  const { Filesystem, Directory } = await fs();
   try {
-    const r = await Filesystem.readFile({ path: p, directory: Directory.Data, encoding: Encoding.UTF8 });
-    return JSON.parse(typeof r.data === 'string' ? r.data : await r.data.text()) as SaveData;
+    const r = await within(Filesystem.readFile({ path: p, directory: Directory.Data }), IO_MS, 'read');
+    return typeof r.data === 'string' ? fromBase64(r.data) : new Uint8Array(await r.data.arrayBuffer());
   } catch { return undefined; }
 }
 
-async function fileWrite(slot: number, data: SaveData): Promise<void> {
+/** An old JSON save: undefined when there is no file, null when it can't be parsed. */
+async function readOld(p: string): Promise<SaveData | null | undefined> {
   const { Filesystem, Directory, Encoding } = await fs();
-  const dir = Directory.Data, text = JSON.stringify(data);
+  let text: string;
+  try {
+    const r = await within(Filesystem.readFile({ path: p, directory: Directory.Data, encoding: Encoding.UTF8 }), IO_MS, 'read');
+    text = typeof r.data === 'string' ? r.data : await r.data.text();
+  } catch { return undefined; }
+  try { return JSON.parse(text) as SaveData; } catch { return null; }
+}
+
+async function fileWrite(slot: number, data: SaveData): Promise<void> {
+  const { Filesystem, Directory } = await fs();
+  const dir = Directory.Data, bytes = encodeSave(data);
   const tmp = path(slot, '.tmp'), cur = path(slot), prev = path(slot, '.prev');
-  await Filesystem.writeFile({ path: tmp, data: text, directory: dir, encoding: Encoding.UTF8, recursive: true });
+  // No encoding: the bridge carries base64 and the file holds the bytes.
+  await Filesystem.writeFile({ path: tmp, data: toBase64(bytes), directory: dir, recursive: true });
   // Read it back before it replaces anything: a slot is never left without a whole save.
-  const back = await Filesystem.readFile({ path: tmp, directory: dir, encoding: Encoding.UTF8 });
-  if ((typeof back.data === 'string' ? back.data.length : -1) !== text.length) throw new Error('save file incomplete');
-  const exists = async (p: string) => Filesystem.stat({ path: p, directory: dir }).then(() => true, () => false);
+  const back = await readBytes(tmp);
+  if (!back || !sameBytes(back, bytes)) throw new Error('save file incomplete');
   if (await exists(cur)) {
     if (await exists(prev)) await Filesystem.deleteFile({ path: prev, directory: dir });
     await Filesystem.rename({ from: cur, to: prev, directory: dir, toDirectory: dir });
@@ -94,40 +124,91 @@ async function fileWrite(slot: number, data: SaveData): Promise<void> {
   await Filesystem.rename({ from: tmp, to: cur, directory: dir, toDirectory: dir });
 }
 
+/** What a slot read gives: the save (or its preview), and whether a newer copy of it was damaged. */
+export interface Loaded<T> {
+  save?: T;
+  /** A newer copy of the slot (the file itself, an interrupted write) could not be read: `save` is an older copy. */
+  damaged: boolean;
+}
+
+/**
+ * The slot's save: its file, else an interrupted swap's temporary file, else the previous version; then the same
+ * three of the old JSON format. `packed` / `old` turn a file into what the caller wants (the whole save, a preview).
+ */
+async function nativeRead<T>(slot: number, packed: (b: Uint8Array) => T, old: (s: SaveData) => T): Promise<Loaded<T>> {
+  await migrate();
+  let damaged = false;
+  for (const kind of KINDS) {
+    const b = await readBytes(path(slot, kind));
+    if (!b) continue;
+    try { return { save: packed(b), damaged }; } catch { damaged = true; }
+  }
+  for (const kind of KINDS) {
+    const s = await readOld(oldPath(slot, kind));
+    if (s === undefined) continue;
+    if (s === null) { damaged = true; continue; }
+    try { return { save: old(s), damaged }; } catch { damaged = true; }
+  }
+  return { damaged };
+}
+
 /**
  * Slots saved in IndexedDB before the files: copied to files once (a slot that already has a file keeps it), then
- * IndexedDB is not touched again in the app — a stuck one can't slow the save list down.
+ * IndexedDB is not touched again in the app — a stuck one can't slow the save list down. Then the JSON files of 0.7.3
+ * and before, compressed once, one file at a time (a phone short of memory holds one save at once); the JSON files
+ * stay where they are.
  */
-const MIGRATED = 'rich4.savesToFiles';
+const MIGRATED = 'rich4.savesToFiles', PACKED = 'rich4.savesPacked';
+const flag = (k: string) => { try { return !!localStorage.getItem(k); } catch { return false; } };
+const setFlag = (k: string) => { try { localStorage.setItem(k, '1'); } catch { /* tried again next start */ } };
 let migration: Promise<void> | null = null;
 function migrate(): Promise<void> {
   return (migration ??= (async () => {
-    try { if (localStorage.getItem(MIGRATED)) return; } catch { /* no storage: try below */ }
-    for (let slot = 0; slot < SLOTS; slot++) {
-      if (await fileRead(path(slot))) continue;
-      const old = await idb<SaveData | undefined>('readonly', s => s.get(slot)).catch(() => undefined);
-      if (old) await fileWrite(slot, old);
+    if (!flag(MIGRATED)) {
+      for (let slot = 0; slot < SLOTS; slot++) {
+        if (await exists(path(slot)) || await exists(oldPath(slot))) continue;
+        const old = await idb<SaveData | undefined>('readonly', s => s.get(slot)).catch(() => undefined);
+        if (old) await fileWrite(slot, old);
+      }
+      setFlag(MIGRATED);
     }
-    try { localStorage.setItem(MIGRATED, '1'); } catch { /* tried again next start */ }
+    if (!flag(PACKED)) {
+      for (const id of allIds()) {
+        if (await exists(path(id))) continue;
+        for (const kind of KINDS) {
+          const s = await readOld(oldPath(id, kind));
+          if (s) { await fileWrite(id, s).catch(() => {}); break; }
+        }
+      }
+      setFlag(PACKED);
+    }
   })().catch(() => { migration = null; }));
-}
-
-/** The slot's save: the file, else an interrupted swap's temporary file, else the previous version. */
-async function nativeRead(slot: number): Promise<SaveData | undefined> {
-  await migrate();
-  for (const kind of ['', '.tmp', '.prev']) { const d = await fileRead(path(slot, kind)); if (d) return d; }
-  return undefined;
 }
 
 let writing: Promise<unknown> = Promise.resolve();
 /** Writes a slot (one write at a time, in order); resolves once the save is really stored. */
 export function writeSlot(slot: number, data: SaveData): Promise<void> {
-  const run = () => (native() ? within(fileWrite(slot, data), 15000, 'save file') : idb('readwrite', s => s.put(data, slot)).then(() => {}));
+  const run = () => (native() ? migrate().then(() => within(fileWrite(slot, data), 15000, 'save file')) : idb('readwrite', s => s.put(data, slot)).then(() => {}));
   const p = writing.then(run, run);
   writing = p.catch(() => {});
   return p;
 }
-export const readSlot = (slot: number): Promise<SaveData | undefined> => (native() ? nativeRead(slot) : idb<SaveData | undefined>('readonly', s => s.get(slot)));
+
+/** The slot's whole save, and whether a newer copy was damaged (then the save is the one before it). */
+export async function loadSlot(slot: number): Promise<Loaded<SaveData>> {
+  if (native()) return nativeRead(slot, decodeSave, s => s);
+  return { save: await idb<SaveData | undefined>('readonly', s => s.get(slot)), damaged: false };
+}
+export const readSlot = (slot: number): Promise<SaveData | undefined> => loadSlot(slot).then(r => r.save);
+
+/** What the slot list shows of a slot (in the app only the file's preview is read, never the whole save). */
+export async function previewSlot(slot: number): Promise<SlotPreview | undefined> {
+  try {
+    if (native()) return (await nativeRead(slot, peekSave, previewOf)).save;
+    const s = await idb<SaveData | undefined>('readonly', st => st.get(slot));
+    return s ? previewOf(s) : undefined;
+  } catch { return undefined; }
+}
 
 /**
  * The automatic saves keep the last five turns (the user 2026-10-19): the automatic slot itself and four more
@@ -136,14 +217,18 @@ export const readSlot = (slot: number): Promise<SaveData | undefined> => (native
  */
 export const AUTO_KEEP = 5;
 const ringIds = (slot: number) => [slot, ...Array.from({ length: AUTO_KEEP - 1 }, (_, k) => 1000 + slot * 10 + k)];
+/** Every id a save can be stored under: the slots and the automatic rings. */
+function allIds(): number[] {
+  return [...Array.from({ length: SLOTS }, (_, i) => i), ...ringIds(AUTO_SLOT).slice(1), ...ringIds(TYCOON_AUTO_SLOT).slice(1)];
+}
 const ringAt = new Map<number, { turn: string; at: number }>();
 let autoChain: Promise<unknown> = Promise.resolve();
 
-/** The automatic saves of a slot that hold a game, newest first. */
-export async function autoSaves(slot: number): Promise<{ id: number; save: SaveData }[]> {
+/** The automatic saves of a slot that hold a game (their previews), newest first. */
+export async function autoSaves(slot: number): Promise<{ id: number; save: SlotPreview }[]> {
   const ids = ringIds(slot);
-  const got = await Promise.all(ids.map(id => readSlot(id).catch(() => undefined)));
-  return got.map((save, k) => ({ id: ids[k], save })).filter((x): x is { id: number; save: SaveData } => !!x.save)
+  const got = await Promise.all(ids.map(id => previewSlot(id)));
+  return got.map((save, k) => ({ id: ids[k], save })).filter((x): x is { id: number; save: SlotPreview } => !!x.save)
     .sort((a, b) => (b.save.savedAt ?? 0) - (a.save.savedAt ?? 0));
 }
 
@@ -154,9 +239,9 @@ export function writeAuto(slot: number, data: SaveData, turn: string): Promise<v
     if (r?.turn === turn) at = r.at;
     else if (r) at = (r.at + 1) % AUTO_KEEP;
     else {
-      // First automatic save since the app started: the empty or oldest of the five.
+      // First automatic save since the app started: the empty or oldest of the five (by their previews).
       const ids = ringIds(slot);
-      const got = await Promise.all(ids.map(id => readSlot(id).catch(() => undefined)));
+      const got = await Promise.all(ids.map(id => previewSlot(id)));
       at = 0;
       got.forEach((g, k) => { if ((g ? g.savedAt ?? 0 : -1) < (got[at] ? got[at]!.savedAt ?? 0 : -1)) at = k; });
     }
@@ -168,9 +253,56 @@ export function writeAuto(slot: number, data: SaveData, turn: string): Promise<v
   return p;
 }
 
-export async function listSlots(): Promise<(SaveData | undefined)[]> {
-  try { return await Promise.all(Array.from({ length: SLOTS }, (_, i) => readSlot(i))); }
+/** The previews of the slots (`skip`: slots not read, left undefined). */
+export async function listSlots(skip: (i: number) => boolean = () => false): Promise<(SlotPreview | undefined)[]> {
+  try { return await Promise.all(Array.from({ length: SLOTS }, (_, i) => (skip(i) ? undefined : previewSlot(i)))); }
   catch { return new Array(SLOTS).fill(undefined); }
+}
+
+/** A message over everything with one button; resolves once it is closed. */
+export function notice(parent: HTMLElement, text: string, ok = '確定'): Promise<void> {
+  return new Promise(resolve => {
+    const overlay = document.createElement('div');
+    overlay.className = 'slots-overlay';
+    const box = document.createElement('div');
+    box.className = 'msg sheet';
+    const t = document.createElement('div');
+    t.className = 'msg-text small';
+    t.style.whiteSpace = 'pre-line';
+    t.textContent = text;
+    const row = document.createElement('div');
+    row.className = 'choices';
+    const b = document.createElement('button');
+    b.className = 'candy';
+    b.textContent = ok;
+    b.onclick = () => { audio.ui('yes'); overlay.remove(); resolve(); };
+    row.append(b);
+    box.append(t, row);
+    overlay.append(box);
+    parent.append(overlay);
+  });
+}
+
+/**
+ * A load the app did not live through (issue #7): the slot being loaded is noted until the board shows; when the app
+ * starts with the note still there, the web view or the app was killed meanwhile (on Android: out of memory).
+ */
+const LOADING = 'rich4.loadingSave';
+export function markLoading(slot: number | null): void {
+  try {
+    if (slot === null) localStorage.removeItem(LOADING);
+    else localStorage.setItem(LOADING, JSON.stringify({ slot, at: Date.now() }));
+  } catch { /* no storage: no note */ }
+}
+/** The slot of a load that was cut off (within the last half hour), once; null when there was none. */
+export function interruptedLoad(): number | null {
+  try {
+    const v = localStorage.getItem(LOADING);
+    if (!v) return null;
+    localStorage.removeItem(LOADING);
+    const { slot, at } = JSON.parse(v) as { slot: number; at: number };
+    return Date.now() - at < 30 * 60_000 && typeof slot === 'number' ? slot : null;
+  } catch { return null; }
 }
 
 /**
@@ -180,9 +312,10 @@ export async function listSlots(): Promise<(SaveData | undefined)[]> {
  */
 export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapName: (id: number) => string,
                                bank: SpriteBank | null, mapThumb: (id: number) => string): Promise<number> {
-  const saves = await listSlots();
-  const autos = new Map<number, { id: number; save: SaveData }[]>();
-  if (mode === 'load') for (const i of [AUTO_SLOT, TYCOON_AUTO_SLOT]) autos.set(i, await autoSaves(i).catch(() => []));
+  // Only the previews (save-codec.ts); the automatic slots come from their rings (load) or are not shown (save).
+  const rings = mode === 'load' ? [AUTO_SLOT, TYCOON_AUTO_SLOT] : [];
+  const [saves, ...ringSaves] = await Promise.all([listSlots(isAuto), ...rings.map(i => autoSaves(i).catch(() => []))]);
+  const autos = new Map<number, { id: number; save: SlotPreview }[]>(rings.map((i, k) => [i, ringSaves[k]]));
   const art = (archive: 'Data', id: number, frame: number) => bank?.art(archive, id, frame)?.src ?? '';
   return new Promise(resolve => {
     const overlay = document.createElement('div');
@@ -195,7 +328,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
     // Save / load slots (rich4_ui_save_load.asm): hover Effect#0, a slot confirms (#2), cancel #4.
     const done = (v: number) => { audio.ui(v >= 0 ? 'yes' : 'no'); overlay.remove(); resolve(v); };
     /** One save's row: badge, game date, map, faces, when it was saved. */
-    const filled = (s: AnySave, badge: string): string => {
+    const filled = (s: SlotPreview, badge: string): string => {
       const tycoon = s.kind === 'tycoon';
       // A slot that can't be read as a game (damaged, or from a newer version) shows as such instead of breaking the list.
       try {
@@ -227,7 +360,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
       audio.ui('yes');
       const all = autos.get(i) ?? [];
       list.replaceChildren(Object.assign(document.createElement('div'), { className: 'slot-note', textContent: `自動存檔：最近 ${all.length} 回合（點一個讀取）` }),
-        ...all.map(({ id, save }, k) => button(filled(save as AnySave, `<span class="slot-badge auto">${k === 0 ? '最新' : `-${k}`}</span>`), false, () => done(id))));
+        ...all.map(({ id, save }, k) => button(filled(save, `<span class="slot-badge auto">${k === 0 ? '最新' : `-${k}`}</span>`), false, () => done(id))));
       cancel.textContent = '返回';
     };
     const showSlots = () => {
@@ -237,7 +370,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
       for (let i = mode === 'save' ? 1 : 0; i < SLOTS; i++) {
         if (mode === 'save' && isAuto(i)) continue;   // automatic slots are not written by hand
         const ring = autos.get(i);
-        const s = (ring ? ring[0]?.save : saves[i]) as AnySave | undefined;
+        const s = ring ? ring[0]?.save : saves[i];
         const badge = `<span class="slot-badge${isAuto(i) ? ' auto' : ''}">${isAuto(i) ? 'AUTO' : i}</span>`;
         const more = ring && ring.length > 1 ? `<span class="slot-more">${ring.length} 回合 ▸</span>` : '';
         const html = s ? filled(s, badge).replace('<span class="slot-when">', `<span class="slot-when">${more}`) : `${badge}<span class="slot-empty">${mode === 'save' ? '空白檔位 · 點這裡存檔' : '（空）'}</span>`;

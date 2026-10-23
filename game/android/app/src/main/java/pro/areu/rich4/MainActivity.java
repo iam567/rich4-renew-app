@@ -1,17 +1,42 @@
 package pro.areu.rich4;
 
 import android.os.Bundle;
+import android.os.SystemClock;
+import android.view.ViewGroup;
+import android.webkit.RenderProcessGoneDetail;
+import android.webkit.WebView;
 import androidx.core.view.WindowCompat;
 import androidx.core.view.WindowInsetsCompat;
 import androidx.core.view.WindowInsetsControllerCompat;
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.WebViewListener;
 
 public class MainActivity extends BridgeActivity {
+    /** When the web view's renderer was last lost (elapsed ms), so a renderer that dies again at once is not restarted forever. */
+    private static long rendererGoneAt = -1;
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PhotoSaverPlugin.class); // 儲存到相簿 of the results screen
         super.onCreate(savedInstanceState);
         fullScreen();
+        // Issue #7 (「安卓版經常出現讀取存檔失敗，然後閃退」, HarmonyOS 4.2): when the system kills the web view's renderer
+        // (out of memory, often while a big map loads), Android closes the whole app unless the app handles it. The
+        // game starts again at the title instead (the page notes a load that was cut off and says so there).
+        if (bridge != null) bridge.addWebViewListener(new WebViewListener() {
+            @Override
+            public boolean onRenderProcessGone(WebView view, RenderProcessGoneDetail detail) {
+                ViewGroup parent = (ViewGroup) view.getParent();
+                if (parent != null) parent.removeView(view);
+                view.destroy();
+                long now = SystemClock.elapsedRealtime();
+                boolean again = rendererGoneAt >= 0 && now - rendererGoneAt < 15000;
+                rendererGoneAt = now;
+                if (again) finish(); // lost twice within seconds: close normally rather than loop
+                else recreate();
+                return true;
+            }
+        });
     }
 
     @Override
