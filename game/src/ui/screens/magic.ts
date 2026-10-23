@@ -120,6 +120,147 @@ function spell(s: Scene, alive: () => boolean, white: () => void): Promise<void>
 }
 
 /**
+ * 激情歲月's spell (the user 2026-10-23, in place of the white hexagram): the table's candle light flickers, incense smoke
+ * bursts up from the ring, a big vermilion seal (白文 「天靈地靈」, her chant) drops onto the ring with a thud and its ink
+ * spreads, embers rise, and the warm light whites out at the same moment as the original's (frame 20), then holds. The
+ * same length (1750 ms) and the same `white` call as `spell`.
+ */
+function eraSpell(s: Scene, alive: () => boolean, white: () => void): Promise<void> {
+  const box = s.box('mg-spell', 0, 0, 640, 480);
+  const cv = document.createElement('canvas');
+  box.append(cv);
+  const r = box.getBoundingClientRect(), k = Math.min(3, Math.max(1, (r.width / 640) * (window.devicePixelRatio || 1)));
+  cv.width = Math.round(640 * k); cv.height = Math.round(480 * k);
+  const c = cv.getContext('2d')!;
+  const CX = 319, CY = 224, T = 1750, DROP = 300, HIT = 640, SIZE = 140;
+  // one fixed random stream: the same seal and smoke every time
+  let seed = 0x5eed;
+  const rnd = () => { seed = (seed * 1103515245 + 12345) & 0x7fffffff; return seed / 0x7fffffff; };
+  // The seal's face, once: vermilion with rough, uneven edges and the four characters cut out (cream), worn specks.
+  const seal = document.createElement('canvas');
+  const SK = Math.ceil(k * 1.5), SP = SIZE + 24;
+  seal.width = seal.height = Math.round(SP * SK);
+  {
+    const g = seal.getContext('2d')!;
+    g.scale(SK, SK);
+    g.translate(SP / 2, SP / 2);
+    g.fillStyle = '#b5191a';
+    const h = SIZE / 2;
+    g.beginPath();
+    for (let i = 0; i <= 64; i++) {
+      // a square with a slightly wobbling edge
+      const t = i / 64, side = Math.floor(t * 4), u = t * 4 - side, j = (rnd() - 0.5) * 3.2;
+      const [x, y] = side === 0 ? [-h + 2 * h * u, -h + j] : side === 1 ? [h + j, -h + 2 * h * u] : side === 2 ? [h - 2 * h * u, h + j] : [-h + j, h - 2 * h * u];
+      if (i === 0) g.moveTo(x, y); else g.lineTo(x, y);
+    }
+    g.closePath(); g.fill();
+    // the border line and the four characters, cut into the red (白文)
+    g.globalCompositeOperation = 'destination-out';
+    g.lineWidth = 3.2; g.strokeRect(-h + 8, -h + 8, 2 * h - 16, 2 * h - 16);
+    g.font = '900 54px "Noto Serif TC", "Songti TC", "STSong", "PMingLiU", serif';
+    g.textAlign = 'center'; g.textBaseline = 'middle';
+    // read right column first, top to bottom: 天靈 | 地靈
+    g.fillText('天', h / 2 - 2, -h / 2 + 3); g.fillText('靈', h / 2 - 2, h / 2 - 3);
+    g.fillText('地', -h / 2 + 2, -h / 2 + 3); g.fillText('靈', -h / 2 + 2, h / 2 - 3);
+    for (let i = 0; i < 140; i++) { g.globalAlpha = 0.25 + rnd() * 0.6; g.beginPath(); g.arc((rnd() - 0.5) * 2 * h, (rnd() - 0.5) * 2 * h, 0.4 + rnd() * 1.6, 0, Math.PI * 2); g.fill(); }
+    g.globalAlpha = 1;
+    // the cut-out lines show the paper the seal is pressed on: a cream square under the red
+    const red = document.createElement('canvas');
+    red.width = red.height = seal.width;
+    red.getContext('2d')!.drawImage(seal, 0, 0);
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    g.globalCompositeOperation = 'source-over';
+    g.clearRect(0, 0, seal.width, seal.height);
+    g.fillStyle = 'rgba(244, 228, 196, .92)';
+    const m = (SP / 2 - h + 4) * SK;
+    g.fillRect(m, m, seal.width - 2 * m, seal.height - 2 * m);
+    g.drawImage(red, 0, 0);
+  }
+  const smoke = Array.from({ length: 34 }, () => ({ x: CX + (rnd() - 0.5) * 220, y: CY + 40 + rnd() * 120, t0: rnd() * 700, life: 900 + rnd() * 700, r: 14 + rnd() * 26, dx: (rnd() - 0.5) * 30 }));
+  const drops = Array.from({ length: 38 }, () => ({ a: rnd() * Math.PI * 2, d: SIZE * 0.55 + rnd() * 70, r: 1.2 + rnd() * 4.5 }));
+  const embers = Array.from({ length: 46 }, () => ({ x: CX + (rnd() - 0.5) * 300, y: CY + 30 + rnd() * 140, t0: HIT + rnd() * 600, sp: 50 + rnd() * 90, w: rnd() * Math.PI * 2 }));
+  let whited = false;
+  return new Promise(done => {
+    const t0 = performance.now();
+    const frame = (now: number) => {
+      if (!alive()) { done(); return; }
+      const t = now - t0;
+      c.setTransform(k, 0, 0, k, 0, 0);
+      c.clearRect(0, 0, 640, 480);
+      // Candle light: the edges darken, the middle flickers warm.
+      const fl = 0.5 + 0.18 * Math.sin(t / 37) + 0.12 * Math.sin(t / 91 + 1.3);
+      const vg = c.createRadialGradient(CX, CY, 80, CX, CY, 420);
+      vg.addColorStop(0, `rgba(255, 170, 70, ${0.10 * fl})`); vg.addColorStop(0.6, 'rgba(60, 10, 0, 0.15)'); vg.addColorStop(1, `rgba(20, 2, 0, ${Math.min(0.55, t / 900)})`);
+      c.fillStyle = vg; c.fillRect(0, 0, 640, 480);
+      // Incense smoke rising and spreading.
+      for (const p of smoke) {
+        const u = (t - p.t0) / p.life;
+        if (u < 0 || u > 1) continue;
+        const x = p.x + p.dx * u + Math.sin(u * 6 + p.r) * 8, y = p.y - u * 150, rad = p.r * (1 + u * 1.8);
+        const a = Math.sin(u * Math.PI) * 0.32;
+        const g = c.createRadialGradient(x, y, 0, x, y, rad);
+        g.addColorStop(0, `rgba(236, 222, 205, ${a})`); g.addColorStop(1, 'rgba(236, 222, 205, 0)');
+        c.fillStyle = g; c.beginPath(); c.arc(x, y, rad, 0, Math.PI * 2); c.fill();
+      }
+      // The seal: drops from above (big, tilted, its shadow closing in), lands with a thud at HIT.
+      if (t >= DROP) {
+        const u = Math.min(1, (t - DROP) / (HIT - DROP)), e = u * u;
+        const sc = 2.6 - 1.6 * e, rot = (-9 + 6 * e) * Math.PI / 180;
+        const bump = t > HIT ? Math.max(0, 1 - (t - HIT) / 160) : 0;
+        // shadow on the table
+        c.save(); c.translate(CX + 14 * (1 - e), CY + 18 * (1 - e)); c.rotate(rot);
+        c.fillStyle = `rgba(30, 5, 0, ${0.35 * e})`; c.filter = `blur(${6 + 10 * (1 - e)}px)`;
+        c.fillRect(-SIZE / 2 * sc, -SIZE / 2 * sc, SIZE * sc, SIZE * sc); c.filter = 'none'; c.restore();
+        // the ink spreading out of the impression after the hit
+        if (t > HIT) {
+          const v = Math.min(1, (t - HIT) / 260);
+          c.save(); c.translate(CX, CY); c.rotate(rot);
+          for (const d of drops) {
+            const dd = SIZE * 0.5 + (d.d - SIZE * 0.5) * v;
+            c.fillStyle = `rgba(160, 18, 14, ${0.85 * (1 - v * 0.3)})`;
+            c.beginPath(); c.arc(Math.cos(d.a) * dd, Math.sin(d.a) * dd, d.r * (0.6 + v * 0.4), 0, Math.PI * 2); c.fill();
+          }
+          c.restore();
+        }
+        c.save(); c.translate(CX + (bump ? (rnd() - 0.5) * 4 * bump : 0), CY + (bump ? (rnd() - 0.5) * 4 * bump : 0)); c.rotate(rot);
+        const s2 = sc * (1 + 0.04 * bump);
+        c.globalAlpha = Math.min(1, u * 1.6);
+        c.drawImage(seal, -SP / 2 * s2, -SP / 2 * s2, SP * s2, SP * s2);
+        c.restore(); c.globalAlpha = 1;
+        // the thud: a ring of dust and warm light pushed out from under the seal
+        if (t > HIT && t < HIT + 420) {
+          const v = (t - HIT) / 420;
+          c.strokeStyle = `rgba(255, 214, 150, ${0.55 * (1 - v)})`; c.lineWidth = 10 * (1 - v) + 2;
+          c.beginPath(); c.arc(CX, CY, SIZE * 0.75 + v * 150, 0, Math.PI * 2); c.stroke();
+        }
+      }
+      // Embers rising after the hit, the candle flaring.
+      c.globalCompositeOperation = 'lighter';
+      for (const p of embers) {
+        const u = (t - p.t0) / 900;
+        if (u < 0 || u > 1) continue;
+        const x = p.x + Math.sin(p.w + u * 5) * 10, y = p.y - u * p.sp * 1.6;
+        c.fillStyle = `rgba(255, ${150 + Math.round(80 * (1 - u))}, 60, ${0.9 * (1 - u)})`;
+        c.beginPath(); c.arc(x, y, 1.8 * (1 - u * 0.5), 0, Math.PI * 2); c.fill();
+      }
+      const flare = Math.max(0, Math.min(1, (t - 900) / 450));
+      if (flare > 0) {
+        const rad = 60 + flare * 380, g = c.createRadialGradient(CX, CY, 0, CX, CY, rad);
+        g.addColorStop(0, `rgba(255, 236, 190, ${0.85 * flare})`); g.addColorStop(0.45, `rgba(255, 170, 70, ${0.45 * flare})`); g.addColorStop(1, 'rgba(255, 120, 30, 0)');
+        c.fillStyle = g; c.beginPath(); c.arc(CX, CY, rad, 0, Math.PI * 2); c.fill();
+      }
+      c.globalCompositeOperation = 'source-over';
+      const wash = Math.max(0, Math.min(1, (t - 1250) / 250));
+      if (wash > 0) { c.fillStyle = `rgba(255, 244, 222, ${wash})`; c.fillRect(0, 0, 640, 480); }
+      if (wash >= 1 && !whited) { whited = true; white(); }
+      if (t >= T) { done(); return; }
+      requestAnimationFrame(frame);
+    };
+    requestAnimationFrame(frame);
+  });
+}
+
+/**
  * The magic circle. `auto` is a computer's (or autopilot's) choice: the same scene plays by itself, the teller
  * names the group, the symbol lights up with who chose it, and the spell is cast; a tap speeds it up.
  */
@@ -221,7 +362,7 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
         // out at frame 20; its low-resolution frames are replaced by the same flare drawn live, sharp at any size.
         audio.sfx(Sfx.deathSummon);
         for (const b of banners) b.classList.add('over');
-        await spell(s, alive, () => { for (const b of banners) b.classList.add('fade'); });
+        await (era ? eraSpell : spell)(s, alive, () => { for (const b of banners) b.classList.add('fade'); });
         if (!alive()) return;
         s.close();
         audio.restore();

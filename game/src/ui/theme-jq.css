@@ -222,3 +222,10 @@
 /* who the spell falls on: a red-lacquer plaque with a brass edge (the purple glass box belongs to the original screen) */
 .game.theme-jq .mg-who { background: linear-gradient(#7a1a12, #5a120c); border: 2px solid #c9a25a; box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .35), 0 3px 8px rgba(0, 0, 0, .45); }
 .game.theme-jq .mg-who b { color: #f3d27a; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 800; }
+/* the spell's name over the roundel: one line (「原地停留一回合」) */
+.game.theme-jq .mg-label span { font-size: 14px; max-width: 90%; white-space: nowrap; letter-spacing: 0; }
+/* what she holds up over her drum: the group's inlay, lit by the candle */
+.game.theme-jq .mg-ball { filter: drop-shadow(0 1px 1px rgba(40, 8, 0, .6)) drop-shadow(0 0 8px rgba(255, 190, 100, .8)); animation: pl-pop .32s cubic-bezier(.3, 1.6, .5, 1) both, jq-ball-candle 2.4s .32s ease-in-out infinite; }
+@keyframes jq-ball-candle { 0%, 100% { filter: drop-shadow(0 1px 1px rgba(40, 8, 0, .6)) drop-shadow(0 0 8px rgba(255, 190, 100, .8)); }
+  35% { filter: drop-shadow(0 1px 1px rgba(40, 8, 0, .6)) drop-shadow(0 0 13px rgba(255, 170, 70, .95)); }
+  60% { filter: drop-shadow(0 1px 1px rgba(40, 8, 0, .6)) drop-shadow(0 0 6px rgba(255, 200, 120, .7)); } }
