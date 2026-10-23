@@ -49,10 +49,21 @@ const MUSIC_GAIN = [0, 0.6, 0.8, 0.9, 1];
 const KEY = 'rich4.audio';
 
 export interface AudioSettings { music: number; sfx: number; voice: number; mute: boolean }
+/**
+ * A map's own music (激情歲月, docs/rules/24 §16): background tracks that rotate in place of BGM, and screen themes
+ * that replace the original's (by THEMES index; `once` plays it through instead of looping). Files by URL, lengths in
+ * seconds. No set (null): the original's music, as on every other map and mode.
+ */
+export interface MusicSet {
+  tracks: { name: string; url: string; len: number }[];
+  themes?: Partial<Record<number, { name: string; url: string; len: number; once?: boolean }>>;
+  /** A short piece played once over the background track (then it resumes): the 穿越 intro's end. */
+  fanfare?: { name: string; url: string; len: number };
+}
 interface Manifest { effect: Record<string, [number, number]>; voice: Record<string, [number, number]>; music: Record<string, number> }
 type Kind = 'effect' | 'voice' | 'music';
 interface Playing { src: AudioBufferSourceNode; gain: GainNode }
-type MusicState = { kind: 'bgm'; index: number } | { kind: 'theme'; index: number } | null;
+type MusicState = { kind: 'bgm'; index: number } | { kind: 'theme'; index: number } | { kind: 'fanfare'; index: -1 } | null;
 
 /** Text → voice for the screens: whitespace, the two kinds of wave dash and dots do not matter. */
 const norm = (s: string) => s.replace(/\s+/g, '').replace(/[∼~〜]/g, '～').replace(/[．.。…]+/g, '…').replace(/[！!]/g, '！').replace(/[？?]/g, '？');
@@ -231,11 +242,13 @@ class AudioEngine {
   }
 
   private url(kind: Kind, id: number | string) {
+    if (kind === 'music' && this.setUrls.has(String(id))) return this.setUrls.get(String(id))!;
     return `${ASSETS}/audio/${kind}/${typeof id === 'number' ? String(id).padStart(4, '0') : id}.m4a`;
   }
 
   private has(kind: Kind, id: number | string): boolean {
     const m = this.manifest;
+    if (kind === 'music' && this.setUrls.has(String(id))) return true;
     if (!m) return true; // not loaded yet: try
     return kind === 'music' ? String(id) in m.music : String(id) in m[kind];
   }
@@ -430,7 +443,40 @@ class AudioEngine {
     return m.state?.kind === 'theme' && dur ? at % dur : at;
   }
 
-  private nameOf(s: NonNullable<MusicState>) { return s.kind === 'bgm' ? BGM[s.index & 7] : THEMES[s.index]; }
+  private nameOf(s: NonNullable<MusicState>) { return musicName(this.mset, s); }
+
+  // ------------------------------------------------------------ a map's own music (激情歲月)
+
+  private mset: MusicSet | null = null;
+  private setUrls = new Map<string, string>();
+
+  /** How many background tracks rotate now (the original's eight, or the map's own). */
+  get bgmCount(): number { return bgmCount(this.mset); }
+  /** Whether a map's own music is in use. */
+  get ownMusic(): boolean { return !!this.mset; }
+
+  /**
+   * Uses a map's own music, or the original's again (null). `now`: switch what plays at once (the setting changed in
+   * a game); otherwise the next background(…) call starts it (a game being loaded).
+   */
+  setMusicSet(set: MusicSet | null, now = false) {
+    if (set === this.mset) return;
+    this.mset = set;
+    this.setUrls.clear();
+    for (const t of [...(set?.tracks ?? []), ...Object.values(set?.themes ?? {}), ...(set?.fanfare ? [set.fanfare] : [])]) if (t) this.setUrls.set(t.name, t.url);
+    this.lastBgm = this.bgmCount - 1;
+    this.stack = [];
+    if (now && !this.holiday) { const s = this.musicNow.state; if (!s || s.kind !== 'theme') this.background(1); }
+  }
+
+  /** The map's fanfare once over the background track, which then resumes where it was (no fanfare: nothing). */
+  fanfare() {
+    if (!this.mset?.fanfare || this.holiday) return;
+    const cur = this.musicNow.state;
+    if (cur?.kind === 'bgm') this.stack.push({ index: cur.index, at: this.position() });
+    this.note('music', this.mset.fanfare.name);
+    this.startMusic({ kind: 'fanfare', index: -1 }, 0);
+  }
 
   /** Stops what plays now, fading out over `fade` seconds. */
   private halt(fade = 0.35) {
@@ -453,19 +499,24 @@ class AudioEngine {
       src.buffer = buf;
       // Themes loop from the start (MCI "play mid from 0 notify" again, fcn_00454d2c); the cut is the
       // sequence's last event (manifest seconds).
-      const len = this.manifest?.music?.[name] ?? buf.duration;
-      if (state.kind === 'theme') { src.loop = true; src.loopStart = 0; src.loopEnd = Math.min(len, buf.duration); }
+      const len = this.manifest?.music?.[name] ?? musicLen(this.mset, name) ?? buf.duration;
+      const once = state.kind === 'fanfare' || (state.kind === 'theme' && !!this.mset?.themes?.[state.index]?.once);
+      if (state.kind === 'theme' && !once) { src.loop = true; src.loopStart = 0; src.loopEnd = Math.min(len, buf.duration); }
       const t = this.ctx.currentTime;
       gain.gain.setValueAtTime(0, t);
       gain.gain.linearRampToValueAtTime(1, t + 0.25);
       src.connect(gain).connect(this.out.music);
       const at = Math.max(0, Math.min(offset, len - 0.05));
-      if (state.kind === 'bgm') src.start(t, at, Math.max(0.05, len - at));
+      if (state.kind === 'bgm' || once) src.start(t, at, Math.max(0.05, len - at));
       else src.start(t, at);
       m.playing = { src, gain };
       m.started = t; m.offset = at;
       // A background track that ends moves on to the next one (fcn_00454d2c → fcn_00454d91(0)).
-      src.onended = () => { if (m.playing?.src === src && state.kind === 'bgm') { m.playing = null; this.background(0); } };
+      src.onended = () => {
+        if (m.playing?.src !== src) return;
+        if (state.kind === 'bgm') { m.playing = null; this.background(0); }
+        else if (state.kind === 'fanfare') { m.playing = null; this.restore(); }
+      };
     });
   }
 
@@ -476,9 +527,10 @@ class AudioEngine {
   background(n: number) {
     const cur = this.musicNow.state;
     const last = cur?.kind === 'bgm' ? cur.index : this.lastBgm;
-    const index = n > 0 ? (n - 1) & 7 : (last + 1) & 7;
+    const count = this.bgmCount;
+    const index = n > 0 ? (n - 1) % count : (last + 1) % count;
     this.lastBgm = index;
-    this.note('music', BGM[index]);
+    this.note('music', musicName(this.mset, { kind: 'bgm', index }));
     this.startMusic({ kind: 'bgm', index }, 0);
   }
   /** 0x47e771: the last background track (the next one in turn follows it). */
@@ -492,7 +544,7 @@ class AudioEngine {
     if (this.holiday) return;
     const cur = this.musicNow.state;
     if (cur?.kind === 'bgm' && !keep) this.stack.push({ index: cur.index, at: this.position() });
-    this.note('music', THEMES[i]);
+    this.note('music', musicName(this.mset, { kind: 'theme', index: i }));
     this.startMusic({ kind: 'theme', index: i }, 0);
   }
 
@@ -501,7 +553,7 @@ class AudioEngine {
     if (this.holiday) return;
     const top = this.stack.pop();
     if (!top) { if (this.musicNow.state?.kind !== 'bgm') this.background(0); return; }
-    this.note('music', BGM[top.index]);
+    this.note('music', musicName(this.mset, { kind: 'bgm', index: top.index }));
     this.lastBgm = top.index;
     this.startMusic({ kind: 'bgm', index: top.index }, top.at);
   }
@@ -541,3 +593,13 @@ class AudioEngine {
 }
 
 export const audio = new AudioEngine();
+
+/** The file a music state plays: the map's own (a set) or the original's. */
+export function musicName(set: MusicSet | null, s: NonNullable<MusicState>): string {
+  if (s.kind === 'fanfare') return set?.fanfare?.name ?? '';
+  if (s.kind === 'bgm') return set?.tracks.length ? set.tracks[s.index % set.tracks.length].name : BGM[s.index & 7];
+  return set?.themes?.[s.index]?.name ?? THEMES[s.index];
+}
+export const bgmCount = (set: MusicSet | null): number => set?.tracks.length || BGM.length;
+const musicLen = (set: MusicSet | null, name: string): number | undefined =>
+  [...(set?.tracks ?? []), ...Object.values(set?.themes ?? {}), ...(set?.fanfare ? [set.fanfare] : [])].find(t => t?.name === name)?.len || undefined;

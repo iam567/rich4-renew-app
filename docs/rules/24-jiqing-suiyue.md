@@ -784,3 +784,29 @@
 - 「知識青年到農村去……」1968-12-22：见上山下乡的来源
 
 **版权**：《中华人民共和国著作权法》（2020 修正）第三节「权利的保护期」——自然人作品财产权保护到作者死后第 50 年 12 月 31 日，录音制作者权 50 年（条文以官方文本为准）：<https://www.wipo.int/wipolex/en/text/337117>；样板戏的改编来历（权利链复杂）：<https://www.aisixiang.com/data/9789.html>、<https://fuolao.substack.com/p/2390model-operas>。
+
+## 16 背景音乐（用户 2026-10-23：「BGM能不能換成那個時代的感覺？賊恢弘敘事又有革命熱情的感覺」「做出廣播喇叭放出來的特效感覺」）
+
+**只在激情歲月**（用户：「只在激情歲月這張地圖」）：普通游戏的地图 107 才用；经典地图、五城、歌舞伎町、大富豪模式、大富翁城、标题、派对大厅都照旧播原版音乐（`ui/jq-music.test.ts` 断言）。
+
+**曲目**（`editor/site/assets/remake/jiqing/music/`，游戏里 `maps/remake/jiqing/music/`；`ui/jq-music.ts`）：
+| 文件 | 风格（提示词只写风格，不提任何歌名、不翻唱、不要旋律） | 长 |
+|---|---|---|
+| jq-march.m4a（默认，第一首） | 轻快革命进行曲：军乐铜管、小鼓 | 2:09 |
+| jq-anthem.m4a | 宏大革命颂歌：铜管加管弦乐、定音鼓、无词合唱 | 2:29 |
+| jq-folk.m4a | 陕北民间风：唢呐、二胡、腰鼓 | 2:20 |
+| jq-opera-a.m4a / jq-opera-b.m4a | 京剧韵味的革命唱段风：京胡、锣鼓经 | 2:30 / 2:30 |
+| jq-fanfare.m4a | 短号角：穿越片头结束时、游戏结束时各播一次 | 0:36 |
+
+五首像原版 BGM 一样轮播（每首播完接下一首，曲尾 4 秒淡出）；新游戏从进行曲开始。商店、乐透、月底评比等画面的主题曲不变（原版主题 6 由商店、乐透、结算共用，所以结算的号角在 `main.ts` 游戏结束时单独播）。号角播完，背景曲从原来的位置接着放。
+
+**设置**：系统 >「專屬音樂」開／關（只在这张地图显示，默认開，localStorage `rich4.jqmusic`）。关掉就立即换回原版的八首轮播，「曲目」也随之变成 1–8；打开立即回到进行曲。
+
+**大喇叭效果**（离线做好，游戏里直接播；用户选了加强版「horn2」，并说「本地處理的好」）：ffmpeg 处理链：混成单声道 → 重采样到 11025 Hz 再回 44100 Hz（低保真感）→ 400–3000 Hz 带通（各两级）、1250 Hz +8 dB 共振峰（喇叭纸盆）、2400 Hz +3 dB → 0.6 Hz / 7 Hz 轻微抖音（wow/flutter）→ tanh 饱和加轻微硬削波、9 bit 量化（35%）→ 两次屋顶回声（140 ms / 330 ms）→ 叠加很轻的粉噪声嘶声、100 Hz 哼声和零星爆裂声 → 响度 −17 LUFS，AAC 96 kb/s。处理脚本 `tools/tycoon-art/jq_music_horn.sh`，生成脚本 `tools/tycoon-art/jq_music_suno.py`（运行时从 `~/.config/sunoapi/key` 读密钥，只放进请求头）。街上的大喇叭（§9）在专属音乐播放时不再放自己的曲子（两种喇叭音乐会打架），只保留文字广播和广播站的提示音；关掉专属音乐或音乐音量为 0 时恢复。
+
+**来源与授权（重要）**：
+- 用 Suno（经第三方 API sunoapi.org，模型 V6 / chirp-hawk，纯音乐模式 `instrumental: true`，并排除人声等标签）生成；2026-10-23 共 6 次请求（5 种风格各 1 次 + 号角 1 次，每次返回 2 个版本），额度 916 → 844（每次 12）。用户从中选了 march-a、anthem-b、folk-suona-a、opera-aria-a、opera-aria-b、fanfare-b。
+- sunoapi.org 不是 Suno 官方，运营方为 MIRA MUSE LLC。它的 Terms of Use 没有关于生成内容归属或商用权利的条款（只说用户保留自己上传的 User Content 的所有权：“You retain ownership of your User Content”），也没有提到 Suno Inc.；首页宣传称 “All music generated through our API is watermark-free, making it immediately suitable for commercial projects”，这是宣传语，不是合同条款。
+- Suno 官方帮助中心（help.suno.com/en/articles/2416769）：Pro / Premier 订阅期间生成的歌曲 “you are considered the owner of the song”，并 “retain the rights to commercial use for the song, even if you end your subscription”；免费账户则 “we retain ownership of the songs you generate”，只可非商业使用。
+- 结论：经 sunoapi.org 生成的曲子是否等同 Suno 付费账户的商用权利，条款没有写明。公开发布前应向 support@sunoapi.org 取得书面确认（用于公开分发的免费游戏、权利归属）。另外，美国版权局目前认为纯 AI 生成、无实质人类创作的作品不能登记版权。
+- 没用的：受版权保护的歌曲和录音（样板戏、《东方红》、国歌等）、HeyGen 曲库、MusicGen（权重 CC-BY-NC）。

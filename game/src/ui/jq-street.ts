@@ -15,6 +15,7 @@ import type { AddItem, StreetView } from './kb-ambient';
 import { onStreetSettings, vehiclesMode, walkersMode } from './kabukicho';
 import { loudspeakerMode, onJqSettings } from './jiqing';
 import { Loudspeakers, type Program } from './jq-loudspeaker';
+import { audio } from './audio';
 import { memTier } from './mem-tier';
 
 /** The passers-by (map/3401..3407: 紅衛兵, 幹部, 工人, 農民, 女青年, 少先隊員, 老人), 16 frames each: row × 4 + phase. */
@@ -269,15 +270,22 @@ export class JqStreet {
   private dancing(): number { return this.phase(120, 20, 0); }
   private drums(): number { return this.phase(150, 24, 95); }
 
+  /**
+   * The map's own loudspeaker music plays as the background music (docs/rules/24 §16): the street's horns then play no
+   * tunes of their own (two loudspeaker musics would clash); their announcements still show.
+   */
+  private bgmOn(): boolean { return audio.ownMusic && audio.settings.music > 0 && !audio.settings.mute; }
+
   private program(dt: number) {
     const loudOk = this.loudOn && !this.covered && !this.hidden;
-    if (this.gym() >= 0 && this.gym() < dt * 1.5 && loudOk && !this.loud.busy()) { this.loud.play('march', 22); this.announce(ANNOUNCEMENTS[3]); }
-    if (this.dancing() >= 0 && this.dancing() < dt * 1.5 && loudOk && !this.loud.busy()) this.loud.play('dance', 18);
+    const tunes = loudOk && !this.bgmOn();
+    if (this.gym() >= 0 && this.gym() < dt * 1.5 && loudOk && !this.loud.busy()) { if (tunes) this.loud.play('march', 22); this.announce(ANNOUNCEMENTS[3]); }
+    if (this.dancing() >= 0 && this.dancing() < dt * 1.5 && tunes && !this.loud.busy()) this.loud.play('dance', 18);
     if ((this.nextProgram -= dt) <= 0) {
       this.nextProgram = 60 + this.r() * 60;
       if (loudOk && !this.loud.busy()) {
         const kind: Program = 'opera';
-        this.loud.play(kind, 16 + this.r() * 10);
+        if (tunes) this.loud.play(kind, 16 + this.r() * 10);
         this.announce(ANNOUNCEMENTS[Math.floor(this.r() * ANNOUNCEMENTS.length)]);
       }
     }
@@ -335,7 +343,7 @@ export class JqStreet {
     let best = Infinity, bx = v.W / 2;
     for (const h of this.spots.horns) { const q = v.project(h.x, h.y), d = Math.hypot(q.x - v.W / 2, q.y - v.H / 2); if (d < best) { best = d; bx = q.x; } }
     const rr = Math.max(v.W, v.H) * 0.6;
-    this.loud.place(1 / (1 + (best / rr) ** 2), (bx - v.W / 2) / (v.W / 2), best / (2 * rr), this.loudOn && !this.covered && !this.hidden);
+    this.loud.place(1 / (1 + (best / rr) ** 2), (bx - v.W / 2) / (v.W / 2), best / (2 * rr), this.loudOn && !this.covered && !this.hidden && !this.bgmOn());
     const deg = (dx: number, dy: number) => { const s = v.toScreen(dx, dy); return Math.atan2(s.y, s.x) * 180 / Math.PI; };
     const flipOf = (dx: number, dy: number) => v.toScreen(dx, dy).x < 0;
     if (this.walkOn) {

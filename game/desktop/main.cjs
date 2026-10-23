@@ -8,6 +8,8 @@ const { pathToFileURL } = require('node:url');
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
+// Test runs keep their own profile (RICH4_USER_DATA=<dir>): the player's saves in the app's real profile stay untouched.
+if (process.env.RICH4_USER_DATA) app.setPath('userData', process.env.RICH4_USER_DATA);
 const DIST = process.env.RICH4_DIST || (app.isPackaged ? join(process.resourcesPath, 'dist') : join(__dirname, '..', 'dist'));
 
 function createWindow() {

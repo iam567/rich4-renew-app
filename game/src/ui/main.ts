@@ -20,7 +20,7 @@ import { Lobby, type Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, pickSlot, readSlot, writeAuto, writeSlot } from './saves';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
-import { audio, BGM, Sfx, Theme } from './audio';
+import { audio, Sfx, Theme } from './audio';
 import { holidayMusic } from './holidays';
 import { applyOrientation, orientationMode, ORIENTATIONS, setOrientation } from './orientation';
 import { GROUND_STYLES, groundIndex, groundStyle, groundStylesFor, setGroundStyle, TiledGround } from './ground';
@@ -42,6 +42,7 @@ import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
+import { jqMusicMode, musicSetFor, setJqMusicMode } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
 import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { applyJqTheme } from './jq-theme';
 import { setEraLine } from './era-line';
@@ -149,6 +150,7 @@ function title() {
   // 派對模式 (v0.5.0): its own redrawn button (maps/remake/title/party*.webp, tools/tycoon-art/party_button.py).
   const party = `<button class="title-btn party" data-act="party" aria-label="派對模式"><span class="party-live" hidden></span><img class="n" src="${ASSETS}/maps/remake/title/party.webp" alt=""><img class="h" src="${ASSETS}/maps/remake/title/party-hover.webp" alt=""></button>`;
   // The title plays MIDI01 (rich4_ui_main.asm:483); buttons have the hover / click sounds.
+  audio.setMusicSet(null); // the title and everything outside 激情歲月 play the original's music
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
@@ -692,6 +694,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       case 'system': {
         // One compact window: each row is one setting, a tap applies it at once (no scrolling, no explanations).
         const levels = ['關', '1', '2', '3', '4'];
+        let syncTracks = () => {}; // the 曲目 row follows 專屬音樂 (five tracks or the original's eight)
         const rows: { label: string; opts: string[]; cur: () => number; pick: (i: number) => void; even?: boolean; wide?: boolean; nozh?: boolean }[] = [
           { label: '速度', opts: speeds.map(s => s.label), cur: () => speed, pick: i => {
             speed = i; view.tickMs = speeds[speed].ms;
@@ -718,7 +721,13 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
             { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
             { label: '大喇叭廣播', opts: STREET_MODES, cur: () => loudspeakerMode(), pick: (i: number) => setLoudspeakerMode(i) },
             { label: '語錄開場白', opts: STREET_MODES, cur: () => quotesMode(), pick: (i: number) => setQuotesMode(i) },
-            { label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } }] : []),
+            { label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } },
+            // its own music (§16): off plays the original's tracks on this map too, at once
+            { label: '專屬音樂', opts: STREET_MODES, cur: () => jqMusicMode(), pick: (i: number) => {
+              setJqMusicMode(i);
+              audio.setMusicSet(musicSetFor(mapId, { tycoon: !!ty }), true);
+              syncTracks();
+            } }] : []),
           // 大富豪模式: the chat box's 播報 (docs/rules/17 §10).
           ...(chat ? [{ label: '播報', opts: CHAT_MODES, cur: () => chatMode(), pick: (i: number) => { setChatMode(i); chat.refresh(); } }] : []),
           { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
@@ -734,10 +743,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         for (const [label, key] of [['音樂', 'music'], ['音效', 'sfx'], ['語音', 'voice']] as const) {
           rows.push({ label, opts: levels, even: true, cur: () => audio.settings[key], pick: i => { audio.set({ [key]: i }); } });
         }
-        rows.push({ label: '曲目', even: true, wide: true, opts: [...BGM.map((_, i) => String(i + 1)), '靜音'],
-          cur: () => (audio.settings.mute ? BGM.length : audio.music?.kind === 'bgm' ? audio.music.index : -1),
+        // (激情歲月 with its own music: its five tracks)
+        let tracks = audio.bgmCount;
+        const trackOpts = () => [...Array.from({ length: tracks }, (_, i) => String(i + 1)), '靜音'];
+        syncTracks = () => { tracks = audio.bgmCount; const r = rows.find(x => x.label === '曲目'); if (r) r.opts = trackOpts(); };
+        rows.push({ label: '曲目', even: true, wide: true, opts: trackOpts(),
+          cur: () => (audio.settings.mute ? tracks : audio.music?.kind === 'bgm' ? audio.music.index : -1),
           pick: i => {
-            if (i === BGM.length) { audio.set({ mute: !audio.settings.mute }); return; }
+            if (i === tracks) { audio.set({ mute: !audio.settings.mute }); return; }
             if (audio.settings.mute) audio.set({ mute: false });
             if (!audio.holiday) audio.background(i + 1);
           } });
@@ -852,12 +865,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   if (me !== session) return;
   // A new game starts with the first background track (fcn_00415872: fcn_00454d91(1)); a loaded one with the
   // next in turn (_rich4_start_game_loop(1) / save_load.asm:978: fcn_00454d91(0)).
+  // 激情歲月 rotates its own tracks (docs/rules/24 §16); every other map and mode the original's.
+  if (!sameWorld) audio.setMusicSet(musicSetFor(mapId, { tycoon: !!ty }));
   if (!sameWorld) audio.background(loaded ? 0 : 1);
   // The game goes on once the board shows whole (its first move would otherwise start under the fading screen).
   await boot.close();
   if (me !== session) return;
   // 激情歲月's 「穿越」 intro (docs/rules/24 §10): once when a new game on the map starts, never for a loaded one.
-  if (mapId === JQ_MAP && !loaded && !ty) { await playJqIntro(shell, game, bank!, scale()); if (me !== session) return; }
+  if (mapId === JQ_MAP && !loaded && !ty) { await playJqIntro(shell, game, bank!, scale()); if (me !== session) return; audio.fanfare(); }
   /** The original's small map effects and lines for each event (docs/rules/11). */
   const director = new MapDirector(game, view, hud);
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.director = director;
@@ -1298,7 +1313,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         quiet();
         await director.gameover(s.winner);
         // The ending (fcn_004075c1, jump.mkf) plays MIDI07 (flag 0x8006).
-        audio.theme(Theme.ending, true);
+        // (激情歲月 with its own music: its fanfare, then its tracks go on; docs/rules/24 §16)
+        if (audio.ownMusic) audio.fanfare(); else audio.theme(Theme.ending, true);
         stopWatch();
         // 大富豪模式: 大富翁城's results, then the podium or the losing scene in the results screen (docs/rules/17 §11).
         if (ty) {

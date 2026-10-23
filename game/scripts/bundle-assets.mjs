@@ -109,6 +109,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
       for (const f of readdirSync(join(src, `maps/remake/jiqing/places/${d}`))) if (f.endsWith('.webp')) copy(`maps/remake/jiqing/places/${d}/${f}`);
     }
   }
+  // …and its own music (ui/jq-music.ts, docs/rules/24 §16): the five loudspeaker tracks and the fanfare.
+  if (existsSync(join(src, 'maps/remake/jiqing/music'))) for (const f of readdirSync(join(src, 'maps/remake/jiqing/music'))) if (f.endsWith('.m4a')) copy(`maps/remake/jiqing/music/${f}`);
   for (const n of [617, 618]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
   for (const n of [607, 608]) if (existsSync(join(src, `maps/remake/cards/0${n}.webp`))) copy(`maps/remake/cards/0${n}.webp`);
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.
