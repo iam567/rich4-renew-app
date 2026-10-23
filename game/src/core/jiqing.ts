@@ -21,7 +21,7 @@ import { Rng, daySeed } from './rng';
 import { WheelKind } from './modules/wheel';
 import { shuffleDeck, type ResultLine } from './modules/events';
 import {
-  DAQING_SLOT, JQ_CARDS, JQ_FAC_NAMES, JQ_FAC_RULES, JQ_FAC_TYPES, JQ_FATE, JQ_ID_BASE, JQ_MINORS, JQ_NEWS, JQ_PARK_BAD, JQ_PARK_GOOD,
+  DAQING_SLOT, JQ_CARDS, JQ_FAC_NAMES, JQ_FAC_RULES, JQ_FAC_TYPES, JQ_FATE, JQ_ID_BASE, JQ_MINORS, JQ_NEWS, JQ_PARK_BAD, JQ_PARK_GOOD, JQ_WORK_POINTS,
   RENMIN_ROAD, STUDY_DAYS, SUBWAY_STREETS, T_XUAN, XUAN, xuanFactor, type JqCard,
 } from './modules/jq-data';
 import type { Player } from './types';
@@ -71,6 +71,12 @@ export class JiqingRules implements MapRules {
     const n = this.g.players.length;
     while (this.s.study.length < n) this.s.study.push(0);
     while (this.s.away.length < n) this.s.away.push('');
+    // A game saved before the decks grew (2026-10-23: the hard-times cards): the new cards go in after the next one up.
+    for (const [d, len, salt] of [[this.s.news, JQ_NEWS.length, 0x6e1], [this.s.fate, JQ_FATE.length, 0x6f2]] as const) {
+      if (d.deck.length >= len) continue;
+      const r = this.stream(salt, -1);
+      for (let i = 0; i < len; i++) if (!d.deck.includes(i)) d.deck.splice(d.next + 1 + r.below(d.deck.length - d.next), 0, i);
+    }
   }
 
   /** An own stream (§ header): seed, salt, player, day and the draw counter. */
@@ -105,6 +111,18 @@ export class JiqingRules implements MapRules {
     const s = this.s;
     for (const k of Object.keys(s.mods)) if (--s.mods[k] <= 0) delete s.mods[k];
     for (const p of g.players) if (!p.vanish && s.away[p.id]) s.away[p.id] = '';
+  }
+
+  /**
+   * 記工分 (§3, the user 2026-10-23: 「加點券的機會也太多了」): the squares pay less than the original's — its +50 squares
+   * +30 and its +30 squares +10 (+10 stays); their pads show the new amount (ui/jiqing.ts jqPadSprite).
+   */
+  *landSquare(_g: Game, p: Player, n: BoardNode): Flow<boolean> {
+    if (n.event < 10 || n.event > 12) return false;
+    const amount = JQ_WORK_POINTS[n.event];
+    p.points = (p.points + amount) & 0xffff;
+    yield { t: 'points', p: p.id, amount };
+    return true;
   }
 
   /** A vanished player here is 「下鄉中」 / 「下放中」 (§6). */
@@ -261,9 +279,9 @@ export class JiqingRules implements MapRules {
     const F = g.priceIndex;
     switch (c.id) {
       case 'jq-pg-taiji': case 'jq-pg-boat': case 'jq-pg-icepop': return yield* this.gain(g, p, amount);
-      case 'jq-pg-coupon': return this.points(p, 20);
-      case 'jq-pg-clean': return this.points(p, 30);
-      case 'jq-pg-bench': return [...this.points(p, 10), ...(yield* this.gain(g, p, amount))];
+      case 'jq-pg-coupon': return this.points(p, 10);
+      case 'jq-pg-clean': return this.points(p, 15);
+      case 'jq-pg-bench': return [...this.points(p, 5), ...(yield* this.gain(g, p, amount))];
       case 'jq-pg-date': return yield* this.card(g, p);
       case 'jq-pg-kite': {
         const id = yield* g.tools.receiveRandom(p);
@@ -368,8 +386,10 @@ export class JiqingRules implements MapRules {
 
   /** Away for some days (出國's way, 06 §2.4) under this map's label. */
   *away(g: Game, q: Player, days: number, label: string): Flow {
+    // (the label first: the board's 'abroad' shows the 解放 truck for a player with one, ui/map-fx.ts)
+    this.s.away[q.id] = label;
     yield* g.vanish(q, days, false);
-    if (q.vanish) this.s.away[q.id] = label;
+    if (!q.vanish) this.s.away[q.id] = '';
   }
 
   // ---------------------------------------------------------------- news and fate (§6)
@@ -417,9 +437,39 @@ export class JiqingRules implements MapRules {
       yield* this.result(g, p, c, 'gain', all.map(q => ({ p: q.id, text: `票證 +${n}` })));
     }.bind(this);
     switch (c.id) {
-      case 'jq-n-satellite': yield* pointsAll(20); return true;
-      case 'jq-n-exercise': yield* pointsAll(10); return true;
-      case 'jq-n-zaoqing': yield* pointsAll(20); return true;
+      case 'jq-n-satellite': yield* pointsAll(10); return true;
+      case 'jq-n-exercise': yield* pointsAll(5); return true;
+      case 'jq-n-zaoqing': yield* pointsAll(10); return true;
+      // ---- the hard times (2026-10-23): everyone, no precondition (收繳財產充公: someone with land)
+      case 'jq-n-dingliang': case 'jq-n-zuofei': {
+        const cut = (q: Player) => (c.id === 'jq-n-dingliang' ? Math.min(20, q.points) : Math.floor(q.points * 0.3));
+        yield* show({ amount: 20 }); const lines: ResultLine[] = [];
+        for (const q of all) { const x = cut(q); q.points -= x; lines.push({ p: q.id, text: x ? `票證 −${x}` : '本來就沒有票證' }); }
+        yield* this.result(g, p, c, 'fine', lines); return true;
+      }
+      case 'jq-n-juanxian': case 'jq-n-tingye': {
+        const a = (c.id === 'jq-n-juanxian' ? 1500 : 1000) * F; yield* show({ amount: a }); const lines: ResultLine[] = [];
+        for (const q of all) { const x = Math.min(a, Math.max(0, q.cash + q.bank)); if (x > 0) yield* g.transfer(q.id, -1, x, 0, c.id === 'jq-n-juanxian' ? '捐獻' : '停業損失', true); lines.push({ p: q.id, text: c.id === 'jq-n-juanxian' ? '捐獻' : '停業損失', amount: -x }); }
+        yield* this.result(g, p, c, 'tax', lines); return true;
+      }
+      case 'jq-n-xuexi': {
+        const who = g.locals().filter(q => !g.offRoad(q));
+        if (!who.length) return false;
+        yield* show(); for (const q of who) q.stay = Math.max(q.stay, 1);
+        yield* this.result(g, p, c, 'jam', who.map(q => ({ p: q.id, text: '學習班，停留一回合' })), { focus: who.map(q => q.id) }); return true;
+      }
+      case 'jq-n-chonggong': {
+        // the richest player who owns land loses one lot of theirs (a random one, its houses too) to the state
+        const owners = all.filter(q => b.lands.some(l => l.owner === q.id + 1)).sort((a2, b2) => g.wealth(b2) - g.wealth(a2));
+        const q = owners[0];
+        if (!q) return false;
+        const lots = b.lands.filter(l => l.owner === q.id + 1);
+        const l = lots[this.stream(0xc06, q.id).below(lots.length)];
+        yield* this.board(p, c, this.fill(c.text, { name: g.name(q.id), street: l.name }), this.nodeOfRef(l.id + 2000));
+        l.owner = 0; l.level = 0; l.expire = 0;
+        yield { t: 'board' };
+        yield* this.result(g, p, c, 'demolish', [{ p: q.id, text: `${l.name}的地收歸公有` }], { refs: [l.id + 2000], focus: [q.id], node: this.nodeOfRef(l.id + 2000) }); return true;
+      }
       case 'jq-n-bridge': {
         yield* show(); const lines: ResultLine[] = [];
         for (const q of all) { const id = yield* g.cards.receiveRandom(q); if (id) { yield { t: 'fx', kind: 'card-received', p: q.id, data: { card: id } }; lines.push({ p: q.id, text: '得到一張卡片' }); } }
@@ -569,12 +619,12 @@ export class JiqingRules implements MapRules {
       case 'jq-f-biaoyang': yield* money(3000 * F, true); return true;
       case 'jq-f-dazibao': yield* money(3000 * F, false); return true;
       case 'jq-f-chicken': yield* money(1500 * F, false); return true;
-      case 'jq-f-yulu': yield* points(30); return true;
-      case 'jq-f-movie': yield* points(20); return true;
+      case 'jq-f-yulu': yield* points(15); return true;
+      case 'jq-f-movie': yield* points(10); return true;
       case 'jq-f-ticao': {
-        yield* show({ amount: 1000 * F }); this.points(p, 10); yield { t: 'points', p: p.id, amount: 10 };
+        yield* show({ amount: 1000 * F }); this.points(p, 5); yield { t: 'points', p: p.id, amount: 5 };
         const lines = yield* this.gain(g, p, 1000 * F);
-        yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '票證 +10' }, ...lines]); return true;
+        yield* this.result(g, p, c, 'gain', [{ p: p.id, text: '票證 +5' }, ...lines]); return true;
       }
       case 'jq-f-sanzhuan': { yield* show(); yield* this.result(g, p, c, 'gain', yield* this.card(g, p)); return true; }
       case 'jq-f-bike': {
@@ -596,6 +646,41 @@ export class JiqingRules implements MapRules {
         const q = g.players[target], d = 3 * r;
         yield* this.away(g, q, d, kid ? '下鄉中' : '下放中');
         yield* this.result(g, p, c, 'abroad', [...(target !== p.id ? [{ p: p.id, text: `用嫁禍卡嫁禍給${g.name(target)}` }] : []), { p: target, text: `${this.minor(q) ? '下鄉' : '下放'}${d}天` }], { focus: [target] }); return true;
+      }
+      // ---- the hard times (2026-10-23): anyone, no precondition
+      case 'jq-f-jiantao': yield* money(2000 * F, false); return true;
+      case 'jq-f-paizhao': yield* money(1500 * F, false); return true;
+      case 'jq-f-dazhan': yield* hold(1); return true;
+      case 'jq-f-diupiao': {
+        const x = Math.min(30, p.points);
+        yield* show({ amount: 30 }); p.points -= x;
+        yield* this.result(g, p, c, 'fine', [{ p: p.id, text: x ? `票證 −${x}` : '本來就沒有票證' }]); return true;
+      }
+      case 'jq-f-moshou': {
+        // 投機倒把's 非法所得: 15 % of what the player has (cash first), at least a fine's worth
+        const a = Math.max(1000 * F, Math.round((p.cash + p.bank) * 0.15 / 100) * 100);
+        yield* money(a, false); return true;
+      }
+      case 'jq-f-zhongdu': case 'jq-f-wuzhen': {
+        // (食物中毒 2 days, doubled by bad luck; the barefoot doctor's 5 days as they are)
+        yield* show(); const r = yield* this.misfortune(g, p);
+        if (!r) { yield* this.result(g, p, c, 'blessed', this.escaped(g, p)); return true; }
+        const d = c.id === 'jq-f-wuzhen' ? 5 : 2 * r;
+        yield* g.sendTo(p, 'hospital', d);
+        yield* this.result(g, p, c, 'hospital', [{ p: p.id, text: `住院${d}天` }]); return true;
+      }
+      // sent away for some days as the original's 出國 / 外星人 (Player.vanish), with this map's label; the 解放 truck
+      // takes them (ui/jq-truck.ts)
+      case 'jq-f-yuanzidan': case 'jq-f-tewu': case 'jq-f-chushen': {
+        yield* show(); const r = yield* this.misfortune(g, p);
+        if (!r) { yield* this.result(g, p, c, 'blessed', this.escaped(g, p)); return true; }
+        const target = yield* g.cards.pardonOrFrame(p);
+        if (target < 0) { yield* this.result(g, p, c, 'blessed', [{ p: p.id, text: '免罪卡生效，逃過此劫' }]); return true; }
+        const q = g.players[target], base = c.id === 'jq-f-yuanzidan' ? 7 : c.id === 'jq-f-tewu' ? 2 : 3;
+        const d = c.id === 'jq-f-yuanzidan' ? base : base * r;
+        const label = c.id === 'jq-f-chushen' ? (this.minor(q) ? '下鄉中' : '下放中') : c.id === 'jq-f-tewu' ? '盤問中' : '審查中';
+        yield* this.away(g, q, d, label);
+        yield* this.result(g, p, c, 'abroad', [...(target !== p.id ? [{ p: p.id, text: `用嫁禍卡嫁禍給${g.name(target)}` }] : []), { p: target, text: `${label.replace('中', '')}${d}天` }], { focus: [target] }); return true;
       }
       case 'jq-f-pidou': yield* hold(2); return true;
       case 'jq-f-yikufan': yield* hold(1); return true;
@@ -620,7 +705,7 @@ export class JiqingRules implements MapRules {
         const d = yield* this.hospitalWheel(g, p);
         yield* this.result(g, p, c, d ? 'hospital' : 'none', [{ p: p.id, text: d ? `住院${d}天` : '轉盤停在 0：沒事' }]); return true;
       }
-      case 'jq-f-touji': case 'jq-f-xiuzhang': {
+      case 'jq-f-touji': case 'jq-f-xiuzhang': case 'jq-f-zhancuodui': {
         yield* show(); const r = yield* this.misfortune(g, p);
         if (!r) { yield* this.result(g, p, c, 'blessed', this.escaped(g, p)); return true; }
         const lines = yield* this.jail(g, p, (c.id === 'jq-f-touji' ? 3 : 2) * r);

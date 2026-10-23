@@ -12,6 +12,8 @@ import { eventName } from '../core/game';
 import { OBJECT_NAMES } from '../core/modules/objects';
 import { toolDef } from '../core/modules/tools';
 import { nodeById } from '../core/board';
+import { jqRules } from '../core/jiqing';
+import { JQ_WORK_POINTS } from '../core/modules/jq-data';
 import type { SpriteBank } from './sprites';
 
 type Pt = { x: number; y: number };
@@ -69,6 +71,9 @@ export function describe(game: Game, at: Pt, actorPos: (id: number) => Pt | unde
   const sc = near(b.landscapes, 40);
   if (sc) return { pos: sc, lines: [sc.name] };
   const n = near(b.nodes.filter(n => n.event >= 2), 24);
+  // (激情歲月's 記工分 pay less: its own amounts)
+  const work = jqRules(game) && n ? JQ_WORK_POINTS[n.event] : undefined;
+  if (n && work !== undefined) return { pos: n, lines: [`點券${work}`, `停留得點券 ${work}`] };
   if (n) return { pos: n, lines: [eventName(n.event), ...(EVENT_TEXT[n.event] ?? '').split('\n')].filter(Boolean) };
   return null;
 }

@@ -58,9 +58,12 @@ describe.skipIf(!have)('激情歲月 (map 107)', () => {
     expect(raw.find(n => n.type_aux === 7)!.name).toBe('牛棚');
   });
 
-  it('tables: 24 news, 24 fate, two park decks of 8; the facility cap only grows at the end', () => {
-    expect(JQ_NEWS).toHaveLength(24);
-    expect(JQ_FATE).toHaveLength(24);
+  it('tables: 30 news, 35 fate, two park decks of 8; the facility cap only grows at the end', () => {
+    // 24 + 24 and the hard times of 2026-10-23: 6 bad news, 11 bad 大字報
+    expect(JQ_NEWS).toHaveLength(30);
+    expect(JQ_FATE).toHaveLength(35);
+    expect(JQ_NEWS.filter(c => c.good === 0).length).toBeGreaterThan(JQ_NEWS.filter(c => c.good === 1).length);
+    expect(JQ_FATE.filter(c => c.good === 0).length / JQ_FATE.length).toBeGreaterThan(0.6);
     expect(JQ_PARK_GOOD).toHaveLength(8);
     expect(JQ_PARK_BAD).toHaveLength(8);
     expect(FACILITY_MAX_LEVEL.slice(0, 14)).toEqual([1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]);
@@ -205,6 +208,28 @@ describe.skipIf(!have)('激情歲月 (map 107)', () => {
     for (const k of ['news', 'fate', 'event-result', 'jq-card', 'jq-verdict', 'jq-study']) expect(kinds[k] ?? 0, k).toBeGreaterThan(0);
     expect(Object.keys(types).length).toBeGreaterThanOrEqual(4);
   }, 300_000);
+
+  it('記工分 pays +30 / +10 / +10 here (the original\'s +50 / +30 / +10 squares)', () => {
+    const g = new Game(settings(5), board()), jq = jqRules(g)!, p = g.players[0];
+    for (const [ev, want] of [[10, 30], [11, 10], [12, 10]] as const) {
+      const n = g.board.nodes.find(x => x.event === ev)!, before = p.points;
+      const out = drain(jq.landSquare(g, p, n));
+      expect(out.value).toBe(true);
+      expect(p.points - before).toBe(want);
+    }
+    expect(drain(jq.landSquare(g, p, g.board.nodes.find(x => x.event === 2)!)).value).toBe(false);
+  });
+
+  it('a game saved with the shorter decks gets the new cards into them', () => {
+    const g = new Game(settings(12), board());
+    const save = saveGame(g) as unknown as { mapRules: { news: { deck: number[]; next: number }; fate: { deck: number[]; next: number } } };
+    save.mapRules.news.deck = save.mapRules.news.deck.filter(i => i < 24); save.mapRules.news.next = 5;
+    save.mapRules.fate.deck = save.mapRules.fate.deck.filter(i => i < 24);
+    const a = loadGame(JSON.parse(JSON.stringify(save)), board()), jq = jqRules(a)!;
+    expect([...jq.s.news.deck].sort((x, y) => x - y)).toEqual([...Array(JQ_NEWS.length).keys()]);
+    expect([...jq.s.fate.deck].sort((x, y) => x - y)).toEqual([...Array(JQ_FATE.length).keys()]);
+    expect(jq.s.news.deck.slice(0, 6)).toEqual(save.mapRules.news.deck.slice(0, 6)); // the cards already read stay in place
+  });
 
   it('a saved game plays on the same as the unsaved one', () => {
     const g = new Game(settings(11), board());

@@ -947,6 +947,20 @@ export class BoardView {
 
   hide(id: number) { this.actor(id).visible = false; }
 
+  /**
+   * 激情歲月's 解放 truck takes a player away (or drops them back): false on other maps (the caller plays the original's
+   * clip). The road's direction at the player's square from its neighbours.
+   */
+  takeAway(id: number, back: boolean): Promise<boolean> {
+    if (!(this.street instanceof JqStreet)) return Promise.resolve(false);
+    const p = this.game.players[id], n = p ? this.game.board.nodes.find(x => x.id === p.node) : undefined;
+    if (!n) return Promise.resolve(false);
+    const nb = n.adjacent.map(k => this.game.board.nodes.find(x => x.id === k)).filter((x): x is NonNullable<typeof x> => !!x);
+    const to = nb[0] ?? n;
+    const dir = { x: to.x - n.x || 1, y: to.y - n.y };
+    return this.street.takeAway({ x: n.x, y: n.y }, dir, back, this.pace, () => this.hide(id), () => this.show(id)).then(() => true);
+  }
+
   /** Walk from the current spot to a node at `speed` world px per tick (01 §6.1). */
   move(id: number, to: number, dir: number, speed: number): Promise<void> {
     const n = nodeById(this.game.board, to);

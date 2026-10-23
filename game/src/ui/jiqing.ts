@@ -73,6 +73,8 @@ export function jqHouseSprite(game: Game, l: { id?: number; level: number; chain
 export function jqPadSprite(game: Game, n: BoardNode): number {
   if (!n.aux || !jqRules(game)) return 0;
   if (n.aux === 27 && isBranch(game, n)) return PAD_BRANCH;
+  // 記工分 pays less on this map (core/jiqing.ts landSquare): the +50 squares show the +30 pad, the +30 ones the +10 pad
+  if (n.aux === 19 || n.aux === 21) return 9100 + n.aux + 2;
   return PAD_AUX.has(n.aux) ? 9100 + n.aux : 0;
 }
 /** The second bank (人民銀行支行, §1.3): the bank square farther east (崇文門; 人民銀行 is at 府右街口). */

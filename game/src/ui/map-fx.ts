@@ -837,6 +837,8 @@ export class MapDirector {
         // The line comes while still on the road (the original sets the days after it).
         await this.badDays(p.id, days, true);
         v.show(p.id);
+        // 激情歲月's 下放 / 審查 cards: the 解放 truck and its 紅衛兵 take the player (docs/rules/24 §6)
+        if (!alien && this.game.rules?.vanishLabel?.(this.game, p) && await v.takeAway(p.id, false)) return true;
         await this.clipAt(alien ? 533 : 558, this.pos(p.id), { bake: alien ? 28 : 20, at: { [alien ? 27 : 19]: () => v.hide(p.id) }, sound: alien ? Sfx.ufo : Sfx.airplane });
         return true;
       }
@@ -844,6 +846,7 @@ export class MapDirector {
         if (!p) return false;
         const alien = !!s.data?.alien;
         v.hide(p.id);
+        if (!alien && this.game.rules?.vanishLabel?.(this.game, p) && await v.takeAway(p.id, true)) return true;
         await this.clipAt(alien ? 533 : 558, this.pos(p.id), { bake: alien ? 28 : 20, at: { [alien ? 27 : 19]: () => v.show(p.id) }, sound: alien ? Sfx.ufo : Sfx.airplane });
         return true;
       }

@@ -36,6 +36,9 @@ const N = (id: string, good: 0 | 1, category: string, head: string, text: string
 const F = (id: string, good: 0 | 1 | 2, head: string, text: string, kid?: string, line?: string, pic?: string): JqCard => ({ id, kind: 'fate', good, head, text, ...(kid ? { kid } : {}), ...(line ? { line } : {}), ...(pic ? { pic } : {}) });
 const P = (id: string, good: 0 | 1, pic: string, head: string, text: string): JqCard => ({ id, kind: 'park', good, head, text, pic });
 
+/** 記工分 (§3, the user 2026-10-23): what the original's +50 / +30 / +10 squares (events 10 / 11 / 12) pay on this map. */
+export const JQ_WORK_POINTS: Record<number, number> = { 10: 30, 11: 10, 12: 10 };
+
 /** The news (§6.1): read out by the 廣播站. `{x}` fills in the amounts and names. */
 export const JQ_NEWS: JqCard[] = [
   N('jq-n-satellite', 1, '最新消息', '東方紅一號上天', '東方紅一號上天！\n全體＋{amount}票證'),
@@ -63,6 +66,14 @@ export const JQ_NEWS: JqCard[] = [
   N('jq-n-chuanlian', 0, '本市消息', '紅衛兵大串聯', '紅衛兵大串聯！\n招待所3天免費住'),
   N('jq-n-supply', 1, '商業消息', '供銷社到貨啦', '供銷社到貨啦！\n3天消費×2'),
   N('jq-n-zhenbao', 0, '備戰備荒', '全民備戰', '全民備戰！\n內部認購暫停10天'),
+  // Hard times for everyone (the user 2026-10-23: 「壞事件太少了」「多生成5個壞新聞」): no precondition, they always apply;
+  // 收繳財產充公 (the user's own) needs someone with land.
+  N('jq-n-dingliang', 0, '本市消息', '布票定量減半', '布票定量減半！\n每人票證－{amount}', undefined, 'jq-n-cloth'),
+  N('jq-n-juanxian', 0, '最新指示', '支援國家建設', '號召支援國家建設！\n每人捐{amount}元'),
+  N('jq-n-xuexi', 0, '最新指示', '全市辦學習班', '全市辦學習班！\n全體停一回合', '全校停課辦學習班！\n全體停一回合'),
+  N('jq-n-tingye', 0, '本市消息', '商業街停業整頓', '大字報貼滿商業街！\n停業整頓，每人損失{amount}元', undefined, 'jq-n-dazibao'),
+  N('jq-n-zuofei', 0, '本市消息', '舊版糧票作廢', '舊版糧票作廢！\n每人票證減三成'),
+  N('jq-n-chonggong', 0, '最新指示', '收繳財產充公', '收繳財產充公！\n首富{name}的{street}收歸公有'),
 ];
 
 /** The fate cards (§6.2): a 大字報 each. */
@@ -80,7 +91,7 @@ export const JQ_FATE: JqCard[] = [
   F('jq-f-touji', 0, '投機倒把被抓', '投機倒把被抓！\n關牛棚3天', '賣汽水票被抓！\n關牛棚3天'),
   F('jq-f-heishi', 1, '黑市淘到好貨', '黑市淘到好貨！\n得到一件道具'),
   F('jq-f-yulu', 1, '背語錄比賽第一名', '背語錄比賽第一名！\n＋{amount}票證'),
-  F('jq-f-ticao', 1, '廣播體操標兵', '廣播體操標兵！\n＋10票證＋{amount}元'),
+  F('jq-f-ticao', 1, '廣播體操標兵', '廣播體操標兵！\n＋5票證＋{amount}元'),
   F('jq-f-yikufan', 0, '吃了憶苦飯', '吃了憶苦飯！\n肚子疼停一回合'),
   F('jq-f-chicken', 0, '雞跑進生產隊', '雞跑進生產隊！\n賠{amount}元'),
   F('jq-f-fenhong', 1, '生產隊年終分紅', '生產隊年終分紅！\n＋{amount}元'),
@@ -91,18 +102,31 @@ export const JQ_FATE: JqCard[] = [
   F('jq-f-paidui', 0, '排了一天隊', '排了一天隊！\n只買到一盒火柴，停一回合'),
   F('jq-f-sanxian', 2, '支援三線建設', '支援三線建設！\n捐出一塊空地得補償'),
   F('jq-f-xiuzhang', 0, '戴錯紅袖章', '戴錯紅袖章！\n冒充糾察隊關牛棚2天', '戴錯紅領巾！\n被罰站，關牛棚2天'),
+  // Hard times (the user 2026-10-23: 「多生成10張通用的壞卡」, with the user's own 站錯隊 / 食物中毒 / 原子彈 / 《出身論》 / 沒收非法所得):
+  // no precondition, anyone can draw them; the sends to the 牛棚 and the hospital are mixed with holds in place and days away.
+  F('jq-f-zhancuodui', 0, '站錯隊', '站錯隊了！\n被批判，關牛棚2天', '跳皮筋站錯隊！\n被罰站，關牛棚2天', '明明是跟著前面那個人站的'),
+  F('jq-f-wuzhen', 0, '赤腳醫生亂診斷', '赤腳醫生把感冒看成了怪病！\n住院5天', '赤腳醫生把肚子疼看成了怪病！\n住院5天', '他拿的那本草藥書好像拿倒了'),
+  F('jq-f-zhongdu', 0, '國營餐館食物中毒', '國營餐館吃壞肚子！\n住院2天', '學校食堂吃壞肚子！\n住院2天', '那盤炒豬肝顏色就不太對'),
+  F('jq-f-yuanzidan', 0, '誤入原子彈研發現場', '誤入原子彈研發現場！\n隔離審查7天', '追蝴蝶追進了禁區！\n隔離審查7天', '我只是在戈壁灘上找廁所'),
+  F('jq-f-tewu', 0, '被當成特務盤問', '戴墨鏡上街被當成特務！\n盤問到天黑，停2回合', '戴墨鏡上學被當成特務！\n盤問到天黑，停2回合', '這副墨鏡是我二舅送的'),
+  F('jq-f-jiantao', 0, '上班遲到寫檢討', '上班遲到三分鐘！\n寫三千字檢討，買稿紙{amount}元', '上學遲到三分鐘！\n寫三千字檢討，買作業本{amount}元'),
+  F('jq-f-chushen', 0, '寫《出身論》被下放', '油印了一篇《出身論》！\n被下放勞動3天', '在作文裡寫《出身論》！\n被下鄉勞動3天', '我只是覺得人人生而平等'),
+  F('jq-f-paizhao', 0, '自行車沒上牌照', '自行車沒上牌照！\n罰{amount}元'),
+  F('jq-f-dazhan', 0, '開大會打瞌睡', '開大會打瞌睡被點名！\n罰抄語錄，停一回合', '上課打瞌睡被點名！\n罰抄課文，停一回合'),
+  F('jq-f-diupiao', 0, '糧票弄丟了', '糧票布票全弄丟了！\n票證－{amount}', undefined, undefined, 'jq-f-butiao'),
+  F('jq-f-moshou', 0, '沒收非法所得', '投機倒把！\n沒收非法所得{amount}元', '倒賣汽水票！\n家長被沒收{amount}元', '我就是幫鄰居捎了幾斤雞蛋', 'jq-n-yida-b'),
 ];
 
 /** The 人民公園's cards (§2.1): the owner draws a good one, anyone else a bad one (two decks of 8, drawn in turn). */
 export const JQ_PARK_GOOD: JqCard[] = [
   P('jq-pg-taiji', 1, 'jq-p-taiji', '晨練打太極', '晨練打太極，身體倍兒棒！\n＋{amount}元'),
-  P('jq-pg-coupon', 1, 'jq-p-coupon', '樹底下撿到全國糧票', '樹底下撿到全國糧票！\n＋20票證'),
+  P('jq-pg-coupon', 1, 'jq-p-coupon', '樹底下撿到全國糧票', '樹底下撿到全國糧票！\n＋10票證'),
   P('jq-pg-date', 1, 'jq-p-blind-date', '公園相親成功', '公園相親成功！介紹人說成分好\n＋1張卡片'),
   P('jq-pg-boat', 1, 'jq-p-boat', '划船比賽拿第一', '划船比賽拿第一！\n＋{amount}元'),
   P('jq-pg-kite', 1, 'jq-p-kite', '放風箏放得最高', '放風箏放得最高！\n得到一件道具'),
   P('jq-pg-icepop', 1, 'jq-p-icepop', '遇到老戰友請吃冰棍', '遇到老戰友請吃冰棍！\n＋{amount}元'),
-  P('jq-pg-clean', 1, 'jq-p-clean', '公園評上衛生先進', '公園評上衛生先進！\n＋30票證'),
-  P('jq-pg-bench', 1, 'jq-p-bench', '在長椅上背熟了語錄', '在長椅上背熟了語錄！\n＋10票證＋{amount}元'),
+  P('jq-pg-clean', 1, 'jq-p-clean', '公園評上衛生先進', '公園評上衛生先進！\n＋15票證'),
+  P('jq-pg-bench', 1, 'jq-p-bench', '在長椅上背熟了語錄', '在長椅上背熟了語錄！\n＋5票證＋{amount}元'),
 ];
 export const JQ_PARK_BAD: JqCard[] = [
   P('jq-pb-lawn', 0, 'jq-p-lawn', '踩了草坪', '踩了草坪！愛護花草人人有責\n罰{amount}元'),

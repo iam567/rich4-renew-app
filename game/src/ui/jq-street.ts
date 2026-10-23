@@ -18,6 +18,8 @@ import { Loudspeakers, type Program } from './jq-loudspeaker';
 import { audio } from './audio';
 import { memTier } from './mem-tier';
 
+/** The take-away's length (ms at normal speed): the arrest, the drop-off. */
+const RAID_TOTAL = 4000, RAID_BACK = 2600;
 /** The passers-by (map/3401..3407: 紅衛兵, 幹部, 工人, 農民, 女青年, 少先隊員, 老人), 16 frames each: row × 4 + phase. */
 const WALKER = 3401, KINDS = 7;
 /** The ambient sprites (map/3411..3429, tools/tycoon-art/kb_ambient.py RICH4_AMBIENT=jiqing). */
@@ -336,7 +338,68 @@ export class JqStreet {
     return k;
   }
 
+  // ------------------------------------------------------------------ the 解放 truck that takes a player away (§6)
+
+  /**
+   * The cards that send a player away for some days (下放, 隔離審查, 《出身論》…, as the original's 出國 / 外星人: the
+   * user 2026-10-23 「做一個解放大卡車，下來一堆紅衛兵，把人抓走」): a 解放 truck drives up the road to the square, five
+   * 紅衛兵 hop down and gather round, the player is gone with them, they climb back in and the truck drives off; on the
+   * day back (`back`) it drops the player off. Its own clock (the street may stand still under a box); `pace` the
+   * game speed's factor as the board's clips. Drawn whatever the street settings are (its sprites always load).
+   */
+  takeAway(at: { x: number; y: number }, dir: { x: number; y: number }, back: boolean, pace: number, hide: () => void, show: () => void): Promise<void> {
+    this.raid?.done();
+    return new Promise(done => {
+      const len = Math.hypot(dir.x, dir.y) || 1;
+      const me = { x: at.x, y: at.y, dx: dir.x / len, dy: dir.y / len, t0: performance.now(), k: pace, back, hide, show, gone: false, done: () => { if (this.raid === me) this.raid = null; done(); } };
+      this.raid = me;
+      // the end (also when the board is not drawn meanwhile): the player hidden / shown for sure
+      setTimeout(() => { if (!me.gone) { me.gone = true; (back ? show : hide)(); } me.done(); }, (back ? RAID_BACK : RAID_TOTAL) * pace + 50);
+    });
+  }
+  private raid: { x: number; y: number; dx: number; dy: number; t0: number; k: number; back: boolean; hide: () => void; show: () => void; gone: boolean; done: () => void } | null = null;
+
+  private drawRaid(v: StreetView, add: AddItem) {
+    const R = this.raid;
+    if (!R) return;
+    const t = (performance.now() - R.t0) / R.k;           // ms at normal speed
+    const ox = -R.dy * LANE_OFF, oy = R.dx * LANE_OFF;     // the truck's lane, beside the square
+    const ease = (u: number) => 1 - (1 - u) ** 3, accel = (u: number) => u * u;
+    // where the truck is along the road (0 = beside the square) and how visible
+    let s: number;
+    const total = R.back ? RAID_BACK : RAID_TOTAL, arrive = R.back ? 900 : 1100, leave = total - (R.back ? 900 : 1100);
+    if (t < arrive) s = -240 * (1 - ease(t / arrive));
+    else if (t < leave) s = 0;
+    else s = 260 * accel(Math.min(1, (t - leave) / (total - leave)));
+    const alpha = Math.max(0, Math.min(1, (240 + s) / 60, (260 - s) / 70));
+    const tx = R.x + ox + R.dx * s, ty = R.y + oy + R.dy * s;
+    const deg = (dx: number, dy: number) => { const q = v.toScreen(dx, dy); return Math.atan2(q.y, q.x) * 180 / Math.PI; };
+    const tp = v.visible(tx, ty, 160);
+    if (tp && alpha > 0) add(tp.y, () => v.sprite(JQA.truck, nearestView(deg(R.dx, R.dy)), tp.x, tp.y, false, alpha));
+    // the 紅衛兵: from the truck's tail round the player, then back in with them (the drop-off: one hops down and back)
+    const n = R.back ? 1 : 5, tail = { x: R.x + ox - R.dx * 22, y: R.y + oy - R.dy * 22 };
+    const out0 = arrive + 100, round = out0 + 500, back0 = round + (R.back ? 200 : 700), in1 = back0 + 400;
+    if (!R.gone && t >= (R.back ? round : back0 - 250)) { R.gone = true; (R.back ? R.show : R.hide)(); }
+    if (t < out0 || t > in1) return;
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2 + 0.6, ring = { x: R.x + Math.cos(a) * 26, y: R.y + Math.sin(a) * 18 };
+      let from = tail, to = ring, u: number;
+      if (t < round) u = (t - out0) / (round - out0);
+      else if (t < back0) { u = 1; }
+      else { from = ring; to = tail; u = (t - back0) / (in1 - back0); }
+      u = Math.max(0, Math.min(1, u));
+      const x = from.x + (to.x - from.x) * u, y = from.y + (to.y - from.y) * u;
+      const p = v.visible(x, y, 60);
+      if (!p) continue;
+      const moving = u > 0 && u < 1, d = moving ? deg(to.x - from.x, to.y - from.y) : deg(R.x - x, R.y - y);
+      const f = walkerFacing(0, d), phase = moving ? Math.floor(t / 110 + i) % 4 : 0;
+      const a2 = t > back0 ? Math.min(1, (1 - u) * 3) : Math.min(1, (t - out0) / 120);
+      add(p.y, () => v.sprite(WALKER, f.row * 4 + phase, p.x, p.y, f.flip, a2));
+    }
+  }
+
   collect(v: StreetView, add: AddItem) {
+    this.drawRaid(v, add);
     const z = v.zoom, t = this.clock;
     this.tokenPts = this.tokens();
     // The nearest horn (screen distance from the view's centre): loudness, pan, dullness.
@@ -463,6 +526,7 @@ export class JqStreet {
   /** The walkers' and the ambient sprites (for the loading screen; none while they are off). */
   walkerSprites(): number[] {
     const out = this.walkOn ? Array.from({ length: KINDS }, (_, i) => WALKER + i) : [];
+    out.push(JQA.truck, WALKER);   // the 解放 truck and its 紅衛兵 (takeAway), whatever the street settings
     if (this.walkOn) out.push(JQA.bicycle, JQA.flag, JQA.banner, JQA.drummer, JQA.marcher, JQA.reader, JQA.gymnast, JQA.dancer, JQA.waistdrum, JQA.queuer, JQA.skipper, JQA.pigeon);
     if (this.carsOn) out.push(JQA.truck, JQA.jeep, JQA.sedan, JQA.tricycle, JQA.bicycle, JQA.cart, JQA.bus, JQA.trolley);
     return [...new Set(out)];
