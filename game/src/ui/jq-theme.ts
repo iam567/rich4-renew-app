@@ -129,8 +129,26 @@ export function eraText(s: string): string {
   if (line !== undefined) return s.replace(t, line);
   let out = s;
   for (const [re, to] of ADDRESS) out = out.replace(re, to as string);
-  return out.replace(RE, w => MAP.get(w) ?? w);
+  // A word whose era form contains it (工程費 → 基建工程費) stays as it is where that form already stands: the page's text
+  // is rewritten again every time it changes (by this pass and by 简体's), so a rename must come to rest. It used to
+  // grow 「基建基建基建…工程费」 for good in 简体, and the page froze (issue #9, the construction company's fee).
+  return out.replace(RE, (w: string, at: number, all: string) => {
+    const v = MAP.get(w) ?? w, i = v.indexOf(w);
+    return i >= 0 && all.startsWith(v, at - i) ? w : v;
+  });
 }
+
+/**
+ * Whether a renamed text comes to rest: renaming it again — after 简体 has converted it, when that is on — changes
+ * nothing. A rename that would not is left out (logged once) rather than rewriting the page without end.
+ */
+function settles(t: string): boolean {
+  const h = toHans(t);
+  if (eraText(h) === h) return true;
+  if (!warned.has(t)) { warned.add(t); console.warn('[jq-theme] a rename that never comes to rest, left out:', JSON.stringify(t.slice(0, 80))); }
+  return false;
+}
+const warned = new Set<string>();
 
 const ATTRS = ['title', 'aria-label', 'alt', 'placeholder'];
 /** The yes / no buttons' words (「YES 是」 / 「NO 否」, 「是」 / 「否」) as 「同意」 / 「不同意」. */
@@ -142,13 +160,13 @@ function fixText(n: Text) {
   const btn = n.parentElement?.closest('button.candy.yes, button.candy.no');
   const yn = btn ? YES_NO.find(([re]) => re.test(s.trim())) : undefined;
   const t = yn ? s.replace(s.trim(), yn[1]) : eraText(s);
-  if (t !== s) n.data = t;
+  if (t !== s && (yn || settles(t))) n.data = t;
 }
 function fixAttr(e: Element, a: string) {
   const s = e.getAttribute(a);
   if (!s) return;
   const t = eraText(s);
-  if (t !== s) e.setAttribute(a, t);
+  if (t !== s && settles(t)) e.setAttribute(a, t);
 }
 function fixTree(root: Node) {
   if (root.nodeType === Node.TEXT_NODE) { fixText(root as Text); return; }

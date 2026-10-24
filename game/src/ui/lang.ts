@@ -128,7 +128,9 @@ const kept = (n: Node) => {
 
 function convertText(n: Text) {
   const s = n.data;
-  if (!HAN.test(s) || kept(n)) return;
+  // What this pass wrote itself is Simplified already (it is not converted again: a text must come to rest, as every
+  // change of it comes back here — 激情歲月's renames ping-ponged with this pass into a frozen page, issue #9).
+  if (!HAN.test(s) || textOrig.get(n)?.[1] === s || kept(n)) return;
   const r = simplify(s);
   if (r === s) return;
   textOrig.set(n, [s, r]);
@@ -137,7 +139,7 @@ function convertText(n: Text) {
 
 function convertAttr(e: Element, name: string) {
   const s = e.getAttribute(name);
-  if (!s || !HAN.test(s) || kept(e)) return;
+  if (!s || !HAN.test(s) || attrOrig.get(e)?.get(name)?.[1] === s || kept(e)) return;
   const r = simplify(s);
   if (r === s) return;
   let m = attrOrig.get(e);

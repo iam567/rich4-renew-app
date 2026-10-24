@@ -37,3 +37,14 @@ export const fxScreens: Record<string, FxScreen> = {};
 
 /** Key for a question: its type, or `choose:<screen>` for a tagged choice. */
 export const askKey = (a: Ask): string => (a.t === 'choose' && a.screen ? `choose:${a.screen}` : a.t);
+
+/**
+ * Screens that can stay open between events (the wheel and the slot machine a question leaves up for the event that
+ * follows it …) register how to close themselves here: the hang guard (main.ts) calls `closeStuckScreens()` when it
+ * gives up waiting for an event, so nothing stuck is left over the map (or keeps a looping sound going).
+ */
+const stuckClosers = new Set<() => void>();
+export function onStuck(close: () => void): void { stuckClosers.add(close); }
+export function closeStuckScreens(): void {
+  for (const f of stuckClosers) { try { f(); } catch { /* the rest still close */ } }
+}

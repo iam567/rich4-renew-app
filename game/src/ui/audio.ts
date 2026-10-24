@@ -359,6 +359,9 @@ class AudioEngine {
 
   isLooping(id: number) { return this.loops.has(id); }
 
+  /** Stops every looping effect (the hang guard's rescue: a wheel's or an engine's loop must not go on for good). */
+  stopLoops() { for (const id of [...this.loops]) this.stop(id); }
+
   private stopEffect(id: number, fade: boolean) {
     const p = this.effects.get(id);
     if (!p) return;

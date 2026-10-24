@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { outstanding, timeout, watch, Watchdog } from './watchdog';
+import { guard, outstanding, timeout, watch, Watchdog } from './watchdog';
 
 describe('watchdog', () => {
   it('lists outstanding waits until they settle', async () => {
@@ -40,5 +40,53 @@ describe('watchdog', () => {
     wd.check(performance.now() + 60000);
     expect(rescue).toHaveBeenCalledTimes(1);
     warn.mockRestore();
+  });
+
+  it('guard() gives up on a promise that never settles: logs, rescues once, settles with the fallback', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const rescue = vi.fn();
+    let limit = 1000;
+    const g = guard('screen wheel', new Promise<number>(() => {}), () => limit, -1, rescue);
+    let got: number | undefined;
+    void g.then(v => { got = v; });
+    await vi.advanceTimersByTimeAsync(600);
+    expect(got).toBeUndefined();
+    limit = 3000; // a human took over the screen: more time
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(got).toBeUndefined();
+    await vi.advanceTimersByTimeAsync(1200);
+    expect(got).toBe(-1);
+    expect(rescue).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls.some(c => String(c[0]).includes('gave up waiting for "screen wheel"'))).toBe(true);
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(rescue).toHaveBeenCalledTimes(1);
+    warn.mockRestore();
+    vi.useRealTimers();
+  });
+
+  it('guard() passes a settled value or an error through and never rescues then', async () => {
+    const rescue = vi.fn();
+    expect(await guard('fx', Promise.resolve(7), () => 1000, -1, rescue)).toBe(7);
+    await expect(guard('fx', Promise.reject(new Error('boom')), () => 1000, -1, rescue)).rejects.toThrow('boom');
+    expect(rescue).not.toHaveBeenCalled();
+  });
+
+  it('guard() does not count time the page spends hidden (animations stand still then)', async () => {
+    vi.useFakeTimers();
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const doc = globalThis as unknown as { document?: { hidden: boolean } };
+    const had = doc.document;
+    doc.document = { hidden: true };
+    let got: number | undefined;
+    void guard('fx', new Promise<number>(() => {}), () => 1000, -1).then(v => { got = v; });
+    await vi.advanceTimersByTimeAsync(10000);
+    expect(got).toBeUndefined();
+    doc.document.hidden = false;
+    await vi.advanceTimersByTimeAsync(1300);
+    expect(got).toBe(-1);
+    doc.document = had;
+    warn.mockRestore();
+    vi.useRealTimers();
   });
 });

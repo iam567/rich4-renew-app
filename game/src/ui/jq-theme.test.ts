@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { eraText } from './jq-theme';
+import { toSimplified } from './zh-hans';
 
 // 激情歲月's words on screen (docs/rules/24 §3; the user 2026-10-22: every form of address is 同志).
 describe('激情歲月 words', () => {
@@ -27,5 +28,21 @@ describe('激情歲月 words', () => {
     expect(eraText('11月份 銀行結算')).toBe('十一月份 先進工作者評比');
     expect(eraText('本月冠軍是．．。')).toBe('本月勞動模範\n是……');
     expect(eraText('改變命運的機會')).toBe('改變命運的機會');
+  });
+
+  // Issue #9: the page's text is renamed again every time it changes (this pass and 简体's MutationObserver), so a
+  // rename must come to rest. 工程費 → 基建工程費 grew 「基建基建基建…工程费」 for good in 简体 and froze the page.
+  it('every rename comes to rest, in 繁體 and through 简体 (no text grows without end)', () => {
+    expect(eraText('董事長阿土伯 請付3000元工程費')).toBe('阿土伯同志 請付3000元基建工程費');
+    for (const s of ['工程費', '基建工程費', '工程费', '基建工程费', '阿土伯付給孫小美\n\n工程費\n3,000 元', '公園', '公园', '醫院', '医院', '探監', '股票', '電腦費', '修車費', '保險費', '旅遊費']) {
+      for (const hans of [false, true]) {
+        let x = hans ? toSimplified(s) : s;
+        const seen: string[] = [];
+        for (let i = 0; i < 6; i++) { seen.push(x); const y = eraText(x); x = hans ? toSimplified(y) : y; }
+        expect(seen.slice(2).every(v => v === x), `${s} (${hans ? '简体' : '繁體'}): ${seen.join(' → ')}`).toBe(true);
+        expect(x.length).toBeLessThan(s.length + 12);
+      }
+    }
+    expect(toSimplified(eraText(toSimplified('工程費')))).toBe('基建工程费');
   });
 });

@@ -58,6 +58,7 @@ export function openScene(ctx: ScreenContext, cls: string, size: (portrait: bool
   const stage = el('div', 'pl-stage');
   root.append(stage);
   const timers: number[] = [];
+  const sleeps = new Map<number, () => void>();
   let skip: (() => void) | null = null;
   const s: Scene = {
     ctx, root, stage, layer: stage, portrait: false, w: 640, h: 480, closed: false,
@@ -91,13 +92,22 @@ export function openScene(ctx: ScreenContext, cls: string, size: (portrait: bool
         skip = end;
       });
     },
-    sleep(ms) { return new Promise(resolve => { timers.push(window.setTimeout(resolve, ms * ctx.scale())); }); },
+    // A sleep always ends: a rebuild (the screen turned) leaves it running, closing the scene ends it at once (code
+    // awaiting it checks `closed`). It used to be cleared with the timers, and whatever awaited it waited for good.
+    sleep(ms) {
+      return new Promise<void>(resolve => {
+        const t = window.setTimeout(() => { sleeps.delete(t); resolve(); }, ms * ctx.scale());
+        sleeps.set(t, resolve);
+      });
+    },
     every(ms, fn) { timers.push(window.setInterval(fn, ms)); },
     close() {
       if (s.closed) return;
       s.closed = true;
       ro.disconnect();
       for (const t of timers) { clearTimeout(t); clearInterval(t); }
+      for (const [t, done] of sleeps) { clearTimeout(t); done(); }
+      sleeps.clear();
       root.classList.add('out');
       setTimeout(() => root.remove(), 160);
     },

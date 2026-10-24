@@ -15,7 +15,7 @@
 import type { Ask, GameEvent } from '../../core/types';
 import { OBJECT_NAMES } from '../../core/modules/objects';
 import { SLOT_FRAME_MS } from '../../core/modules/slot-machine';
-import { askScreens, fxScreens, type ScreenContext } from './registry';
+import { askScreens, fxScreens, onStuck, type ScreenContext } from './registry';
 import { esc, frameSrcs, money, openScene, preload, type Scene } from './place-scene';
 import { audio, Sfx } from '../audio';
 import './slot-machine.css';
@@ -40,6 +40,9 @@ const SIDE = { w: 505, h: 199, box: [8 - BOX.x, 14 - BOX.y], machine: [8 + BOX.w
 
 /** The machine left open by the question for the fx that follows it. */
 let live: SlotMachine | null = null;
+/** Every machine on screen (the hang guard closes them all when it gives up on an event). */
+const machines = new Set<SlotMachine>();
+onStuck(() => { for (const m of [...machines]) m.close(); });
 
 class SlotMachine {
   readonly small: 0 | 1;
@@ -76,7 +79,9 @@ class SlotMachine {
 
   /** Opens the scene once its art is loaded (or after a short wait). */
   async open() {
+    machines.add(this);
     await preload(frameSrcs(this.ctx, 'Panel', 67, 0, 23), 1500);
+    if (this.closed) return;
     const area = this.ctx.area;
     this.scene = openScene(this.ctx, 'sm-scene', () => {
       // The layout that shows the machine larger wins.
@@ -169,10 +174,13 @@ class SlotMachine {
   /** Runs `step` once per 30 ms frame until it returns false (frames missed while hidden are skipped over). */
   private ticker(step: () => boolean): Promise<void> {
     cancelAnimationFrame(this.raf);
+    this.endTicker?.();
     return new Promise(resolve => {
+      // Ends when the machine closes too (its frame callback is cancelled then: the wait must not be left open).
+      this.endTicker = () => { this.endTicker = null; resolve(); };
       let last = performance.now();
       const loop = (now: number) => {
-        if (this.closed) { resolve(); return; }
+        if (this.closed) { this.endTicker?.(); return; }
         let n = Math.floor((now - last) / SLOT_FRAME_MS);
         if (n > 0) {
           last += n * SLOT_FRAME_MS;
@@ -180,13 +188,18 @@ class SlotMachine {
           let go = true;
           while (n-- > 0 && (go = step()));
           this.render();
-          if (!go) { resolve(); return; }
+          if (!go) { this.endTicker?.(); return; }
         }
         this.raf = requestAnimationFrame(loop);
       };
       this.raf = requestAnimationFrame(loop);
     });
   }
+
+  /** Settles the running ticker's promise (a new ticker, or the machine closed). */
+  private endTicker: (() => void) | null = null;
+  /** Answers the human's spin without a pull (the machine closed before the tap). */
+  private unspin: (() => void) | null = null;
 
   private key = () => this.tap();
 
@@ -200,6 +213,9 @@ class SlotMachine {
   spin(): Promise<number> {
     this.waiting = true;
     return new Promise(resolve => {
+      // Closed before the tap (the hang guard, a new game): no pull of the player's — the rules pull at frame 39.
+      if (this.closed) { resolve(0); return; }
+      this.unspin = () => resolve(0);
       this.onTap = () => {
         if (this.tapped) return;
         this.tapped = true;
@@ -209,6 +225,7 @@ class SlotMachine {
         this.lever = true;
         audio.ui('click');
         this.render();
+        this.unspin = null;
         resolve(pull);
       };
       void this.ticker(() => { this.freeFrame(); return true; });
@@ -272,10 +289,14 @@ class SlotMachine {
     if (this.closed) return;
     this.closed = true;
     cancelAnimationFrame(this.raf);
+    this.endTicker?.();
+    this.unspin?.();
+    this.unspin = null;
     window.removeEventListener('keyup', this.key);
     audio.stop(Sfx.slot);
     this.scene?.close();
     if (live === this) live = null;
+    machines.delete(this);
   }
 }
 

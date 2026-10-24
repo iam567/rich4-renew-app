@@ -18,7 +18,7 @@
  */
 import type { Ask, GameEvent } from '../../core/types';
 import { WHEEL_FRAME_MS, WHEEL_HOLD_FRAMES, WHEEL_TEXT } from '../../core/modules/wheel';
-import { askScreens, fxScreens, type ScreenContext } from './registry';
+import { askScreens, fxScreens, onStuck, type ScreenContext } from './registry';
 import { esc, openScene, preload, type Scene } from './place-scene';
 import { audio, Sfx } from '../audio';
 import './wheel.css';
@@ -38,6 +38,9 @@ const UNIT = [(v: number) => `${v}天`, (v: number) => `${v}天`, (v: number) =>
 
 /** The wheel left open by the question for the fx that follows it. */
 let live: Wheel | null = null;
+/** Every wheel on screen (the hang guard closes them all when it gives up on an event). */
+const wheels = new Set<Wheel>();
+onStuck(() => { for (const w of [...wheels]) w.close(); });
 
 class Wheel {
   scene!: Scene;
@@ -58,6 +61,8 @@ class Wheel {
   private stopped = false;
   private landed = false;
   private onTap: (() => void) | null = null;
+  /** Answers the human's spin without a stop (the wheel closed before the tap). */
+  private unspin: (() => void) | null = null;
   /** The rules' frames: (frame, cells turned) at every move, and the timeline. */
   private moves: [number, number][] = [];
   private t: Timeline | null = null;
@@ -70,8 +75,10 @@ class Wheel {
 
   /** Opens the scene once its art is loaded (or after a short wait) and starts the clock at frame 0. */
   async open(frameMs = WHEEL_FRAME_MS) {
+    wheels.add(this);
     const id = 68 + (this.kind & 3);
     await preload([0, 1, 2].map(f => this.ctx.bank.art('Panel', id, f)?.src).concat([]), 1500);
+    if (this.closed) return;
     const area = this.ctx.area;
     this.scene = openScene(this.ctx, 'wh-scene', () => {
       const W = area.clientWidth || 440, H = area.clientHeight || 440;
@@ -183,6 +190,9 @@ class Wheel {
     this.waiting = true;
     this.render();
     return new Promise(resolve => {
+      // Closed before the tap (the hang guard, a new game): no stop of the player's — the rules stop it at frame 39.
+      if (this.closed) { resolve(0); return; }
+      this.unspin = () => resolve(0);
       this.onTap = () => {
         if (this.stopped) return;
         // The click is seen during the wait after frame f: the stop is frame f + 1 (at least 1).
@@ -190,6 +200,7 @@ class Wheel {
         const stop = Math.max(1, Math.floor(phi) + 1);
         this.press(true);
         this.onTap = null;
+        this.unspin = null;
         resolve(stop);
       };
     });
@@ -197,6 +208,7 @@ class Wheel {
 
   /** Plays the rules' frames to the end, then closes. */
   play(t: Timeline): Promise<void> {
+    if (this.closed) return Promise.resolve();
     this.t = t;
     this.moves = [];
     let n = t.start, prev = t.start;
@@ -219,6 +231,9 @@ class Wheel {
     audio.stop(Sfx.wheel);
     this.scene?.close();
     if (live === this) live = null;
+    wheels.delete(this);
+    this.unspin?.();
+    this.unspin = null;
     this.done?.();
     this.done = null;
   }
