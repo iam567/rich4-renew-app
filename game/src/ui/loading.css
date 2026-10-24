@@ -1,7 +1,7 @@
 /* The map's loading screen (ui/loading.ts): the game's blue message box over the map's picture. */
 .boot { position: fixed; inset: 0; z-index: 1000; display: grid; place-items: center; overflow: hidden;
   padding: max(16px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
-  background: radial-gradient(circle at 20% 0%, #155a60, #0b2427 65%); font-family: "Huninn", system-ui, sans-serif;
+  background: radial-gradient(circle at 20% 0%, #155a60, #0b2427 65%); font-family: "Huninn", "PingFang TC", system-ui, sans-serif;
   transition: opacity .26s ease-out; }
 .boot.out { opacity: 0; pointer-events: none; }
 .boot-bg { position: absolute; inset: -24px; background: center / cover no-repeat; filter: blur(14px) saturate(1.1) brightness(.55); transform: scale(1.06); }

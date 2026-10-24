@@ -12,7 +12,7 @@
   background: radial-gradient(circle at 38% 34%, #fff6c4, #ffd34a 42%, #c98b00 78%, #7a4f00);
   box-shadow: 0 2px 4px rgba(0, 0, 0, .5), inset 0 -2px 3px rgba(0, 0, 0, .25); transform: scale(.42); }
 .wh-badge { position: absolute; z-index: 3; display: grid; place-items: center; opacity: 0; pointer-events: none;
-  font-family: "Arial Black", "Huninn", sans-serif; font-weight: 900; font-size: 30px; color: #fff27a; letter-spacing: 1px;
+  font-family: "Arial Black", "Huninn", "PingFang TC", sans-serif; font-weight: 900; font-size: 30px; color: #fff27a; letter-spacing: 1px;
   text-shadow: 0 2px 0 #6a2a00, 2px 0 0 #6a2a00, -2px 0 0 #6a2a00, 0 -2px 0 #6a2a00, 0 0 10px rgba(255, 190, 60, .95); }
 .wh-badge.on { opacity: 1; animation: wh-pop .42s cubic-bezier(.3, 1.8, .5, 1) both; }
 @keyframes wh-pop { from { transform: scale(.2) rotate(-10deg); opacity: 0; } }

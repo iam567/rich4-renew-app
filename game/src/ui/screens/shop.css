@@ -1,6 +1,6 @@
 /* The shop (09 §7.4): a fixed canvas in original pixels (640×480 / portrait 480×900), scaled to fit. */
 .game:has(> .shop) { position: relative; }
-.shop { position: absolute; inset: 0; z-index: 40; overflow: hidden; font-family: "Huninn", system-ui, sans-serif;
+.shop { position: absolute; inset: 0; z-index: 40; overflow: hidden; font-family: "Huninn", "PingFang TC", system-ui, sans-serif;
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
   background: #2b1d4a; animation: shop-in .25s ease-out; }
 .shop.out { animation: shop-out .26s ease-in forwards; }

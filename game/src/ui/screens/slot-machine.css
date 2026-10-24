@@ -11,7 +11,7 @@
 .sm-reel::after { content: ''; position: absolute; inset: 0; pointer-events: none;
   background: linear-gradient(rgba(0, 0, 0, .55), rgba(0, 0, 0, 0) 30%, rgba(255, 255, 255, .25) 48%, rgba(0, 0, 0, 0) 66%, rgba(0, 0, 0, .55)); }
 .sm-strip { position: absolute; left: 0; right: 0; top: 0; will-change: transform; }
-.sm-strip b { display: block; height: 36px; line-height: 36px; text-align: center; font-family: "Arial Black", "Huninn", sans-serif;
+.sm-strip b { display: block; height: 36px; line-height: 36px; text-align: center; font-family: "Arial Black", "Huninn", "PingFang TC", sans-serif;
   font-weight: 900; font-size: 29px; color: #1b1b1b; text-shadow: 0 1px 0 #fff; }
 .sm-strip b.seven { color: #d4121a; }
 .sm-reel.fast .sm-strip { filter: blur(1.4px); }

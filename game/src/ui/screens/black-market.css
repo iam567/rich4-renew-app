@@ -1,6 +1,6 @@
 /* 黑市: a night-market stall, cute and glowing */
 .bm-overlay { position: absolute; inset: 0; z-index: 30; background: rgba(8, 4, 30, .6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px);
-  font-family: "Huninn", system-ui, sans-serif; overflow: hidden; }
+  font-family: "Huninn", "PingFang TC", system-ui, sans-serif; overflow: hidden; }
 .bm { position: absolute; left: 50%; top: 50%; width: 880px; height: 500px; transform-origin: 50% 50%; padding: 70px 22px 16px; border-radius: 30px;
   color: #fff; display: grid; grid-template-rows: auto 1fr auto; gap: 10px;
   background: radial-gradient(120% 90% at 50% 0%, #4a2a8a 0%, #241452 55%, #140b33 100%);

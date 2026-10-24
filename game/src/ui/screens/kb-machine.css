@@ -78,7 +78,7 @@
 .kbp-reels { display: flex; gap: 4cqw; }
 .kbp-d { display: grid; place-items: center; width: 27cqw; height: 40cqw; border-radius: 4cqw; font-weight: 400; font-size: 32cqw; line-height: 1;
   color: #fff; background: linear-gradient(#ff7ac0, #c0146a); border: .8cqw solid #fff; text-shadow: 0 1cqw 0 #5a0030, 0 0 3cqw rgba(255,255,255,.5);
-  font-family: "Arial Rounded MT Bold", "Huninn", sans-serif; }
+  font-family: "Arial Rounded MT Bold", "Huninn", "PingFang TC", sans-serif; }
 .kbp-d:nth-child(2) { background: linear-gradient(#7ad8ff, #1460c0); text-shadow: 0 1cqw 0 #08245a; }
 .kbp-d:nth-child(3) { background: linear-gradient(#9af5a4, #1e9a3c); text-shadow: 0 1cqw 0 #0a4a1a; }
 .kbp-d.roll { filter: blur(.5px) brightness(1.2); transform: translateY(-2%); }
@@ -134,7 +134,7 @@
 .kbs-lever { left: 13%; top: 69%; width: 20%; height: 14%; }
 .kbs-gogo { position: absolute; left: 50%; top: 13%; z-index: 3; transform: translate(-50%, -50%); padding: 2px 18px; border-radius: 18px; font-size: 40px; line-height: 1.1;
   color: #fff; background: #ff2a5a; border: 4px solid #fff; box-shadow: 0 0 22px 8px rgba(255, 60, 120, .85); text-shadow: 0 3px 0 #8a0030;
-  opacity: 0; transition: opacity .2s; pointer-events: none; font-family: "Arial Rounded MT Bold", "Huninn", sans-serif; }
+  opacity: 0; transition: opacity .2s; pointer-events: none; font-family: "Arial Rounded MT Bold", "Huninn", "PingFang TC", sans-serif; }
 .kbm-mach.gogo .kbs-gogo { opacity: 1; animation: kbs-gogo .5s ease-in-out infinite alternate; }
 @keyframes kbs-gogo { to { transform: translate(-50%, -50%) scale(1.1); box-shadow: 0 0 32px 14px rgba(255, 220, 60, .9); } }
 .kbs-mode { position: absolute; left: 50%; top: 22.6%; z-index: 3; transform: translate(-50%, -50%); padding: 1px 14px; border-radius: 14px; font-size: 24px; line-height: 1.25;

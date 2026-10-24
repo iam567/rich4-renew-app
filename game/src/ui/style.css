@@ -237,7 +237,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* save / load screen (09 §7.11) */
 .slots-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 10px 12px;
-  background: rgba(20, 10, 50, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); font-family: "Huninn", system-ui, sans-serif; }
+  background: rgba(20, 10, 50, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); font-family: "Huninn", "PingFang TC", system-ui, sans-serif; }
 .msg.slots { width: min(660px, 100%); max-width: min(660px, 100%); max-height: 96vh; }
 .slot-list { position: relative; display: flex; flex-direction: column; gap: 9px; width: 100%; overflow: auto; padding: 4px 4px 10px; margin-bottom: 8px; }
 .slot-row { display: grid; grid-template-columns: 52px 62px 66px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; width: 100%;
@@ -501,7 +501,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game { position: relative; }
 
 /* ============================================================== title and new game */
-.title { position: relative; height: 100%; background: #1b6fd1 var(--title-bg, none) center 22% / cover no-repeat; overflow: hidden; font-family: "Huninn", system-ui, sans-serif; }
+.title { position: relative; height: 100%; background: #1b6fd1 var(--title-bg, none) center 22% / cover no-repeat; overflow: hidden; font-family: "Huninn", "PingFang TC", system-ui, sans-serif; }
 .title-buttons { position: absolute; left: 0; right: 0; bottom: max(7%, env(safe-area-inset-bottom)); display: flex; justify-content: center; align-items: flex-end; gap: clamp(10px, 4vw, 48px); }
 .title-btn { position: relative; display: grid; justify-items: center; padding: 0; background: none; width: calc(clamp(92px, 18vmin, 170px) * var(--k, 1)); }
 .title-btn img { grid-area: 1 / 1; width: 100%; height: auto; transition: transform .15s; filter: drop-shadow(0 6px 8px rgba(0, 20, 60, .45)); }
@@ -531,7 +531,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* new-game sheet: a fixed 960×540 (portrait 540×960) canvas scaled to fit, so everything shows on one page */
 .ng { position: absolute; inset: 0; z-index: 10; background: rgba(10, 30, 80, .35); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  font-family: "Huninn", system-ui, sans-serif; overflow: hidden; }
+  font-family: "Huninn", "PingFang TC", system-ui, sans-serif; overflow: hidden; }
 .msg.sheet.ng-sheet { position: absolute; left: 50%; top: 50%; width: 960px; height: 540px; min-width: 0; max-width: none; max-height: none; margin: 0; padding: 26px 20px 20px;
   transform-origin: 50% 50%; display: grid; gap: 8px 16px; align-items: start;
   grid-template-columns: 560px 1fr; grid-template-rows: auto auto auto 1fr auto;
@@ -541,7 +541,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ng-sheet > .ribbon { grid-area: ribbon; margin: -46px auto 0; }
 .ng-maps-sec { grid-area: maps; } .ng-players-sec { grid-area: players; } .ng-opts { grid-area: opts; } .ng-actions { grid-area: actions; }
 .msg.sheet.ng-sheet.portrait { width: 540px; height: 900px; grid-template-columns: 1fr; grid-template-rows: auto auto auto auto 1fr auto;
-  grid-template-areas: "ribbon" "maps" "players" "lineup" "opts" "actions"; padding: 30px 18px 20px; }
+  grid-template-areas: "ribbon" "maps" "players" "lineup" "opts" "actions"; padding: 30px 18px 20px; row-gap: 5px; }
+/* (row-gap: the six rows were ~12 px taller than the 900 px canvas, so 返回 / 開始遊戲 hung over the frame's bottom edge
+   — off the bottom of an iPad's screen, where the sheet fills the height) */
 .ng-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .ng-head h3 { margin: 0; font-weight: 400; font-size: 20px; color: #ffe27a; }
 .ng-pager { margin-left: auto; display: flex; align-items: center; gap: 6px; color: #fff; font-size: 14px; }

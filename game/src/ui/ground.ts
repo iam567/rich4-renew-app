@@ -78,7 +78,12 @@ export class TiledGround {
   preview: Pic | null = null;
   private tiles = new Map<string, Tile>();
   private loading = new Set<string>();
-  private failed = new Set<string>();
+  /**
+   * Tiles whose decoding failed: the time to try again and how often it failed. Not for good: a decode that failed
+   * once (memory short for a moment on an iPad, a fetch timed out) left that part of the map on the blurry preview
+   * until the save was loaded again (issue #10).
+   */
+  private failed = new Map<string, { at: number; n: number }>();
   private frame = 0;
   /** Tiles the last frame wanted (0 when the preview was enough). */
   private wanted = 0;
@@ -244,7 +249,8 @@ export class TiledGround {
   private pump() {
     for (const key of this.queue) {
       if (this.loading.size >= PARALLEL()) return;
-      if (this.loading.has(key) || this.failed.has(key)) continue;
+      const f = this.failed.get(key);
+      if (this.loading.has(key) || (f && performance.now() < f.at)) continue;
       const have = this.tiles.get(key);
       if (have && have.px >= this.px - 1e-6) continue;
       if (!have && this.tiles.size + this.loading.size >= this.maxTiles) return;
@@ -258,13 +264,20 @@ export class TiledGround {
     decodeImage(`${this.base}/${this.m.tiles[r][c]}`, px < this.m.scale ? { w: side, h: side } : undefined, 'ground').then(pic => {
       this.loading.delete(key);
       if (this.disposed) { releasePic(pic); return; }
+      this.failed.delete(key);
       const old = this.tiles.get(key);
       if (old) releasePic(old.pic);
       this.tiles.set(key, { pic, used: this.frame, px });
       this.changed({ x: c * this.m.tile, y: r * this.m.tile, s: this.m.tile });
       this.onLoad?.();
       this.pump();
-    }, () => { this.loading.delete(key); this.failed.add(key); this.pump(); });
+    }, () => {
+      this.loading.delete(key);
+      // Again after 2 s, 4 s, 8 s … at most every 30 s.
+      const n = (this.failed.get(key)?.n ?? 0) + 1;
+      this.failed.set(key, { at: performance.now() + Math.min(30000, 1000 * 2 ** n), n });
+      this.pump();
+    });
   }
 
   dispose() {

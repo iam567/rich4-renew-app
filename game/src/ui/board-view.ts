@@ -162,6 +162,8 @@ export class BoardView {
       } catch (e) { this.oops('tick', e); }
       this.alpha = Math.min(1, acc / this.tickMs);
       this.fx.alpha = this.alpha;
+      // About twice a second: the canvas's pixels still match its size on screen (see `backingStale`).
+      if (++this.checks % 30 === 0 && this.backingStale()) this.resize();
       try { this.draw(); } catch (e) { this.oops('draw', e); }
     };
     requestAnimationFrame(loop);
@@ -179,7 +181,7 @@ export class BoardView {
   // ---------- geometry ----------
 
   private resize() {
-    const r = this.canvas.getBoundingClientRect();
+    const r = this.size();
     // At most 2×: a phone's 3× canvas has 2.25 times the pixels to fill every frame for no visible gain.
     this.dpr = Math.min(2, window.devicePixelRatio || 1);
     this.W = Math.max(1, r.width); this.H = Math.max(1, r.height);
@@ -193,6 +195,29 @@ export class BoardView {
     // flashed black every step (the user, the Windows build). Drawn again at once instead (the observer runs before
     // the browser paints).
     if (changed && this.alive && this.looping) { try { this.draw(); } catch (e) { this.oops('draw', e); } }
+  }
+
+  private checks = 0;
+  /**
+   * The canvas's pixels no longer match its size on screen (or the screen's pixel ratio): it is then shown
+   * stretched — the whole map blurry — until the next resize. The resize observer only reports a change of the
+   * element's size, so a size taken at an unlucky moment (iPad, issue #10: blurry after a fate board until the save
+   * was loaded again) stayed; the frame loop checks it now and then.
+   */
+  private backingStale(): boolean {
+    const r = this.size();
+    if (!r.width || !r.height) return false; // hidden: nothing to match
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    return Math.abs(this.canvas.width - r.width * dpr) > 1.5 || Math.abs(this.canvas.height - r.height * dpr) > 1.5;
+  }
+
+  /**
+   * The canvas's size in CSS px as laid out: the bounding box (fractional), unless a transform on the way up
+   * scales it (a zooming intro, an animation caught mid-way), which the layout size leaves out.
+   */
+  private size(): { width: number; height: number } {
+    const r = this.canvas.getBoundingClientRect(), w = this.canvas.offsetWidth, h = this.canvas.offsetHeight;
+    return Math.abs(r.width - w) > 1 || Math.abs(r.height - h) > 1 ? { width: w, height: h } : r;
   }
 
   private basis() {
