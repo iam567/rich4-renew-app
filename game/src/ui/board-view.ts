@@ -768,6 +768,9 @@ export class BoardView {
    * replaced, or frames that stop coming, end the wait (the camera is then put on the spot).
    */
   panTo(x: number, y: number): Promise<void> {
+    // 鏡頭跟隨「少動」(issue #11): a spot already well inside the view is shown where it is, the camera stays on the
+    // actor; only farther spots (a missile's target, another street) are travelled to.
+    if (this.calm && this.alive && this.nearCentre(x, y)) return Promise.resolve();
     this.follow = null;
     return watch('view.panTo', new Promise<void>(resolve => {
       let over = false;
@@ -780,6 +783,16 @@ export class BoardView {
       }, 1200);
       if (!this.alive || !this.startGlide(() => ({ x, y }), 450, finish)) { this.cam.x = x; this.cam.y = y; this.keepOnBoard(); finish(); }
     }));
+  }
+
+  /** 鏡頭跟隨: false 標準 (every effect's spot is centred, as in the original), true 少動 (see panTo). */
+  calm = false;
+
+  /** Whether a world point shows in the middle part of the view now (where a 440×440 clip round it still fits). */
+  private nearCentre(x: number, y: number): boolean {
+    const { a, b, c, d } = this.basis(), dx = x - this.cam.x, dy = y - this.cam.y;
+    const u = a * dx + c * dy, v = b * dx + d * dy;
+    return Math.abs(u) <= this.W * 0.3 && v >= -this.H * 0.3 && v <= this.H * 0.25;
   }
 
   /** Camera waits by game speed (慢 1 … 快 0.5 of the time). */
@@ -1363,8 +1376,9 @@ export class BoardView {
   private moveCamera() {
     const now = performance.now(), dt = this.lastDraw ? Math.min(100, now - this.lastDraw) : 16.7;
     this.lastDraw = now;
-    // The same easing per 60th of a second as before (0.2 and 0.25 of the way), whatever the frame rate.
-    this.fy += (this.focusY - this.fy) * (1 - Math.pow(0.8, dt / 16.7));
+    // The same easing per 60th of a second whatever the frame rate: the camera 0.25 of the way; the dialog offset
+    // 0.1 (0.2 until issue #11: the map slid up for a box too quickly).
+    this.fy += (this.focusY - this.fy) * (1 - Math.pow(0.9, dt / 16.7));
     const g = this.glide;
     if (g) {
       const to = g.to(), u = Math.min(1, (now - g.t0) / g.ms);

@@ -21,6 +21,7 @@ import { openParty } from './party';
 import { Lobby, type Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, interruptedLoad, loadSlot, markLoading, notice, pickSlot, writeAuto, writeSlot, type Loaded } from './saves';
 import { lowerTier } from './mem-tier';
+import { memReport } from './mem-report';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
 import { audio, Sfx, Theme } from './audio';
@@ -45,7 +46,7 @@ import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
 import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
-import { jqMusicMode, musicSetFor, setJqMusicMode } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
+import { JQ_QUALITIES, jqMusicMode, jqMusicQuality, musicSetFor, setJqMusicMode, setJqMusicQuality } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
 import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { applyJqTheme } from './jq-theme';
 import { setEraLine } from './era-line';
@@ -234,6 +235,12 @@ const MINI_GAME_MODES = ['親自玩', '自動結算'];
 const AUTO_BUY_KEY = 'rich4.autobuy', AUTO_BUY_MODES = ['關', '開'];
 const AUTO_BUY_KINDS = new Set(['buy-land', 'upgrade-land', 'buy-facility', 'upgrade-facility']);
 const autoBuy = () => { try { return localStorage.getItem(AUTO_BUY_KEY) === '1'; } catch { return false; } };
+/** 鏡頭跟隨 (issue #11): 0 標準 (default), 1 少動 (BoardView.calm: effects on screen are shown without moving there). */
+const CAMERA_MODES = ['標準', '少動'];
+const CAMERA_KEY = 'rich4.camera';
+const cameraMode = () => { try { return localStorage.getItem(CAMERA_KEY) === '1' ? 1 : 0; } catch { return 0; } };
+/** Below the camera point, as a fraction of the view's height, that a dialog must leave free (the actor's feet, a ring). */
+const FOCUS_CLEAR = 0.08;
 const miniGameMode = () => { try { return Number(localStorage.getItem('rich4.minigame') ?? 0) === 1 ? 1 : 0; } catch { return 0; } };
 
 /**
@@ -253,6 +260,7 @@ function options() {
       stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
       stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
       stored('自動買地', AUTO_BUY_KEY, AUTO_BUY_MODES),
+      stored('鏡頭跟隨', CAMERA_KEY, CAMERA_MODES),
       // issue #8: the magic house's box naming who its group hits (on by default; off as in the original)
       { label: '魔法屋提示對象', opts: STREET_MODES, cur: () => magicHintMode(), pick: i => setMagicHintMode(i) },
       { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => { write('rich4.orientation', i); void applyOrientation(); } },
@@ -682,8 +690,16 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const c = view.canvas.getBoundingClientRect(), a = stage.getBoundingClientRect();
     return { x: q.x + c.left - a.left, y: q.y + c.top - a.top, zoom: q.zoom };
   };
-  // Keep the actor above an open dialog: put the camera point midway in the visible strip.
-  hud.onModal = top => { view.focusY = top === null ? 0.5 : Math.min(0.5, Math.max(0.2, top * 0.55)); };
+  // Keep the actor above an open dialog: put the camera point midway in the visible strip — only when the box would
+  // cover it (issue #11: a message at the bottom slid the map up and back for every box), and a box closing with the
+  // next one opening right after leaves it where it is instead of back and forth.
+  let focusBack: ReturnType<typeof setTimeout> | undefined;
+  hud.onModal = top => {
+    clearTimeout(focusBack);
+    if (top === null) { focusBack = setTimeout(() => { view.focusY = 0.5; }, 350); return; }
+    view.focusY = top >= 0.5 + FOCUS_CLEAR ? 0.5 : Math.min(0.5, Math.max(0.2, top * 0.55));
+  };
+  view.calm = cameraMode() === 1;
   // Game speed 0/1/2: the original ticks every 120/80/40 ms (docs/rules/08 §2.3); the remake runs the board
   // twice as fast (60/40/20 ms) and keeps message boxes and pauses at the original's times (`wait`), so text
   // stays readable.
@@ -772,6 +788,10 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
             try { localStorage.setItem('rich4.minigame', String(i)); } catch { /* not kept */ }
           } },
           { label: '自動買地', opts: AUTO_BUY_MODES, cur: () => (autoBuy() ? 1 : 0), pick: i => { try { localStorage.setItem(AUTO_BUY_KEY, String(i)); } catch { /* not kept */ } } },
+          { label: '鏡頭跟隨', opts: CAMERA_MODES, cur: () => cameraMode(), pick: i => {
+            try { localStorage.setItem(CAMERA_KEY, String(i)); } catch { /* not kept */ }
+            view.calm = i === 1;
+          } },
           { label: '魔法屋提示對象', opts: STREET_MODES, cur: () => magicHintMode(), pick: i => setMagicHintMode(i) },
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
@@ -790,6 +810,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
               setJqMusicMode(i);
               audio.setMusicSet(musicSetFor(mapId, { tycoon: !!ty }), true);
               syncTracks();
+            } },
+            // its sound (issue #11): the loudspeaker treatment (default) or the clean files, switched at once in place
+            { label: '音樂音質', opts: JQ_QUALITIES, cur: () => jqMusicQuality(), pick: (i: number) => {
+              setJqMusicQuality(i);
+              if (audio.ownMusic) audio.swapMusicFiles(musicSetFor(mapId, { tycoon: !!ty }));
             } }] : []),
           // 大富豪模式: the chat box's 播報 (docs/rules/17 §10).
           ...(chat ? [{ label: '播報', opts: CHAT_MODES, cur: () => chatMode(), pick: (i: number) => { setChatMode(i); chat.refresh(); } }] : []),
@@ -947,6 +972,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   }), () => view.unstick());
   wd.start();
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.watch = () => wd.report();
+  (window as unknown as { __rich4Mem: unknown }).__rich4Mem = () => memReport(bank, view); // memory by kind (ui/mem-report.ts)
   const stopWatch = () => { wd.stop(); };
   // The last line of defence (issue #9: 「觸發事件時經常卡死…音效重複播放，界面可以點擊，但事件無法結算」): every effect,
   // screen and camera move an event shows is awaited through `shown`, which gives up on it after a generous time the

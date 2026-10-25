@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BGM, THEMES, Theme, bgmCount, musicName } from './audio';
-import { JQ_FANFARE, JQ_TRACKS, musicSetFor } from './jq-music';
+import { JQ_FANFARE, JQ_TRACKS, jqMusicQuality, musicSetFor } from './jq-music';
 
 describe('激情歲月 own music (docs/rules/24 §16)', () => {
   it('is used only on 激情歲月 in a normal game: every other map and mode keeps the original music', () => {
@@ -30,5 +30,15 @@ describe('激情歲月 own music (docs/rules/24 §16)', () => {
     expect(bgmCount(null)).toBe(8);
     for (let i = 0; i < 8; i++) expect(musicName(null, { kind: 'bgm', index: i })).toBe(BGM[i]);
     for (let i = 0; i < THEMES.length; i++) expect(musicName(null, { kind: 'theme', index: i })).toBe(THEMES[i]);
+  });
+  it('音質: the loudspeaker files by default, the clean ones (names of their own) for 清晰, same order and count', () => {
+    expect(jqMusicQuality()).toBe(0); // no stored setting: 大喇叭
+    const horn = musicSetFor(107, { on: true })!, clean = musicSetFor(107, { on: true, clean: true })!;
+    expect(horn.tracks.map(t => t.name)).toEqual([...JQ_TRACKS]);
+    expect(clean.tracks.map(t => t.name)).toEqual(JQ_TRACKS.map(n => `${n}-clean`));
+    expect(clean.fanfare?.name).toBe(`${JQ_FANFARE}-clean`);
+    expect(clean.tracks.every(t => /\/maps\/remake\/jiqing\/music\/jq-[a-z-]+-clean\.m4a$/.test(t.url))).toBe(true);
+    expect(musicSetFor(107, { on: false, clean: true })).toBeNull();
+    expect(musicSetFor(0, { on: true, clean: true })).toBeNull();
   });
 });

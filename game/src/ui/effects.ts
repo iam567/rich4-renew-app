@@ -5,8 +5,8 @@
  */
 import { ASSETS } from './assets';
 import type { Archive, Frame, SpriteBank } from './sprites';
-import { decodeCropped, picSize } from './decode';
-import { memTier } from './mem-tier';
+import { decodeCropped, picSize, releasePic } from './decode';
+import { isAndroid, memTier } from './mem-tier';
 import { Fireworks, FIREWORKS_MS } from './fireworks';
 import { watch } from './watchdog';
 import { BUBBLE_BODY } from './bubble-text';
@@ -520,6 +520,22 @@ function startLoad(bank: SpriteBank, res: number): Loading {
   return L;
 }
 
+/**
+ * Drops a clip from the cache. On Android its decoded frames are also closed, three minutes later (anything still
+ * drawing them, a clip or a mini game, is over by then): an ImageBitmap's pixels live outside the script heap, so the
+ * garbage collector sees no reason to hurry, and a long game kept every clip it had evicted (issue #13). Elsewhere as
+ * before.
+ */
+function evict(k: number) {
+  const l = clips.get(k);
+  clips.delete(k);
+  if (!l || !isAndroid()) return;
+  setTimeout(() => {
+    if (clips.get(k) === l) return;
+    for (const f of new Set(l.clip.frames)) if (f) releasePic(f);
+  }, 180_000);
+}
+
 /** The clip's loading record, started when needed; the most recently used last (LRU order). */
 function loading(bank: SpriteBank, res: number): Loading {
   let c = clips.get(res);
@@ -532,11 +548,11 @@ function loading(bank: SpriteBank, res: number): Loading {
     const used = () => [...clips].reduce((s, [k, l]) => s + (pinned.has(k) ? 0 : l.bytes), 0);
     for (const [k] of [...clips]) {
       if (used() <= CLIP_BUDGET()) break;
-      if (k !== res && !pinned.has(k)) clips.delete(k);
+      if (k !== res && !pinned.has(k)) evict(k);
     }
   }, () => { if (clips.get(res) === me) clips.delete(res); });
   const loose = [...clips.keys()].filter(k => !pinned.has(k));
-  while (loose.length > CLIP_COUNT()) clips.delete(loose.shift()!);
+  while (loose.length > CLIP_COUNT()) evict(loose.shift()!);
   return c;
 }
 
@@ -559,6 +575,13 @@ export function preloadClips(bank: SpriteBank, ids: number[], pin = false): Prom
     chain = chain.then(() => loadClip(bank, id).then(() => undefined, () => undefined));
   }
   return chain;
+}
+
+/** Clips held decoded (for the memory report, ui/mem-report.ts). */
+export function clipStats(): { clips: number; bytes: number; pinned: number; pinnedBytes: number } {
+  let bytes = 0, pinnedBytes = 0;
+  for (const [k, l] of clips) if (pinned.has(k)) pinnedBytes += l.bytes; else bytes += l.bytes;
+  return { clips: clips.size, bytes, pinned: pinned.size, pinnedBytes };
 }
 
 /** Whether a clip is decoded and ready to play. */

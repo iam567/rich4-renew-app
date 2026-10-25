@@ -23,17 +23,34 @@ export function setJqMusicMode(v: number) {
   try { localStorage.setItem(KEY, String(v)); } catch { /* not kept */ }
 }
 
-const file = (name: string) => ({ name, url: `${ASSETS}/maps/remake/jiqing/music/${name}.m4a`, len: 0 });
+const QKEY = 'rich4.jqmusicq';
+/**
+ * 音質 (issue #11: 「音質比較嘈雜，長時間聽很刺耳」): 0 大喇叭 (default, the owner's pick: the loudspeaker treatment
+ * of §16), 1 清晰 (the same pieces without it: jq-*-clean.m4a, AAC 128 kb/s stereo, made from the clean Suno files).
+ */
+export const JQ_QUALITIES = ['大喇叭', '清晰'];
+export function jqMusicQuality(): number {
+  try { return localStorage.getItem(QKEY) === '1' ? 1 : 0; } catch { return 0; }
+}
+export function setJqMusicQuality(v: number) {
+  try { localStorage.setItem(QKEY, String(v)); } catch { /* not kept */ }
+}
 
-/** The set itself (lengths come from the files). */
-export function jqMusicSet(): MusicSet {
+// The clean files have names of their own, so the engine's decoded-buffer cache keeps both versions apart.
+const file = (base: string, clean: boolean) => {
+  const name = clean ? `${base}-clean` : base;
+  return { name, url: `${ASSETS}/maps/remake/jiqing/music/${name}.m4a`, len: 0 };
+};
+
+/** The set itself (lengths come from the files); `clean`: the 清晰 versions. */
+export function jqMusicSet(clean = jqMusicQuality() === 1): MusicSet {
   // (no screen themes of its own: the shop, the lottery and the results share the original's theme 6, so the results'
   // fanfare is played by main.ts at the game's end instead)
-  return { tracks: JQ_TRACKS.map(file), fanfare: file(JQ_FANFARE) };
+  return { tracks: JQ_TRACKS.map(n => file(n, clean)), fanfare: file(JQ_FANFARE, clean) };
 }
 
 /** Which music a game plays: 激情歲月's own on that map (a normal game, the setting on), else none (the original's). */
-export function musicSetFor(mapId: number, o: { tycoon?: boolean; on?: boolean } = {}): MusicSet | null {
+export function musicSetFor(mapId: number, o: { tycoon?: boolean; on?: boolean; clean?: boolean } = {}): MusicSet | null {
   if (mapId !== JQ_MAP_ID || o.tycoon) return null;
-  return (o.on ?? jqMusicMode() === 0) ? jqMusicSet() : null;
+  return (o.on ?? jqMusicMode() === 0) ? jqMusicSet(o.clean) : null;
 }

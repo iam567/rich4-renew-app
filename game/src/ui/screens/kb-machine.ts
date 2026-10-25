@@ -38,10 +38,17 @@ export const fmt = (n: number) => Math.trunc(n).toLocaleString('zh-Hant');
 /** The games by kind; each resolves with the answer when the player 收手 or the session is over. */
 export const games: Partial<Record<MachineKind, (ctx: ScreenContext, ask: KbMachineAsk) => Promise<MachineAnswer>>> = {};
 
-/** Loads the machine's pictures before the page shows (no blank reels on the first spin). */
-const kept: HTMLImageElement[] = [];
+/**
+ * Loads the machine's pictures before the page shows (no blank reels on the first spin). Each picture once: every
+ * machine page used to add another decoded copy of the same pictures for the rest of the game (issue #13).
+ */
+const kept = new Map<string, HTMLImageElement>();
 export function preloadArt(names: string[]) {
-  for (const n of names) { const i = new Image(); i.decoding = 'async'; i.src = MACH(n); void i.decode?.().catch(() => 0); kept.push(i); }
+  for (const n of names) {
+    const src = MACH(n);
+    if (kept.has(src)) continue;
+    const i = new Image(); i.decoding = 'async'; i.src = src; void i.decode?.().catch(() => 0); kept.set(src, i);
+  }
 }
 
 /**

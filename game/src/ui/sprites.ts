@@ -163,6 +163,15 @@ export class SpriteBank {
     return { frames, bytes, mapBytes: this.mapBytes, budget: memTier().spriteBytes };
   }
 
+  /** Everything the bank holds decoded (for the memory report, ui/mem-report.ts). */
+  memStats(): { boardFrames: number; boardBytes: number; mapBytes: number; fullFrames: number; fullBytes: number; tinted: number; tintedBytes: number } {
+    let boardFrames = 0, boardBytes = 0, fullFrames = 0, fullBytes = 0, tintedBytes = 0;
+    for (const v of this.boardCache.values()) if (!(v instanceof Promise) && v.frames) { boardFrames += v.frames.length; boardBytes += v.bytes; }
+    for (const v of this.cache.values()) if (Array.isArray(v)) { fullFrames += v.length; fullBytes += frameBytes(v); }
+    for (const c of this.tinted.values()) tintedBytes += c.width * c.height * 4;
+    return { boardFrames, boardBytes, mapBytes: this.mapBytes, fullFrames, fullBytes, tinted: this.tinted.size, tintedBytes };
+  }
+
   /**
    * Over the tier's budget (ui/mem-tier.ts), the map sprites not drawn for the longest time go, as long as they
    * have not been drawn for `IDLE_MS`: they are decoded again when seen. The figures and the dice always stay.

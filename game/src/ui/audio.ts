@@ -12,6 +12,7 @@
  * screen closes (fcn_004549cf / fcn_00454bcc), and holiday music that holds for its days.
  */
 import { watch } from './watchdog';
+import { isAndroid, memTier } from './mem-tier';
 import { ASSETS } from './assets';
 import { CARD_LINES, EVENT_LINES, TOOL_LINES } from './lines';
 import { CARD_VOICE, EVENT_VOICE, TOOL_VOICE, VOICE_TEXT } from './voices';
@@ -113,6 +114,8 @@ class AudioEngine {
   private manifest: Manifest | null = null;
   private loading: Promise<void> | null = null;
   private buffers = new Map<string, Promise<AudioBuffer | null>>();
+  /** The buffers decoded so far, by the same key (their sizes for the music budget and the memory report). */
+  private decoded = new Map<string, AudioBuffer>();
   private effects = new Map<number, Playing>();
   private loops = new Set<number>();
   private voiceNow: { id: number; playing: Playing | null; end: () => void } | null = null;
@@ -256,21 +259,60 @@ class AudioEngine {
   private buffer(kind: Kind, id: number | string): Promise<AudioBuffer | null> {
     const key = `${kind}/${id}`;
     let b = this.buffers.get(key);
+    // Music in use moves to the end (the least recently used is dropped first, see trimMusic).
+    if (b && kind === 'music') { this.buffers.delete(key); this.buffers.set(key, b); }
     if (!b) {
       const ctx = this.ctx;
       b = !ctx ? Promise.resolve(null) : fetch(this.url(kind, id))
         // Capacitor's iOS asset handler answers local audio files with status 0 (the body is there): accept it.
         .then(r => (r.ok || r.status === 0 ? r.arrayBuffer() : Promise.reject(new Error(String(r.status)))))
         .then(data => new Promise<AudioBuffer>((ok, no) => ctx.decodeAudioData(data, ok, no)))
+        .then(buf => { if (this.buffers.has(key)) this.decoded.set(key, buf); return buf; })
         .catch(() => null);
       if (ctx) this.buffers.set(key, b);
       // Voices are many and short-lived: keep at most the last few.
       if (kind === 'voice') {
         const voices = [...this.buffers.keys()].filter(k => k.startsWith('voice/'));
-        if (voices.length > 24) this.buffers.delete(voices[0]);
+        if (voices.length > 24) this.drop(voices[0]);
       }
     }
     return b;
+  }
+
+  private drop(key: string) { this.buffers.delete(key); this.decoded.delete(key); }
+
+  /**
+   * Decoded music is big (a 3-minute track is ~70 MB of samples at 48 kHz: all 25 tracks would be ~760 MB, and a long
+   * game used to keep every one it had played; issue #13, Android closing the app late in a game). On Android, beyond
+   * the device's budget (ui/mem-tier.ts `musicBytes`) the least recently played go, never the one playing (`now`) nor the
+   * background tracks a screen will resume; they are decoded again when next played.
+   */
+  private trimMusic(now: string) {
+    // Android only (iOS and the desktop keep every decoded track, as before: the owner 2026-10-26).
+    const budget = isAndroid() ? memTier().musicBytes : Infinity;
+    if (budget === Infinity) return;
+    const need = new Set([`music/${now}`, ...this.stack.map(s => `music/${musicName(this.mset, { kind: 'bgm', index: s.index })}`)]);
+    const size = (b: AudioBuffer) => b.length * b.numberOfChannels * 4;
+    let used = 0;
+    for (const [k, b] of this.decoded) if (k.startsWith('music/')) used += size(b);
+    for (const k of [...this.buffers.keys()]) {
+      if (used <= budget) break;
+      const b = this.decoded.get(k);
+      if (!k.startsWith('music/') || need.has(k) || !b) continue;
+      used -= size(b);
+      this.drop(k);
+    }
+  }
+
+  /** Decoded audio held: count and bytes, music apart (for the memory report, ui/mem-report.ts). */
+  memStats(): { buffers: number; bytes: number; music: number; musicBytes: number } {
+    let bytes = 0, music = 0, musicBytes = 0;
+    for (const [k, b] of this.decoded) {
+      const n = b.length * b.numberOfChannels * 4;
+      bytes += n;
+      if (k.startsWith('music/')) { music++; musicBytes += n; }
+    }
+    return { buffers: this.decoded.size, bytes, music, musicBytes };
   }
 
   /** Seconds of an effect / voice from the manifest (0 when unknown). */
@@ -464,12 +506,30 @@ class AudioEngine {
    */
   setMusicSet(set: MusicSet | null, now = false) {
     if (set === this.mset) return;
-    this.mset = set;
-    this.setUrls.clear();
-    for (const t of [...(set?.tracks ?? []), ...Object.values(set?.themes ?? {}), ...(set?.fanfare ? [set.fanfare] : [])]) if (t) this.setUrls.set(t.name, t.url);
+    this.useSet(set);
     this.lastBgm = this.bgmCount - 1;
     this.stack = [];
     if (now && !this.holiday) { const s = this.musicNow.state; if (!s || s.kind !== 'theme') this.background(1); }
+  }
+
+  private useSet(set: MusicSet | null) {
+    this.mset = set;
+    this.setUrls.clear();
+    for (const t of [...(set?.tracks ?? []), ...Object.values(set?.themes ?? {}), ...(set?.fanfare ? [set.fanfare] : [])]) if (t) this.setUrls.set(t.name, t.url);
+  }
+
+  /**
+   * The same pieces in other files (激情歲月's 音質 大喇叭 / 清晰): what plays goes on from the same place in the other
+   * version, the rotation and the remembered tracks stay. A set with another number of tracks (or none) is a
+   * different set: setMusicSet(…, true).
+   */
+  swapMusicFiles(set: MusicSet | null) {
+    if (!set || !this.mset || set.tracks.length !== this.mset.tracks.length) { this.setMusicSet(set, true); return; }
+    const m = this.musicNow, s = m.state;
+    const at = s ? this.position() : 0;
+    this.useSet(set);
+    // (a fresh state object: a file of the old version still being decoded no longer starts)
+    if (s && s.kind !== 'theme') this.startMusic({ ...s }, at);
   }
 
   /** The map's fanfare once over the background track, which then resumes where it was (no fanfare: nothing). */
@@ -497,6 +557,7 @@ class AudioEngine {
     const name = this.nameOf(state);
     if (!this.has('music', name)) return;
     void this.buffer('music', name).then(buf => {
+      this.trimMusic(this.nameOf(m.state ?? state));
       if (!buf || !this.ctx || !this.out || m.state !== state || m.playing) return;
       const src = this.ctx.createBufferSource(), gain = this.ctx.createGain();
       src.buffer = buf;

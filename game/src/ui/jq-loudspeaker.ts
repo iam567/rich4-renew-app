@@ -1,10 +1,10 @@
 /**
  * 激情歲月's loudspeakers (docs/rules/24 §9): the era's broadcast sound, made with Web Audio on the effect bus (the
- * effect volume and the mute; at most 0.12, the sirens' and the rain's level). Everything here is ORIGINAL music
+ * effect volume and the mute; at most 0.1, a little under the sirens' and the rain's level). Everything here is ORIGINAL music
  * written for the remake: no 樣板戲 aria, no 《東方紅》, no old recording, no melody copied from anything (§9.1) — a
  * 3-second 廣播站 jingle (a bugle-like fanfare and a glockenspiel), opera-flavoured phrases (a 京胡-like bowed saw
  * gliding over a pentatonic scale, the 板鼓 / 鑼 / 鈸 percussion patterns), a brisk march for the 廣播體操 and a
- * dance tune for the 忠字舞. All of it goes through the loudspeaker filter: band 300–3,400 Hz, a little distortion,
+ * dance tune for the 忠字舞. All of it goes through the loudspeaker filter: band 300–3,000 Hz, a little distortion,
  * the echo of the next horn (120–250 ms), panned by where the horn is on screen and duller farther away.
  *
  * The spoken announcements are not voiced (the system voices may not be shipped, §9.2): their texts show as banners
@@ -13,8 +13,13 @@
 import { audio } from './audio';
 import { prng } from './kb-crowd';
 
-/** The loudest the loudspeakers get (the weather's rain bed is about 0.15 at full rain). */
-const LEVEL = 0.12;
+/**
+ * The loudest the loudspeakers get (the weather's rain bed is about 0.15 at full rain). 0.12 until issue #11
+ * (「長時間聽很刺耳」): a little lower, with a gentler drive and top below.
+ */
+const LEVEL = 0.1;
+/** The band's top (Hz) and the soft clipper's drive (were 3,400 and 2.4). */
+const TOP = 3000, DRIVE = 1.8;
 /** The pentatonic scale (宮商角徵羽 from D): semitones over D4. */
 const PENTA = [0, 2, 4, 7, 9];
 const D4 = 293.66;
@@ -31,10 +36,10 @@ class Horn {
   constructor(readonly ctx: Ctx, out: AudioNode) {
     this.input = ctx.createGain();
     const hp = ctx.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.value = 300; hp.Q.value = 0.8;
-    this.lp = ctx.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = 3400; this.lp.Q.value = 0.9;
+    this.lp = ctx.createBiquadFilter(); this.lp.type = 'lowpass'; this.lp.frequency.value = TOP; this.lp.Q.value = 0.9;
     const shaper = ctx.createWaveShaper();
     const curve = new Float32Array(1024);
-    for (let i = 0; i < curve.length; i++) { const x = (i / (curve.length - 1)) * 2 - 1; curve[i] = Math.tanh(2.4 * x) / Math.tanh(2.4); }
+    for (let i = 0; i < curve.length; i++) { const x = (i / (curve.length - 1)) * 2 - 1; curve[i] = Math.tanh(DRIVE * x) / Math.tanh(DRIVE); }
     shaper.curve = curve;
     const echo = ctx.createDelay(1); echo.delayTime.value = 0.18;
     const fb = ctx.createGain(); fb.gain.value = 0.28;
@@ -51,7 +56,7 @@ class Horn {
     const t = this.ctx.currentTime;
     this.level.gain.setTargetAtTime(LEVEL * Math.max(0, Math.min(1, v)), t, 0.25);
     this.pan?.pan.setTargetAtTime(Math.max(-0.85, Math.min(0.85, pan)), t, 0.25);
-    this.lp.frequency.setTargetAtTime(3400 / (1 + 2 * Math.max(0, dull)), t, 0.3);
+    this.lp.frequency.setTargetAtTime(TOP / (1 + 2 * Math.max(0, dull)), t, 0.3);
   }
   close() { try { this.level.disconnect(); this.pan?.disconnect(); } catch { /* gone */ } }
 }

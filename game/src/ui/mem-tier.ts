@@ -12,9 +12,14 @@
  */
 
 export type TierName = 'low' | 'mid' | 'high';
+/** The tiers in order; 'min' (below low) only for an Android phone that was closed while loading (it behaves as low elsewhere). */
+export type TierKey = 'min' | TierName;
+const ORDER: TierKey[] = ['min', 'low', 'mid', 'high'];
 
 export interface MemTier {
   name: TierName;
+  /** Which of the four limits sets (`name` is 'low' for 'min'). */
+  key: TierKey;
   /** Decoded high-resolution ground tiles together (bytes). */
   groundBytes: number;
   /** Longest side the 1× ground preview is decoded at (px); a bigger map's preview is scaled down to it. */
@@ -48,17 +53,22 @@ export interface MemTier {
   bikes: number;
   vehicles: number;
   crows: number;
+  /** Android only: decoded music kept (bytes) beyond the track playing and those a screen will resume (ui/audio.ts trimMusic). */
+  musicBytes: number;
 }
 
 const MB = 1024 * 1024;
-export const TIERS: Record<TierName, MemTier> = {
-  low: { name: 'low', groundBytes: 24 * MB, previewMax: 1536, tilePx: 1.5, prefetch: false, preloadRing: 0, tileParallel: 2,
-    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 30, bikes: 2, vehicles: 4, crows: 2 },
-  mid: { name: 'mid', groundBytes: 48 * MB, previewMax: 2304, tilePx: 2.25, prefetch: true, preloadRing: 256, tileParallel: 2,
-    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 60, bikes: 4, vehicles: 7, crows: 3 },
+export const TIERS: Record<TierKey, MemTier> = {
+  // An Android phone the system closed while a game loaded (issue #7) gets this on the next start.
+  min: { name: 'low', key: 'min', groundBytes: 12 * MB, previewMax: 1024, tilePx: 1.25, prefetch: false, preloadRing: 0, tileParallel: 1,
+    spritePx: 1, spriteBytes: 20 * MB, spriteAhead: 0, chunkViews: 1, clipBytes: 12 * MB, clipCount: 2, clipScale: 1, walkers: 15, bikes: 1, vehicles: 2, crows: 1, musicBytes: 0 },
+  low: { name: 'low', key: 'low', groundBytes: 24 * MB, previewMax: 1536, tilePx: 1.5, prefetch: false, preloadRing: 0, tileParallel: 2,
+    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 30, bikes: 2, vehicles: 4, crows: 2, musicBytes: 64 * MB },
+  mid: { name: 'mid', key: 'mid', groundBytes: 48 * MB, previewMax: 2304, tilePx: 2.25, prefetch: true, preloadRing: 256, tileParallel: 2,
+    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 60, bikes: 4, vehicles: 7, crows: 3, musicBytes: 192 * MB },
   // The limits the game had before the tiers (2026-10-17), with a cap on the map sprites.
-  high: { name: 'high', groundBytes: 100 * MB, previewMax: 4096, tilePx: 3, prefetch: true, preloadRing: 512, tileParallel: 3,
-    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 100, bikes: 6, vehicles: 10, crows: 4 },
+  high: { name: 'high', key: 'high', groundBytes: 100 * MB, previewMax: 4096, tilePx: 3, prefetch: true, preloadRing: 512, tileParallel: 3,
+    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 100, bikes: 6, vehicles: 10, crows: 4, musicBytes: Infinity },
 };
 
 const KEY = 'rich4.memTier';
@@ -91,21 +101,34 @@ let current: MemTier | null = null;
 /** The device's memory tier (the override first). */
 export function memTier(): MemTier {
   if (current) return current;
-  let name: TierName | null = null;
+  let name: TierKey | null = null;
   try {
     const v = localStorage.getItem(KEY);
-    if (v === 'low' || v === 'mid' || v === 'high') name = v;
+    if (v === 'min' || v === 'low' || v === 'mid' || v === 'high') name = v;
   } catch { /* no storage */ }
-  current = TIERS[name ?? detectTier()];
+  // Android (issues #7, #13: Huawei Mate 30, Redmi K80): the low limits at most, whatever the phone says it has; the
+  // web view there is closed by the system long before a desktop browser would be.
+  let key: TierKey = name ?? detectTier();
+  if (isAndroid() && ORDER.indexOf(key) > ORDER.indexOf('low')) key = 'low';
+  current = TIERS[key];
   return current;
+}
+
+/** The Android app (Capacitor), not a browser on Android. */
+export function isAndroid(): boolean {
+  const c = (globalThis as { Capacitor?: { getPlatform?: () => string } }).Capacitor;
+  try {
+    // `rich4.memAndroid` = '1': the Android limits in a desktop browser (for measuring them).
+    return c?.getPlatform?.() === 'android' || (typeof localStorage !== 'undefined' && localStorage.getItem('rich4.memAndroid') === '1');
+  } catch { return false; }
 }
 
 /**
  * One tier lower for this device from now on (issue #7: the app was closed by the system while it loaded a save,
  * nearly always for memory). The new tier, or null when it already is the lowest (or there is no storage to keep it).
  */
-export function lowerTier(): TierName | null {
-  const now = memTier().name, next: TierName | null = now === 'high' ? 'mid' : now === 'mid' ? 'low' : null;
+export function lowerTier(): TierKey | null {
+  const now = ORDER.indexOf(memTier().key), next = now > 0 ? ORDER[now - 1] : null;
   if (!next) return null;
   try { localStorage.setItem(KEY, next); } catch { return null; }
   current = TIERS[next];

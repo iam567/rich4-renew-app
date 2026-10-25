@@ -11,6 +11,7 @@
  */
 
 import { watch } from './watchdog';
+import { isAndroid, memTier } from './mem-tier';
 
 export type Pic = ImageBitmap | HTMLImageElement | HTMLCanvasElement;
 export interface Size { w: number; h: number }
@@ -135,8 +136,25 @@ function ask(l: Lane, url: string, blob: Blob, size: Size | undefined, cut: bool
   }));
 }
 
+/**
+ * Android only (issues #7 / #13): at most this many pictures fetched and decoded at once. A map's loading screen asks
+ * for hundreds together; every fetched file then waited in memory for its turn at the worker, and a phone's web view
+ * was closed by the system before the board showed. Elsewhere nothing changes.
+ */
+const DECODE_SLOTS = () => (isAndroid() ? (memTier().key === 'min' ? 3 : 6) : Infinity);
+let decoding = 0;
+const decodeQueue: (() => void)[] = [];
+async function inSlot<T>(run: () => Promise<T>): Promise<T> {
+  if (decoding >= DECODE_SLOTS()) await new Promise<void>(go => decodeQueue.push(go));
+  decoding++;
+  try { return await run(); } finally { decoding--; decodeQueue.shift()?.(); }
+}
+
 /** The picture at `url`, decoded (and scaled to `size` when given), as an `ImageBitmap` where possible. */
-export async function decodeImage(url: string, size?: Size, laneName = 'sprite'): Promise<Pic> {
+export function decodeImage(url: string, size?: Size, laneName = 'sprite'): Promise<Pic> {
+  return inSlot(() => decodeNow(url, size, laneName));
+}
+async function decodeNow(url: string, size: Size | undefined, laneName: string): Promise<Pic> {
   const blob = await fetchBlob(url);
   const l = lane(laneName);
   if (l) {
@@ -156,7 +174,10 @@ export async function decodeImage(url: string, size?: Size, laneName = 'sprite')
  * Like `decodeImage`, cropped to the visible pixels (the big clips are mostly transparent: a robot worker frame
  * shows on 16 % of its square). Without a worker the picture is not cropped.
  */
-export async function decodeCropped(url: string, size?: Size, laneName = 'clip'): Promise<Cropped> {
+export function decodeCropped(url: string, size?: Size, laneName = 'clip'): Promise<Cropped> {
+  return inSlot(() => croppedNow(url, size, laneName));
+}
+async function croppedNow(url: string, size: Size | undefined, laneName: string): Promise<Cropped> {
   const blob = await fetchBlob(url);
   const l = lane(laneName);
   if (l) {
