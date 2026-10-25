@@ -228,7 +228,7 @@ export function openParty(d: PartyDeps): void {
     box.onclick = null;
     const r = await checkNetwork();
     if (!overlay.isConnected) return;
-    if (r.ok) { home(r.note ? `<p class="pt-note">${esc(r.note)}</p>` : ''); box.onclick = menu; return; }
+    if (r.ok) { home(r.note ? `<p class="pt-note">${esc(r.note).replace(/\n/g, '<br>')}</p>` : ''); box.onclick = menu; return; }
     audio.ui('error');
     show(r.title, `<p class="pt-lead">${esc(r.text).replace(/\n/g, '<br>')}</p>
       <div class="choices"><button class="candy ghost" data-a="back">返回</button>${r.retry ? '<button class="candy yes" data-a="retry">重新檢查</button>' : ''}</div>`);

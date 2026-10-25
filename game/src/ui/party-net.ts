@@ -89,9 +89,12 @@ const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
  * Where the phones find a way to each other (2026-10-20): Google's STUN, and our own relay (TURN, coturn on the user's
  * Tokyo VPS game.flj.info = 154.205.139.82, /game/turn there) for networks that cannot connect directly (mobile data, company Wi-Fi). PeerJS's free
  * relay is gone. The relay only carries the game's answers and the chat; it is rate- and quota-limited on the server.
+ * Issue #12 (2026-10-26): two free public STUN servers that answer from mainland China too (bilibili's, Xiaomi's;
+ * both checked to answer a binding request), for networks or proxies that drop Google's. The network check
+ * (party-check.ts) gathers with this same list.
  */
 export const ICE_SERVERS: RTCIceServer[] = [
-  { urls: 'stun:stun.l.google.com:19302' },
+  { urls: ['stun:stun.l.google.com:19302', 'stun:stun.chat.bilibili.com:3478', 'stun:stun.miwifi.com:3478'] },
   { urls: 'stun:game.flj.info:3478' },
   { urls: ['turn:game.flj.info:3478?transport=udp', 'turn:game.flj.info:3478?transport=tcp'], username: 'rich4', credential: '29e57ad82edb53b7f8dde103' },
 ];
