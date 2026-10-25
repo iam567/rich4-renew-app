@@ -706,6 +706,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   /** State at the open turn menu: what a save stores (loading resumes at that menu). */
   let turnSave: SaveData | null = null;
   let lastAuto = '';
+  /**
+   * The dice picked on GO before a card / tool / stock action in the same turn: the turn menu opens again with that
+   * choice instead of the player's last roll's count (the user 2026-10-26: picked 1, used 路障, GO showed 3 again).
+   */
+  let keptDice: { key: string; dice: number } | null = null;
   // Going to the background at the turn menu stores that turn again (the app may be closed or crash out there).
   const saveOnHide = () => {
     if (me !== session) { document.removeEventListener('visibilitychange', saveOnHide); return; }
@@ -1167,9 +1172,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         answer = await timed(new Promise<Answer>(resolve => {
           answerTurn = resolve;
           toolbar.setTurnOpen(true);
-          go.show(p.traffic & 3, p.dice, s.maxDice, p.stay !== 0, p.turtle !== 0).then(dice => resolve({ dice }));
+          go.show(p.traffic & 3, keptDice?.key === key ? keptDice.dice : p.dice, s.maxDice, p.stay !== 0, p.turtle !== 0).then(dice => resolve({ dice }));
         }), expires(s.p), () => { go.cancel(); void hud.flash('60 秒沒有前進\n改由電腦托管（可按「取消托管」）', 2200); return { action: 'autopilot' } as Answer; });
         answerTurn = null;
+        // Another action first (card, tool, stocks…): keep the dice picked on GO for when the turn menu opens again.
+        keptDice = answer && typeof answer === 'object' && 'dice' in answer ? null : { key, dice: go.picked() };
         wd.setHuman(false);
         view.setMode('locked');
         toolbar.setTurnOpen(false);

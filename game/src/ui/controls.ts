@@ -132,6 +132,9 @@ export class GoButton {
     cancelAnimationFrame(this.raf);
   }
 
+  /** The number of dice currently picked on the button (kept across a card / tool used before rolling). */
+  picked(): number { return this.dice; }
+
   /** Cancels a pending GO (another action answered the turn). */
   cancel() { this.resolve = null; this.hide(); }
 
