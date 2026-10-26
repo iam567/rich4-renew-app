@@ -1,0 +1,31 @@
+/* 手把／鍵盤操作 (ui/pad.ts): the focus ring and the button hints, shown only after a gamepad / key input. */
+.pad-ring {
+  position: fixed; z-index: 2147483600; pointer-events: none; box-sizing: border-box; border-radius: 12px;
+  /* white inside, dark outside, a warm glow: shows on light sheets, the dark map, and 激情歲月's red and gold alike */
+  box-shadow: inset 0 0 0 3px #fff, 0 0 0 3px #111, 0 0 0 5px #fff, 0 0 16px 6px rgba(255, 210, 40, .9);
+  transition: left .08s ease-out, top .08s ease-out, width .08s ease-out, height .08s ease-out;
+  animation: pad-pulse 1.2s ease-in-out infinite;
+}
+.pad-ring[data-kind="spot"] { box-shadow: inset 0 0 0 3px #fff, 0 0 0 3px #111, 0 0 0 6px #ffd228, 0 0 22px 8px rgba(255, 210, 40, .95); }
+.pad-ring[data-kind="cursor"] {
+  transition: none; background: radial-gradient(circle, #fff 0 3px, #111 3px 5px, transparent 5px);
+  box-shadow: inset 0 0 0 2px #fff, 0 0 0 2px #111, 0 0 10px 3px rgba(255, 210, 40, .9);
+}
+.pad-ring[hidden], .pad-hint[hidden] { display: none; }
+@keyframes pad-pulse { 50% { filter: brightness(1.35); } }
+@media (prefers-reduced-motion: reduce) { .pad-ring { animation: none; transition: none; } }
+
+.pad-hint {
+  position: fixed; z-index: 2147483601; pointer-events: none; left: max(6px, env(safe-area-inset-left)); bottom: max(6px, env(safe-area-inset-bottom));
+  max-width: calc(100vw - 16px); box-sizing: border-box;
+  padding: 3px 10px; border-radius: 999px; background: rgba(10, 12, 20, .72); color: #fff;
+  font: 600 12px/1.6 system-ui, sans-serif; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  transition: opacity .4s;
+}
+.pad-hint.idle { opacity: 0; }
+.pad-hint kbd {
+  display: inline-block; min-width: 1.4em; margin: 0 2px 0 6px; padding: 0 4px; border-radius: 5px; text-align: center;
+  font: 700 11px/1.5 system-ui, sans-serif; color: #111; background: #ffd228; box-shadow: 0 1px 0 #8a6a00;
+}
+.pad-hint kbd:first-child { margin-left: 0; }
+.pad-hint kbd + kbd { margin-left: 0; }

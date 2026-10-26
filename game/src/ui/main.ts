@@ -54,6 +54,7 @@ import { playJqIntro } from './screens/jq-intro';
 import { magicHintMode, setMagicHintMode } from './screens/magic'; // 魔法屋提示對象 (issue #8)
 import './tycoon-onway';
 import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
+import './pad'; // 手把／鍵盤操作 (issue #15): gamepad and keyboard play, idle until used
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';

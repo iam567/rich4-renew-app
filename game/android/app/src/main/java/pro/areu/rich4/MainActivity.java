@@ -2,6 +2,8 @@ package pro.areu.rich4;
 
 import android.os.Bundle;
 import android.os.SystemClock;
+import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.ViewGroup;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebView;
@@ -37,6 +39,41 @@ public class MainActivity extends BridgeActivity {
                 return true;
             }
         });
+    }
+
+    /**
+     * 手把操作 (issue #15: Retroid / AYN / Anbernic handhelds). The controller's buttons reach the web view, which hands
+     * them to the page's Gamepad API (ui/pad.ts). Android turns a B press nobody took into BACK, and some handhelds send
+     * BACK for B themselves: that would close the game. A BACK from a controller is the page's 返回 instead (the page
+     * ignores it when it already saw the same B press); BACK from the touch screen's gesture / navigation bar is
+     * untouched.
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && fromController(event)) {
+            if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled() && bridge != null && bridge.getWebView() != null) {
+                bridge.getWebView().evaluateJavascript("window.__rich4PadBack && window.__rich4PadBack()", null);
+            }
+            return true;
+        }
+        return super.dispatchKeyEvent(event);
+    }
+
+    /** A key from a gamepad / joystick / D-pad device, or BACK made from an unhandled controller button. */
+    private static boolean fromController(KeyEvent e) {
+        if ((e.getFlags() & KeyEvent.FLAG_FALLBACK) != 0) return true;
+        int pad = InputDevice.SOURCE_GAMEPAD, stick = InputDevice.SOURCE_JOYSTICK, dpad = InputDevice.SOURCE_DPAD;
+        int s = e.getSource();
+        if ((s & pad) == pad || (s & stick) == stick || (s & dpad) == dpad) return true;
+        InputDevice d = e.getDevice();
+        return d != null && !d.isVirtual() && (d.getSources() & pad) == pad;
+    }
+
+    @Override
+    public void onResume() {
+        super.onResume();
+        // The controller's keys go to the focused view: keep that the web view (not the activity's root).
+        if (bridge != null && bridge.getWebView() != null) bridge.getWebView().requestFocus();
     }
 
     @Override

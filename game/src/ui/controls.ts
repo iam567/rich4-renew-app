@@ -154,7 +154,7 @@ export class GoButton {
     const html = slots.map(([x, y], i) => {
       const lit = i <= this.dice - 1 && !this.stopped;
       const a = this.bank.art('Panel', 7, (lit ? 7 : 6) + 2 * i);
-      return `<button data-n="${i + 1}" style="left:${(x + (lit ? 0 : 1)) / 72 * 100}%;top:${y / 67 * 100}%">${a ? `<img src="${a.src}" alt="">` : ''}</button>`;
+      return `<button data-n="${i + 1}"${lit ? ' data-on=""' : ''} style="left:${(x + (lit ? 0 : 1)) / 72 * 100}%;top:${y / 67 * 100}%">${a ? `<img src="${a.src}" alt="">` : ''}</button>`;
     }).join('');
     // Rebuilt only when it changes (not on every blink), so a tap on a dice count is never lost under the finger.
     if (html !== this.slotsHtml) { this.slotsHtml = html; this.slots.innerHTML = html; }

@@ -42,6 +42,9 @@ const DICE_T = [[4, 12], [12, 12], [8, 6], [-4, -6], [-12, -12], [-24, -12], [-2
 const DICE_SCALE = 0.6;
 const Layer = { building: 0, npc: 8, player: 0xc, current: 0xd, zzz: 0xe } as const;
 
+/** The board views on screen now (ui/pad.ts: a controller picks and pans on the one in front). */
+export const liveViews = new Set<BoardView>();
+
 /** Animation state of one actor (08 §1.1): 0..3 players, 4..7 thief/robber/hooligan/spy, 8 robot doll. */
 interface Actor {
   x: number;
@@ -125,6 +128,7 @@ export class BoardView {
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'board';
     parent.append(this.canvas);
+    liveViews.add(this);
     this.info = new InfoBubble(parent, bank);
     this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : jqRules(game) ? new JqStreet(game, art.walkers ?? []) : null;
     // 激情歲月's street keeps its people and vehicles off the players' and NPCs' tokens (the user 2026-10-23).
@@ -319,6 +323,7 @@ export class BoardView {
   /** Stops drawing and input handling (the game was left or another one loaded). */
   destroy() {
     this.alive = false;
+    liveViews.delete(this);
     this.unstick();
     this.street?.destroy();
     this.ground.dispose();
@@ -683,6 +688,75 @@ export class BoardView {
     const pick = this.pickSpots(spots, { onMiss, onScreen, self });
     return { done: pick.done.then(i => nodes[i] ?? 0), cancel: pick.cancel, count: pick.count };
   }
+
+  // ---------- controller (ui/pad.ts, issue #15) ----------
+
+  /**
+   * The open pick's choices for a controller's cursor: each allowed spot's index and its glow's centre and radius in
+   * client px (an off-screen one too while the map may be moved: pad.ts then looks there). Null when nothing is picked.
+   */
+  padSpots(): { i: number; x: number; y: number; r: number }[] | null {
+    const pk = this.picking;
+    if (!pk || pk.busy) return null;
+    const shapes = this.pickShapes(), c = this.canvas.getBoundingClientRect();
+    return this.pickAllowed().map(i => ({ i, x: c.left + shapes[i]!.glow.x, y: c.top + shapes[i]!.glow.y, r: Math.max(10, shapes[i]!.glow.rx) }));
+  }
+
+  /** Picks spot `i` as a tap on it would (several on one spot: which one is asked, as for a tap). */
+  padPick(i: number) {
+    const pk = this.picking;
+    if (!pk || pk.busy) return;
+    const allowed = this.pickAllowed();
+    if (!allowed.includes(i)) { pk.onMiss(); return; }
+    const shapes = this.pickShapes(), a = shapes[i]!.anchor, z = this.zoom;
+    const stack = [i, ...allowed.filter(j => j !== i && Math.hypot(shapes[j]!.anchor.x - a.x, shapes[j]!.anchor.y - a.y) <= 12 * z)];
+    if (stack.length > 1 && pk.choose) {
+      pk.busy = true;
+      void pk.choose(stack).then(k => { pk.busy = false; if (this.picking === pk && stack.includes(k)) pk.resolve(k); }, () => { pk.busy = false; });
+      return;
+    }
+    pk.resolve(i);
+  }
+
+  /** Brings spot `i` of the open pick into view when it is off the canvas (only while the map may be moved). */
+  padReveal(i: number) {
+    const pk = this.picking, s = pk?.spots[i];
+    if (!s || !this.canPan) return;
+    const g = this.pickShapes()[i]?.glow, m = 40;
+    if (g && g.x > m && g.y > m && g.x < this.W - m && g.y < this.H - m) return;
+    const w = this.spotPos(s);
+    if (w) this.lookAt(w.x, w.y);
+  }
+
+  /** Moves the view by (dx, dy) screen px, as a drag the other way would; false while the map may not move. */
+  padPan(dx: number, dy: number): boolean {
+    if (!this.canPan) return false;
+    const { a, b, c, d } = this.basis(), det = a * d - b * c;
+    this.follow = null; this.endGlide(); this.info.hide();
+    this.cam.x += (d * dx - c * dy) / det;
+    this.cam.y += (-b * dx + a * dy) / det;
+    this.keepOnBoard();
+    return true;
+  }
+
+  /** Puts the view back on the player whose turn it is (after a look round). */
+  padRecentre() {
+    if (this.current < 0) return;
+    this.follow = null;
+    this.followActor(this.current);
+  }
+
+  /** A tap's skip of what plays on the map (a cloud, a caption); false when nothing waits for one. */
+  padSkip(): boolean {
+    const l = this.tapListeners;
+    if (!l.length) return false;
+    this.tapListeners = [];
+    for (const f of l) f();
+    return true;
+  }
+
+  /** Whether a pick is open on this view. */
+  get padPicking(): boolean { return !!this.picking; }
 
   private tapAt(clientX: number, clientY: number) {
     const pk = this.picking;
