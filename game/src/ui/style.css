@@ -714,7 +714,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* Clear of the dashed inner frame (inset 7px + 2px): the buttons' 3D shadow needs room below too. */
 .msg.sheet.sys-sheet { width: min(470px, 100%); padding: 22px 20px 26px; }
 .sys-grid { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: 7px 10px; align-items: center; width: 100%; margin: 2px 0 14px; }
-.sys-grid > b { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; text-align: right; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
+.sys-grid > .cell { display: contents; }
+.sys-grid b { font-size: 14px; font-weight: 600; color: #fff; white-space: nowrap; text-align: right; text-shadow: 0 1px 0 rgba(0,0,0,.25); }
 .sys-grid .chips { flex-wrap: nowrap; gap: 4px; min-width: 0; }
 .sys-grid .chip { flex: 0 1 auto; min-width: 0; padding: 3px 9px; font-size: 13.5px; line-height: 1.35; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; border-width: 1.5px; }
 .sys-buttons { flex-wrap: nowrap; gap: 8px; }
@@ -726,14 +727,33 @@ button:disabled { opacity: 0.4; cursor: default; }
   .sys-grid { gap: 4px 8px; margin-bottom: 10px; }
   .sys-grid .chip { padding: 2px 8px; font-size: 13px; line-height: 1.3; }
 }
-/* A short landscape screen, or a wide one (tablet, desktop; issue #17: 激情歲月's extra rows ran off an iPad in landscape):
-   the rows in two columns, so the window stays low enough for its buttons. */
-@media (orientation: landscape) and (max-height: 560px), (orientation: landscape) and (min-width: 900px) {
+/* A short landscape screen, or a wide one (tablet in either orientation, desktop; issue #17: 激情歲月's extra rows ran
+   off an iPad): the rows in two columns, so the window stays low enough for its buttons. */
+@media (orientation: landscape) and (max-height: 560px), (min-width: 700px) {
   .msg.sheet.sys-sheet { width: min(780px, 100%); max-width: min(780px, 100%); }
   .sys-grid { grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px 10px; margin-bottom: 10px; }
-  .sys-grid > b.w { grid-column: 1; }
+  .sys-grid b.w { grid-column: 1; }
   .sys-grid .chips.w { grid-column: span 3; }
   .sys-grid .chips.even.w .chip { flex: 0 1 44px; }
+}
+/* A portrait phone (issue #17): two settings to a line, each label above its chips; the wide rows (地圖, 曲目) keep
+   their label beside the chips across the whole width. Narrower than 350 px: one setting per line as before. */
+@media (orientation: portrait) and (min-width: 350px) and (max-width: 699px) {
+  .msg.sheet.sys-sheet { padding-left: 16px; padding-right: 16px; }
+  .sys-grid { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px 10px; }
+  .sys-grid > .cell { display: flex; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+  .sys-grid > .cell > b { text-align: left; font-size: 13px; line-height: 1.2; padding-left: 2px; }
+  .sys-grid > .cell > .chips { max-width: 100%; }
+  .sys-grid > .cell.even > .chips { width: 100%; }
+  .sys-grid > .cell.w { grid-column: 1 / -1; flex-direction: row; align-items: center; gap: 8px; }
+  .sys-grid > .cell.w > .chips { flex: 1 1 auto; }
+  .sys-grid .chip { padding-left: 7px; padding-right: 7px; }
+}
+@media (orientation: portrait) and (min-width: 350px) and (max-width: 379px) {
+  .msg.sheet.sys-sheet { padding-left: 14px; padding-right: 14px; }
+  .sys-grid { column-gap: 8px; }
+  .sys-grid .chips { gap: 3px; }
+  .sys-grid .chip { padding-left: 5px; padding-right: 5px; font-size: 13px; }
 }
 
 /* Text broken only between clauses (text.ts): a clause stays on one line; a longer one wraps inside, balanced. */

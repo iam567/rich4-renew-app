@@ -245,6 +245,16 @@ const FOCUS_CLEAR = 0.08;
 const miniGameMode = () => { try { return Number(localStorage.getItem('rich4.minigame') ?? 0) === 1 ? 1 : 0; } catch { return 0; } };
 
 /**
+ * The rows of 系統 / 設定: a cell per setting (its label, then its chips). The cell is `display: contents` (label and
+ * chips sit in the grid's own columns) except on a portrait phone, where two cells share a line, each label above its
+ * chips (style.css).
+ */
+function sysRowsHtml(rows: { label: string; opts: string[]; cur: () => number; even?: boolean; wide?: boolean; nozh?: boolean }[]): string {
+  return rows.map((r, n) => `<div class="cell${r.wide ? ' w' : ''}${r.even ? ' even' : ''}"><b${r.wide ? ' class="w"' : ''}>${r.label}</b><div class="chips${r.even ? ' even' : ''}${r.wide ? ' w' : ''}"${r.nozh ? ' data-nozh' : ''}>${r.opts.map((o, i) =>
+    `<button class="chip${r.cur() === i ? ' on' : ''}" data-row="${n}" data-v="${i}">${o}</button>`).join('')}</div></div>`).join('');
+}
+
+/**
  * Speed, right-column layout and the mini games, kept for every game (RICH4.CFG in the original): the same compact
  * window as the in-game 系統 (a row per setting, two columns on a landscape screen, one page, no scrolling).
  */
@@ -295,8 +305,7 @@ function options() {
   let current: Row[] = [];
   function render() {
     current = rows();
-    grid.innerHTML = current.map((r, n) => `<b${r.wide ? ' class="w"' : ''}>${r.label}</b><div class="chips${r.even ? ' even' : ''}${r.wide ? ' w' : ''}"${r.nozh ? ' data-nozh' : ''}>${r.opts.map((o, i) =>
-      `<button class="chip${r.cur() === i ? ' on' : ''}" data-row="${n}" data-v="${i}">${o}</button>`).join('')}</div>`).join('');
+    grid.innerHTML = sysRowsHtml(current);
     fit();
   }
   /** A short screen: shrink the whole window rather than scroll it. */
@@ -846,8 +855,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         const grid = document.createElement('div');
         grid.className = 'sys-grid';
         const render = () => {
-          grid.innerHTML = rows.map((r, n) => `<b${r.wide ? ' class="w"' : ''}>${r.label}</b><div class="chips${r.even ? ' even' : ''}${r.wide ? ' w' : ''}"${r.nozh ? ' data-nozh' : ''}>${r.opts.map((o, i) =>
-            `<button class="chip${r.cur() === i ? ' on' : ''}" data-row="${n}" data-v="${i}">${o}</button>`).join('')}</div>`).join('');
+          grid.innerHTML = sysRowsHtml(rows);
         };
         grid.addEventListener('click', e => {
           const c = (e.target as HTMLElement).closest<HTMLElement>('[data-row]');
