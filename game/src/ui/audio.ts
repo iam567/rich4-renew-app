@@ -139,7 +139,7 @@ class AudioEngine {
       for (const ev of ['pointerdown', 'touchend', 'keydown', 'click']) window.addEventListener(ev, unlock, { capture: true, passive: true });
       document.addEventListener('visibilitychange', () => {
         if (!this.ctx) return;
-        if (document.hidden) { this.hiddenAt = Date.now(); void this.ctx.suspend().catch(() => {}); return; }
+        if (document.hidden) { this.hiddenAt = Date.now(); this.selfSuspend = true; void this.ctx.suspend().catch(() => {}); return; }
         this.wake();
         // iOS WKWebView: after the app was in the background (a message, a call, the home screen) the context often
         // reports 'running' but plays nothing, and resume() can't fix it. So coming back from the background always
@@ -175,14 +175,58 @@ class AudioEngine {
     const mk = () => { const g = ctx.createGain(); g.connect(master); return g; };
     this.out = { effect: mk(), voice: mk(), music: mk() };
     this.applyVolumes();
+    this.watch(ctx);
     void this.load().then(() => this.preload());
     return ctx;
   }
+
+  /**
+   * iOS interruptions that don't hide the page (Siri, an alarm, a call banner): the context goes 'interrupted'
+   * (or 'suspended') and may never come back by itself, or comes back 'running' but silent. So: try to resume a
+   * few times while it is interrupted (the next touch also does, via unlock), and once it runs again build a
+   * fresh context like coming back from the background (the music goes on where it was, looping effects restart).
+   */
+  private watch(ctx: AudioContext) {
+    if (typeof ctx.addEventListener !== 'function') return;
+    ctx.addEventListener('statechange', () => {
+      if (this.ctx !== ctx) return;
+      const state = ctx.state as string;
+      if (state === 'running') {
+        if (!this.interrupted) return;
+        this.interrupted = false;
+        this.stopRetry();
+        setTimeout(() => { if (this.ctx === ctx && ctx.state === 'running' && !document.hidden) this.rebuild(); }, 300);
+        return;
+      }
+      if (state === 'closed' || document.hidden || this.selfSuspend) return;
+      this.interrupted = true;
+      this.unlocked = false;   // the next touch runs the full unlock (resume, silent tick, music restart)
+      this.retry(ctx);
+    });
+  }
+  private interrupted = false;
+  private rebuiltAt = 0;
+  /** The context was suspended by us (page hidden): not an interruption. */
+  private selfSuspend = false;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+
+  private retry(ctx: AudioContext, n = 0) {
+    this.stopRetry();
+    if (n >= 6) return;
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      if (this.ctx !== ctx || !this.interrupted) return;
+      if (!document.hidden) void ctx.resume().catch(() => {});
+      this.retry(ctx, n + 1);
+    }, 500 + 500 * n);
+  }
+  private stopRetry() { if (this.retryTimer) { clearTimeout(this.retryTimer); this.retryTimer = null; } }
 
   /** Back in front: resume, and make the next touch run the full unlock (silent tick, music restart, rebuild). */
   private wake() {
     if (!this.ctx || document.hidden) return;
     this.unlocked = false;
+    this.selfSuspend = false;
     void this.ctx.resume().catch(() => {});
   }
 
@@ -197,6 +241,8 @@ class AudioEngine {
     m.playing = null;
     this.effects.clear();
     this.ctx = null; this.out = null; this.master = null;
+    this.interrupted = false; this.selfSuspend = false; this.stopRetry();
+    this.rebuiltAt = Date.now();
     try { void old.close().catch(() => {}); } catch { /* gone */ }
     this.generation++;
     this.unlocked = false;   // the next touch plays the silent tick on the new context too
@@ -211,6 +257,8 @@ class AudioEngine {
   private hiddenAt = 0;
 
   unlock() {
+    // After an interruption a touch builds the fresh context inside the gesture (Safari needs one to start it).
+    if (this.ctx && this.interrupted && !document.hidden && Date.now() - this.rebuiltAt > 1500) this.rebuild();
     const first = !this.ctx;
     const ctx = this.ensure();
     if (!ctx) return;

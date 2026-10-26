@@ -246,7 +246,7 @@ const miniGameMode = () => { try { return Number(localStorage.getItem('rich4.min
 
 /**
  * Speed, right-column layout and the mini games, kept for every game (RICH4.CFG in the original): the same compact
- * window as the in-game 系統 (a row per setting, two columns on a landscape phone, one page, no scrolling).
+ * window as the in-game 系統 (a row per setting, two columns on a landscape screen, one page, no scrolling).
  */
 function options() {
   const read = (k: string) => { try { return Number(localStorage.getItem(k) ?? 0); } catch { return 0; } };

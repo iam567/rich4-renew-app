@@ -726,9 +726,10 @@ button:disabled { opacity: 0.4; cursor: default; }
   .sys-grid { gap: 4px 8px; margin-bottom: 10px; }
   .sys-grid .chip { padding: 2px 8px; font-size: 13px; line-height: 1.3; }
 }
-/* A short landscape screen: the rows in two columns, so the window stays low enough for its buttons. */
-@media (orientation: landscape) and (max-height: 560px) {
-  .msg.sheet.sys-sheet { width: min(780px, 100%); }
+/* A short landscape screen, or a wide one (tablet, desktop; issue #17: 激情歲月's extra rows ran off an iPad in landscape):
+   the rows in two columns, so the window stays low enough for its buttons. */
+@media (orientation: landscape) and (max-height: 560px), (orientation: landscape) and (min-width: 900px) {
+  .msg.sheet.sys-sheet { width: min(780px, 100%); max-width: min(780px, 100%); }
   .sys-grid { grid-template-columns: auto minmax(0, 1fr) auto minmax(0, 1fr); gap: 6px 10px; margin-bottom: 10px; }
   .sys-grid > b.w { grid-column: 1; }
   .sys-grid .chips.w { grid-column: span 3; }
