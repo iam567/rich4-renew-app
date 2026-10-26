@@ -14,6 +14,17 @@
 
 完整素材（原版提取、高清重繪、地圖、地表、音效）不放進 Git，放在 Releases 的 `rich4-assets.tar`；地圖製作與生圖工具不在這裡。
 
+## 游戏截图
+
+| | |
+|:---:|:---:|
+| <img src="screenshots/01-title.jpg" width="420" alt="标题画面"><br>标题画面 | <img src="screenshots/02-classic-taiwan.jpg" width="420" alt="原版台湾地图"><br>原版台湾地图 |
+| <img src="screenshots/03-tokyo.jpg" width="420" alt="东京"><br>东京（大富豪模式五城之一） | <img src="screenshots/04-kabukicho.jpg" width="420" alt="歌舞伎町"><br>新地图：歌舞伎町 |
+| <img src="screenshots/05-jiqing-tiananmen.jpg" width="420" alt="激情岁月"><br>新地图：激情岁月 | <img src="screenshots/06-lottery.jpg" width="420" alt="乐透彩券行"><br>乐透彩券行 |
+| <img src="screenshots/07-missile-film.jpg" width="420" alt="飞弹动画"><br>道具和高级卡片的电影动画 | <img src="screenshots/08-party-taunt.jpg" width="200" alt="派对模式"><br>派对模式：联机对战与嘲讽 |
+
+下载：[最新版安装包](https://github.com/iam567/rich4-renew-app/releases/latest)（安卓 APK、iPhone IPA、Windows、Mac）
+
 ## 目錄
 - `game/src/core` 規則引擎（回合、地產、股票、卡片、道具、事件、大富豪模式）
 - `game/src/ui` 畫面與動畫
