@@ -145,4 +145,8 @@ fxScreens['jq-free'] = (ctx, fx) => card(ctx, fx, 'free', `<div class="jqc-card 
 
 const horn = new Loudspeakers();
 const newsBoard = fxScreens['news'];
-if (newsBoard) fxScreens['news'] = (ctx, fx) => { if (fx.data?.jq) horn.newsJingle(loudspeakerMode() === 0); return newsBoard(ctx, fx); };
+// (the jingle is only sound: whatever goes wrong with it must never cost the board — it ran first and threw it away)
+if (newsBoard) fxScreens['news'] = (ctx, fx) => {
+  if (fx.data?.jq) try { horn.newsJingle(loudspeakerMode() === 0); } catch (e) { console.warn('[jq] news jingle', e); }
+  return newsBoard(ctx, fx);
+};

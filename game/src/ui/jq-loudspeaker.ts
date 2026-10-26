@@ -264,16 +264,32 @@ export class Loudspeakers {
   private busyUntil = 0;
   private seed = 1;
 
+  /**
+   * A horn of ours still on the engine's audio context, else null (the old one closed). iOS replaces the context after
+   * an interruption or a return from the background (ui/audio.ts `rebuild`, `generation`): a horn left on the old one
+   * cannot take the new context's notes (connect() throws InvalidAccessError), which used to throw out of the news
+   * board's jingle before the board opened (the board skipped, only its result box shown) and silence the street.
+   */
+  private live(h: Horn | null, gen: number): Horn | null {
+    if (!h || gen === audio.generation) return h;
+    h.close();
+    return null;
+  }
+
   private ensure(): Horn | null {
+    this.horn = this.live(this.horn, this.hornGen);
     if (this.horn) return this.horn;
     const a = audio.ambience();
     if (!a || a.ctx.state !== 'running') return null;
     this.horn = new Horn(a.ctx, a.out);
+    this.hornGen = audio.generation;
+    this.busyUntil = 0;
     return this.horn;
   }
+  private hornGen = 0;
 
   /** Whether a program is still playing. */
-  busy(): boolean { const h = this.horn; return !!h && h.ctx.currentTime < this.busyUntil; }
+  busy(): boolean { const h = this.live(this.horn, this.hornGen); this.horn = h; return !!h && h.ctx.currentTime < this.busyUntil; }
 
   /** Plays a program now (the jingle, then the music of `kind` for about `len` s). Returns its length (0: no sound). */
   play(kind: Program, len: number): number {
@@ -289,14 +305,16 @@ export class Loudspeakers {
   /** The 廣播站's jingle alone (a news board, wherever the camera is: full loudness, centred). */
   newsJingle(on: boolean) {
     if (!on) return;
+    this.news = this.live(this.news, this.newsGen);
     const a = audio.ambience();
     if (!a || a.ctx.state !== 'running') return;
     // Its own horn at full loudness (the street's is faded out while the board covers the map).
-    this.news ??= new Horn(a.ctx, a.out);
+    if (!this.news) { this.news = new Horn(a.ctx, a.out); this.newsGen = audio.generation; }
     this.news.set(1, 0, 0);
     jingle(a.ctx, this.news.input, a.ctx.currentTime + 0.05, true);
   }
   private news: Horn | null = null;
+  private newsGen = 0;
 
   /** Where the nearest horn is: 0..1 near, pan, dull; `on` false fades out (a dialog, the setting, hidden page). */
   place(near: number, pan: number, dull: number, on: boolean) { this.horn?.set(on ? near : 0, pan, dull); }

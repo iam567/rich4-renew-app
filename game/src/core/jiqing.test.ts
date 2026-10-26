@@ -184,6 +184,15 @@ describe.skipIf(!have)('激情歲月 (map 107)', () => {
     }
   });
 
+  it('every card\'s board has its picture (maps/remake/events/<pic ?? id>.webp), a head, a text and, for news, a category', () => {
+    const dir = fileURLToPath(new URL('../../../editor/site/assets/remake/events/', import.meta.url));
+    for (const c of [...JQ_NEWS, ...JQ_FATE, ...JQ_PARK_GOOD, ...JQ_PARK_BAD]) {
+      expect(existsSync(`${dir}${c.pic ?? c.id}.webp`), `${c.id} → ${c.pic ?? c.id}.webp`).toBe(true);
+      expect(c.head.length * c.text.length, c.id).toBeGreaterThan(0);
+      if (c.kind === 'news') expect(c.category, c.id).toBeTruthy();
+    }
+  });
+
   it('上山下鄉 / 下放五七幹校: away as 下鄉中 / 下放中 instead of 消失中', () => {
     const g = new Game(settings(90, [0, 4, 9, 2]), board()), jq = jqRules(g)!;
     for (const q of g.players) { q.placed = true; q.whoPlays = 2; }
