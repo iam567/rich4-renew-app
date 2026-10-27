@@ -77,15 +77,24 @@ const ICON_LEFT = svg('M3 12a9 9 0 1 0 3-6.7M3 4v5h5'), ICON_RIGHT = svg('M21 12
 function fitShell(shell: HTMLElement) {
   const fit = () => {
     const w = shell.clientWidth, h = shell.clientHeight;
-    const portrait = h > w * 1.05;
+    // Near-square screens (unfolded foldables, issue #24: OPPO Find N 540×596, Galaxy Z Fold ~0.83-0.9) keep the
+    // landscape arrangement: portrait's bottom panels are 0.7 × the width tall and left the map a thin strip there.
+    // Phones (≤ 0.6) and iPads (0.65-0.75) held upright stay portrait.
+    const portrait = h > w * 1.25;
     shell.classList.toggle('portrait', portrait);
     if (portrait) {
       shell.style.setProperty('--tu', String(Math.min(1.6, w / 440)));
       shell.style.setProperty('--pu', String(w / 400));
+      shell.classList.remove('roomy');
     } else {
-      const u = Math.max(0.7, Math.min(2, h / 480));
+      // The right column takes at most ~36 % of the width (only near-square screens reach that cap).
+      const u = Math.max(0.7, Math.min(2, h / 480, (w * 0.36) / 200));
       shell.style.setProperty('--tu', String(u));
       shell.style.setProperty('--pu', String(u));
+      // That cap leaves room under the panel and the calendar (480 original px): the small map goes there (日曆 mode).
+      const spare = h - 480 * u, roomy = u < Math.min(2, h / 480) && spare >= 100 * u;
+      shell.classList.toggle('roomy', roomy);
+      if (roomy) shell.style.setProperty('--ms', String(Math.min(u, spare / 200)));
     }
   };
   new ResizeObserver(fit).observe(shell);
@@ -680,7 +689,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     results: (winner: number) => (ty ? tycoonEnding(hud.context(shell), ty.world, winner, () => Promise.resolve(false))
       : showResults(bank!, shell, gameResults(game, winner), { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, game.players.filter(p => p.human).map(p => p.character), game.settings.mapId) })) };
   const baseRefresh = hud.refresh.bind(hud);
-  hud.refresh = () => { baseRefresh(); today.update(); if (layout !== 0 || shell.classList.contains('portrait')) minimap.update(); };
+  hud.refresh = () => { baseRefresh(); today.update(); if (layout !== 0 || shell.classList.contains('portrait') || shell.classList.contains('roomy')) minimap.update(); };
   // 視窗組 (RICH4.CFG +5): what the right column shows; kept between games.
   const LAYOUTS = ['日曆', '小地圖', '全部'];
   let layout = 0;

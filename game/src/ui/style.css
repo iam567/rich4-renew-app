@@ -51,7 +51,7 @@ button:disabled { opacity: 0.4; cursor: default; }
  * player panel (280) and the calendar (200). --tu / --pu = screen px per original px (set in fitShell).
  */
 .game { --tu: 1; --pu: 1; --gu: calc(var(--pu) * 1.35); height: 100%; display: grid;
-  grid-template-columns: 1fr calc(200px * var(--pu)); grid-template-rows: calc(40px * var(--tu)) 1fr; overflow: hidden; }
+  grid-template-columns: minmax(0, 1fr) calc(200px * var(--pu)); grid-template-rows: calc(40px * var(--tu)) 1fr; overflow: hidden; }
 .toolbar { grid-column: 1; grid-row: 1; }
 .stage { grid-column: 1; grid-row: 2; position: relative; overflow: hidden; min-height: 0; background: #0b2427; }
 .side { grid-column: 2; grid-row: 1 / 3; display: flex; flex-direction: column; background: linear-gradient(#5b3b8c, #2b1d4a); }
@@ -68,7 +68,9 @@ button:disabled { opacity: 0.4; cursor: default; }
   box-shadow: 0 3px 8px rgba(80, 40, 0, 0.35); }
 .toolbar .tb { position: relative; flex: 0 1 calc(40px * var(--tu)); min-width: 0; padding: 0; border-radius: 0; background: none;
   display: grid; place-items: center; }
-.toolbar .tb img { grid-area: 1 / 1; width: calc(36px * var(--tu)); height: calc(34px * var(--tu)); object-fit: contain; transition: transform .12s; }
+.toolbar .tb img { grid-area: 1 / 1; width: calc(36px * var(--tu)); height: calc(34px * var(--tu)); max-width: 100%; object-fit: contain; transition: transform .12s; }
+/* (minmax: a narrow map column, a near-square screen in the landscape arrangement, shrinks the icons instead of
+   pushing the right column off the screen) */
 .toolbar .tb .tb-h { opacity: 0; }
 /* the toolbar's buttons only (大富豪模式's banners are .msg.tb too: their text must show) */
 .toolbar .tb span { display: none; }
@@ -365,6 +367,11 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game.portrait.layout-2 .mm-box { left: 0; top: calc(80px * var(--pu)); }
 .game.portrait.layout-2 .st-box { left: calc(200px * var(--pu)); width: calc(200px * var(--pu)); }
 .game.portrait.layout-0 .mm-rot { display: none; }
+/* A near-square screen in the landscape arrangement (fitShell .roomy: an unfolded foldable): the room left under the
+   panel and the calendar shows the small map, --ms px per original px, centred. */
+.game.roomy.layout-0 .mm-box { display: flex; justify-content: center; align-items: center; width: 100%; height: auto; flex: 1 1 0; min-height: 0; }
+.game.roomy.layout-0 .mm { --s: var(--ms); flex: none; margin: 0 calc(200px * (var(--ms) - 1)) calc(200px * (var(--ms) - 1)) 0; }
+.game.roomy.layout-0 .mm-rot { display: none; }
 .pp.compact { height: 80px; }
 .pp-face.small { width: 62px; height: 62px; left: 8px; top: 9px; border-width: 3px; border-radius: 14px; }
 .pp-cname { position: absolute; left: 78px; width: 116px; top: 6px; text-align: center; font-size: 18px; line-height: 22px; }

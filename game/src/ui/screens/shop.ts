@@ -200,7 +200,8 @@ class ShopScene {
   private fit() {
     const w = this.root.clientWidth, h = this.root.clientHeight;
     if (!w || !h) return;
-    const portrait = h > w * 1.05;
+    // (a near-square screen, an unfolded foldable: whichever canvas shows bigger)
+    const portrait = h > w * 1.05 && (h > w * 1.25 || Math.min(w / PORT.w, h / PORT.h) >= Math.min(w / LAND.w, h / LAND.h));
     const layout = portrait ? PORT : LAND;
     if (layout !== this.layout) { this.layout = layout; if (this.ask) this.render(); }
     this.canvas.classList.toggle('portrait', portrait);

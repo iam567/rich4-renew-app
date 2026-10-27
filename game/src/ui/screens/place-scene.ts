@@ -117,7 +117,12 @@ export function openScene(ctx: ScreenContext, cls: string, size: (portrait: bool
   const fit = () => {
     const W = root.clientWidth, H = root.clientHeight;
     if (!W || !H) return;
-    const portrait = H > W * 1.05;
+    let portrait = H > W * 1.05;
+    // A near-square screen (an unfolded foldable): whichever of the two canvases shows bigger.
+    if (portrait && H <= W * 1.25) {
+      const [pw, ph] = size(true), [lw, lh] = size(false);
+      portrait = Math.min(W / pw, H / ph) >= Math.min(W / lw, H / lh);
+    }
     if (portrait !== s.portrait || !stage.childElementCount) {
       s.portrait = portrait;
       [s.w, s.h] = size(portrait);
