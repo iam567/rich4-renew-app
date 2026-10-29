@@ -9,7 +9,8 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, type RoomInfo, type StartMsg } from './party-net';
+import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, startMsg, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
+import { RULE_ITEMS, RULE_LABELS } from './rule-options';
 import { sameVersion, verOf } from './party-version';
 import { inlineChat } from './party-chat';
 import { checkNetwork } from './party-check';
@@ -31,6 +32,19 @@ export interface PartyDeps {
   /** Starts the game with the room (main.ts). */
   play: (settings: GameSettings, room: Room) => void;
   back: () => void;
+}
+
+const RULE_KEYS = Object.keys(RULE_LABELS) as (keyof PartyRules)[];
+/**
+ * The room's 「規則」 row (issue #31): everyone sees the rules (a guest's redrawn as the host changes them); the host
+ * taps the row to unfold the new-game screen's steppers.
+ */
+function rulesHtml(rules: PartyRules, host: boolean, open: boolean): string {
+  const sum = RULE_KEYS.map(k => `<span>${RULE_LABELS[k]}<b>${RULE_ITEMS[k][rules[k]]}</b></span>`).join('');
+  if (!host) return `<div class="pt-row"><b>規則</b><div class="pt-rsum">${sum}</div></div>`;
+  return `<div class="pt-row"><b>規則</b><button class="pt-rsum host${open ? ' open' : ''}" data-a="rules">${sum}<i>${open ? '收起 ▲' : '設定 ▼'}</i></button></div>
+    ${open ? `<div class="pt-rset">${RULE_KEYS.map(k => `<div class="pt-ropt"><span>${RULE_LABELS[k]}</span><div class="stepper">
+      <button data-rule="${k}" data-d="-1">‹</button><button class="val" data-rule="${k}" data-d="1">${RULE_ITEMS[k][rules[k]]}</button><button data-rule="${k}" data-d="1">›</button></div></div>`).join('')}</div>` : ''}`;
 }
 
 export function openParty(d: PartyDeps): void {
@@ -92,6 +106,8 @@ export function openParty(d: PartyDeps): void {
   function roomView(r: Room) {
     /** Computers up to this many players (4 or 8), or 0: players only. */
     let fill = 4;
+    /** The host's 「規則」 steppers shown (issue #31; folded by default, so the room fits on a phone). */
+    let rulesOpen = false;
     show(r.shared ? '共享房間' : '私享房間', `<div class="pt-dyn"></div>
       <div class="pt-row pt-me"><b>名字</b><input class="pt-nick" maxlength="${NICK_MAX}" enterkeyhint="done" value="${esc(myNick())}"></div>
       <p class="pt-hint">可以自己取名（最多 ${NICK_MAX} 字），遊戲中大家看到的就是這個名字</p>
@@ -131,6 +147,7 @@ export function openParty(d: PartyDeps): void {
             ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
         }).join('')}</div>
         <div class="pt-row"><b>地圖</b><span class="pt-map">${esc(mapName(r.map))}</span></div>
+        ${rulesHtml(r.rules, host, rulesOpen)}
         ${host ? `<div class="pt-row"><b>空位</b><div class="chips">${r.members.length < 4 ? `<button class="chip${fill === 4 ? ' on' : ''}" data-fill="4">電腦補滿4人</button>` : ''}<button class="chip${fill === 8 ? ' on' : ''}" data-fill="8">電腦補滿8人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
         <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p>`;
       acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
@@ -142,6 +159,14 @@ export function openParty(d: PartyDeps): void {
     render();
     box.onclick = e => {
       const t = e.target as HTMLElement, a = t.closest<HTMLElement>('[data-a]')?.dataset.a, f = t.closest<HTMLElement>('[data-fill]'), k = t.closest<HTMLElement>('[data-kick]');
+      const rule = t.closest<HTMLElement>('[data-rule]')?.dataset;
+      if (rule && r.host) {
+        audio.ui('click');
+        const key = rule.rule as keyof PartyRules, n = RULE_ITEMS[key].length;
+        r.setRules({ [key]: (r.rules[key] + Number(rule.d) + n) % n }); // → onLobby: redrawn here, sent to everyone
+        return;
+      }
+      if (a === 'rules') { audio.ui('click'); rulesOpen = !rulesOpen; render(); return; }
       if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
       if (f) { audio.ui('click'); fill = Number(f.dataset.fill); render(); return; }
       if (a === 'char') {
@@ -155,11 +180,7 @@ export function openParty(d: PartyDeps): void {
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
       if (a === 'go' && r.members[0]?.id === r.myId && r.members.length >= 2) {
         audio.ui('yes');
-        const used = new Set(r.members.map(m => m.character));
-        const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
-        const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
-        const settings: GameSettings = { mapId: Number(r.map), players, fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0, party: true };
-        r.start({ settings, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) });
+        r.start(startMsg(r, fill, today(), (Math.random() * 2 ** 32) >>> 0));
       }
     };
   }

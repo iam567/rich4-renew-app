@@ -65,13 +65,37 @@ export function myRegion(): string {
   const area = tz.split('/')[0];
   return ({ Asia: '亞洲', Europe: '歐洲', America: '美洲', Australia: '澳洲', Pacific: '大洋洲', Africa: '非洲' } as Record<string, string>)[area] ?? '';
 }
+/**
+ * The room's rules (issue #31): the host picks them in the room, every phone keeps them (a new host after a hand-over
+ * goes on with them) and a joining phone gets them with the room; the game starts with them (StartMsg.settings).
+ * Indexes into core/types.ts FUNDS, LAND_LIMIT_MONTHS, DAY_LIMITS, VICTORY_MULTIPLES (labels: rule-options.ts).
+ */
+export interface PartyRules { fundIndex: number; traffic: 0 | 1 | 2; landLimitIndex: number; daysLimitIndex: number; victoryIndex: number }
+/** As every 派對模式 game started before the rules could be picked: 20萬, 步行, no limits. */
+export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0 };
+/** Rules as kept: each a whole number in its range, else the default. */
+export function cleanRules(r: unknown): PartyRules {
+  const o = (r ?? {}) as Record<string, unknown>;
+  const at = (k: keyof PartyRules, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
+  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6) };
+}
 /** What the host sends when the game starts. */
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
+/**
+ * Host: the game every phone plays — the room's players (seat = place in the list), computers up to `fill` players
+ * (4 or 8; 0: none), the room's map and rules.
+ */
+export function startMsg(r: Room, fill: number, startDate: number, seed: number): StartMsg {
+  const used = new Set(r.members.map(m => m.character));
+  const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
+  const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
+  return { settings: { mapId: Number(r.map), players, ...r.rules, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
+}
 
 type Msg =
   | { t: 'hi'; name: string; character: number; have?: number; region?: string; prev?: string; nick?: string; /** v0.7.4 on (party-version.ts). */ ver?: string }
   | { t: 'char'; character: number; nick?: string }
-  | { t: 'lobby'; members: Member[]; map: string; shared: boolean; /** The host's version (v0.7.4 on). */ ver?: string }
+  | { t: 'lobby'; members: Member[]; map: string; shared: boolean; /** The host's version (v0.7.4 on). */ ver?: string; /** The room's rules (issue #31; none: the defaults). */ rules?: PartyRules }
   | { t: 'start'; start: StartMsg }
   | { t: 'ans'; seq: number; v: unknown; u?: boolean }
   | { t: 'log'; from: number; answers: [unknown, boolean][]; total: number }
@@ -256,6 +280,8 @@ export class Room {
   members: Member[] = [];
   map = '';
   shared = false;
+  /** The rules the host picked (issue #31), kept on every phone. */
+  rules: PartyRules = { ...DEFAULT_RULES };
   started: StartMsg | null = null;
   /** The player seats this phone plays. */
   mine = new Set<number>();
@@ -524,11 +550,17 @@ export class Room {
   }
 
   private lobbyChanged() {
-    const m: Msg = { t: 'lobby', members: this.members, map: this.map, shared: this.shared, ...(this.ver !== null ? { ver: this.ver } : {}) };
+    const m: Msg = { t: 'lobby', members: this.members, map: this.map, shared: this.shared, rules: this.rules, ...(this.ver !== null ? { ver: this.ver } : {}) };
     for (const c of this.guests.values()) c.open && c.send(m);
     this.onLobby();
   }
   setMap(map: string) { this.map = map; this.lobbyChanged(); }
+  /** Host, before the game: changes the rules; everyone sees them. */
+  setRules(rules: Partial<PartyRules>) {
+    if (!this.host || this.started) return;
+    this.rules = cleanRules({ ...this.rules, ...rules });
+    this.lobbyChanged();
+  }
   /** This phone's character and nickname (in the room, before the game). */
   setCharacter(c: number, nick = this.me.nick) {
     this.me.character = c; this.me.nick = cleanNick(nick) || undefined;
@@ -541,7 +573,7 @@ export class Room {
       // The host's version (an old host sends none): another one, and this phone leaves with the reason.
       const bad = this.ver !== null ? hostMismatch(this.ver, m.ver) : null;
       if (bad) { this.leaveRefused(bad); return; }
-      this.members = m.members; this.map = m.map; this.shared = m.shared; this.onLobby(); this.onVotes();
+      this.members = m.members; this.map = m.map; this.shared = m.shared; this.rules = cleanRules(m.rules); this.onLobby(); this.onVotes();
       this.replied?.('');
     }
     else if (m.t === 'start') { this.begin(m.start); }

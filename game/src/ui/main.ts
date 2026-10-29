@@ -18,6 +18,7 @@ import { InfoScreen } from './info';
 import { askScreens, closeStuckScreens, fxScreens } from './screens/registry';
 import { PartyBar } from './party-chat';
 import { openParty } from './party';
+import { RULE_ITEMS, RULE_LABELS } from './rule-options';
 import { Lobby, type Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, interruptedLoad, loadSlot, markLoading, notice, pickSlot, writeAuto, writeSlot, type Loaded } from './saves';
 import { lowerTier } from './mem-tier';
@@ -392,7 +393,7 @@ function newGame() {
     page = Math.min(page, pages - 1);
     const shown = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
     // One row per option: ‹ value › (tapping the value also steps it).
-    const opt = (label: string, key: keyof typeof state, items: string[]) => {
+    const opt = (label: string, key: keyof typeof state, items: readonly string[]) => {
       const v = state[key] as number;
       return `<div class="ng-opt"><span>${label}</span><div class="stepper">
         <button data-step="${key}" data-n="${items.length}" data-d="-1">‹</button>
@@ -425,11 +426,11 @@ function newGame() {
             <button class="chip${s.human ? ' on' : ''}" data-slot="${i}" data-act="who">${s.human ? '玩家' : '電腦'}</button></div>`;
         }).join('')}</div>`}</section>
       <section class="ng-opts">
-        ${opt('總資金', 'fundIndex', ['30萬', '20萬', '10萬', '5萬', '3萬', '1萬'])}
-        ${opt('行進方式', 'traffic', ['步行', '機車', '汽車'])}
-        ${opt('土地權限', 'landLimitIndex', ['無限期', '二年', '一年', '六個月', '三個月', '一個月'])}
-        ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : `${opt('遊戲時間', 'daysLimitIndex', ['無限', '二年', '一年', '六個月', '三個月', '一個月'])}
-        ${opt('勝利條件', 'victoryIndex', ['無限', '100倍', '50倍', '10倍', '5倍', '3倍'])}
+        ${opt(RULE_LABELS.fundIndex, 'fundIndex', RULE_ITEMS.fundIndex)}
+        ${opt(RULE_LABELS.traffic, 'traffic', RULE_ITEMS.traffic)}
+        ${opt(RULE_LABELS.landLimitIndex, 'landLimitIndex', RULE_ITEMS.landLimitIndex)}
+        ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
+        ${opt(RULE_LABELS.victoryIndex, 'victoryIndex', RULE_ITEMS.victoryIndex)}
         ${opt('電腦難度', 'aiLevel', ['簡單', '中級', '困難'])}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
       </section>
