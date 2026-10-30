@@ -494,6 +494,20 @@ export class Hud {
         box.innerHTML = `${head(a.title)}${a.text ? `<div class="msg-text small">${lines(a.text)}</div>` : ''}`;
         const input = this.amountInput(a.min, a.max, a.step, a.min);
         box.append(input.wrap);
+        // Quick picks (issue #36: typing a number of shares was a chore on a phone): ×10, ×100, half, the most.
+        if (a.max > a.min) {
+          const quick = el('div', 'amount-quick');
+          const pick = (label: string, v: () => number) => {
+            const b = el('button', 'chip', label);
+            b.onclick = () => { audio.sfx(7); input.set(v()); };
+            quick.append(b);
+          };
+          if (a.max - a.min >= 20 * a.step) pick(`+${(10 * a.step).toLocaleString()}`, () => input.value() + 10 * a.step);
+          if (a.max - a.min >= 200 * a.step) pick(`+${(100 * a.step).toLocaleString()}`, () => input.value() + 100 * a.step);
+          pick('一半', () => Math.floor((a.min + a.max) / 2 / a.step) * a.step);
+          pick(`最多 ${a.max.toLocaleString()}`, () => a.max);
+          box.append(quick);
+        }
         row.className = 'choices yesno';
         button('確定', undefined, 'yes').onclick = () => done(Math.max(a.min, Math.min(a.max, input.value())));
         button('取消', -1, 'no');
@@ -540,7 +554,11 @@ export class Hud {
     const minus = el('button', 'candy ghost', `−${step.toLocaleString()}`), plus = el('button', 'candy ghost', `+${step.toLocaleString()}`);
     minus.onclick = () => nudge(-step); plus.onclick = () => nudge(step);
     wrap.append(minus, input, plus);
-    return { wrap, value: () => Math.max(0, Math.trunc(Number(input.value) || 0)) };
+    return {
+      wrap,
+      value: () => Math.max(0, Math.trunc(Number(input.value) || 0)),
+      set: (v: number) => { input.value = String(Math.max(min, Math.min(max, Math.trunc(v)))); },
+    };
   }
 
   /** A readable label for a node: its lot, plot or event. */

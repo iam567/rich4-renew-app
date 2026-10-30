@@ -201,6 +201,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .amount { position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; margin: 0 0 14px; }
 .amount input { width: 9em; font: inherit; font-size: 22px; text-align: center; padding: 6px 8px; border-radius: 14px; border: 3px solid #ffbf2e; color: #1b1208; }
 .amount .candy { padding: 6px 10px; font-size: 15px; }
+.amount-quick { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: -6px 0 12px; }
+.amount-quick .chip { font-size: 15px; padding: 5px 12px; }
 
 /* words centred on a speech-bubble picture's body (bubble-text.ts: left / top set per picture) */
 .bubble-words { position: absolute; translate: -50% -50%; text-align: center; }
@@ -424,6 +426,13 @@ button:disabled { opacity: 0.4; cursor: default; }
 .info-god small { font-size: 12px; opacity: .85; }
 .info-page { width: 92px; padding: 8px 0; font-size: 17px; border-radius: 14px; color: #c8d4f0; background: rgba(255,255,255,.12); border: 2px solid rgba(255,255,255,.25); white-space: nowrap; }
 .info-page.on { color: #fff; background: linear-gradient(#5fb7ff, #2a6fe0); border-color: #fff; box-shadow: 0 3px 0 #1a4aa0; }
+.info-side { min-height: 0; }
+/* A god on the player (issue: 「股票」 pushed out of the frame on a phone in landscape): the column tightens up. */
+.info-side.with-god { gap: 5px; }
+.info-side.with-god .info-face { width: 66px; height: 66px; border-width: 3px; border-radius: 14px; }
+.info-side.with-god .info-god { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 0 4px; font-size: 12px; }
+.info-side.with-god .info-god img { width: 30px; height: 30px; }
+.info-side.with-god .info-page { padding: 5px 0; font-size: 16px; }
 .info-body { flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden; background: rgba(255,255,255,.12); border-radius: 16px; padding: 10px 12px; }
 .info-inner { --k: 1; }
 .info-body h4 { margin: calc(10px * var(--k)) 0 4px; font-weight: 400; color: #ffe27a; font-size: calc(16px * var(--k)); }

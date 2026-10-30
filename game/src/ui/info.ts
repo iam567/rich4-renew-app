@@ -121,7 +121,7 @@ export class InfoScreen {
       const c = CHARACTERS[q.character];
       return `<button class="info-tab${i === this.who ? ' on' : ''}" data-who="${i}" style="--c:${hex(c.color)}">${playerName(q)}${q.bankrupt ? '<small>破產</small>' : ''}</button>`;
     }).join('');
-    const side = `<div class="info-side">
+    const side = `<div class="info-side${god ? ' with-god' : ''}">
       <div class="info-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
       ${w ? `<div class="info-where">${w.whereText(p)}</div>${w.overlordTitles(p).map(t => `<div class="info-where overlord">${t}</div>`).join('')}${p.human && w.fallen.some(x => x.title) ? `<div class="info-where gold">${w.fallen.filter(x => x.title).slice(-1)[0].title}</div>` : ''}` : ''}
       ${god ? `<div class="info-god">${godArt ? `<img src="${godArt.src}" alt="">` : ''}<span>${god}</span><small>${godSlot?.life ?? 0}天</small>${godSlot && g.rules?.godNote ? `<small class="info-god-note">${g.rules.godNote(godSlot.type).replace(/^：/, '賭場')}</small>` : ''}</div>` : ''}
