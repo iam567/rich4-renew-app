@@ -17,7 +17,7 @@ const years = Number(args[1] ?? 5);
 const maps = (args[2] ?? '0,1,2,3,4,5,6,7,100,101,102,103,104,106,107').split(',').map(Number);
 const out = args[3];
 const level = Number(args[4] ?? 0) as 0 | 1 | 2;
-const CHECK = [1, 3, 5].filter(y => y <= years);
+const CHECK = [1, 3, 5, 10, 15, 20].filter(y => y <= years);
 
 interface GameRow { map: number; seed: number; first100: number; drawn: string[]; stars: Record<number, number[]>; tasks: Record<string, Record<number, number[]>>; values: Record<string, Record<number, number[]>> }
 const rows: GameRow[] = [];
