@@ -476,7 +476,7 @@ export class Stocks {
       p.bank += pay[p.id];
       if (p.bank < 0) {
         p.cash += p.bank; p.bank = 0;
-        if (p.cash < 0) { p.cash = 0; yield* g.bankrupt(p); if (g.over) return; }
+        if (p.cash < 0 && !g.challenge) { p.cash = 0; yield* g.bankrupt(p); if (g.over) return; }
       }
     }
   }

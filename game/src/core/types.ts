@@ -19,6 +19,8 @@ export interface GameSettings {
    * game and save before it), 1 中級, 2 困難. 派對模式 plays 困難, 大富豪模式 簡單, whatever this says.
    */
   aiLevel?: 0 | 1 | 2;
+  /** 挑戰模式 (docs/rules/26): no bankruptcy (debt), tasks and stars; core/challenge.ts. */
+  challenge?: boolean;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];

@@ -514,9 +514,11 @@ export class Game {
       const p = this.players[from];
       const first = flags & 4 ? 'bank' : 'cash', second = flags & 4 ? 'cash' : 'bank';
       let need = amount;
-      const a = Math.min(p[first], need); p[first] -= a; need -= a;
-      const b = Math.min(p[second], need); p[second] -= b; need -= b;
+      const a = Math.max(0, Math.min(p[first], need)); p[first] -= a; need -= a;
+      const b = Math.max(0, Math.min(p[second], need)); p[second] -= b; need -= b;
       if (need > 0 && this.canRaise()) { yield* this.raiseCash(p, need); const c = Math.min(p.bank, need); p.bank -= c; need -= c; }
+      // 挑戰模式 (docs/rules/26 §2): nobody goes bankrupt; what the money does not cover is debt (negative cash).
+      if (need > 0 && this.challenge) { p.cash -= need; need = 0; }
       if (need > 0) {
         amount -= need;
         p.cash = 0; p.bank = 0;
@@ -553,11 +555,19 @@ export class Game {
     p.bank -= amount;
     if (p.bank < 0) { p.cash += p.bank; p.bank = 0; }
     if (p.cash < 0 && this.canRaise()) { const owe = -p.cash; p.cash = 0; yield* this.raiseCash(p, owe); const c = Math.min(p.bank, owe); p.bank -= c; p.cash = c - owe; }
-    if (p.cash < 0) { p.cash = 0; yield* this.bankrupt(p); }
+    if (p.cash < 0 && !this.challenge) { p.cash = 0; yield* this.bankrupt(p); }
   }
 
   /** 大富豪模式 outside 大富翁城 (chips there): a player short of money sells before going bankrupt (raiseCash). */
   private canRaise(): boolean { return !!this.world && !this.rules?.noLoans; }
+
+  /** 挑戰模式 (docs/rules/26): no bankruptcy, debt instead; tasks and stars (core/challenge.ts). */
+  get challenge(): boolean { return !!this.settings.challenge; }
+
+  /** 挑戰模式's 狗急跳牆 (docs/rules/26 §2): an owner in debt collects tolls and plot fees ×1.5 (to 10 元). */
+  debtToll(owner: Player, amount: number): number {
+    return this.challenge && owner.cash < 0 ? Math.round((amount * 1.5) / 10) * 10 : amount;
+  }
 
   /**
    * 大富豪模式 (the user 2026-10-19: games ended too soon; the original has no selling before bankruptcy, 02 §9.3): short
@@ -1202,6 +1212,7 @@ export class Game {
     const allyPart = owner.ally ? this.calcToll(owner.ally, land.chain ? null : land.name) : 0;
     if (land.tmpState) base *= 2;
     if (this.rules?.tollFactor) base = Math.round(base * this.rules.tollFactor(this, land)); // 歌舞伎町 (docs/rules/21 §6, §7.5)
+    base = this.debtToll(owner, base);
     const total = base + allyPart;
     // The owner's (and ally's) lots of this street, or all their chain stores, flash first when there is more
     // than one, to show the toll is the whole street's (rich4_player_core_actions.asm:550-661, fcn_00451985).
@@ -1356,6 +1367,7 @@ export class Game {
     // 大富豪模式: a resort city's hotels earn more (沖繩, docs/rules/17 §2.4).
     if (this.world && f.type === 1) rate = Math.round(rate * this.world.hooks.resort(this));
     if (f.tmpState && f.type !== 3) rate *= 2;
+    rate = this.debtToll(owner, rate);
     let amount = 0, days = 0;
     // Message boxes, 1500 ms (core_actions:1296-1382).
     // The wheel first (fcn_0044090e with the owner's name, core_actions:1270-1330), then the message box.
@@ -1363,7 +1375,7 @@ export class Game {
     else if (f.type === 2) { const mult = yield* this.spin(WheelKind.shopping, this.name(owner.id)); amount = rate * mult; yield* this.say(undefined, `您的消費金額為\n\n${rate}x${mult}倍=${amount}元`); }
     else {
       const vehicle = p.traffic & 3;
-      amount = vehicle && vehicle < 3 ? 500 * (1 << (vehicle - 1)) * this.diceTotal * this.priceIndex : 0;
+      amount = vehicle && vehicle < 3 ? this.debtToll(owner, 500 * (1 << (vehicle - 1)) * this.diceTotal * this.priceIndex) : 0;
       if (amount) yield* this.say(undefined, `董事長${this.name(owner.id)} 請付${amount}元加油費`);
     }
     if (f.type === 1 && REMAKE_HOTEL.on) {
@@ -1512,10 +1524,12 @@ export class Game {
   *bankCounter(p: Player): Flow {
     if (p.bankRefused || this.rules?.noLoans) return; // 大富翁城's finale: chips, no loans (docs/rules/19 §2)
     const wealth = this.wealth(p);
+    // 挑戰模式 (docs/rules/26 §2): in debt, no loans and no special financing.
+    const indebted = this.challenge && p.cash < 0;
     if (this.isHuman(p)) {
       const company = companyOf(this.board, this.node(p.node));
-      const finance = company && company.controller === p.id + 1 ? { total: this.otherDeposits(p), used: p.specialFinance } : undefined;
-      const a = (yield ask({ t: 'bank', p: p.id, counter: true, maxLoan: Math.max(0, wealth - p.loan), canWithdraw: !p.noLoan, canBorrow: !p.noLoan, finance })) as
+      const finance = company && company.controller === p.id + 1 && !indebted ? { total: this.otherDeposits(p), used: p.specialFinance } : undefined;
+      const a = (yield ask({ t: 'bank', p: p.id, counter: true, maxLoan: Math.max(0, wealth - p.loan), canWithdraw: !p.noLoan, canBorrow: !p.noLoan && !indebted, finance })) as
         { borrow?: number; repay?: number; finance?: number; financeRepay?: number } | undefined;
       if (finance && a?.finance && !p.noLoan) {
         // 週轉現金 (fcn_00434492, rich4_ui_bank.asm:1080-1105): up to the other players' deposits less what is out, into the deposit.
@@ -1531,7 +1545,7 @@ export class Game {
           p.specialFinance -= x;
         }
       }
-      if (a?.borrow && !p.noLoan) {
+      if (a?.borrow && !p.noLoan && !indebted) {
         const x = Math.min(a.borrow, Math.max(0, wealth - p.loan));
         if (x > 0) { p.bank += x; p.loan += x; this.setLoanDue(p); }
       }
@@ -1546,6 +1560,7 @@ export class Game {
       yield { t: 'bank', p: p.id };
       return;
     }
+    if (indebted) { yield { t: 'bank', p: p.id }; return; }
     if (this.smartAi(p)) { this.smart.bankCounter(p); yield { t: 'bank', p: p.id }; return; }
     const ch = CHARACTERS[p.character], money = p.cash + p.bank;
     // 大富豪模式 (the user 2026-10-19: computers borrowed against their land and went bankrupt at the due date): it repays
