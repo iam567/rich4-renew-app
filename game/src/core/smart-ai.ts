@@ -159,7 +159,8 @@ export class SmartAi {
       const f = this.fee(p, node, i + 1);
       if (i < 6 * d) now = Math.max(now, f); else later = Math.max(later, f);
     });
-    return Math.max(5000 * PI, now, later * 0.7);
+    // 挑戰模式 (docs/rules/26): nobody goes bankrupt, so its computer keeps a third of the usual reserve.
+    return Math.max(5000 * PI, now, later * 0.7) * (g.challengeAi ? 0.35 : 1);
   }
 
   // ---------------------------------------------------------------- where a roll ends
@@ -362,7 +363,8 @@ export class SmartAi {
     const g = this.g, t = g.tools;
     const cards = t.cardShelf(), tools = t.toolShelf();
     const held = (id: number) => p.cards.filter(c => c === id).length;
-    for (const [kind, id, cap] of SHOP_WISHES) {
+    // 挑戰模式: the cards and tools its open tasks want come first (core/challenge-ai.ts).
+    for (const [kind, id, cap] of [...(g.challengeAi?.shopWishes(p) ?? []), ...SHOP_WISHES]) {
       if (kind === 'tool') {
         const i = tools.indexOf(id), price = TOOL_POINTS[id - 1];
         if (i < 0 || p.points < price || p.tools[id - 1] >= Math.min(cap, 9)) continue;
@@ -397,6 +399,7 @@ export class SmartAi {
     if (this.money(p) >= this.reserve(p) * 2) { yield* g.stocks.aiTrade(p); if (g.over || !p.whoPlays) return; }
     yield* g.financeRecall(); // rich4.asm:11632, as after the computer's trading
     if (g.over || !p.whoPlays) return;
+    if (g.challengeAi) { yield* g.challengeAi.shares(p); if (g.over || !p.whoPlays) return; } // 挑戰模式: shares toward its 董事長 tasks
     // 中級: a card or a tool as the original's computer picks them (01 §3.5).
     if (!g.smartTactics(p)) { if (g.rng.rand() & 1) yield* g.cards.aiUse(p); else yield* g.tools.aiUse(p); return; }
     const stopped = () => g.over || !p.whoPlays || g.offRoad(p) || !!p.sleep || !!p.sleepwalk || g.tools.pending !== 'none';

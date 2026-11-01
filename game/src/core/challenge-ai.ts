@@ -9,6 +9,7 @@
  */
 import type { Challenge, ChallengeTask } from './challenge';
 import { fullStars } from './challenge';
+import type { Flow } from './flow';
 import type { Game } from './game';
 import type { Player } from './types';
 
@@ -30,7 +31,7 @@ const EVENT_TASKS: Record<number, string[]> = {
 };
 
 /** What a star is worth in its money sums (× price index). */
-const STAR = 9000;
+const STAR = 15000;
 
 export class ChallengeAi {
   /** `tasks`: the game's drawn tasks (default the tracker's; a simulation may track the whole pool). */
@@ -62,7 +63,12 @@ export class ChallengeAi {
 
   private sum(p: Player, ids: string[] | undefined): number { return (ids ?? []).reduce((v, id) => v + this.worth(p, id), 0); }
 
-  cardBonus(p: Player, id: number): number { return this.sum(p, CARD_TASKS[id]); }
+  cardBonus(p: Player, id: number): number {
+    let v = this.sum(p, CARD_TASKS[id]);
+    // 購地卡 / 換地卡 on the lot under its feet when a task names that street or plot.
+    if ((id === 3 || id === 4) && this.wantsPlace(p, this.c.placeName(p.node))) v += STAR * this.g.priceIndex;
+    return v;
+  }
   toolBonus(p: Player, id: number): number { return this.sum(p, TOOL_TASKS[id]); }
 
   /** The value of stopping on `node` for p's open tasks. */
@@ -92,6 +98,33 @@ export class ChallengeAi {
     return v;
   }
 
+  /** Shop wishes (kind, id, how many to hold) for the open tasks: kinds not yet held for 集卡狂 / 百寶袋, the counted ones. */
+  shopWishes(p: Player): ['card' | 'tool', number, number][] {
+    const out: ['card' | 'tool', number, number][] = [];
+    for (const [id, tasks] of Object.entries(TOOL_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['tool', Number(id), 2]);
+    for (const [id, tasks] of Object.entries(CARD_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['card', Number(id), 1]);
+    if (this.open(p, 'G08')) for (let id = 1; id <= 12; id++) if (!p.tools[id - 1]) out.push(['tool', id, 1]);
+    if (this.open(p, 'G07')) for (let id = 1; id <= 30; id++) if (!p.cards.includes(id)) out.push(['card', id, 1]);
+    return out;
+  }
+
+  /** Shares toward an open 董事長 task: enough of the company's stock to hold the most (from the deposit, as anyone). */
+  *shares(p: Player): Flow {
+    const g = this.g, st = g.stocks;
+    for (const [id, names] of Object.entries(CHAIR_TASKS)) {
+      if (!this.open(p, id)) continue;
+      for (const c of g.board.companies) {
+        if (!(names.length === 0 || names.includes(c.name)) || c.controller === p.id + 1 || c.stockSlot >= 12) continue;
+        const slot = c.stockSlot, s = st.stocks[slot];
+        if (!s || s.price <= 0) continue;
+        const mine = st.holdings[p.id][slot]?.shares ?? 0;
+        const top = Math.max(0, ...g.players.filter(q => q.id !== p.id).map(q => st.holdings[q.id][slot]?.shares ?? 0));
+        const need = top - mine + 1;
+        if (need > 0 && need * s.price <= p.bank * 0.6) { yield* st.trade(p, slot, true, need); return; }
+      }
+    }
+  }
+
   /** Buy a lot / plot a task names (even below the usual money margin)? */
   wantsPlace(p: Player, name: string): boolean {
     for (const t of this.tasks) if (PLACE_TASKS[t.id]?.includes(name) && this.open(p, t.id)) return true;
@@ -108,6 +141,13 @@ export class ChallengeAi {
     return undefined;
   }
 }
+
+/** 董事長 tasks: task → its companies ([] any company). */
+const CHAIR_TASKS: Record<string, string[]> = {
+  T12: ['大宇百貨'], C10: ['中國石油'], J07: ['ＳＥＧＡ'], W06: ['逍遙客棧'], Z19: ['宇宙百貨'], D13: ['飛龍百貨'], S16: ['狂徒大飯店'], K12: ['ＳＥＧＡ'], O08: ['卡普空'],
+  O13: ['阪急百貨'], P05: ['哈德森'], P15: ['丸井今井'], Q07: ['ＬＥＶＥＬ５'], Q12: ['岩田屋'], N15: ['ＯＣＣ'], N20: ['琉貿百貨'],
+  W01: ['蜀山派', '武當派', '嵩山派', '恆山派', '泰山派', '衡山派', '少林派', '華山派'], S01: ['狂徒大飯店', '豪華大飯店', '金金大飯店', '第一大飯店', '世界大飯店'], G33: [], R17: [],
+};
 
 /** Tours: task → its places (as the measures in challenge.ts). */
 const TOUR_PLACES: Record<string, string[]> = {

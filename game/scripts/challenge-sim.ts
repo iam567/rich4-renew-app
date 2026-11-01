@@ -19,8 +19,9 @@ const out = args[3];
 const level = Number(args[4] ?? 0) as 0 | 1 | 2;
 const CHECK = [1, 3, 5].filter(y => y <= years);
 
-interface GameRow { map: number; seed: number; first100: number; drawn: string[]; stars: Record<number, number[]>; tasks: Record<string, Record<number, number[]>> }
+interface GameRow { map: number; seed: number; first100: number; drawn: string[]; stars: Record<number, number[]>; tasks: Record<string, Record<number, number[]>>; values: Record<string, Record<number, number[]>> }
 const rows: GameRow[] = [];
+const counters: Record<number, Record<string, number>> = {};
 const t0 = Date.now();
 for (const mapId of maps) {
   for (const seed of seeds) {
@@ -38,12 +39,13 @@ for (const mapId of maps) {
     const ch = new C.Challenge(game, pool);
     const drawn = C.drawTasks(mapId, seed);
     if (level === 2 && !process.argv.includes('--plain')) game.challengeAi = new ChallengeAi(game, ch, drawn);
-    const row: GameRow = { map: mapId, seed, first100: -1, drawn: drawn.map(t => t.id), stars: {}, tasks: {} };
+    const row: GameRow = { map: mapId, seed, first100: -1, drawn: drawn.map(t => t.id), stars: {}, tasks: {}, values: {} };
     const flow = game.run();
     let r = flow.next(), steps = 0, lastDay = game.daysElapsed;
     const end = years * 365;
     const snap = (y: number) => {
       row.stars[y] = game.players.map(p => drawn.reduce((n, t) => n + C.starsFor(t, ch.own[p.id].best[t.id] ?? 0, t.id === 'G33' || t.id === 'W01' ? game.board.companies.length : Infinity), 0));
+      for (const t of pool) (row.values[t.id] ??= {})[y] = game.players.map(p => ch.own[p.id].best[t.id] ?? 0);
       for (const t of pool) (row.tasks[t.id] ??= {})[y] = game.players.map(p => C.starsFor(t, ch.own[p.id].best[t.id] ?? 0, t.id === 'G33' || t.id === 'W01' ? game.board.companies.length : Infinity));
     };
     while (!r.done && game.daysElapsed < end && !game.over) {
@@ -62,10 +64,20 @@ for (const mapId of maps) {
       r = 'ask' in s ? flow.next(0) : flow.next();
     }
     for (const y of CHECK) if (!row.stars[y]) snap(y);
+    if (process.argv.includes('--counters')) {
+      const tot: Record<string, number> = {};
+      for (const o of ch.own) for (const [k, v] of Object.entries(o.n)) if (!/:\d+:\d+$|^paidBy|^allPaid/.test(k)) tot[k] = (tot[k] ?? 0) + v;
+      const ledger = game.players.map(p => ch.stats(p));
+      for (const x of ledger) for (const [k, v] of Object.entries(x?.events ?? {})) tot[`L ${k}`] = (tot[`L ${k}`] ?? 0) + v.reduce((a, b) => a + b, 0);
+      for (const x of ledger) for (const [k, v] of Object.entries(x?.cardsUsed ?? {})) tot[`L card${k}`] = (tot[`L card${k}`] ?? 0) + v;
+      for (const x of ledger) for (const [k, v] of Object.entries(x?.toolsUsed ?? {})) tot[`L tool${k}`] = (tot[`L tool${k}`] ?? 0) + v;
+      counters[mapId] ??= {};
+      for (const [k, v] of Object.entries(tot)) counters[mapId][k] = (counters[mapId][k] ?? 0) + v;
+    }
     rows.push(row);
     const debt = game.players.map(p => p.cash).join(' ');
     console.log(`map ${mapId} seed ${seed}: ${game.daysElapsed} days, stars ${CHECK.map(y => `${y}y [${row.stars[y].join(',')}]`).join(' ')}, first to 100: ${row.first100 < 0 ? 'none' : `day ${row.first100}`}, cash ${debt}, ${((Date.now() - t0) / 1000).toFixed(0)} s`);
   }
 }
-if (out) writeFileSync(out, JSON.stringify({ seeds, years, maps, rows, unmeasured: [...new Set(maps.flatMap(m => new C.Challenge({ board: { mapId: m }, players: [], settings: { seed: 0 } } as never, C.taskPool(m)).unmeasured().map(t => t.id)))] }));
+if (out) writeFileSync(out, JSON.stringify({ seeds, years, maps, rows, counters, unmeasured: [...new Set(maps.flatMap(m => new C.Challenge({ board: { mapId: m }, players: [], settings: { seed: 0 } } as never, C.taskPool(m)).unmeasured().map(t => t.id)))] }));
 console.log(`done, ${rows.length} games, ${((Date.now() - t0) / 1000).toFixed(0)} s`);

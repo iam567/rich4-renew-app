@@ -78,14 +78,14 @@ interface Own {
   goodFates: number; lastNode: number; sameTurns: number; monthClean: boolean;
   lv5Lots: Set<number>; fallen: Set<number>; cardDays: number; lostDay: number;
   dash: boolean; gotPrizes: Set<number>; crashBuy: Record<number, number>; redDay: number; cashBefore: number | null;
-  lastStop: Record<string, number>; t18: number;
+  lastStop: Record<string, number>; t18: number; traffic: number;
 }
 const blankOwn = (): Own => ({
   n: {}, best: {}, gods: new Set(), godRounds: 0, god: 0, magic: new Set(), stops: new Set(), stopRounds: {},
   offRoadDays: 0, cashLowTurns: 0, debtMax: 0, dayCash: null, fatesSeen: new Set(), newsSeen: new Set(), route: {}, chair: {},
   rich: 0, poor: 0, clean: 0, walk: 0, car: 0, lastTurnMissiles: 0, carStreak: 0, godsToday: new Set(), fateRun: 0,
   goodFates: 0, lastNode: -1, sameTurns: 0, monthClean: true, lv5Lots: new Set(), fallen: new Set(), cardDays: 0, lostDay: -99,
-  dash: false, gotPrizes: new Set(), crashBuy: {}, redDay: -1, cashBefore: null, lastStop: {}, t18: 0,
+  dash: false, gotPrizes: new Set(), crashBuy: {}, redDay: -1, cashBefore: null, lastStop: {}, t18: 0, traffic: 0,
 });
 
 type Measure = (c: Challenge, p: Player) => number | undefined;
@@ -155,7 +155,7 @@ export class Challenge {
         break;
       }
       case 'step':
-        if (isP(e.p)) { this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
+        if (isP(e.p)) { this.own[e.p].traffic = g.players[e.p].traffic & 3; this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
         break;
       case 'pay': this.pay(e); break;
       case 'points': if (isP(e.p) && e.amount < 0) { const ev = g.node(g.players[e.p].node).event; if (ev === 4 || ev === 5) this.bump(e.p, 'bail'); } break;
@@ -181,6 +181,8 @@ export class Challenge {
         if (p >= 0) { this.bump(p, `drew-news:${id}`); this.own[p].newsSeen.add(id); }
         this.newsToday.add(id);
         if (id === 24) this.crashDay = g.daysElapsed;
+        // 鬧鬼 (news 14) on a lot or plot: its owner was haunted (鬼陰山).
+        if (id === 14 && e.node !== undefined) { const o = this.ownerOfRef(g.node(e.node).ref); if (o >= 0) this.bump(o, 'haunted'); }
         break;
       }
       case 'god-attach': if (p >= 0) {
@@ -231,7 +233,7 @@ export class Challenge {
         this.bump(p, 'mineHit');
         if (by === p) this.bump(p, 'selfHarm');
         else if (by !== undefined) this.bump(by, 'mineGot');
-        if (g.players[p].traffic & 2) this.bump(p, 'carMine');
+        if (this.own[p].traffic === 2) this.bump(p, 'carMine'); // the vehicle as it was before the mine destroyed it
         break;
       } break;
       case 'bomb-pickup': if (p >= 0 && e.node !== undefined) { const by = this.placed.get(e.node); this.bombChain.set(p, by !== undefined && by !== p ? [by] : []); if (by !== undefined && by !== p) this.bump(by, 'bombPlanted'); } break;
@@ -313,7 +315,7 @@ export class Challenge {
     const fac = this.facilityAt(payer.node);
     this.bump(to, 'tollIn');
     this.bump(to, `paidBy:${from}:${this.g.daysElapsed}`);
-    if (land) { this.bump(to, `tollAt:${land.name}`); if (land.tmpState && (land.tmpState & 0xf) === 1) this.bump(to, `raisedToll:${land.name}`); }
+    if (land) { this.bump(to, `tollAt:${land.name}`); if (land.tmpState && (land.tmpState & 0xf) === 0) this.bump(to, `raisedToll:${land.name}`); } // tmpState 0x?0 漲價卡, 0x?1 查封卡
     if (fac && fac.type === 3 && (payer.traffic & 3) === 2) this.bump(to, `gasCar:${fac.name}`);
     if (fac && fac.type === 3) this.bump(to, 'gas');
     this.bump(from, 'paidToll');
@@ -459,6 +461,9 @@ export class Challenge {
     b.lands.forEach(l => this.owners.set(l.id + 2000, l.owner - 1));
     b.facilities.forEach(f => this.owners.set(f.id + 4000, f.owner - 1));
     // Same-day counts (yesterday's, as newDay runs at the start of a day): 澀谷 visitors.
+    // 三越特賣 (J16): the chairman of 三越百貨 saw every rival stop there today.
+    const mitsu = this.stopsToday.get('三越百貨');
+    for (const p of live) if (mitsu && (this.own[p.id].chair['三越百貨'] ?? 0) > 0 && live.every(q => q.id === p.id || mitsu.has(q.id))) this.bump(p.id, 'mitsukoshiDay');
     const shibuya = this.stopsToday.get('澀谷')?.size ?? 0;
     for (const q of this.stopsToday.get('澀谷') ?? []) this.bestOf(g.players[q], 'K05', shibuya);
     this.stopsToday.clear();
@@ -527,6 +532,7 @@ export class Challenge {
     const n = this.g.node(node);
     if (n.ref > 2000 && n.ref < 4000) return this.g.board.lands[n.ref - 2001]?.name ?? '';
     if (n.ref > 4000 && n.ref < 6000) return this.g.board.facilities[n.ref - 4001]?.name ?? '';
+    if (n.ref > 6000 && n.ref < 8000) return this.g.board.companies[n.ref - 6001]?.name ?? '';
     return '';
   }
 
@@ -726,13 +732,13 @@ const MAP_MEASURES: Record<string, Measure> = {
   // the rest of the maps' tasks
   C09: (c, p) => c.paidToday(p, 'facPaid:武漢'), C13: N('springFest'), C20: DATE(1, 1, ['北京']),
   D04: N('volcano'), D08: N('armor20'), D10: N('missiled'), D18: N('extinct'),
-  J11: N('angelOn:倉敷'), J14: N('quakeProof'), J16: (c, p) => ((c.own[p.id].chair['三越百貨'] ?? 0) > 0 && c.paidToday(p, 'coPaid:三越百貨') >= c.g.living().length - 1 ? 1 : 0),
+  J11: N('angelOn:倉敷'), J14: N('quakeProof'), J16: N('mitsukoshiDay'),
   J18: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), N10: N('armor10'), O11: (c, p) => (c.paidToday(p, 'streetPaid:心齋橋筋') >= c.g.living().length - 1 ? 1 : 0),
   Q15: N('windmill'), S04: (c, p) => { const fs = c.g.board.facilities.filter(f => f.owner === p.id + 1 && f.level > 0); const have = [0, 1, 2, 3, 4].map(t => fs.filter(f => f.type === t)); if (have.some(x => !x.length)) return 0; const top = (t: number, f: { level: number }) => f.level >= (t === 0 || t === 3 ? 1 : 5); const mid = (t: number, f: { level: number }) => f.level >= (t === 0 || t === 3 ? 1 : 3); return have.every((x, t) => x.some(f => top(t, f))) ? 3 : have.every((x, t) => x.some(f => mid(t, f))) ? 2 : 1; },
   S10: (c, p) => { const f = c.g.board.facilities.find(x => x.name === '千禧城'); if (f && f.owner === p.id + 1 && monthOf(c.g.date) === 1 && dayOf(c.g.date) === 1) c.bump(p.id, 'millennium'); return c.n(p, 'millennium'); },
   S12: (c, p) => { const fs = c.g.board.facilities.filter(x => x.name === '星月城' || x.name === '流星城'); return fs.length >= 2 && fs.every(f => f.owner === p.id + 1 && f.type === 1) && (c.n(p, 'guest4:星月城') + c.n(p, 'guest4:流星城')) > 0 ? 1 : 0; },
   S19: N('jam'), T18: N('mazu'), U01: N('coast2coast'), U10: N('redFlip'), U14: N('whiteHouse'),
-  W04: N('huashan'), W05: N('devilJail'), W07: N('escort'), W13: NEWS(14), Z04: N('earthSafe'), Z10: N('remoteAt:射手座區'),
+  W04: N('huashan'), W05: N('devilJail'), W07: N('escort'), W13: N('haunted'), Z04: N('earthSafe'), Z10: N('remoteAt:射手座區'),
   Z11: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), Z13: N('lionKing'), Z15: N('goodFate3'),
   // 歌舞伎町
   B01: N('dashAway'), B02: N('kbv:tower'), B03: N('kbv:love'), B04: N('touted'), B05: N('protection'), B06: N('smash'), B07: N('gangArrest'), B08: N('bodyguard'),
