@@ -22,6 +22,9 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(PhotoSaverPlugin.class); // 儲存到相簿 of the results screen
         super.onCreate(savedInstanceState);
         fullScreen();
+        // Issue #39: the web view sizes the page's words by the phone's font size setting (larger on many phones), so
+        // the game's fixed layouts overflowed and buttons went off the screen. The game sets its own sizes.
+        if (bridge != null && bridge.getWebView() != null) bridge.getWebView().getSettings().setTextZoom(100);
         // Issue #7 (「安卓版經常出現讀取存檔失敗，然後閃退」, HarmonyOS 4.2): when the system kills the web view's renderer
         // (out of memory, often while a big map loads), Android closes the whole app unless the app handles it. The
         // game starts again at the title instead (the page notes a load that was cut off and says so there).

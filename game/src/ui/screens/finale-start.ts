@@ -57,6 +57,11 @@ fxScreens['finale-start'] = (ctx, fx) => new Promise<void>(done => {
       <div class="fs-acts"><button class="candy ghost fs-save">儲存到相簿</button><button class="candy yes fs-go">前往大富翁城</button><button class="candy ghost fs-share">分享</button></div>
       <div class="fs-toast"></div>`);
     sc.stage.querySelector<HTMLButtonElement>('.fs-go')!.onclick = e => { e.stopPropagation(); finish(); };
+    // Issue #39 (「最終決戰籌碼結算界面卡死」, Android): words bigger than this page was made for (a large system font
+    // size) pushed 「前往大富翁城」 below the page. The cards shrink until the buttons are on it.
+    const root = sc.stage.querySelector<HTMLElement>('.fs-root')!, cards = root.querySelector<HTMLElement>('.fs-cards')!, acts = root.querySelector<HTMLElement>('.fs-acts')!;
+    const off = () => acts.offsetTop + acts.offsetHeight + 6 > root.clientHeight || cards.scrollWidth > cards.clientWidth + 1;
+    for (let z = 0.95; z >= 0.5 && off(); z -= 0.05) cards.style.zoom = z.toFixed(2);
     // 儲存到相簿 / 分享 (the user 2026-10-19): this page as one picture (finale-card.ts).
     let busy = false, toastTimer = 0;
     const toast = (t: string) => { const el = sc.stage.querySelector<HTMLElement>('.fs-toast')!; el.textContent = t; el.classList.add('show'); clearTimeout(toastTimer); toastTimer = window.setTimeout(() => el.classList.remove('show'), 2200); };
