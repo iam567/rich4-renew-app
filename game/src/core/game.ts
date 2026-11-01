@@ -18,6 +18,7 @@ import { Stocks } from './modules/stocks';
 import { Tools, type ToolDef } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { SmartAi } from './smart-ai';
+import type { ChallengeAi } from './challenge-ai';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
@@ -373,6 +374,8 @@ export class Game {
    * (core/ai-sim.ts, scripts/ai-sim.ts, smart-ai.test.ts) pits the levels against each other.
    */
   testLevels?: readonly (0 | 1 | 2)[];
+  /** 挑戰模式's computer (core/challenge-ai.ts): set with the game's task tracker; the smarter computer reads it. */
+  challengeAi?: ChallengeAi;
   /**
    * The level a computer-played seat (a computer, a human on 托管, in 派對模式 also a player voted out or dropped) plays
    * at (core/smart-ai.ts): 0 簡單 = the original's rules bit for bit, 1 中級 = the smarter money, buying, building and
@@ -640,7 +643,7 @@ export class Game {
     const only = this.isHuman(p) && this.rules?.pickFacilityType ? yield* this.rules.pickFacilityType(this, p, f) : this.rules?.facilityType?.(f);
     f.type = only !== undefined ? only : this.isHuman(p)
       ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
-      : f.owner === p.id + 1 ? (this.smartAi(p) ? this.smart.facilityType() : this.rng.rand() % 4 + 1) : 0;
+      : f.owner === p.id + 1 ? (this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1) : 0;
     f.level = 1;
     return 1 | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
   }
@@ -1316,7 +1319,7 @@ export class Game {
       if (price > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
-        : this.smartAi(p) ? this.smart.wantsToBuy(p, price) : this.aiCanAfford(p, price);
+        : this.smartAi(p) ? this.smart.wantsToBuy(p, price, undefined, f.name) : this.aiCanAfford(p, price);
       if (!yes) return;
       if (yield* this.investmentBlocked(p)) return;
       f.owner = me;
@@ -1335,7 +1338,7 @@ export class Game {
         f.type = this.isHuman(p)
           ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: cost,
             ...(resort > 1 ? { text: `建設費用 ${cost} 元・度假勝地：旅館收入×${resort}` } : {}) })) || 0))
-          : this.smartAi(p) ? this.smart.facilityType() : this.rng.rand() % 4 + 1;
+          : this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1;
         // A computer builds a hotel in a resort city (the draw above is kept, so the rand() sequence is the same).
         if (resort > 1 && !this.isHuman(p)) f.type = 1;
         if (yield* this.investmentBlocked(p)) return;

@@ -186,6 +186,7 @@ export class SmartAi {
     else if (n.event >= 10 && n.event <= 12) v += (n.event === 10 ? 800 : n.event === 11 ? 500 : 200) * PI;
     else if (n.event >= 6 && n.event <= 8) v += 600 * PI;
     else if (n.event === 14) v += 300 * PI;
+    v += g.challengeAi?.stopBonus(p, node) ?? 0; // 挑戰模式: the squares its tasks want (core/challenge-ai.ts)
     const o = g.objects.at(node);
     if (o) {
       const t = o.type;
@@ -257,7 +258,8 @@ export class SmartAi {
   // ---------------------------------------------------------------- buying and building (Game.landOnLot / landOnFacility)
 
   /** Buy an empty lot or plot for `price` (already ≤ cash)? */
-  wantsToBuy(p: Player, price: number, land?: Land): boolean {
+  wantsToBuy(p: Player, price: number, land?: Land, plot?: string): boolean {
+    if (this.g.challengeAi?.wantsPlace(p, land?.name ?? plot ?? '')) return true; // 挑戰模式: a place its tasks name
     const spare = this.money(p) - price, reserve = this.reserve(p);
     if (spare >= reserve) return true;
     // A lot on a street it already has a foot in (the tolls add up): a smaller margin.
@@ -270,7 +272,7 @@ export class SmartAi {
   }
 
   /** The facility type for an empty plot of its own: a shopping mall (the highest expected fee, upgrades to 5). */
-  facilityType(): number { return 2; }
+  facilityType(p?: Player, f?: Facility): number { return (p && f ? this.g.challengeAi?.facilityType(p, f.name) : undefined) ?? 2; }
 
   // ---------------------------------------------------------------- money (Game.atm / bankCounter, stocks)
 
@@ -466,8 +468,10 @@ export class SmartAi {
   actions(p: Player): Act[] {
     const g = this.g, PI = g.priceIndex, out: Act[] = [];
     const lead = this.leader(p), money = this.money(p);
-    const card = (id: number, score: number, a0: number, a1 = 0) => { if (p.cards.includes(id) && score > 0) out.push({ score, run: () => g.cards.playAs(p, id, a0, a1) }); };
-    const tool = (id: number, score: number, param: number) => { if (p.tools[id - 1] > 0 && score > 0) out.push({ score, run: () => this.useTool(p, id, param) }); };
+    // 挑戰模式 (core/challenge-ai.ts): what a card or tool brings toward the player's open tasks is added to its value.
+    const cb = g.challengeAi;
+    const card = (id: number, score: number, a0: number, a1 = 0) => { score += cb?.cardBonus(p, id) ?? 0; if (p.cards.includes(id) && score > 0) out.push({ score, run: () => g.cards.playAs(p, id, a0, a1) }); };
+    const tool = (id: number, score: number, param: number) => { score += cb?.toolBonus(p, id) ?? 0; if (p.tools[id - 1] > 0 && score > 0) out.push({ score, run: () => this.useTool(p, id, param) }); };
     const has = (id: number) => p.cards.includes(id);
     const standing = g.node(p.node)?.ref ?? 0, here = this.plot(standing);
     const view = this.plotRefs().filter(r => { const x = this.plot(r)!; return this.inView(p, x.x, x.y); });
@@ -600,6 +604,10 @@ export class SmartAi {
       if (this.classicWants(p, id)) { const a0 = g.cards.aiArg0, a1 = g.cards.aiArg1; card(id, 2500 * PI, a0, a1); }
       [g.cards.aiArg0, g.cards.aiArg1] = before;
     }
+
+    // 挑戰模式: 轉向卡 on a rival in view, 同盟卡 with the first other player, when a task counts them.
+    if (cb && has(6) && rivals.length) card(6, -1500 * PI, rivals[0].id);
+    if (cb && has(29) && !p.ally) { const q = g.living().find(x => x.id !== p.id); if (q) card(29, -2000 * PI, q.id); }
 
     // ---- tools
     // 5 機車 / 6 汽車: more dice, more choice.
