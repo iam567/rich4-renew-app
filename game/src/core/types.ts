@@ -219,8 +219,9 @@ export type GameEvent =
   | { t: 'say'; p?: number; text: string; log?: string }
   | { t: 'buy'; p: number; kind: 'land' | 'facility'; id: number; price: number }
   | { t: 'build'; p: number; kind: 'land' | 'facility'; id: number; level: number; cost: number }
-  /** `quiet`: the original moves the money without a message box of its own (its notice came before). */
-  | { t: 'pay'; from: number; to: number; amount: number; reason: string; quiet?: boolean }
+  /** `quiet`: the original moves the money without a message box of its own (its notice came before). `owed`: 挑戰模式, the
+   * part the payer could not pay, now owed to the bank (the receiver got `amount` only). */
+  | { t: 'pay'; from: number; to: number; amount: number; reason: string; quiet?: boolean; owed?: number }
   | { t: 'points'; p: number; amount: number }
   | { t: 'bank'; p: number }
   | { t: 'bankrupt'; p: number }

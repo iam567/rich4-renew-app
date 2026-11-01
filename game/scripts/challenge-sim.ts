@@ -49,7 +49,8 @@ for (const mapId of maps) {
       for (const t of pool) (row.tasks[t.id] ??= {})[y] = game.players.map(p => C.starsFor(t, ch.own[p.id].best[t.id] ?? 0, t.id === 'G33' || t.id === 'W01' ? game.board.companies.length : Infinity));
     };
     while (!r.done && game.daysElapsed < end && !game.over) {
-      if (++steps > 40_000_000) throw new Error(`map ${mapId} seed ${seed}: too long`);
+      if (++steps > 400_000_000) throw new Error(`map ${mapId} seed ${seed}: too long`);
+      if (steps % 20_000_000 === 0 && process.argv.includes('--trace')) console.log(`  step ${steps} day ${game.daysElapsed} event ${JSON.stringify(r.value).slice(0, 160)}`);
       const s = r.value as { ask?: boolean; t?: string };
       if (!('ask' in s)) ch.see(s as GameEvent);
       if (game.daysElapsed !== lastDay) {

@@ -298,7 +298,7 @@ export class Challenge {
   private pay(e: Extract<GameEvent, { t: 'pay' }>) {
     const g = this.g, from = e.from, to = e.to;
     const isP = (x: number) => x >= 0 && x < g.players.length;
-    if (isP(from)) this.bestOf(g.players[from], 'G20', e.amount);
+    if (isP(from)) this.bestOf(g.players[from], 'G20', e.amount + (e.owed ?? 0));
     if (isP(to) && e.reason === '理賠金') this.bump(to, 'insurance');
     if (isP(from) && isP(to) && from !== to) {
       const at = g.node(g.players[from].node), day = g.daysElapsed;

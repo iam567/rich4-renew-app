@@ -520,8 +520,16 @@ export class Game {
       const a = Math.max(0, Math.min(p[first], need)); p[first] -= a; need -= a;
       const b = Math.max(0, Math.min(p[second], need)); p[second] -= b; need -= b;
       if (need > 0 && this.canRaise()) { yield* this.raiseCash(p, need); const c = Math.min(p.bank, need); p.bank -= c; need -= c; }
-      // 挑戰模式 (docs/rules/26 §2): nobody goes bankrupt; what the money does not cover is debt (negative cash).
-      if (need > 0 && this.challenge) { p.cash -= need; need = 0; }
+      // 挑戰模式 (docs/rules/26 §2): nobody goes bankrupt; what the money does not cover is debt to the bank (negative
+      // cash). The receiver gets only what was there (debt creates no money: unbounded fortunes and endless auctions).
+      if (need > 0 && this.challenge) {
+        p.cash -= need;
+        const paid = amount - need;
+        p.monthLoss += paid;
+        this.credit(to, paid, flags);
+        yield { t: 'pay', from, to, amount: paid, owed: need, reason, ...(quiet ? { quiet } : {}) };
+        return amount;
+      }
       if (need > 0) {
         amount -= need;
         p.cash = 0; p.bank = 0;
