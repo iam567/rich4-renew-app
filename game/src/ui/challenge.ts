@@ -5,7 +5,10 @@
  */
 import { CHALLENGE_TOTAL, CHALLENGE_WIN, fullStars, starsFor, type Challenge, type ChallengeTask } from '../core/challenge';
 import { CHARACTERS, playerName } from '../core/characters';
+import { month as monthOf } from '../core/date';
 import type { Game } from '../core/game';
+import { monthlyById, monthlyDesc, MONTHLY_RULE, type MonthlyTask } from '../core/monthly';
+import { ASSETS } from './assets';
 import { audio } from './audio';
 import './challenge.css';
 
@@ -21,9 +24,10 @@ const starRow = (got: number, full: number) => `<i class="chl-on">${'★'.repeat
 /** The line under the title: how this game is won and how long it still runs. */
 export function challengeGoal(g: Game): string {
   const years = g.settings.challengeYears ?? 0;
-  if (!years) return `先拿到 ${CHALLENGE_WIN} 顆星的人獲勝（共 ${CHALLENGE_TOTAL} 顆）`;
+  const total = g.challengeTracker?.monthly ? `共 ${CHALLENGE_TOTAL} 顆＋每月任務` : `共 ${CHALLENGE_TOTAL} 顆`;
+  if (!years) return `先拿到 ${CHALLENGE_WIN} 顆星的人獲勝（${total}）`;
   const left = Math.max(0, years * 365 - g.daysElapsed);
-  return `${years} 年內星最多的人獲勝・還剩 ${left} 天（共 ${CHALLENGE_TOTAL} 顆）`;
+  return `${years} 年內星最多的人獲勝・還剩 ${left} 天（${total}）`;
 }
 
 /** Stars by player and task, telling what was earned since the last look (挑戰模式's badge, a normal game's 圖鑑). */
@@ -45,6 +49,78 @@ export class StarWatch {
   }
 }
 
+// ---------------------------------------------------------------- 每月任務 (core/monthly.ts, docs/rules/27)
+
+const MONTH_ART = `${ASSETS}/maps/remake/challenge`;
+const money = (v: number) => (Math.abs(v) >= 10000 ? `${+(v / 10000).toFixed(1)} 萬` : `${v}`);
+
+/** A month's card that ended or was taken: the card and who took it (none: nobody). */
+export interface MonthResult { task: MonthlyTask; won: number[] }
+
+/** What changed in the month's cards since the last look: a card taken or decided, a new card drawn. */
+export class MonthWatch {
+  private seq: number;
+  private logged: number;
+  /** Months already told (a 搶先 card taken in its month). */
+  private told = new Set<number>();
+  constructor(private g: Game) {
+    const c = g.challengeTracker!;
+    this.seq = c.month?.seq ?? -1;
+    this.logged = c.monthLog.length;
+    if (c.month?.done) this.told.add(c.month.seq);
+  }
+
+  update(): { results: MonthResult[]; drawn: boolean } {
+    const c = this.g.challengeTracker!, results: MonthResult[] = [];
+    for (const l of c.monthLog.slice(this.logged)) {
+      const task = monthlyById.get(l.id);
+      if (task && !this.told.has(l.seq)) results.push({ task, won: l.won });
+      this.told.add(l.seq);
+    }
+    this.logged = c.monthLog.length;
+    const m = c.month, task = c.monthTask();
+    if (m && task && m.done && !this.told.has(m.seq)) { this.told.add(m.seq); results.push({ task, won: m.won }); }
+    const drawn = !!m && m.seq !== this.seq;
+    this.seq = m?.seq ?? this.seq;
+    return { results, drawn };
+  }
+}
+
+/** Player p's progress on the month's card, as shown: 搶先 a/goal, 比拼 the figure, 堅持 ✓ / ✗. */
+function monthShown(g: Game, p: number): string {
+  const c = g.challengeTracker!, t = c.monthTask()!, v = c.monthValue(g.players[p]);
+  if (t.kind === 'keep') return v === 0 ? '✓' : '✗';
+  const val = t.money ? money(v) : String(v);
+  return t.kind === 'race' ? `${val} / ${t.money ? money(c.monthGoal()) : c.monthGoal()}` : val;
+}
+
+/** The month's card for the task list and the new month's notice: its picture, rule, goal, and everyone on it. */
+export function monthCard(g: Game, face: (character: number) => string, big = false): HTMLElement {
+  const c = g.challengeTracker!, m = c.month, t = c.monthTask(), el = document.createElement('div');
+  el.className = `chl-month${big ? ' big' : ''}`;
+  if (!m || !t) { el.innerHTML = '<p class="chl-month-none">本月任務：下個月 1 日抽第一張</p>'; return el; }
+  const who = g.players.map(p => {
+    const won = m.won.includes(p.id);
+    return `<span class="${won ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? '<i class="chl-on">★★★</i>' : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
+  }).join('');
+  el.innerHTML = `<img class="chl-month-pic" src="${MONTH_ART}/${t.id}.webp" alt="" onerror="this.style.visibility='hidden'">
+    <div class="chl-month-body"><small>本月任務・到 ${monthOf(g.date)} 月底${m.done ? '・已結束' : ''}</small>
+      <b>${esc(t.name)}</b><p>${esc(monthlyDesc(t, c.monthGoal()))}</p><p class="chl-how">${esc(MONTHLY_RULE[t.kind])}</p>
+      <div class="chl-who">${who}</div></div>`;
+  return el;
+}
+
+/** A new month's notice: last month's result (if any) and the new card. */
+export function monthNotice(g: Game, face: (character: number) => string, last: MonthResult[]): HTMLElement {
+  const root = document.createElement('div');
+  root.className = 'chl chl-notice';
+  const names = (ids: number[]) => ids.map(i => esc(playerName(g.players[i]))).join('、');
+  const lines = last.map(r => `<p class="chl-last">上個月「${esc(r.task.name)}」：${r.won.length ? `${names(r.won)} 拿到 ★★★` : '沒有人拿到'}</p>`).join('');
+  root.innerHTML = lines;
+  root.append(monthCard(g, face, true));
+  return root;
+}
+
 /** The badge over the map: everyone's stars; a tap opens the task list. */
 export class ChallengeBar {
   readonly el = document.createElement('div');
@@ -53,7 +129,7 @@ export class ChallengeBar {
 
   constructor(private g: Game, private face: (character: number) => string) {
     this.el.className = 'chb';
-    this.el.innerHTML = '<button class="chb-badge"></button>';
+    this.el.innerHTML = '<button class="chb-badge"></button><button class="chb-month" hidden></button>';
     this.el.addEventListener('click', () => { audio.ui('click'); this.onOpen(); });
     this.watch = new StarWatch(g);
     this.update();
@@ -64,6 +140,9 @@ export class ChallengeBar {
     const g = this.g, c = g.challengeTracker!, got = this.watch.update();
     const b = this.el.querySelector('.chb-badge')!;
     b.innerHTML = `<b>★ 任務</b>${g.players.map(p => `<span style="--c:${color(g, p.id)}"><img src="${this.face(p.character)}" alt="">${c.stars(p)}</span>`).join('')}`;
+    const mb = this.el.querySelector<HTMLElement>('.chb-month')!, t = c.monthTask();
+    mb.hidden = !t;
+    if (t) { mb.classList.toggle('done', !!c.month?.done); mb.textContent = `本月：${t.name}${c.month?.done ? ' ✓' : ''}`; }
     return got;
   }
 }
@@ -75,7 +154,8 @@ export function taskList(g: Game, face: (character: number) => string): HTMLElem
   const players = g.players;
   const order = [...c.tasks].sort((a, b) => (a.map === -1 ? 0 : 1) - (b.map === -1 ? 0 : 1) || a.id.localeCompare(b.id));
   const head = `<p class="chl-goal">${esc(challengeGoal(g))}</p>
-    <div class="chl-totals">${players.map(p => `<div style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><b>${esc(playerName(p))}</b><em>★ ${c.stars(p)}</em></div>`).join('')}</div>`;
+    <div class="chl-totals">${players.map(p => `<div style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><b>${esc(playerName(p))}</b><em>★ ${c.stars(p)}</em></div>`).join('')}</div>
+    ${c.monthly ? '<div class="chl-month-slot"></div>' : ''}`;
   const rows = order.map(t => {
     const full = fullStars(t);
     const how = t.once ? `可獲得 ${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
@@ -86,6 +166,7 @@ export function taskList(g: Game, face: (character: number) => string): HTMLElem
   });
   // Pages, not a scrolled list (the user 2026-11-02: some devices don't scroll): as many tasks as fit, ‹ › or a swipe.
   root.innerHTML = `${head}<ul class="chl-list"></ul><div class="chl-nav"><button class="chip" data-p="-1">‹</button><span></span><button class="chip" data-p="1">›</button></div>`;
+  root.querySelector('.chl-month-slot')?.replaceWith(monthCard(g, face));
   const list = root.querySelector<HTMLElement>('.chl-list')!, at = root.querySelector<HTMLElement>('.chl-nav span')!;
   let starts = [0], page = 0, size = '';
   /** Fills the list from task `from` until the next one would not fit; returns where the next page starts. */

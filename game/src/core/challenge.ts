@@ -10,6 +10,7 @@
 import { CHALLENGE_TASKS, type ChallengeTask } from './challenge-tasks';
 import { day as dayOf, month as monthOf } from './date';
 import type { Game } from './game';
+import { drawMonthly, MONTH_STATS, monthlyById, type MonthlyTask, type MonthX } from './monthly';
 import { eventTone, ledgerOf, TOLL_REASONS, type PlayerStats } from './stats';
 import type { GameEvent, Player } from './types';
 
@@ -121,6 +122,12 @@ const blankOwn = (): Own => ({
 
 type Measure = (c: Challenge, p: Player) => number | undefined;
 
+/**
+ * 每月任務 (core/monthly.ts): the month's card, the goal it was drawn with, the figures when drawn (by player), the
+ * counters bumped since (by player) and who took it.
+ */
+export interface MonthState { id: string; seq: number; since: number; goal: number; base: Record<string, number>[]; mo: Record<string, number>[]; won: number[]; done: boolean }
+
 /** A saved tracker (core/save.ts). */
 export interface ChallengeData { version: 1; tasks: string[]; state: Record<string, unknown> }
 
@@ -174,12 +181,21 @@ export class Challenge {
   private newsSnap: Record<string, number> | null = null;
   /** Who holds a time bomb and who placed it (G72). */
   private bombBy = new Map<number, number>();
+  /** A news of this turn: whoever it sends to hospital or prison was not sent by the player on turn. */
+  private newsNow = false;
+  /** 每月任務 on (挑戰模式, core/monthly.ts); the month's card; the stars the cards gave (by player); the months done. */
+  monthly = false;
+  month: MonthState | null = null;
+  monthStars: number[] = [];
+  monthLog: { id: string; seq: number; won: number[] }[] = [];
+  private monthSeq = 0;
   /** Set when `p` reaches 100 stars (the first only). */
   winner = -1;
 
   constructor(readonly g: Game, tasks?: ChallengeTask[]) {
     this.tasks = tasks ?? drawTasks(g.board.mapId, g.settings.seed);
     this.own = g.players.map(() => blankOwn());
+    this.monthStars = g.players.map(() => 0);
   }
 
   /** The tracker's state for a save: the drawn tasks by id and every counter (sets and maps as tagged arrays). */
@@ -204,7 +220,9 @@ export class Challenge {
   /** The ledger's counters of `p` (the simulation and the game attach one). */
   stats(p: Player): PlayerStats | undefined { return ledgerOf(this.g.players)?.of(p.id); }
 
-  bump(p: number, key: string, by = 1) { const o = this.own[p]; o.n[key] = (o.n[key] ?? 0) + by; }
+  bump(p: number, key: string, by = 1) { const o = this.own[p]; o.n[key] = (o.n[key] ?? 0) + by; this.bumpM(p, key, by); }
+  /** A counter of this month only (每月任務). */
+  bumpM(p: number, key: string, by = 1) { const m = this.month?.mo[p]; if (m) m[key] = (m[key] ?? 0) + by; }
   n(p: Player, key: string) { return this.own[p.id].n[key] ?? 0; }
 
   // ---------------------------------------------------------------- events
@@ -223,6 +241,7 @@ export class Challenge {
       case 'turn': {
         this.current = e.p;
         this.shooter = -1;
+        this.newsNow = false;
         this.fate6 = false;
         for (const o of this.own) o.justLeft = 0;
         const p = g.players[e.p], o = this.own[e.p];
@@ -242,6 +261,7 @@ export class Challenge {
       }
       case 'dice': {
         const v = e.values, o = this.own[e.p], sum = v.reduce((a, b) => a + b, 0);
+        this.bumpM(e.p, 'pips', sum);
         if (v.length === 3) {
           if (v[0] === v[1] && v[1] === v[2]) this.bump(e.p, 'leopard');
           if (sum >= 15) this.bump(e.p, 'car15');
@@ -257,12 +277,13 @@ export class Challenge {
         break;
       }
       case 'step':
-        if (isP(e.p)) { this.own[e.p].traffic = g.players[e.p].traffic & 3; this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
+        if (isP(e.p)) { this.bumpM(e.p, 'steps'); this.own[e.p].traffic = g.players[e.p].traffic & 3; this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
         break;
       case 'pay': this.pay(e); break;
       case 'points': if (isP(e.p)) {
         const pl = g.players[e.p], ev = g.node(pl.node)?.event, o = this.own[e.p];
         if (e.amount < 0 && (ev === 4 || ev === 5)) this.bump(e.p, 'bail');
+        if (e.amount > 0) this.bumpM(e.p, 'ptsGot', e.amount);
         // A mini game's score (human or computer): the ledger counts the game just before its points (G64, R09, R10).
         const games = this.stats(pl)?.miniGames ?? 0;
         if (games > (o.n.miniSeen ?? 0)) {
@@ -278,7 +299,8 @@ export class Challenge {
         if (isP(e.p) && this.current >= 0 && e.p !== this.current && isP(this.current)) this.teleported = { by: this.current, tgt: e.p };
         break;
       }
-      case 'buy': case 'build': break;
+      case 'buy': break;
+      case 'build': if (e.level === 1) this.bumpM(e.p, 'newHouse'); break;
       case 'fx': this.fx(e, isP); break;
       default: break;
     }
@@ -286,6 +308,7 @@ export class Challenge {
     // very moment (the dice still on the board, the tools just bought …). Walking steps change nothing measured.
     const who = (e as { p?: number }).p;
     if (e.t !== 'step' && isP(who) && g.players[who].whoPlays && g.here(g.players[who])) this.measureAll(g.players[who]);
+    if (e.t !== 'step') this.raceCheck();
   }
 
   private fx(e: Extract<GameEvent, { t: 'fx' }>, isP: (x?: number) => x is number) {
@@ -304,6 +327,7 @@ export class Challenge {
         const id = num('id');
         if (p >= 0) { this.bump(p, `drew-news:${id}`); this.own[p].newsSeen.add(id); }
         this.newsToday.add(id);
+        this.newsNow = true;
         if (id === 24) this.crashDay = g.daysElapsed;
         if ((id === 4 || id === 15 || id === 18) && !this.newsSnap) this.newsSnap = this.buildings();
         // 鬧鬼 (news 14) on a lot or plot: its owner was haunted (鬼陰山).
@@ -415,7 +439,7 @@ export class Challenge {
         this.placed.delete(e.node); this.mines.delete(e.node);
         this.bump(p, 'mineHit');
         if (by === p) this.bump(p, 'selfHarm');
-        else if (by !== undefined) this.bump(by, 'mineGot');
+        else if (by !== undefined) { this.bump(by, 'mineGot'); this.bumpM(by, 'hurt'); this.bumpM(by, `hurt:${p}`); }
         if (this.own[p].traffic === 2) this.bump(p, 'carMine'); // the vehicle as it was before the mine destroyed it
         break;
       } break;
@@ -433,11 +457,14 @@ export class Challenge {
       case 'to-hospital': if (p >= 0) {
         const by = this.shooter;
         if (by >= 0 && by !== p) { this.bump(by, 'missileHit'); this.bump(p, 'missiled'); }
+        if (isP(this.current) && this.current !== p && !this.newsNow) { this.bumpM(this.current, 'hurt'); this.bumpM(this.current, `hurt:${p}`); }
         if (isP(this.current) && this.current !== p) this.own[this.current].sent.add(p);
         this.checkAll();
         break;
       } break;
-      case 'to-prison': if (p >= 0) { this.own[p].dash = false; if (this.own[p].god === 10) this.bump(p, 'devilJail'); if (isP(this.current) && this.current !== p) this.own[this.current].sent.add(p); } this.checkAll(); break;
+      case 'to-prison': if (p >= 0) {
+        if (isP(this.current) && this.current !== p && !this.newsNow) { this.bumpM(this.current, 'sentPrison'); this.bumpM(this.current, `jailed:${p}`); }
+        this.own[p].dash = false; if (this.own[p].god === 10) this.bump(p, 'devilJail'); if (isP(this.current) && this.current !== p) this.own[this.current].sent.add(p); } this.checkAll(); break;
       case 'enter-hotel': if (p >= 0) {
         const f = g.board.facilities[num('facility') - 1], days = num('days');
         if (!f) break;
@@ -461,6 +488,7 @@ export class Challenge {
       case 'slot-machine': if (p >= 0) { const god = num('god'), a = num('amount'); if (god === 2 && a >= 5000) this.bump(p, 'slotRich'); if (god === 6 && a >= 5000) this.bump(p, 'slotPoor'); if (num('mult') > 1) this.bump(p, `slotSame:${god}`); } break;
       case 'stock-trade': if (p >= 0) {
         const sl = num('slot'), o = this.own[p], price = g.stocks.stocks[sl]?.price ?? 0;
+        if (d.buy) this.bumpM(p, `buyCo:${sl}`);
         if (d.buy && this.crashDay === g.daysElapsed && !o.crashBuy[sl]) o.crashBuy[sl] = price || 1;
         if (!d.buy && o.crashBuy[sl]) { if (price > o.crashBuy[sl]) this.bump(p, 'bottomFish'); delete o.crashBuy[sl]; }
         if (!d.buy && o.redDay === g.daysElapsed && o.redSlot === sl) this.bump(p, 'redFlip');
@@ -523,6 +551,7 @@ export class Challenge {
       if (rivals.length && rivals.every(q => this.n(g.players[to], `paidBy:${q.id}:${g.daysElapsed}`) > 0)) this.bump(to, `allPaid:${g.daysElapsed}`);
     }
     if (!(isP(from) && isP(to) && from !== to && TOLL_REASONS.has(e.reason))) return;
+    this.bumpM(to, `tollFrom:${from}`); this.bumpM(to, `tollDay:${g.daysElapsed}`);
     this.bestOf(g.players[to], 'O05', e.amount);
     const payer = g.players[from], at = g.node(payer.node);
     if (!at) return; // 大富豪模式: paid from another city (小財神 …)
@@ -550,6 +579,7 @@ export class Challenge {
   }
 
   private passed(p: number, node: number) {
+    if (this.g.node(node)?.event === 14) this.bumpM(p, 'bank');
     const name = this.placeName(node);
     if (!name) return;
     const o = this.own[p];
@@ -639,6 +669,7 @@ export class Challenge {
       this.bestOf(p, 'G19', money - o.dayCash);
       o.dayCash = money;
       const w = g.wealth(p);
+      if (w !== top) this.bumpM(p.id, 'notTop');
       o.rich = w === top ? o.rich + 1 : 0;
       o.poor = w === bottom && live.length > 1 ? o.poor + 1 : 0;
       o.clean++; // 忍者 (J18): days without paying a toll or fee
@@ -653,6 +684,9 @@ export class Challenge {
     }
     this.dayExtras();
     this.checkAll();
+    // 每月任務: the 1st ends the month's card and draws the next.
+    if (this.monthly && dayOf(g.date) === 1) { this.endMonth(); this.drawMonth(); }
+    this.raceCheck();
     const best = this.leader();
     if (best >= 0 && this.winner < 0) this.winner = best;
   }
@@ -781,7 +815,87 @@ export class Challenge {
     return who;
   }
 
-  stars(p: Player): number { return this.tasks.reduce((n, t) => n + starsFor(t, this.own[p.id].best[t.id] ?? 0, this.allOf(t)), 0); }
+  stars(p: Player): number { return this.tasks.reduce((n, t) => n + starsFor(t, this.own[p.id].best[t.id] ?? 0, this.allOf(t)), 0) + (this.monthStars[p.id] ?? 0); }
+
+  // ---------------------------------------------------------------- 每月任務 (core/monthly.ts)
+
+  /** Turns the monthly cards on: the first now (unless the month is nearly over: then on the 1st). */
+  startMonthly(): void {
+    this.monthly = true;
+    if (dayOf(this.g.date) <= 20) this.drawMonth();
+  }
+
+  /** The month's card, if any. */
+  monthTask(): MonthlyTask | undefined { return this.month ? monthlyById.get(this.month.id) : undefined; }
+
+  private drawMonth() {
+    const g = this.g, t = drawMonthly(g, this.monthSeq);
+    const goal = t.goal < 0 ? -1 : t.money && t.kind === 'race' ? Math.round((t.goal * g.priceIndex) / 1000) * 1000 : t.goal;
+    const base = g.players.map(p => {
+      const s = this.stats(p), out: Record<string, number> = {};
+      for (const [k, f] of Object.entries(MONTH_STATS)) out[k] = f(g, p, s);
+      return out;
+    });
+    this.month = { id: t.id, seq: this.monthSeq++, since: g.daysElapsed, goal, base, mo: g.players.map(() => ({})), won: [], done: false };
+  }
+
+  /** The goal now: every rival is the living players less one. */
+  monthGoal(): number { const m = this.month; return !m ? 0 : m.goal < 0 ? Math.max(1, this.live().length - 1) : m.goal; }
+
+  /** What player `p` has done toward the month's card (堅持: what broke it). */
+  monthValue(p: Player, f?: (x: MonthX) => number): number {
+    const m = this.month, t = this.monthTask();
+    if (!m || !t) return 0;
+    const mo = m.mo[p.id] ?? {}, keys = (pre: string) => Object.keys(mo).filter(k => k.startsWith(pre));
+    const x: MonthX = {
+      k: key => mo[key] ?? 0,
+      kp: pre => keys(pre).reduce((n, k) => n + mo[k], 0),
+      kd: pre => keys(pre).filter(k => mo[k] > 0).length,
+      km: pre => Math.max(0, ...keys(pre).map(k => mo[k])),
+      d: stat => { const f = MONTH_STATS[stat]; return f ? f(this.g, p, this.stats(p)) - (m.base[p.id]?.[stat] ?? 0) : 0; },
+    };
+    return (f ?? t.v)(x);
+  }
+
+  /** 搶先: the first to reach the goal takes the card (several at the same moment: all of them). */
+  private raceCheck() {
+    const m = this.month, t = this.monthTask();
+    if (!m || !t || m.done || t.kind !== 'race') return;
+    const goal = this.monthGoal(), won = this.live().filter(p => p.whoPlays && this.monthValue(p) >= goal).map(p => p.id);
+    if (won.length) this.award(won);
+  }
+
+  private award(won: number[]) {
+    const m = this.month!;
+    m.won = won; m.done = true;
+    for (const p of won) this.monthStars[p] = (this.monthStars[p] ?? 0) + 3;
+  }
+
+  /** The month is over: 比拼 / 堅持 decided now, the card kept in the log. */
+  private endMonth() {
+    const m = this.month, t = this.monthTask();
+    if (!m || !t) return;
+    if (!m.done && t.kind !== 'race') {
+      const live = this.live().filter(p => p.whoPlays);
+      if (t.kind === 'most') {
+        const vals = live.map(p => this.monthValue(p)), top = Math.max(0, ...vals);
+        if (top >= Math.max(1, m.goal)) this.award(live.filter((_, i) => vals[i] === top).map(p => p.id));
+      } else {
+        const won = live.filter(p => this.monthValue(p) === 0 && (!t.also || this.monthValue(p, t.also[0]) >= t.also[1])).map(p => p.id);
+        if (won.length) this.award(won);
+      }
+    }
+    this.monthLog.push({ id: m.id, seq: m.seq, won: m.won });
+    this.month = null;
+  }
+
+  /** The game ends (a deadline): the month's card is decided when it ran at least 10 days, else dropped. */
+  closeMonth(): void {
+    const m = this.month;
+    if (!m) return;
+    if (!m.done && this.g.daysElapsed - m.since < 10) { this.monthLog.push({ id: m.id, seq: m.seq, won: [] }); this.month = null; return; }
+    this.endMonth();
+  }
 
   private allOf(t: ChallengeTask): number {
     if (t.id === 'G33' || t.id === 'W01') return this.g.board.companies.length;

@@ -360,6 +360,8 @@ export class Game {
     if (!link) {
       this.challengeTracker = new Challenge(this, settings.challenge ? undefined : taskPool(settings.mapId));
       if (settings.challenge) this.challengeAi = new ChallengeAi(this, this.challengeTracker);
+      // 每月任務 (core/monthly.ts, docs/rules/27): on unless the new game turned it off.
+      if (settings.challenge && settings.challengeMonthly !== false) this.challengeTracker.startMonthly();
     }
   }
 
@@ -852,6 +854,7 @@ export class Game {
       // first to 100 stars.
       const years = this.settings.challengeYears ?? 0;
       if (years && this.daysElapsed >= years * 365) {
+        ch.closeMonth();
         const live = this.living();
         if (!live.length) return;
         const best = live.reduce((a, b) => (ch.stars(b) > ch.stars(a) || (ch.stars(b) === ch.stars(a) && this.wealth(b) > this.wealth(a)) ? b : a));

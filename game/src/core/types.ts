@@ -23,6 +23,8 @@ export interface GameSettings {
   challenge?: boolean;
   /** 挑戰模式's deadline in years (1 / 3 / 5: the most stars then wins); 0 or none: the first to 100 stars wins. */
   challengeYears?: number;
+  /** 挑戰模式's 每月任務 (core/monthly.ts, docs/rules/27): false turns them off; on otherwise. */
+  challengeMonthly?: boolean;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];

@@ -15,6 +15,7 @@
 import { Capacitor } from '@capacitor/core';
 import { CHALLENGE_MAPS, CHALLENGE_TASKS, fullStars, type ChallengeTask } from '../core/challenge';
 import { format } from '../core/date';
+import { MONTHLY_RULE, MONTHLY_TASKS, monthlyDesc, type MonthlyTask } from '../core/monthly';
 import { ASSETS } from './assets';
 import { audio, Sfx } from './audio';
 import { saveImage, shareImage } from './share';
@@ -250,7 +251,15 @@ export function cardHtml(t: ChallengeTask, stars: number, shown = stars > 0): st
 }
 
 /** What the task asks (the detail of a card). */
+/** Every card: the tasks', then the 每月任務 (docs/rules/27, group −2). */
+const ALL: ChallengeTask[] = [...CHALLENGE_TASKS, ...MONTHLY_TASKS];
+/** Where a task belongs (通用 / 每月 / a map's). */
+const whereOf = (t: ChallengeTask, mapName: (id: number) => string) => (t.map === -1 ? '通用任務' : t.map === -2 ? '每月任務' : `${mapName(t.map)}・本圖任務`);
+/** What a task asks: a 每月任務's goal at price index 1. */
+const descOf = (t: ChallengeTask) => (t.map === -2 ? monthlyDesc(t as MonthlyTask, (t as MonthlyTask).goal) : t.desc);
+
 function howHtml(t: ChallengeTask): string {
+  if (t.map === -2) return `<p>${esc(descOf(t))}</p><p class="col-how">${esc(MONTHLY_RULE[(t as MonthlyTask).kind])}</p>`;
   const how = t.once ? `可獲得 ${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
   return `<p>${esc(t.desc)}</p>${how ? `<p class="col-how">${how}</p>` : ''}`;
 }
@@ -261,8 +270,8 @@ function howHtml(t: ChallengeTask): string {
  */
 export async function openCollection(root: HTMLElement, mapName: (id: number) => string): Promise<void> {
   const cards = await loadCards();
-  const groups = [{ id: -1, name: '通用' }, ...CHALLENGE_MAPS.map(id => ({ id, name: mapName(id) }))];
-  const total = CHALLENGE_TASKS.length, have = CHALLENGE_TASKS.filter(t => cards[t.id]).length;
+  const groups = [{ id: -1, name: '通用' }, { id: -2, name: '每月任務' }, ...CHALLENGE_MAPS.map(id => ({ id, name: mapName(id) }))];
+  const total = ALL.length, have = ALL.filter(t => cards[t.id]).length;
   const starsOf = (id: string) => cards[id]?.s ?? 0;
   let group = 0, page = 0, perPage = 8;
   const overlay = document.createElement('div');
@@ -275,7 +284,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
     <div class="choices"><button class="candy ghost" data-close="1">關閉</button></div></div>`;
   root.append(overlay);
   const grid = overlay.querySelector<HTMLElement>('.col-grid')!;
-  const tasksOf = () => CHALLENGE_TASKS.filter(t => t.map === groups[group].id);
+  const tasksOf = () => ALL.filter(t => t.map === groups[group].id);
   const draw = () => {
     const list = tasksOf(), pages = Math.max(1, Math.ceil(list.length / perPage));
     page = Math.max(0, Math.min(pages - 1, page));
@@ -307,7 +316,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
       audio.ui('click');
       if (d.g) { group = (group + Number(d.g) + groups.length) % groups.length; page = 0; draw(); }
       if (d.p) { page += Number(d.p); draw(); }
-      if (d.card) showCard(overlay, CHALLENGE_TASKS.find(x => x.id === d.card)!, cards[d.card], mapName, have);
+      if (d.card) showCard(overlay, ALL.find(x => x.id === d.card)!, cards[d.card], mapName, have);
     };
     let x0: number | null = null;
     grid.addEventListener('pointerdown', e => { x0 = e.clientX; });
@@ -365,9 +374,9 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
   }
   // The task and the record.
   let y = cy + ch + 96;
-  text(`${t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`}　${'★'.repeat(card.s)} / ${'★'.repeat(fullStars(t))}`, 34, y, '#ffd76a');
+  text(`${whereOf(t, mapName)}　${'★'.repeat(card.s)} / ${'★'.repeat(fullStars(t))}`, 34, y, '#ffd76a');
   x.font = `500 32px ${FONT}`;
-  for (const l of wrap(x, t.desc, W - 160).slice(0, 3)) { y += 50; text(l, 32, y, '#e8ecff', 500); }
+  for (const l of wrap(x, descOf(t), W - 160).slice(0, 3)) { y += 50; text(l, 32, y, '#e8ecff', 500); }
   const f = card.proof;
   y += 74;
   text(f ? `${dayOf(f.real)} 達成` : card.first ? `${dayOf(card.first)} 第一次拿到` : '', 46, y, '#ffffff', 800);
@@ -381,7 +390,7 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
     x.save(); x.fillStyle = '#fff'; x.beginPath(); x.roundRect(sx - 8, y - 8, sw + 16, sh + 16, 22); x.fill();
     x.beginPath(); x.roundRect(sx, y, sw, sh, 16); x.clip(); x.drawImage(shot, sx, y, sw, sh); x.restore();
   }
-  text(`圖鑑收集 ${have} / ${CHALLENGE_TASKS.length}`, 30, H - 48, 'rgba(255,255,255,.6)', 500);
+  text(`圖鑑收集 ${have} / ${ALL.length}`, 30, H - 48, 'rgba(255,255,255,.6)', 500);
   return c;
 }
 
@@ -389,7 +398,7 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
 function showCard(over: HTMLElement, t: ChallengeTask, card: Card | undefined, mapName: (id: number) => string, have: number) {
   const box = document.createElement('div');
   box.className = 'col-detail';
-  const where = t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`;
+  const where = whereOf(t, mapName);
   const close = () => { audio.ui('no'); box.remove(); };
   if (!card?.s) {
     box.innerHTML = `<div class="col-big">${cardHtml(t, 0)}</div>

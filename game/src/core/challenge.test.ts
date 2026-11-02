@@ -45,6 +45,20 @@ describe.skipIf(!existsSync(mapFile(2)))('挑戰模式 games', () => {
     expect(g.players.every(p => !p.bankrupt)).toBe(true);
   });
 
+  it('每月任務: a card each month, decided and logged, its stars in the totals', () => {
+    const g = new Game(settings(2, 31, 1), parseBoard(JSON.parse(readFileSync(mapFile(2), 'utf8')) as RawMap));
+    attachLedger(g.players);
+    const flow = g.run();
+    for (let r = flow.next(); !r.done; r = flow.next()) if ('ask' in r.value) throw new Error('unexpected question');
+    const ch = g.challengeTracker!;
+    expect(ch.monthLog.length).toBeGreaterThanOrEqual(12);
+    expect(new Set(ch.monthLog.map(l => l.id)).size).toBe(ch.monthLog.length);
+    const won = ch.monthLog.filter(l => l.won.length).length;
+    expect(won).toBeGreaterThan(3);
+    const fromLog = g.players.map(p => ch.monthLog.filter(l => l.won.includes(p.id)).length * 3);
+    expect(ch.monthStars).toEqual(fromLog);
+  });
+
   it('a loaded game keeps its tasks and stars and goes on like the original', () => {
     const board = parseBoard(JSON.parse(readFileSync(mapFile(2), 'utf8')) as RawMap);
     const a = new Game(settings(2, 57, 3), board);

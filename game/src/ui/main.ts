@@ -61,7 +61,8 @@ import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
-import { ChallengeBar, StarWatch, starTable, taskList } from './challenge';
+import { ChallengeBar, MonthWatch, monthNotice, StarWatch, starTable, taskList } from './challenge';
+import { monthlyById } from '../core/monthly';
 import { achievementScene, earnCards, openCollection, proofShot, type Earned, type Evidence } from './collection';
 import { itemIconSrc } from './screens/item-text';
 import { OBJECT_NAMES } from '../core/modules/objects';
@@ -361,6 +362,8 @@ function newGame() {
     aiLevel: 0 as 0 | 1 | 2,
     /** 挑戰模式's deadline (docs/rules/26 §1): CHALLENGE_YEARS[i]. */
     yearsIndex: 0,
+    /** 挑戰模式's 每月任務 (docs/rules/27): 1 on (the default), 0 off. */
+    monthly: 1,
     kind: 'orig' as MapInfo['kind'] | 'tycoon' | 'challenge',
     slots: [{ character: 9, human: true }, { character: 4, human: false }, { character: 3, human: false }, { character: 0, human: false }],
   };
@@ -441,7 +444,8 @@ function newGame() {
         ${opt(RULE_LABELS.traffic, 'traffic', RULE_ITEMS.traffic)}
         ${opt(RULE_LABELS.landLimitIndex, 'landLimitIndex', RULE_ITEMS.landLimitIndex)}
         ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : cm ? `${opt('期限', 'yearsIndex', CHALLENGE_YEARS.map(y => (y ? `${y} 年` : '不限')))}
-        <p class="ng-date">${CHALLENGE_YEARS[state.yearsIndex] ? '期限到時星最多的人獲勝' : '先拿到 100 顆星的人獲勝'}・不會破產，錢不夠就欠銀行</p>` : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
+        ${opt('每月任務', 'monthly', ['關', '開'])}
+        <p class="ng-date">${CHALLENGE_YEARS[state.yearsIndex] ? '期限到時星最多的人獲勝' : '先拿到 100 顆星的人獲勝'}・不會破產，錢不夠就欠銀行${state.monthly ? '・每月抽一張本月任務（＋★★★）' : ''}</p>` : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
         ${opt(RULE_LABELS.victoryIndex, 'victoryIndex', RULE_ITEMS.victoryIndex)}
         ${opt('電腦難度', 'aiLevel', ['簡單', '中級', '困難'])}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
@@ -521,7 +525,7 @@ function newGame() {
       start({
         mapId: state.mapId, players, fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex,
         daysLimitIndex: cm ? 0 : state.daysLimitIndex, victoryIndex: cm ? 0 : state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
-        ...(cm ? { challenge: true, challengeYears: CHALLENGE_YEARS[state.yearsIndex] } : state.aiLevel ? { aiLevel: state.aiLevel } : {}),
+        ...(cm ? { challenge: true, challengeYears: CHALLENGE_YEARS[state.yearsIndex], challengeMonthly: !!state.monthly } : state.aiLevel ? { aiLevel: state.aiLevel } : {}),
       });
       return;
     }
@@ -1058,6 +1062,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // goes into the 圖鑑. A city shown again after a trip starts its watch from its stars now.
   const watch = challenge ?? (game.challengeTracker ? new StarWatch(game) : null);
   const openTasks = () => hud.sheetNode('挑戰任務', taskList(game, faceOf));
+  // 每月任務 (docs/rules/27): a card taken or decided in the log, a new month's card on its own notice.
+  const months = challenge && game.challengeTracker!.monthly ? new MonthWatch(game) : null;
   if (challenge) {
     stage.append(challenge.el);
     challenge.onOpen = () => void openTasks();
@@ -1087,8 +1093,13 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       else if (own) hud.note(`${nameOf(x.p)}達成成就「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
       if (own && x.stars > (mine[x.task.id]?.stars ?? 0)) mine[x.task.id] = { stars: x.stars, p: x.p, name: x.task.name };
     }
+    // 每月任務: who took a card (its card into the 圖鑑 like a task's).
+    const mon = months?.update();
+    for (const r of mon?.results ?? []) {
+      hud.note(r.won.length ? `${r.won.map(nameOf).join('、')}拿到本月任務「${r.task.name}」★★★` : `本月任務「${r.task.name}」沒有人拿到`);
+      for (const p of r.won) if ((room ? room.mine.has(p) : game.players[p].human) && !mine[r.task.id]) mine[r.task.id] = { stars: 3, p, name: r.task.name };
+    }
     const ids = Object.keys(mine);
-    if (!ids.length) return;
     // The picture now, while the map still shows the moment; written only for a better result than the card has.
     const got: Earned[] = [];
     for (const id of ids) {
@@ -1098,12 +1109,13 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     }
     // A better result than this device's 圖鑑 had: the scene only for ★★★ (the user 2026-11-02: less just unlocks, a
     // line in the log); the game waits for it, as for any screen.
-    for (const x of await earnCards(got)) {
-      const t = game.challengeTracker!.tasks.find(k => k.id === x.id);
+    for (const x of got.length ? await earnCards(got) : []) {
+      const t = game.challengeTracker!.tasks.find(k => k.id === x.id) ?? monthlyById.get(x.id);
       if (!t) continue;
       if (x.stars >= 3) await shown('achievement', () => achievementScene(shell, t, x.stars, x.before, nameOf(mine[x.id].p)), undefined);
       else hud.note(`圖鑑${x.before ? '更新' : '解鎖'}「${t.name}」${'★'.repeat(x.stars)}`);
     }
+    if (mon?.drawn) await shown('month', () => hud.sheetNode('本月任務', monthNotice(game, faceOf, mon.results)), undefined, true);
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
   const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),

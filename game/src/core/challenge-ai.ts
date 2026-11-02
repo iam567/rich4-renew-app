@@ -11,6 +11,7 @@ import type { Challenge, ChallengeTask } from './challenge';
 import { fullStars } from './challenge';
 import type { Flow } from './flow';
 import type { Game } from './game';
+import type { MonthlyAi } from './monthly';
 import type { Player } from './types';
 
 /** Task → the card ids it counts as used by the player (docs/rules/26-challenge-tasks.md). */
@@ -63,13 +64,30 @@ export class ChallengeAi {
 
   private sum(p: Player, ids: string[] | undefined): number { return (ids ?? []).reduce((v, id) => v + this.worth(p, id), 0); }
 
+  /**
+   * 每月任務 (core/monthly.ts): the month's card still to take for p (its ★★★ in money) and what it wants done; none
+   * when taken, or a 堅持 card already broken.
+   */
+  private month(p: Player): { worth: number; ai: MonthlyAi } | undefined {
+    const m = this.c.month, t = this.c.monthTask();
+    if (!m || !t || m.done || !t.ai) return undefined;
+    if (t.kind === 'keep' && this.c.monthValue(p) > 0) return undefined;
+    return { worth: STAR * this.g.priceIndex * 3, ai: t.ai };
+  }
+
   cardBonus(p: Player, id: number): number {
     let v = this.sum(p, CARD_TASKS[id]);
+    const mo = this.month(p);
+    if (mo?.ai.cards?.includes(id)) v += mo.worth * 0.6;
+    if (mo?.ai.noCards) v -= mo.worth * 2;
     // 購地卡 / 換地卡 on the lot under its feet when a task names that street or plot.
     if ((id === 3 || id === 4) && this.wantsPlace(p, this.c.placeName(p.node))) v += STAR * this.g.priceIndex;
     return v;
   }
-  toolBonus(p: Player, id: number): number { return this.sum(p, TOOL_TASKS[id]); }
+  toolBonus(p: Player, id: number): number {
+    const mo = this.month(p);
+    return this.sum(p, TOOL_TASKS[id]) + (mo?.ai.tools?.includes(id) ? mo.worth * 0.6 : 0) - (mo?.ai.noTools ? mo.worth * 2 : 0);
+  }
 
   /** The value of stopping on `node` for p's open tasks. */
   stopBonus(p: Player, node: number): number {
@@ -80,11 +98,13 @@ export class ChallengeAi {
     // 全圖打卡 (G06): a kind of square not yet seen this round.
     if (n.event > 1 && this.open(p, 'G06') && !o.n[`ev:${n.event}`]) v += STAR * PI;
     v += this.sum(p, EVENT_TASKS[n.event]) * 0.3;
+    const mo = this.month(p);
+    if (mo?.ai.events?.includes(n.event)) v += mo.worth * 0.25;
     // 命運三連 (G69): a fate square while the run of fate turns is alive (last turn ended on one).
     if (n.event === 3 && o.lastFateTurn === o.turnNo - 1) v += this.worth(p, 'G69') * 0.8;
     // 忍者 / 處女座潔癖 (J18, Z11): a rival's lot, plot or company square breaks the clean days.
     const owner = this.c.ownerOfRef(n.ref), co = n.ref > 6000 && n.ref < 8000 ? g.board.companies[n.ref - 6001] : undefined;
-    if ((owner >= 0 && owner !== p.id) || (co?.controller && co.controller !== p.id + 1)) v -= (this.worth(p, 'J18') + this.worth(p, 'Z11')) * 0.6;
+    if ((owner >= 0 && owner !== p.id) || (co?.controller && co.controller !== p.id + 1)) v -= (this.worth(p, 'J18') + this.worth(p, 'Z11') + (mo?.ai.avoidOthers ? mo.worth : 0)) * 0.6;
     const name = this.c.placeName(node);
     if (name) {
       // Tours and named stops: a place not yet stopped at.
@@ -106,6 +126,9 @@ export class ChallengeAi {
   /** Shop wishes (kind, id, how many to hold) for the open tasks: kinds not yet held for 集卡狂 / 百寶袋, the counted ones. */
   shopWishes(p: Player): ['card' | 'tool', number, number][] {
     const out: ['card' | 'tool', number, number][] = [];
+    const mo = this.month(p);
+    for (const id of mo?.ai.tools ?? []) out.push(['tool', id, 2]);
+    for (const id of mo?.ai.cards ?? []) out.push(['card', id, 1]);
     for (const [id, tasks] of Object.entries(TOOL_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['tool', Number(id), 2]);
     for (const [id, tasks] of Object.entries(CARD_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['card', Number(id), 1]);
     if (this.open(p, 'G08')) for (let id = 1; id <= 12; id++) if (!p.tools[id - 1]) out.push(['tool', id, 1]);
