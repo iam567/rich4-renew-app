@@ -189,9 +189,15 @@ export function installCinema() {
 installCinema();
 
 /** Plays the cinematic `key` for player `pid`; resolves when it has played or was tapped through. */
+/** 設定「道具動畫」(the user 2026-11-02): 0 開 (the default), 1 關 — off skips the films, the effect still plays. */
+const ANIM_KEY = 'rich4.toolAnim';
+export const TOOL_ANIM_MODES = ['開', '關'];
+export const toolAnimMode = () => { try { return localStorage.getItem(ANIM_KEY) === '1' ? 1 : 0; } catch { return 0; } };
+export const setToolAnimMode = (v: number) => { try { localStorage.setItem(ANIM_KEY, String(v)); } catch { /* not kept */ } };
+
 export async function toolCinema(ctx: ScreenContext, key: string, pid?: number): Promise<void> {
   const sc = SCRIPTS[key];
-  if (!sc) return;
+  if (!sc || toolAnimMode()) return;
   warm(key);
   const who = pid !== undefined ? ctx.game.players[pid] : undefined;
   const face = who ? ctx.bank.art('Data', 2, who.character) : null;

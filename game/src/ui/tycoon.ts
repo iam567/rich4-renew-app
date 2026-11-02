@@ -14,6 +14,7 @@ import { askScreens, fxScreens, type ScreenContext } from './screens/registry';
 import { TOOL_TEXT } from './screens/shop';
 import { audio, Sfx } from './audio';
 import { phrases, shrinkText } from './text';
+import { toolAnimMode } from './tool-cinema';
 import { icbmFlight } from './icbm-flight';
 import { onePage, pageRows, pickLayout, rowsReadable } from './fit-list';
 import './tycoon.css';
@@ -427,7 +428,7 @@ Object.assign(TOOL_TEXT, {
 fxScreens['icbm-launch'] = async (ctx, s) => {
   // The full-screen flight onto the target (icbm-flight.ts), then the news line.
   const d = (s.data ?? {}) as { text?: string; from?: string; city?: string; target?: string; mapId?: number; x?: number; y?: number; size?: number };
-  await icbmFlight(ctx, d);
+  if (!toolAnimMode()) await icbmFlight(ctx, d); // 設定「道具動畫」關: no flight
 };
 
 /** 洲際飛彈 has hit (own city or another): 命中！ and everyone it hurt, each with a puzzled 「？？？」 (the user 2026-10-19). */

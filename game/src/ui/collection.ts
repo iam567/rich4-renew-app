@@ -299,7 +299,9 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   const fit = () => {
     const w = grid.clientWidth, h = grid.clientHeight;
     if (!w || !h) return;
-    const cols = Math.max(2, Math.floor((w + 8) / 96)), cw = (w - 8 * (cols - 1)) / cols;
+    // A short landscape screen: smaller cards, more to a row (one row is all the height there holds).
+    const min = innerWidth > innerHeight && innerHeight < 560 ? 80 : 96;
+    const cols = Math.max(2, Math.floor((w + 8) / min)), cw = (w - 8 * (cols - 1)) / cols;
     const rows = Math.max(1, Math.floor((h + 8) / (cw * 4 / 3 + 8)));
     grid.style.setProperty('--cols', String(cols));
     if (cols * rows !== perPage) { const first = page * perPage; perPage = cols * rows; page = Math.floor(first / perPage); }

@@ -1,5 +1,6 @@
 /* 圖鑑 (ui/collection.ts): 挑戰模式's picture cards, a group and a page at a time. */
 .col-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(10, 20, 50, .55); }
+.msg.sheet.col-sheet { width: min(860px, 94vw); max-width: min(860px, 94vw); }
 .col-sheet { width: min(860px, 94vw); height: min(92vh, 760px); display: flex; flex-direction: column; gap: 6px; }
 .col-count { margin: 4px 0 0; text-align: center; font-weight: 700; }
 .col-group, .col-nav { flex: none; display: flex; align-items: center; justify-content: center; gap: 12px; }

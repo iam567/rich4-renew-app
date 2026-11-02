@@ -54,7 +54,7 @@ import { setEraLine } from './era-line';
 import { playJqIntro } from './screens/jq-intro';
 import { magicHintMode, setMagicHintMode } from './screens/magic'; // 魔法屋提示對象 (issue #8)
 import './tycoon-onway';
-import './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
+import { setToolAnimMode, TOOL_ANIM_MODES, toolAnimMode } from './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
 import './pad'; // 手把／鍵盤操作 (issue #15): gamepad and keyboard play, idle until used
 import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScreens, logPanel, newWorld, registerSprites, resumeWorld, setChatMode, tycoon, WorldBar } from './tycoon';
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
@@ -288,6 +288,7 @@ function options() {
       stored('速度', 'rich4.speed', ['慢', '中', '快']),
       stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
       stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
+      { label: '道具動畫', opts: TOOL_ANIM_MODES, cur: () => toolAnimMode(), pick: i => setToolAnimMode(i) },
       stored('自動買地', AUTO_BUY_KEY, AUTO_BUY_MODES),
       stored('鏡頭跟隨', CAMERA_KEY, CAMERA_MODES),
       // issue #8: the magic house's box naming who its group hits (on by default; off as in the original)
@@ -840,6 +841,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
             for (const c of ty?.world.cities ?? [game]) c.animation = i === 0;
             try { localStorage.setItem('rich4.minigame', String(i)); } catch { /* not kept */ }
           } },
+          { label: '道具動畫', opts: TOOL_ANIM_MODES, cur: () => toolAnimMode(), pick: i => setToolAnimMode(i) },
           { label: '自動買地', opts: AUTO_BUY_MODES, cur: () => (autoBuy() ? 1 : 0), pick: i => { try { localStorage.setItem(AUTO_BUY_KEY, String(i)); } catch { /* not kept */ } } },
           { label: '鏡頭跟隨', opts: CAMERA_MODES, cur: () => cameraMode(), pick: i => {
             try { localStorage.setItem(CAMERA_KEY, String(i)); } catch { /* not kept */ }
