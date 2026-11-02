@@ -83,13 +83,17 @@ interface Own {
   lv5Lots: Set<number>; fallen: Set<number>; cardDays: number; lostDay: number;
   dash: boolean; gotPrizes: Set<number>; crashBuy: Record<number, number>; redDay: number; cashBefore: number | null;
   lastStop: Record<string, number>; t18: number; traffic: number;
+  /** The angel's, devil's or earth god's stay now (G77–G79): since when, lots it raised or knocked down (the player's / others'), lots taken, tools used before. */
+  stay: { type: number; day: number; mine: number; others: number; seized: number; tools: number } | null;
+  /** The god that just left (replaced in the same move), till the next turn or day (G80 / G81). */
+  justLeft: number;
 }
 const blankOwn = (): Own => ({
   n: {}, best: {}, gods: new Set(), godRounds: 0, god: 0, magic: new Set(), stops: new Set(), stopRounds: {},
   offRoadDays: 0, cashLowTurns: 0, debtMax: 0, dayCash: null, fatesSeen: new Set(), newsSeen: new Set(), route: {}, chair: {},
   rich: 0, poor: 0, clean: 0, walk: 0, car: 0, lastTurnMissiles: 0, carStreak: 0, godsToday: new Set(), fateRun: 0,
   goodFates: 0, lastNode: -1, sameTurns: 0, monthClean: true, lv5Lots: new Set(), fallen: new Set(), cardDays: 0, lostDay: -99,
-  dash: false, gotPrizes: new Set(), crashBuy: {}, redDay: -1, cashBefore: null, lastStop: {}, t18: 0, traffic: 0,
+  dash: false, gotPrizes: new Set(), crashBuy: {}, redDay: -1, cashBefore: null, lastStop: {}, t18: 0, traffic: 0, stay: null, justLeft: 0,
 });
 
 type Measure = (c: Challenge, p: Player) => number | undefined;
@@ -170,6 +174,7 @@ export class Challenge {
     switch (e.t) {
       case 'turn': {
         this.current = e.p;
+        for (const o of this.own) o.justLeft = 0;
         const p = g.players[e.p], o = this.own[e.p];
         o.lastTurnMissiles = this.missiles(p);
         if (o.dash) { o.dash = false; this.bump(e.p, 'dashAway'); }
@@ -229,6 +234,14 @@ export class Challenge {
       }
       case 'god-attach': if (p >= 0) {
         const t = num('type'), o = this.own[p];
+        // 財上加財 / 喜上加喜 (G80 / G81): the big god coming while its small one was still on (the small one leaves
+        // just before, or quietly while the player was off the road).
+        const before = o.justLeft || o.god;
+        if (before === 1 && t === 2) this.bump(p, 'wealthOnWealth');
+        if (before === 3 && t === 4) this.bump(p, 'joyOnJoy');
+        o.justLeft = 0;
+        this.endStay(p);
+        if (t === 9 || t === 10 || t === 12) o.stay = { type: t, day: g.daysElapsed, mine: 0, others: 0, seized: 0, tools: this.toolsUsed(p) };
         if (BAD_GODS.has(o.god) && GOOD_GODS.has(t) || (BAD_GODS.has(o.god) && t === 12)) this.bump(p, 'turnLuck');
         if (o.godsToday.size && !o.godsToday.has(t)) this.bump(p, 'twoGodsDay');
         o.godsToday.add(t);
@@ -238,7 +251,7 @@ export class Challenge {
         if (this.n(g.players[p], 'pray') > this.n(g.players[p], 'prayGot') && GOOD_GODS.has(t)) this.bump(p, 'prayGot');
         break;
       } break;
-      case 'god-detach': if (p >= 0) { this.own[p].god = 0; this.own[p].t18 = 0; } break;
+      case 'god-detach': if (p >= 0) { this.endStay(p); this.own[p].justLeft = num('type'); this.own[p].god = 0; this.own[p].t18 = 0; } break;
       case 'card': if (p >= 0) {
         const id = num('card');
         this.bump(p, `card:${id}`);
@@ -260,10 +273,18 @@ export class Challenge {
       case 'chest': if (p >= 0) this.bump(p, 'chest'); break;
       case 'gift': if (p >= 0) this.bump(p, 'gift'); break;
       case 'dog': if (p >= 0) this.bump(p, 'dog'); break;
-      case 'earth-god': if (p >= 0) { this.bump(p, 'earthGod'); const was = this.owners.get(num('ref')); if (was !== undefined && was >= 0 && was !== p) this.bump(was, 'seized'); } break;
+      case 'earth-god': if (p >= 0) { this.bump(p, 'earthGod'); if (this.own[p].stay?.type === 12) this.own[p].stay!.seized++; const was = this.owners.get(num('ref')); if (was !== undefined && was >= 0 && was !== p) this.bump(was, 'seized'); } break;
       case 'angel': if (p >= 0 && e.node === undefined && Array.isArray(d.lots)) { const nm = this.placeNameOfRef(num('ref')); if (nm) this.bump(p, `angelOn:${nm}`); }
-        if (p >= 0 && e.node !== undefined) { const ref = num('ref'); if (this.ownerOfRef(ref) >= 0 && this.ownerOfRef(ref) !== p) this.bump(p, 'kindAngel'); } break;
-      case 'devil': if (p >= 0 && e.node !== undefined) { const ref = num('ref'); if (this.ownerOfRef(ref) === p) this.bump(p, 'selfDevil'); } break;
+        if (p >= 0 && e.node !== undefined) {
+          const ref = num('ref'), o = this.ownerOfRef(ref), st = this.own[p].stay;
+          if (o >= 0 && o !== p) this.bump(p, 'kindAngel');
+          if (st?.type === 9) { if (o === p) st.mine++; else if (o >= 0) st.others++; }
+        } break;
+      case 'devil': if (p >= 0 && e.node !== undefined) {
+        const ref = num('ref'), o = this.ownerOfRef(ref), st = this.own[p].stay;
+        if (o === p) this.bump(p, 'selfDevil');
+        if (st?.type === 10) { if (o === p) st.mine++; else if (o >= 0) st.others++; }
+      } break;
       case 'monster': case 'demolish': { const ref = num('ref'), o = this.ownerOfRef(ref); if (o >= 0) { this.bump(o, 'lostBuilding'); this.own[o].lostDay = g.daysElapsed; const nm = this.placeNameOfRef(ref); if (nm) this.bump(o, `lostAt:${nm}`); } break; }
       case 'place-object': if (p >= 0 && e.node !== undefined) {
         this.placed.set(e.node, p);
@@ -314,7 +335,7 @@ export class Challenge {
         }
         break;
       } break;
-      case 'slot-machine': if (p >= 0) { const god = num('god'), a = num('amount'); if (god === 2 && a >= 5000) this.bump(p, 'slotRich'); if (god === 6 && a >= 5000) this.bump(p, 'slotPoor'); } break;
+      case 'slot-machine': if (p >= 0) { const god = num('god'), a = num('amount'); if (god === 2 && a >= 5000) this.bump(p, 'slotRich'); if (god === 6 && a >= 5000) this.bump(p, 'slotPoor'); if (num('mult') > 1) this.bump(p, `slotSame:${god}`); } break;
       case 'stock-trade': if (p >= 0) { const sl = num('slot'), o = this.own[p]; if (d.buy && this.crashDay === g.daysElapsed) o.crashBuy[sl] = 1; if (!d.buy && o.crashBuy[sl]) { this.bump(p, 'bottomFish'); delete o.crashBuy[sl]; } if (!d.buy && o.redDay === g.daysElapsed) this.bump(p, 'redFlip'); } break;
       case 'remote-dice': if (p >= 0) this.bump(p, `remoteAt:${this.placeName(g.players[p].node)}`); break;
       case 'kb-incident': { const id = String(d.id); if (p >= 0) { this.bump(p, `kbv:${id}`); if (id === 'dash') this.own[p].dash = true; } if (tgt >= 0) this.bump(tgt, `kbo:${id}`); break; }
@@ -438,6 +459,8 @@ export class Challenge {
     for (const p of g.players) {
       if (!p.whoPlays) continue;
       const o = this.own[p.id];
+      if (o.stay && !p.god) this.endStay(p.id);
+      o.justLeft = 0;
       o.offRoadDays = g.offRoad(p) ? o.offRoadDays + 1 : 0;
       o.debtMax = Math.max(o.debtMax, -p.cash);
       if (p.cash >= 0 && o.debtMax > 0) { this.bestOf(p, 'G17', o.debtMax); }
@@ -460,6 +483,24 @@ export class Challenge {
     this.checkAll();
     const best = this.leader();
     if (best >= 0 && this.winner < 0) this.winner = best;
+  }
+
+  /** Tools used so far (the ledger's count). */
+  private toolsUsed(p: number): number { return Object.values(this.stats(this.g.players[p])?.toolsUsed ?? {}).reduce((a, b) => a + b, 0); }
+
+  /**
+   * The end of an angel's, devil's or earth god's stay (left, replaced, or gone while the player was off the road): a
+   * whole stay of 7 days counts — 天使 raising only others' lots (G77), 土地公 taking nothing with no tool used (G78),
+   * 惡魔 knocking down only the player's own buildings (G79).
+   */
+  private endStay(p: number) {
+    const st = this.own[p].stay;
+    if (!st) return;
+    this.own[p].stay = null;
+    if (this.g.daysElapsed - st.day < 7) return;
+    if (st.type === 9 && st.others > 0 && st.mine === 0) this.bump(p, 'angelForOthers');
+    if (st.type === 12 && st.seized === 0 && this.toolsUsed(p) === st.tools) this.bump(p, 'earthGodIdle');
+    if (st.type === 10 && st.mine > 0 && st.others === 0) this.bump(p, 'devilAtHome');
   }
 
   /** The day's state-based counters (called by newDay before the measures are read on the next day). */
@@ -676,6 +717,16 @@ const MEASURES: Record<string, Measure> = {
   G70: (c, p) => c.n(p, 'spin3'),
   G71: (c, p) => c.n(p, 'allSame'),
   G72: (c, p) => c.n(p, 'selfHarm'),
+  // 豹子號 (G73–G76): the god's slot machine with every reel the same (slotBonus: the 大 gods' four, the 小 gods' three).
+  G73: (c, p) => c.n(p, 'slotSame:2'),
+  G74: (c, p) => c.n(p, 'slotSame:1'),
+  G75: (c, p) => c.n(p, 'slotSame:6'),
+  G76: (c, p) => c.n(p, 'slotSame:5'),
+  G77: (c, p) => c.n(p, 'angelForOthers'),
+  G78: (c, p) => c.n(p, 'earthGodIdle'),
+  G79: (c, p) => c.n(p, 'devilAtHome'),
+  G80: (c, p) => c.n(p, 'wealthOnWealth'),
+  G81: (c, p) => c.n(p, 'joyOnJoy'),
 };
 
 /** Ordered routes (either direction): task id → the places in order (the first again at the end for a round trip). */

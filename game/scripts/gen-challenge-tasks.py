@@ -47,6 +47,7 @@ for l in open(R+'docs/rules/26-challenge-tasks.md'):
 names={o['id']:o['name'] for o in out}
 for o in out:
     o['desc']=re.sub(r'（用户[^（）]*）','',o['desc'])
+    o['desc']=re.sub(r'[；;，]\s*用户[^（）]*(?=）)','',o['desc'])   # notes for the developers inside a bracket
     o['desc']=re.sub(r'([A-Z]\d\d)',lambda m:'⟦'+m.group(1)+'⟧' if m.group(1) in names else m.group(1),o['desc'])
 # Simplified -> Traditional (Taiwan) for the game's text; the names are already Traditional.
 conv=subprocess.run(['node','--input-type=module','-e',
