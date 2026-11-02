@@ -18,9 +18,6 @@ const allOf = (g: Game, t: ChallengeTask) => (t.id === 'G33' || t.id === 'W01' ?
 /** Stars of player `p` on task `t`. */
 const starsOf = (g: Game, c: Challenge, t: ChallengeTask, p: number) => starsFor(t, c.own[p].best[t.id] ?? 0, allOf(g, t));
 
-/** ★ for each star earned, ☆ for each one still open. */
-const starRow = (got: number, full: number) => `<i class="chl-on">${'★'.repeat(got)}</i><i class="chl-off">${'☆'.repeat(Math.max(0, full - got))}</i>`;
-
 /** The line under the title: how this game is won and how long it still runs. */
 export function challengeGoal(g: Game): string {
   const years = g.settings.challengeYears ?? 0;
