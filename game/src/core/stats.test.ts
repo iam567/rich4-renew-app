@@ -84,8 +84,9 @@ describe.skipIf(!have)('statistics ledger', () => {
     const sa = saveGame(a), sb = saveGame(b);
     expect(sa.stats).toBeUndefined();
     expect(sb.stats).toBeDefined();
-    const { stats: _s, savedAt: _x, ...restB } = sb;
-    const { savedAt: _y, ...restA } = sa;
+    // The task tracker reads the ledger (core/challenge.ts), so its counters differ; it changes nothing either.
+    const { stats: _s, savedAt: _x, challenge: _c, ...restB } = sb;
+    const { savedAt: _y, challenge: _d, ...restA } = sa;
     expect(restB).toEqual(restA);
   }, 30_000);
 

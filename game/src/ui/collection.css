@@ -71,3 +71,11 @@
 @keyframes ach-back { from { transform: rotateY(0); } to { transform: rotateY(-180deg); } }
 @keyframes ach-front { from { transform: rotateY(180deg); } to { transform: rotateY(0); } }
 @keyframes ach-stamp { from { transform: scale(2.6) rotate(calc((var(--i) - 1) * 10deg)); opacity: 0; } }
+
+/* The brag card (bragCanvas): the poster fitted to the screen, its buttons under it. */
+.col-detail.brag { flex-direction: column; flex-wrap: nowrap; gap: 10px; }
+.col-poster { flex: 1 1 auto; min-height: 0; display: grid; place-items: center; color: #fff; }
+.col-poster img { max-width: min(92vw, 520px); max-height: calc(100vh - 120px); height: auto; border-radius: 14px; box-shadow: 0 10px 30px rgba(0, 0, 0, .5); }
+.col-share { flex: none; }
+.col-flash { position: absolute; left: 50%; top: 45%; translate: -50% -50%; padding: 10px 20px; border-radius: 14px; color: #fff; font-weight: 700;
+  background: rgba(0, 0, 0, .75); pointer-events: none; }

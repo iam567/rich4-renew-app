@@ -17,6 +17,7 @@ import { CHALLENGE_MAPS, CHALLENGE_TASKS, fullStars, type ChallengeTask } from '
 import { format } from '../core/date';
 import { ASSETS } from './assets';
 import { audio, Sfx } from './audio';
+import { saveImage, shareImage } from './share';
 import './collection.css';
 
 const KEY = 'rich4.cards';
@@ -260,7 +261,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
       audio.ui('click');
       if (d.g) { group = (group + Number(d.g) + groups.length) % groups.length; page = 0; draw(); }
       if (d.p) { page += Number(d.p); draw(); }
-      if (d.card) showCard(overlay, CHALLENGE_TASKS.find(x => x.id === d.card)!, cards[d.card], mapName);
+      if (d.card) showCard(overlay, CHALLENGE_TASKS.find(x => x.id === d.card)!, cards[d.card], mapName, have);
     };
     let x0: number | null = null;
     grid.addEventListener('pointerdown', e => { x0 = e.clientX; });
@@ -268,20 +269,124 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   });
 }
 
-/** A card big, with its task, the days it was earned and its proof picture; a tap anywhere closes it. */
-function showCard(over: HTMLElement, t: ChallengeTask, card: Card | undefined, mapName: (id: number) => string) {
+const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
+const dayOf = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
+const image = (src: string) => new Promise<HTMLImageElement | null>(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
+
+/** Wraps `text` into lines no wider than `w` (Chinese breaks anywhere). */
+function wrap(x: CanvasRenderingContext2D, text: string, w: number): string[] {
+  const out: string[] = [];
+  let line = '';
+  for (const ch of text) { if (x.measureText(line + ch).width > w && line) { out.push(line); line = ch; } else line += ch; }
+  if (line) out.push(line);
+  return out;
+}
+
+/**
+ * The brag card (the user 2026-11-02: 「做一個炫耀用的」, to save to the photos or share): one portrait picture with the
+ * card and its stars, the task, the day it was reached, who and where, and the proof picture.
+ */
+async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) => string, have: number): Promise<HTMLCanvasElement> {
+  const W = 1080, H = 1720, c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const x = c.getContext('2d')!;
+  const bg = x.createLinearGradient(0, 0, 0, H);
+  bg.addColorStop(0, '#2b3f9e'); bg.addColorStop(.55, '#1a2466'); bg.addColorStop(1, '#120f3a');
+  x.fillStyle = bg; x.fillRect(0, 0, W, H);
+  // Rays behind the card.
+  x.save(); x.translate(W / 2, 560); x.fillStyle = 'rgba(255, 214, 90, .10)';
+  for (let i = 0; i < 18; i++) { x.rotate(Math.PI / 9); x.beginPath(); x.moveTo(0, 0); x.lineTo(-90, -1100); x.lineTo(90, -1100); x.closePath(); x.fill(); }
+  x.restore();
+  const text = (s: string, px: number, y: number, color: string, weight = 700, align: CanvasTextAlign = 'center', left = W / 2) => {
+    x.font = `${weight} ${px}px ${FONT}`; x.fillStyle = color; x.textAlign = align; x.fillText(s, left, y);
+  };
+  text('大富翁4・成就卡', 44, 92, '#ffe27a', 800);
+  // The card: the picture in a white frame, its stars, its name.
+  const cw = 560, ch = 747, cx = (W - cw) / 2, cy = 140;
+  x.save(); x.shadowColor = 'rgba(0,0,0,.5)'; x.shadowBlur = 40; x.shadowOffsetY = 16;
+  x.fillStyle = '#fff'; x.beginPath(); x.roundRect(cx - 14, cy - 14, cw + 28, ch + 28, 34); x.fill(); x.restore();
+  const pic = await image(`${ART}/${t.id}.webp`);
+  x.save(); x.beginPath(); x.roundRect(cx, cy, cw, ch, 24); x.clip();
+  if (pic) x.drawImage(pic, cx, cy, cw, ch); else { x.fillStyle = '#34407a'; x.fillRect(cx, cy, cw, ch); }
+  const band = x.createLinearGradient(0, cy + ch - 150, 0, cy + ch);
+  band.addColorStop(0, 'rgba(20,10,40,0)'); band.addColorStop(1, 'rgba(20,10,40,.88)');
+  x.fillStyle = band; x.fillRect(cx, cy + ch - 150, cw, 150);
+  x.restore();
+  x.save(); x.font = `800 54px ${FONT}`; x.textAlign = 'center'; x.lineWidth = 8; x.strokeStyle = '#3a1450'; x.strokeText(t.name, W / 2, cy + ch - 34);
+  x.fillStyle = '#fff'; x.fillText(t.name, W / 2, cy + ch - 34); x.restore();
+  const star = await image(`${ART}/star.webp`);
+  if (star) for (let i = 0; i < card.s; i++) {
+    x.save(); x.translate(cx + 70 + i * 104, cy + 70 + (i === 1 ? 14 : 0)); x.rotate((i - 1) * .17);
+    x.drawImage(star, -68, -68, 136, 136); x.restore();
+  }
+  // The task and the record.
+  let y = cy + ch + 96;
+  text(`${t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`}　${'★'.repeat(card.s)} / ${'★'.repeat(fullStars(t))}`, 34, y, '#ffd76a');
+  x.font = `500 32px ${FONT}`;
+  for (const l of wrap(x, t.desc, W - 160).slice(0, 3)) { y += 50; text(l, 32, y, '#e8ecff', 500); }
+  const f = card.proof;
+  y += 74;
+  text(f ? `${dayOf(f.real)} 達成` : card.first ? `${dayOf(card.first)} 第一次拿到` : '', 46, y, '#ffffff', 800);
+  if (f) { y += 52; text(`${f.who}・${mapName(f.map)}・遊戲裡 ${format(f.game)}`, 30, y, '#bfd2ff', 500); }
+  // The proof picture.
+  const shot = f ? await loadShot(t.id).then(src => (src ? image(src) : null)) : null;
+  y += 40;
+  if (shot) {
+    // The whole picture (its strip of words included), as large as fits.
+    const k = Math.min((W - 200) / shot.width, (H - y - 110) / shot.height), sw = Math.round(shot.width * k), sh = Math.round(shot.height * k), sx = (W - sw) / 2;
+    x.save(); x.fillStyle = '#fff'; x.beginPath(); x.roundRect(sx - 8, y - 8, sw + 16, sh + 16, 22); x.fill();
+    x.beginPath(); x.roundRect(sx, y, sw, sh, 16); x.clip(); x.drawImage(shot, sx, y, sw, sh); x.restore();
+  }
+  text(`圖鑑收集 ${have} / ${CHALLENGE_TASKS.length}`, 30, H - 48, 'rgba(255,255,255,.6)', 500);
+  return c;
+}
+
+/** A card big: a card not earned tells its task; an earned one is its brag card, to save or share. */
+function showCard(over: HTMLElement, t: ChallengeTask, card: Card | undefined, mapName: (id: number) => string, have: number) {
   const box = document.createElement('div');
   box.className = 'col-detail';
-  const stars = card?.s ?? 0, where = t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`;
-  const day = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
-  const f = card?.proof;
-  const record = !stars ? '<p class="col-best">還沒拿到：在挑戰模式完成這個任務就能得到這張卡</p>'
-    : `<p class="col-best">最好成績 ${'★'.repeat(stars)}${card?.first ? `・${day(card.first)}第一次拿到` : ''}</p>
-      ${f ? `<p class="col-proof">${day(f.real)}達成 ${'★'.repeat(stars)}<br><small>遊戲裡 ${format(f.game)}・${esc(mapName(f.map))}・${esc(f.who)}</small></p><div class="col-shot"></div>`
-        : '<p class="col-proof none">沒有達成紀錄</p>'}`;
-  box.innerHTML = `<div class="col-big">${cardHtml(t, stars)}</div>
-    <div class="col-info"><h3>${esc(t.name)}</h3><small>${esc(where)}・最多 ${'★'.repeat(fullStars(t))}</small>${howHtml(t)}${record}</div>`;
-  if (f) void loadShot(t.id).then(src => { const el = box.querySelector('.col-shot'); if (el && src) el.innerHTML = `<img src="${src}" alt="">`; });
-  box.onclick = e => { e.stopPropagation(); audio.ui('no'); box.remove(); };
+  const where = t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`;
+  const close = () => { audio.ui('no'); box.remove(); };
+  if (!card?.s) {
+    box.innerHTML = `<div class="col-big">${cardHtml(t, 0)}</div>
+      <div class="col-info"><h3>${esc(t.name)}</h3><small>${esc(where)}・最多 ${'★'.repeat(fullStars(t))}</small>${howHtml(t)}
+      <p class="col-best">還沒拿到：完成這個任務就能得到這張卡</p></div>`;
+    box.onclick = e => { e.stopPropagation(); close(); };
+    over.append(box);
+    return;
+  }
+  box.classList.add('brag');
+  box.innerHTML = `<div class="col-poster"><p>製作中…</p></div>
+    <div class="choices col-share"><button class="candy opt" data-s="save" disabled>保存到相冊</button><button class="candy opt" data-s="share" disabled>分享</button><button class="candy ghost" data-s="close">關閉</button></div>`;
   over.append(box);
+  let canvas: HTMLCanvasElement | null = null;
+  void bragCanvas(t, card, mapName, have).then(cv => {
+    canvas = cv;
+    const im = new Image();
+    im.src = cv.toDataURL('image/jpeg', .9);
+    im.alt = t.name;
+    box.querySelector('.col-poster')!.replaceChildren(im);
+    box.querySelectorAll<HTMLButtonElement>('[data-s]').forEach(b => { b.disabled = false; });
+  });
+  box.onclick = async e => {
+    e.stopPropagation();
+    const s = (e.target as HTMLElement).closest<HTMLElement>('[data-s]')?.dataset.s;
+    if (s === 'close' || e.target === box) { close(); return; }
+    if (!canvas || !s) return;
+    audio.ui('click');
+    const name = `rich4-${t.id}`;
+    try {
+      if (s === 'save') { await saveImage(canvas, name); flash(box, '已保存到相冊'); }
+      if (s === 'share') { const r = await shareImage(canvas, name, `我在《大富翁4》達成成就「${t.name}」${'★'.repeat(card.s)}！`); if (r === 'downloaded') flash(box, '已下載圖片'); }
+    } catch { flash(box, '沒有成功，請再試一次'); }
+  };
+}
+
+/** A short word over the brag card. */
+function flash(box: HTMLElement, text: string) {
+  const n = document.createElement('div');
+  n.className = 'col-flash';
+  n.textContent = text;
+  box.append(n);
+  setTimeout(() => n.remove(), 1600);
 }
