@@ -314,7 +314,7 @@ describe.skipIf(!have(100) || !have(7) || !have(5))('fork choices on maps', () =
         expect(conv.forks.used.every(u => Object.keys(u).length === 0)).toBe(true);
       }
     }
-  });
+  }, 30_000); // several whole games (and the task tracker every game keeps since 2026-11-02)
 
   it('派對模式 lockstep: the same seed walks the same ways on every phone (no Math.random, no clock)', () => {
     const party = (mapId: number) => {
