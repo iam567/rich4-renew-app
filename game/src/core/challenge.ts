@@ -320,7 +320,7 @@ export class Challenge {
         this.bump(p, `fate:${id}`); o.fatesSeen.add(id);
         if (id === 6) this.fate6 = true;
         if (id === 5) o.bday = new Set();
-        if (id < 1000) { if (eventTone('fate', id) === 'good') { o.goodFates++; if (o.goodFates >= 3) { this.bump(p, 'goodFate3'); o.goodFates = 0; } } else o.goodFates = 0; }
+        if (id < 1000) { if (eventTone('fate', id) === 'good') { this.bumpM(p, 'goodFate'); o.goodFates++; if (o.goodFates >= 3) { this.bump(p, 'goodFate3'); o.goodFates = 0; } } else o.goodFates = 0; }
         break;
       } break;
       case 'news': {
@@ -828,8 +828,11 @@ export class Challenge {
   /** The month's card, if any. */
   monthTask(): MonthlyTask | undefined { return this.month ? monthlyById.get(this.month.id) : undefined; }
 
+  /** A simulation's card for every month (scripts/monthly-sim.ts --force); never set by the game. */
+  static forceMonthly = '';
+
   private drawMonth() {
-    const g = this.g, t = drawMonthly(g, this.monthSeq);
+    const g = this.g, t = (Challenge.forceMonthly && monthlyById.get(Challenge.forceMonthly)) || drawMonthly(g, this.monthSeq);
     const goal = t.goal < 0 ? -1 : t.money && t.kind === 'race' ? Math.round((t.goal * g.priceIndex) / 1000) * 1000 : t.goal;
     const base = g.players.map(p => {
       const s = this.stats(p), out: Record<string, number> = {};
