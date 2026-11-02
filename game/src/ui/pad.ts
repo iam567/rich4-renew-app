@@ -787,6 +787,19 @@ function install() {
     act('back', 'native');
     return true;
   };
+  // The desktop app (Windows / Mac, Electron): the mouse's right button goes back, as Esc and the pad's B do (the user
+  // 2026-11-02). Screens with their own right click (the bank, the shop) have answered it first; text boxes keep their
+  // menu; a touch long-press is left alone.
+  if (/\bElectron\//.test(navigator.userAgent)) {
+    window.addEventListener('contextmenu', e => {
+      const t = e.target as HTMLElement | null, kind = (e as PointerEvent).pointerType;
+      if (t?.closest?.('input, textarea, select, [contenteditable=""], [contenteditable="true"]')) return;
+      const handled = e.defaultPrevented; // a screen's own right click (it ran first, nearer the target)
+      e.preventDefault();
+      if (handled || (kind && kind !== 'mouse')) return;
+      act('back', 'key');
+    });
+  }
   // Some browsers only list a pad after a button press: look once now in case one is already there.
   if (pads().length) { padsSeen = true; wake(); }
 }
