@@ -314,6 +314,7 @@ export class SmartAi {
       for (let slot = 0; slot < 12; slot++) {
         const s = m.stocks[slot], h = m.holding(p.id, slot);
         if (!h.shares || s.suspendDays) continue;
+        if (g.challengeAi?.keepShares(p, slot)) continue; // 挑戰模式: a chairman's stake its task still needs
         const v = h.shares * s.price;
         if (v > value) { value = v; best = slot; }
       }

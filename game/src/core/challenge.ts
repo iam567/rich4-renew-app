@@ -535,6 +535,7 @@ export class Challenge {
     if (fac && fac.type === 3) this.bump(to, 'gas');
     this.bump(from, 'paidToll');
     this.own[from].clean = 0;
+    this.own[from].n.cleanStop = 0;
     const living = this.live().filter(q => q.id !== to);
     if (living.length && living.every(q => this.n(g.players[to], `paidBy:${q.id}:${g.daysElapsed}`) > 0)) this.bump(to, `allPaid:${g.daysElapsed}`);
   }
@@ -585,8 +586,8 @@ export class Challenge {
     if (n.event === 3 && o.lastFateTurn !== o.turnNo) { o.fateRun = o.lastFateTurn === o.turnNo - 1 ? o.fateRun + 1 : 1; o.lastFateTurn = o.turnNo; }
     // 處女座潔癖 (Z11): stopping on someone else's property breaks it, paid or not.
     const owner = this.ownerOfRef(n.ref);
-    if (owner >= 0 && owner !== p) o.clean = 0;
-    else if (n.ref > 6000 && n.ref < 8000) { const c = g.board.companies[n.ref - 6001]; if (c?.controller && c.controller - 1 !== p) o.clean = 0; }
+    if (owner >= 0 && owner !== p) o.n.cleanStop = 0;
+    else if (n.ref > 6000 && n.ref < 8000) { const c = g.board.companies[n.ref - 6001]; if (c?.controller && c.controller - 1 !== p) o.n.cleanStop = 0; }
     o.stops.add(name ? `s:${name}` : '');
     if (n.event) o.stops.add(`e:${n.event}`);
     // Stopping in a 'god' state (財神 / 福神 / 衰神 …) at a named place.
@@ -640,7 +641,8 @@ export class Challenge {
       const w = g.wealth(p);
       o.rich = w === top ? o.rich + 1 : 0;
       o.poor = w === bottom && live.length > 1 ? o.poor + 1 : 0;
-      o.clean++;
+      o.clean++; // 忍者 (J18): days without paying a toll or fee
+      o.n.cleanStop = (o.n.cleanStop ?? 0) + 1; // 處女座潔癖 (Z11): days without stopping on someone else's property
       o.walk = (p.traffic & 3) === 0 ? o.walk + 1 : 0;
       o.car = (p.traffic & 3) === 2 ? o.car + 1 : 0;
       if (sameStreet) this.bump(p.id, 'sameStreet');
@@ -1054,7 +1056,7 @@ const MAP_MEASURES: Record<string, Measure> = {
   S12: (c, p) => { const fs = c.g.board.facilities.filter(x => x.name === '星月城' || x.name === '流星城'); return fs.length >= 2 && fs.every(f => f.owner === p.id + 1 && f.type === 1) && (c.n(p, 'guest4:星月城') + c.n(p, 'guest4:流星城')) > 0 ? 1 : 0; },
   S19: N('jam'), T18: N('mazu'), U01: N('coast2coast'), U10: N('redFlip'), U14: N('whiteHouse'),
   W04: N('huashan'), W05: N('devilJail'), W07: N('escort'), W13: N('haunted'), Z04: N('earthSafe'), Z10: N('remoteAt:射手座區'),
-  Z11: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), Z13: N('lionKing'), Z15: N('goodFate3'),
+  Z11: (c, p) => ((c.own[p.id].n.cleanStop ?? 0) >= 30 ? 1 : 0), Z13: N('lionKing'), Z15: N('goodFate3'),
   // 歌舞伎町
   B01: N('dashAway'), B02: N('kbv:tower'), B03: N('kbv:love'), B04: N('touted'), B05: N('protection'), B06: N('smash'), B07: N('gangArrest'), B08: N('bodyguard'),
   B10: N('big777'), B11: (c, p) => ([117, 118, 37, 38].every(x => c.own[p.id].gotPrizes.has(x)) ? 1 : 0), B12: (c, p) => used(c, p, 38), B13: N('kbv:drunk'),

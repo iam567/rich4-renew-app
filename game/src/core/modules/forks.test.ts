@@ -270,7 +270,7 @@ describe.skipIf(!have(100) || !have(7) || !have(5))('fork choices on maps', () =
         if (mapId !== 1) expect(r.changed, `map ${mapId}`).toBeGreaterThan(0);
       }
     }
-  });
+  }, 30_000); // long computer games
 
   it('the state is saved per player; a loaded game goes on the same; an old save gets a fresh state (both rules)', () => {
     for (const on of [true, false]) {

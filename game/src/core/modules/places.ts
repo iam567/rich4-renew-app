@@ -479,7 +479,9 @@ export class Places {
       if (p.sleepwalk) flag = 6;
       if (p.id === seller) flag = 7;
       const permanent = flag >= 1 && flag <= 7;
-      const max = flag === 0 && !g.isHuman(p) ? this.aiCeiling(p, ref, start) : 0;
+      const base = flag === 0 && !g.isHuman(p) ? this.aiCeiling(p, ref, start) : 0;
+      // 挑戰模式: a computer after an auction task bids higher (core/challenge-ai.ts; the ceiling's own draws unchanged).
+      const max = base && g.challengeAi ? g.challengeAi.auctionCeiling(p, ref, start, base) : base;
       seats.push({ p, flag, permanent, max, out: false });
     }
     const name = prop.name;

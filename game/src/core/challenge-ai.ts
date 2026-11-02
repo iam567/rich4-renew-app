@@ -80,6 +80,11 @@ export class ChallengeAi {
     // 全圖打卡 (G06): a kind of square not yet seen this round.
     if (n.event > 1 && this.open(p, 'G06') && !o.n[`ev:${n.event}`]) v += STAR * PI;
     v += this.sum(p, EVENT_TASKS[n.event]) * 0.3;
+    // 命運三連 (G69): a fate square while the run of fate turns is alive (last turn ended on one).
+    if (n.event === 3 && o.lastFateTurn === o.turnNo - 1) v += this.worth(p, 'G69') * 0.8;
+    // 忍者 / 處女座潔癖 (J18, Z11): a rival's lot, plot or company square breaks the clean days.
+    const owner = this.c.ownerOfRef(n.ref), co = n.ref > 6000 && n.ref < 8000 ? g.board.companies[n.ref - 6001] : undefined;
+    if ((owner >= 0 && owner !== p.id) || (co?.controller && co.controller !== p.id + 1)) v -= (this.worth(p, 'J18') + this.worth(p, 'Z11')) * 0.6;
     const name = this.c.placeName(node);
     if (name) {
       // Tours and named stops: a place not yet stopped at.
@@ -104,26 +109,60 @@ export class ChallengeAi {
     for (const [id, tasks] of Object.entries(TOOL_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['tool', Number(id), 2]);
     for (const [id, tasks] of Object.entries(CARD_TASKS)) if (tasks.some(t => this.open(p, t))) out.push(['card', Number(id), 1]);
     if (this.open(p, 'G08')) for (let id = 1; id <= 12; id++) if (!p.tools[id - 1]) out.push(['tool', id, 1]);
+    // 兵馬俑大軍 (C14): robot dolls up to the next tier.
+    const c14 = this.drawn('C14');
+    if (c14 && this.open(p, 'C14')) out.unshift(['tool', 1, c14.need.find(n => n > (p.tools[0] ?? 0)) ?? 9]);
     if (this.open(p, 'G07')) for (let id = 1; id <= 30; id++) if (!p.cards.includes(id)) out.push(['card', id, 1]);
     return out;
   }
 
-  /** Shares toward an open 董事長 task: enough of the company's stock to hold the most (from the deposit, as anyone). */
+  /**
+   * Shares toward an open 董事長 task (control goes to the biggest holder): to the top and then a lead of about a
+   * quarter over the next holder, so a rival's buying does not take it back at once (the days count in a row). From the
+   * deposit, as anyone buys; a few companies a turn.
+   */
   *shares(p: Player): Flow {
     const g = this.g, st = g.stocks;
-    for (const [id, names] of Object.entries(CHAIR_TASKS)) {
-      if (!this.open(p, id)) continue;
-      for (const c of g.board.companies) {
-        if (!(names.length === 0 || names.includes(c.name)) || c.controller === p.id + 1 || c.stockSlot >= 12) continue;
-        const slot = c.stockSlot, s = st.stocks[slot];
-        if (!s || s.price <= 0) continue;
-        const mine = st.holdings[p.id][slot]?.shares ?? 0;
-        const top = Math.max(0, ...g.players.filter(q => q.id !== p.id).map(q => st.holdings[q.id][slot]?.shares ?? 0));
-        const need = top - mine + 1;
-        if (need > 0 && need * s.price <= p.bank * 0.6) { yield* st.trade(p, slot, true, need); return; }
-      }
+    let budget = p.bank * 0.6, trades = 0;
+    for (const c of this.chairWanted(p)) {
+      const slot = c.stockSlot, s = st.stocks[slot];
+      if (!s || s.price <= 0 || s.suspendDays) continue;
+      const mine = st.holdings[p.id][slot]?.shares ?? 0;
+      const top = Math.max(0, ...g.players.filter(q => q.id !== p.id).map(q => st.holdings[q.id][slot]?.shares ?? 0));
+      // One company: a lead of a quarter (its days count in a row); several (財團, 武林盟主 …): control is enough.
+      const want = top + (this.chairOne(p, c) ? Math.max(2, Math.ceil(top * 0.25)) : 1);
+      const n = Math.min(want - mine, Math.trunc(budget / s.price));
+      // Not yet in control: only when this buying takes it (else the money waits); in control: topping up the lead.
+      if (n <= 0 || (c.controller !== p.id + 1 && mine + n <= top)) continue;
+      yield* st.trade(p, slot, true, n);
+      budget -= n * s.price;
+      if (g.over || !p.whoPlays || ++trades >= 3) return;
     }
   }
+
+  /** An open task wants this very company held for days (a single-company 董事長 task). */
+  private chairOne(p: Player, c: import('./board').Company): boolean {
+    return Object.entries(CHAIR_TASKS).some(([id, names]) => names.length === 1 && names[0] === c.name && this.open(p, id));
+  }
+
+  /** The auction ceiling with an open 拍賣得標 (G36, S15): up to twice the start and a star's worth, within the cash. */
+  auctionCeiling(p: Player, _ref: number, start: number, base: number): number {
+    const w = this.worth(p, 'G36') + this.worth(p, 'S15');
+    return w ? Math.min(p.cash, Math.max(base, start * 2 + w)) : base;
+  }
+
+  /** The companies an open 董事長 task still wants this player to control (or keep). */
+  private chairWanted(p: Player) {
+    const out = new Set<import('./board').Company>();
+    for (const [id, names] of Object.entries(CHAIR_TASKS)) {
+      if (!this.open(p, id)) continue;
+      for (const c of this.g.board.companies) if ((names.length === 0 || names.includes(c.name)) && c.stockSlot < 12) out.add(c);
+    }
+    return [...out];
+  }
+
+  /** Shares of `slot` its 董事長 task needs kept (the computer sells its other stock first when short of money). */
+  keepShares(p: Player, slot: number): boolean { return this.chairWanted(p).some(c => c.stockSlot === slot && c.controller === p.id + 1); }
 
   /** Buy a lot / plot a task names (even below the usual money margin)? */
   wantsPlace(p: Player, name: string): boolean {
