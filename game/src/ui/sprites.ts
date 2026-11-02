@@ -2,7 +2,7 @@
  * Sprite frames by original resource (archive + id), preferring the redrawn 4x frames (rich4-hd) and
  * falling back to the extracted originals (rich4-assets). Frames load on demand; `onLoad` asks for a redraw.
  */
-import { ASSETS } from './assets';
+import { ASSETS, origExt, setOrigExt } from './assets';
 import { decodeCropped, decodeImage, picSize, releasePic } from './decode';
 import { memTier } from './mem-tier';
 
@@ -50,6 +50,7 @@ export class SpriteBank {
       get(`${ASSETS}/orig/manifest.json`), get(`${ASSETS}/hd/manifest-hd.json`), get(`${ASSETS}/orig/outline-colors.json`),
     ]);
     if (!orig) throw new Error('找不到原版素材清單（請先執行 npm run assets）');
+    setOrigExt(orig.ext); // the app's originals are WebP (scripts/bundle-assets.mjs)
     for (const [archive, entries] of Object.entries(orig.archives as Record<string, OrigEntry[]>)) {
       for (const e of entries) bank.orig.set(`${archive.replace('.mkf', '')}/${String(e.id).padStart(4, '0')}`, e);
     }
@@ -286,7 +287,7 @@ export class SpriteBank {
     if (e.type === 'FLC' && e.frames_dir && e.frame_count) {
       const frames: Frame[] = [];
       for (let i = 0; i < e.frame_count; i++) {
-        const im = await img(`${ASSETS}/orig/${archive}/${e.frames_dir}/frame-${String(i).padStart(3, '0')}.png`);
+        const im = await img(`${ASSETS}/orig/${archive}/${e.frames_dir}/frame-${String(i).padStart(3, '0')}.${origExt}`);
         frames.push({ img: keyOut(im), w: im.width, h: im.height, ax: 0, ay: 0, scale: 1 });
       }
       return frames;

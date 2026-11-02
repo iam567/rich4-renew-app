@@ -20,6 +20,36 @@ function copy(rel) {
 }
 const json = rel => JSON.parse(readFileSync(join(src, rel), 'utf8'));
 
+// Pictures re-encoded for the app (RICH4_WEBP=1): the big redrawn ones at RICH4_SHRINK of their size (default 0.75,
+// still 3 pixels per original pixel) and WebP quality RICH4_QUALITY (default 90), to keep the app near 1 GB (the
+// user 2026-11-02: 「75%尺寸 90品質」; GitHub takes 2 GB a file). The game draws them by their recorded sizes, so a
+// smaller file only means fewer pixels. Jobs run together at the end, one cwebp per core.
+const webp = !!process.env.RICH4_WEBP;
+const SHRINK = webp ? Number(process.env.RICH4_SHRINK ?? 0.75) : 1;
+const QUALITY = String(process.env.RICH4_QUALITY ?? 90);
+/** { rel: source, to: output path (relative), w, h: the output size (0: as the source) } */
+const encode = [];
+/** A file's own size from its header (PNG, WebP), or null. */
+function fileSize(rel) {
+  try {
+    const b = readFileSync(join(src, rel)).subarray(0, 32), u24 = i => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16);
+    if (b[0] === 0x89 && b[1] === 0x50) return { w: b.readUInt32BE(16), h: b.readUInt32BE(20) };
+    const kind = b.toString('latin1', 12, 16);
+    if (kind === 'VP8X') return { w: u24(24) + 1, h: u24(27) + 1 };
+    if (kind === 'VP8 ') return { w: b.readUInt16LE(26) & 0x3fff, h: b.readUInt16LE(28) & 0x3fff };
+    if (kind === 'VP8L') { const v = b.readUInt32LE(21); return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 }; }
+  } catch { /* none */ }
+  return null;
+}
+/** A picture with no recorded size (event pictures, film shots), shrunk by its own size. */
+function shrinkOwn(rel) { const z = fileSize(rel); if (z) shrink(rel, z.w, z.h); else copy(rel); }
+
+/** A picture to encode smaller (w × h: its full size), or copied as it is when not shrinking. */
+function shrink(rel, w, h) {
+  if (SHRINK >= 1 || !w || !h) { copy(rel); return; }
+  encode.push({ rel, to: rel.replace(/\.png$/, '.webp'), w: Math.max(1, Math.round(w * SHRINK)), h: Math.max(1, Math.round(h * SHRINK)) });
+}
+
 for (const dir of ['maps', 'orig', 'hd', 'audio', 'ground']) rmSync(join(out, dir), { recursive: true, force: true });
 
 // Maps: list, thumbnails, board records and ground textures.
@@ -35,14 +65,14 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   copy('maps/remake/index.json');
   for (const m of json('maps/remake/index.json').maps) {
     for (const f of [m.data, m.image, m.thumbnail]) copy(`maps/${f}`);
-    for (const s of Object.values(json(`maps/${m.data}`).sprites ?? {})) for (const f of s.frames) copy(`maps/${s.dir}/${f.file}`);
+    for (const s of Object.values(json(`maps/${m.data}`).sprites ?? {})) for (const f of s.frames) shrink(`maps/${s.dir}/${f.file}`, f.width, f.height);
   }
   // 大富豪模式 (docs/rules/17): the travel pads and the airport / station buildings (read at run time from frames.json).
   for (const res of ['9017', '9018', '1501', '1502', '1503']) {
     const fj = `maps/remake/sprites/${res}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
-    for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+    for (const f of json(fj)) shrink(`maps/remake/sprites/${res}/${f.file}`, f.width, f.height);
   }
   // 派對模式's bar icons and the characters' reaction stickers (party-chat.ts, tools/tycoon-art/party_icons.py).
   if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
@@ -54,21 +84,21 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     const fj = `maps/remake/sprites/${res}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
-    for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+    for (const f of json(fj)) shrink(`maps/remake/sprites/${res}/${f.file}`, f.width, f.height);
   }
   // The five cities' own lot buildings (ui/city-lots.ts: map/2701..2724 東京, 2801.. 大阪, 2901.. 札幌, 3001.. 九州, 3101.. 沖繩).
   for (const base of [2700, 2800, 2900, 3000, 3100]) for (let n = 1; n <= 24; n++) {
     const fj = `maps/remake/sprites/${base + n}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
-    for (const f of json(fj)) copy(`maps/remake/sprites/${base + n}/${f.file}`);
+    for (const f of json(fj)) shrink(`maps/remake/sprites/${base + n}/${f.file}`, f.width, f.height);
   }
   // 歌舞伎町's street life (docs/rules/21 §8.3): vehicles, the train, the street characters (map/1901..1911, registered at run time).
   for (let res = 1901; res <= 1911; res++) {
     const fj = `maps/remake/sprites/${res}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
-    for (const f of json(fj)) copy(`maps/remake/sprites/${res}/${f.file}`);
+    for (const f of json(fj)) shrink(`maps/remake/sprites/${res}/${f.file}`, f.width, f.height);
   }
   // The tycoon cards' art (Data#601..606), the lab tools' icons (Data#614..616) and the 在路上 animation layers.
   const cards = [601, 602, 603, 604, 605, 606, 609].map(n => `cards/0${n}.webp`), tools = [614, 615, 616].map(n => `tools/0${n}.webp`);
@@ -81,7 +111,7 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   // (Missing from v0.7.0's app bundles: the films played black with broken pictures on the phone.)
   if (existsSync(join(src, 'maps/remake/cinema'))) for (const d of readdirSync(join(src, 'maps/remake/cinema'))) {
     if (!statSync(join(src, `maps/remake/cinema/${d}`)).isDirectory()) continue;
-    for (const f of readdirSync(join(src, `maps/remake/cinema/${d}`))) if (f.endsWith('.webp')) copy(`maps/remake/cinema/${d}/${f}`);
+    for (const f of readdirSync(join(src, `maps/remake/cinema/${d}`))) if (f.endsWith('.webp')) shrinkOwn(`maps/remake/cinema/${d}/${f}`);
   }
   // 大富翁城 (docs/rules/19): the five halls' sprites (map/1601..1645, read at run time) and the casino screens' art.
   for (let t = 0; t < 5; t++) for (let k = 1; k <= 5; k++) {
@@ -121,7 +151,7 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   // 大富豪模式 local news / fate pictures (docs/rules/18): maps/remake/events/<id>.webp.
   if (existsSync(join(src, 'maps/remake/events'))) {
-    for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) copy(`maps/remake/events/${f}`);
+    for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) shrinkOwn(`maps/remake/events/${f}`);
   }
 }
 
@@ -131,54 +161,46 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
 // Clips the game no longer plays: Data#523, the level-5 fireworks, is drawn in code (src/ui/fireworks.ts).
 const UNUSED_DATA = new Set([523]);
 
-// Original sprites of the archives the game draws from.
-copy('orig/manifest.json');
+// Original sprites of the archives the game draws from. In the app (RICH4_WEBP=1) as lossless WebP (the same pixels,
+// half the bytes): the manifest names the .webp files and says `ext: 'webp'` for the frames the game names itself
+// (ui/assets.ts origExt).
 copy('orig/outline-colors.json');
-const orig = json('orig/manifest.json').archives;
+const origManifest = json('orig/manifest.json'), orig = origManifest.archives;
+const origPic = rel => {
+  if (!webp || !rel.endsWith('.png')) { copy(rel); return rel; }
+  encode.push({ rel, to: rel.replace(/\.png$/, '.webp'), w: 0, h: 0, lossless: true });
+  return rel.replace(/\.png$/, '.webp');
+};
+const webpName = f => (webp ? f.replace(/\.png$/, '.webp') : f);
 for (const archive of ['Data.mkf', 'map.mkf', 'Panel.mkf']) {
   const dir = archive.replace('.mkf', '');
   for (const e of orig[archive] ?? []) {
     if (archive === 'Data.mkf' && UNUSED_DATA.has(e.id)) continue;
-    for (const f of e.frames ?? []) if (f.file) copy(`orig/${dir}/${f.file}`);
-    if (e.file) copy(`orig/${dir}/${e.file}`); // whole pictures (card art, holiday photos)
-    if (e.frames_dir) for (let i = 0; i < e.frame_count; i++) copy(`orig/${dir}/${e.frames_dir}/frame-${String(i).padStart(3, '0')}.png`);
+    for (const f of e.frames ?? []) if (f.file) { origPic(`orig/${dir}/${f.file}`); f.file = webpName(f.file); }
+    if (e.file) { origPic(`orig/${dir}/${e.file}`); e.file = webpName(e.file); } // whole pictures (card art, holiday photos)
+    if (e.frames_dir) for (let i = 0; i < e.frame_count; i++) origPic(`orig/${dir}/${e.frames_dir}/frame-${String(i).padStart(3, '0')}.png`);
   }
 }
+mkdirSync(join(out, 'orig'), { recursive: true });
+writeFileSync(join(out, 'orig/manifest.json'), JSON.stringify(webp ? { ...origManifest, ext: 'webp' } : origManifest));
 
 // Redrawn 4x frames. With RICH4_WEBP=1 they are converted to WebP (about 5x smaller; Safari 14+ and Chrome read
-// it) and the copied manifest points at the .webp files.
-const webp = !!process.env.RICH4_WEBP;
+// it), smaller by SHRINK, and the copied manifest points at the .webp files (its sizes stay the 4x ones).
 const hdManifest = json('hd/manifest-hd.json');
-const jobs = [];
 for (const [key, e] of Object.entries(hdManifest.resources)) {
   if (key.startsWith('Data/') && UNUSED_DATA.has(Number(key.slice(5)))) { delete hdManifest.resources[key]; continue; }
   for (const f of e.frames ?? []) {
     const rel = `hd/${key}-${e.type}/${f.file}`;
-    if (webp && f.file.endsWith('.png')) { jobs.push(rel); f.file = f.file.replace(/\.png$/, '.webp'); } else copy(rel);
+    // PNG sources become WebP; WebP sources are encoded again only to shrink them.
+    if (webp && (f.file.endsWith('.png') || (SHRINK < 1 && f.file.endsWith('.webp')))) { encode.push({ rel, to: rel.replace(/\.png$/, '.webp'), w: Math.round(f.width * SHRINK), h: Math.round(f.height * SHRINK) }); f.file = f.file.replace(/\.png$/, '.webp'); } else copy(rel);
   }
   if (e.file) {
     const rel = `hd/${key.split('/')[0]}/${e.file}`;
-    if (webp && e.file.endsWith('.png')) { jobs.push(rel); e.file = e.file.replace(/\.png$/, '.webp'); } else copy(rel);
+    if (webp && e.file.endsWith('.png')) { encode.push({ rel, to: rel.replace(/\.png$/, '.webp'), w: 0, h: 0 }); e.file = e.file.replace(/\.png$/, '.webp'); } else copy(rel);
   }
 }
 mkdirSync(join(out, 'hd'), { recursive: true });
 writeFileSync(join(out, 'hd/manifest-hd.json'), JSON.stringify(hdManifest));
-if (jobs.length) {
-  // cwebp in parallel, one process per core.
-  const cores = Math.max(1, availableParallelism() - 1);
-  let next = 0, done = 0;
-  await Promise.all(Array.from({ length: cores }, async () => {
-    while (next < jobs.length) {
-      const rel = jobs[next++], from = join(src, rel), to = join(out, rel.replace(/\.png$/, '.webp'));
-      if (!existsSync(from)) continue;
-      mkdirSync(dirname(to), { recursive: true });
-      await new Promise((ok, fail) => execFile('cwebp', ['-quiet', '-q', '88', '-alpha_q', '100', '-m', '4', from, '-o', to], err => (err ? fail(err) : ok())));
-      count++; bytes += statSync(to).size;
-      if (++done % 2000 === 0) console.log(`webp ${done}/${jobs.length}`);
-    }
-  }));
-}
-
 // Sound (scripts/extract_audio.py): every effect, voice and music file the manifest lists.
 if (existsSync(join(src, 'audio/manifest.json'))) {
   copy('audio/manifest.json');
@@ -195,12 +217,31 @@ if (existsSync(join(src, 'ground/index.json'))) {
     for (const style of styles) {
       const dir = `ground/${map}/${style}`;
       if (!existsSync(join(src, dir, 'manifest.json'))) continue;
-      copy(`${dir}/manifest.json`);
       const m = json(`${dir}/manifest.json`);
+      // The tiles smaller by SHRINK: their pixels per original pixel (scale) with them.
+      mkdirSync(join(out, dir), { recursive: true });
+      writeFileSync(join(out, dir, 'manifest.json'), JSON.stringify({ ...m, scale: m.scale * SHRINK }));
       copy(`${dir}/${m.preview}`);
-      for (const row of m.tiles) for (const f of row) copy(`${dir}/${f}`);
+      for (const row of m.tiles) for (const f of row) shrink(`${dir}/${f}`, m.tile * m.scale, m.tile * m.scale);
     }
   }
+}
+
+if (encode.length) {
+  const cores = Math.max(1, availableParallelism() - 1);
+  let next = 0, done = 0;
+  await Promise.all(Array.from({ length: cores }, async () => {
+    while (next < encode.length) {
+      const j = encode[next++], from = join(src, j.rel), to = join(out, j.to);
+      if (!existsSync(from)) continue;
+      mkdirSync(dirname(to), { recursive: true });
+      const size = j.w && j.h && SHRINK < 1 ? ['-resize', String(j.w), String(j.h)] : [];
+      const how = j.lossless ? ['-lossless', '-z', '6', '-exact'] : ['-q', QUALITY, '-alpha_q', '100', '-m', '4', ...size];
+      await new Promise((ok, fail) => execFile('cwebp', ['-quiet', ...how, from, '-o', to], err => (err ? fail(err) : ok())));
+      count++; bytes += statSync(to).size;
+      if (++done % 2000 === 0) console.log(`webp ${done}/${encode.length}`);
+    }
+  }));
 }
 
 console.log(`bundled ${count} files, ${(bytes / 1e6).toFixed(0)} MB → ${out}`);

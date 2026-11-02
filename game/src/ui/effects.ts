@@ -3,7 +3,7 @@
  * numbers rising over a head and the speech cloud with an expression face. The board view owns one `Effects`
  * and calls `tick()` once per animation tick (120/80/40 ms) and `draw()` once per frame.
  */
-import { ASSETS } from './assets';
+import { ASSETS, origExt } from './assets';
 import type { Archive, Frame, SpriteBank } from './sprites';
 import { decodeCropped, picSize, releasePic } from './decode';
 import { isAndroid, memTier } from './mem-tier';
@@ -492,7 +492,7 @@ function startLoad(bank: SpriteBank, res: number): Loading {
       frames[i] = c.pic;
       return;
     }
-    const blob = await (await fetch(`${ASSETS}/orig/Data/${String(res).padStart(4, '0')}-FLC/frame-${String(i).padStart(3, '0')}.png`)).blob();
+    const blob = await (await fetch(`${ASSETS}/orig/Data/${String(res).padStart(4, '0')}-FLC/frame-${String(i).padStart(3, '0')}.${origExt}`)).blob();
     frames[i] = keyOut(await createImageBitmap(blob));
   };
   let failed: unknown = null;

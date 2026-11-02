@@ -100,9 +100,18 @@ export async function loadMapData(id: number): Promise<RawMap & { tycoon?: unkno
   return json(entry?.data ? `${ASSETS}/maps/${entry.data}` : `${base}.json`);
 }
 
-/** HD portrait for a character (Data.mkf #2, aligned 4x), falling back to the original. */
+/**
+ * The original pictures' file type: 'png' as extracted, 'webp' in the app (scripts/bundle-assets.mjs converts them,
+ * losslessly, and says so in orig/manifest.json `ext`). For the frames the game names itself rather than by the manifest.
+ */
+export let origExt = 'png';
+export function setOrigExt(ext: string | undefined) { origExt = ext === 'webp' ? 'webp' : 'png'; }
+
+/** HD portrait for a character (Data.mkf #2, aligned 4x; WebP in the app), falling back to the original. */
 export async function portrait(character: number): Promise<HTMLImageElement> {
   const n = String(character).padStart(3, '0');
-  try { return await image(`${ASSETS}/hd/Data/0002-SMP/frame-${n}.png`); }
-  catch { return image(`${ASSETS}/orig/Data/0002-SMP/frame-${n}.png`); }
+  for (const url of [`${ASSETS}/hd/Data/0002-SMP/frame-${n}.webp`, `${ASSETS}/hd/Data/0002-SMP/frame-${n}.png`]) {
+    try { return await image(url); } catch { /* the next */ }
+  }
+  return image(`${ASSETS}/orig/Data/0002-SMP/frame-${n}.${origExt}`);
 }
