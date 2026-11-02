@@ -21,6 +21,8 @@ export interface GameSettings {
   aiLevel?: 0 | 1 | 2;
   /** 挑戰模式 (docs/rules/26): no bankruptcy (debt), tasks and stars; core/challenge.ts. */
   challenge?: boolean;
+  /** 挑戰模式's deadline in years (1 / 3 / 5: the most stars then wins); 0 or none: the first to 100 stars wins. */
+  challengeYears?: number;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];

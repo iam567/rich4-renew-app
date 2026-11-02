@@ -13,6 +13,7 @@ import type { GameSettings, Player } from './types';
 import type { FinaleState } from './finale';
 import { World, type TickerLine, type TycoonSettings } from './world';
 import { attachLedger, Ledger, ledgerOf, type LedgerData } from './stats';
+import type { ChallengeData } from './challenge';
 
 export const SAVE_VERSION = 1;
 
@@ -35,6 +36,8 @@ export interface SaveData {
   stats?: LedgerData;
   /** The map's own rules state (歌舞伎町, core/kabukicho.ts); no other map has one. */
   mapRules?: unknown;
+  /** 挑戰模式's tasks and counters (core/challenge.ts). */
+  challenge?: ChallengeData;
 }
 
 const plain = <T>(x: T): T => JSON.parse(JSON.stringify(x));
@@ -66,6 +69,7 @@ export function saveGame(g: Game): SaveData {
     modules,
     ...(g.stats ? { stats: g.stats.save() } : {}),
     ...(g.rules?.saveState ? { mapRules: plain(g.rules.saveState()) } : {}),
+    ...(g.challengeTracker ? { challenge: plain(g.challengeTracker.save()) } : {}),
   };
 }
 
@@ -108,6 +112,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   if (map) adoptMapNames(g, map);
   if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
   if (s.mapRules !== undefined) g.rules?.loadState?.(plain(s.mapRules));
+  if (s.challenge) g.challengeTracker?.load(plain(s.challenge));
   return g;
 }
 

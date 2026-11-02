@@ -90,6 +90,28 @@ const blankOwn = (): Own => ({
 
 type Measure = (c: Challenge, p: Player) => number | undefined;
 
+/** A saved tracker (core/save.ts). */
+export interface ChallengeData { version: 1; tasks: string[]; state: Record<string, unknown> }
+
+/** Plain data for JSON: a Set as {$set: […]}, a Map as {$map: [[k, v]…]}. */
+function enc(v: unknown): unknown {
+  if (v instanceof Set) return { $set: [...v].map(enc) };
+  if (v instanceof Map) return { $map: [...v].map(([k, x]) => [k, enc(x)]) };
+  if (Array.isArray(v)) return v.map(enc);
+  if (v && typeof v === 'object') return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, enc(x)]));
+  return v;
+}
+function dec(v: unknown): unknown {
+  if (Array.isArray(v)) return v.map(dec);
+  if (v && typeof v === 'object') {
+    const o = v as Record<string, unknown>;
+    if (Array.isArray(o.$set)) return new Set(o.$set.map(dec));
+    if (Array.isArray(o.$map)) return new Map((o.$map as [unknown, unknown][]).map(([k, x]) => [k, dec(x)]));
+    return Object.fromEntries(Object.entries(o).map(([k, x]) => [k, dec(x)]));
+  }
+  return v;
+}
+
 export class Challenge {
   readonly tasks: ChallengeTask[];
   readonly own: Own[];
@@ -113,6 +135,22 @@ export class Challenge {
   constructor(readonly g: Game, tasks?: ChallengeTask[]) {
     this.tasks = tasks ?? drawTasks(g.board.mapId, g.settings.seed);
     this.own = g.players.map(() => blankOwn());
+  }
+
+  /** The tracker's state for a save: the drawn tasks by id and every counter (sets and maps as tagged arrays). */
+  save(): ChallengeData {
+    const state: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(this)) if (k !== 'g' && k !== 'tasks') state[k] = enc(v);
+    return { version: 1, tasks: this.tasks.map(t => t.id), state };
+  }
+
+  /** Restores a save's state (a game built from the same settings); tasks no longer in the table are dropped. */
+  load(d: ChallengeData): void {
+    const byId = new Map(CHALLENGE_TASKS.map(t => [t.id, t]));
+    (this as { tasks: ChallengeTask[] }).tasks = d.tasks.map(id => byId.get(id)).filter((t): t is ChallengeTask => !!t);
+    const own = dec(d.state.own) as Partial<Own>[] | undefined;
+    for (const [k, v] of Object.entries(d.state)) if (k !== 'own') (this as unknown as Record<string, unknown>)[k] = dec(v);
+    own?.forEach((o, i) => { if (this.own[i]) Object.assign(this.own[i], o); });
   }
 
   /** The ledger's counters of `p` (the simulation and the game attach one). */

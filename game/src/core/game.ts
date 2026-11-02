@@ -18,7 +18,8 @@ import { Stocks } from './modules/stocks';
 import { Tools, type ToolDef } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { SmartAi } from './smart-ai';
-import type { ChallengeAi } from './challenge-ai';
+import { Challenge, CHALLENGE_WIN } from './challenge';
+import { ChallengeAi } from './challenge-ai';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
@@ -356,6 +357,10 @@ export class Game {
     this.forks.init();
     // 大富翁城 (docs/rules/19): its finale city gets the world link's rules, a normal game on it the map's own.
     this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this);
+    if (settings.challenge && !link) {
+      this.challengeTracker = new Challenge(this);
+      this.challengeAi = new ChallengeAi(this, this.challengeTracker);
+    }
   }
 
   // ---------------------------------------------------------------- helpers for the modules
@@ -376,17 +381,20 @@ export class Game {
   testLevels?: readonly (0 | 1 | 2)[];
   /** 挑戰模式's computer (core/challenge-ai.ts): set with the game's task tracker; the smarter computer reads it. */
   challengeAi?: ChallengeAi;
+  /** 挑戰模式's tasks and stars (core/challenge.ts): it only watches, like the statistics ledger it reads. */
+  challengeTracker?: Challenge;
   /**
    * The level a computer-played seat (a computer, a human on 托管, in 派對模式 also a player voted out or dropped) plays
    * at (core/smart-ai.ts): 0 簡單 = the original's rules bit for bit, 1 中級 = the smarter money, buying, building and
    * dice with the original's cards, tools and shop, 2 困難 = the smarter computer in full. A normal game takes
-   * `settings.aiLevel` (none: 0, as every game before it); 派對模式 always 2 (the user 2026-10-22); 大富豪模式 always 0.
+   * `settings.aiLevel` (none: 0, as every game before it); 派對模式 and 挑戰模式 always 2 (the user 2026-10-22; the
+   * challenge computer chases stars, docs/rules/26 §5); 大富豪模式 always 0.
    * A human playing by hand: 0.
    */
   aiLevel(p: Player): 0 | 1 | 2 {
     if (this.world || this.isHuman(p) || !p.whoPlays) return 0;
     if (this.testLevels) return this.testLevels[p.id] ?? 0;
-    return this.settings.party ? 2 : this.settings.aiLevel ?? 0;
+    return this.settings.party || this.settings.challenge ? 2 : this.settings.aiLevel ?? 0;
   }
   /** 中級 and up: the smarter money, buying, building and dice (core/smart-ai.ts). */
   smartAi(p: Player): boolean { return this.aiLevel(p) >= 1; }
@@ -725,8 +733,8 @@ export class Game {
 
   /** Runs the whole game (watched by the ledger when there is one). */
   *run(): Flow {
-    const stats = this.stats;
-    if (stats) { yield* observed(this.loop(), s => stats.observe(s, this)); return; }
+    const stats = this.stats, ch = this.challengeTracker;
+    if (stats || ch) { yield* observed(this.loop(), s => { stats?.observe(s, this); ch?.see(s); }); return; }
     yield* this.loop();
   }
 
@@ -768,6 +776,7 @@ export class Game {
     this.daysElapsed += 1;
     this.stats?.newDay(this.players, p => this.wealth(p), [this.board], this.daysElapsed);
     yield { t: 'day', date, newMonth };
+    this.challengeTracker?.newDay();
     yield* this.checkVictory();
     if (this.over) return;
     this.rules?.daily?.(this); // 大富翁城 (docs/rules/19): no stock market, nothing denied on sale
@@ -834,6 +843,19 @@ export class Game {
 
   /** Daily victory check fcn_0041d89e (docs/rules/01 §8.1). */
   private *checkVictory(): Flow {
+    const ch = this.challengeTracker;
+    if (ch) {
+      // 挑戰模式 (docs/rules/26 §2): with a deadline the most stars when it comes (ties: the richer); without one the
+      // first to 100 stars.
+      const years = this.settings.challengeYears ?? 0;
+      if (years && this.daysElapsed >= years * 365) {
+        const live = this.living();
+        if (!live.length) return;
+        const best = live.reduce((a, b) => (ch.stars(b) > ch.stars(a) || (ch.stars(b) === ch.stars(a) && this.wealth(b) > this.wealth(a)) ? b : a));
+        yield* this.finish(best.id);
+      } else if (!years && ch.winner >= 0 && ch.stars(this.players[ch.winner]) >= CHALLENGE_WIN) yield* this.finish(ch.winner);
+      return;
+    }
     if (!this.daysLimit && !this.victoryTarget) return;
     let best: Player | null = null, bestWealth = 0;
     for (const p of this.living()) {

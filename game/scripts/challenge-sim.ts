@@ -28,7 +28,7 @@ for (const mapId of maps) {
     const board = parseBoard(JSON.parse(readFileSync(simMapFile(mapId), 'utf8')) as RawMap);
     const settings: GameSettings = {
       mapId, players: [9, 4, 3, 0].map(character => ({ character, human: true })),
-      fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 1, 1), seed, challenge: true,
+      fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 1, 1), seed, challenge: true, challengeYears: 99,
     };
     const game = new Game(settings, board);
     game.animation = false;
@@ -36,9 +36,10 @@ for (const mapId of maps) {
     game.testLevels = [level, level, level, level];
     attachLedger(game.players);
     const pool = C.taskPool(mapId);
+    // The sim's own tracker measures the whole pool; the game's own (settings.challenge) keeps the drawn tasks and the end.
     const ch = new C.Challenge(game, pool);
     const drawn = C.drawTasks(mapId, seed);
-    if (level === 2 && !process.argv.includes('--plain')) game.challengeAi = new ChallengeAi(game, ch, drawn);
+    game.challengeAi = level === 2 && !process.argv.includes('--plain') ? new ChallengeAi(game, ch, drawn) : undefined;
     const row: GameRow = { map: mapId, seed, first100: -1, drawn: drawn.map(t => t.id), stars: {}, tasks: {}, values: {} };
     const flow = game.run();
     let r = flow.next(), steps = 0, lastDay = game.daysElapsed;
