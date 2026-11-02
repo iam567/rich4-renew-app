@@ -15,6 +15,7 @@ import { nodeById, type Board, type BoardNode, type Landscape } from './board';
 import { CHARACTERS } from './characters';
 import { daysBetween, day as dayOf, nextDay, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
+import { track } from './challenge';
 import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs/rules/19)
 import { Game, type WorldHooks } from './game';
 import { deckSupply } from './modules/cards';
@@ -310,6 +311,7 @@ export class World implements WorldHooks {
         seed: this.citySeed(index),
       };
       const g = new Game(s, boards[index], { index, hooks: mapId === FINALE_MAP ? this.finale : this, players: this.players });
+      track(g);
       if (!tools) tools = this.players.map(p => [...p.tools]);
       return g;
     });
@@ -1291,6 +1293,7 @@ export class World implements WorldHooks {
   private toTicker(index: number, s: GameEvent) {
     const c = this.cities[index], n = (p: number) => this.name(p);
     this.stats?.observe(s, c); // the statistics ledger sees every city's events here (core/stats.ts)
+    c.challengeTracker?.see(s); // and each city's achievements (core/challenge.ts, the 圖鑑)
     const fmt = (x: number) => x.toLocaleString('en-US');
     switch (s.t) {
       case 'buy': {
@@ -1345,6 +1348,7 @@ export class World implements WorldHooks {
     this.stats?.newDay(this.players, p => this.wealth(p), this.cities.map(c => c.board), this.daysElapsed);
     this.mask(this.view());
     yield { t: 'day', date, newMonth };
+    for (const c of this.cities) c.challengeTracker?.newDay();
     this.updatePriceIndex();
     this.cities.forEach((c, i) => c.rng.reseed(daySeed((this.citySeed(i) ^ this.rngSalt) >>> 0, this.daysElapsed)));
     for (const [i, c] of this.cities.entries()) { if (!this.finale.runs(i)) continue; this.mask(i); this.drain(i, c.stocks.daily()); }

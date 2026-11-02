@@ -25,6 +25,12 @@ export const CHALLENGE_YEARS = [0, 1, 3, 5];
 /** The tasks a game on `mapId` can draw: the shared library (less those the map skips) and the map's own. */
 export const taskPool = (mapId: number) => CHALLENGE_TASKS.filter(t => (t.map === -1 && !t.skip?.includes(mapId)) || t.map === mapId);
 
+/**
+ * A 大富豪模式 city's achievements (the user 2026-11-02: every mode counts): every task of its map, watched in that
+ * city (the world feeds its events and days). The screen puts a human's into the 圖鑑.
+ */
+export function track(g: Game): void { g.challengeTracker = new Challenge(g, taskPool(g.settings.mapId)); }
+
 /** Full marks of a task. */
 export const fullStars = (t: ChallengeTask) => (t.once ? t.stars : 3);
 
@@ -161,6 +167,9 @@ export class Challenge {
     own?.forEach((o, i) => { if (this.own[i]) Object.assign(this.own[i], o); });
   }
 
+  /** The living players in this game (a 大富豪模式 city: those in this city now; the others' squares are another map's). */
+  live(): Player[] { return this.g.living().filter(p => this.g.here(p)); }
+
   /** The ledger's counters of `p` (the simulation and the game attach one). */
   stats(p: Player): PlayerStats | undefined { return ledgerOf(this.g.players)?.of(p.id); }
 
@@ -205,11 +214,15 @@ export class Challenge {
         if (isP(e.p)) { this.own[e.p].traffic = g.players[e.p].traffic & 3; this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
         break;
       case 'pay': this.pay(e); break;
-      case 'points': if (isP(e.p) && e.amount < 0) { const ev = g.node(g.players[e.p].node).event; if (ev === 4 || ev === 5) this.bump(e.p, 'bail'); } break;
+      case 'points': if (isP(e.p) && e.amount < 0) { const ev = g.node(g.players[e.p].node)?.event; if (ev === 4 || ev === 5) this.bump(e.p, 'bail'); } break;
       case 'buy': case 'build': break;
       case 'fx': this.fx(e, isP); break;
       default: break;
     }
+    // The acting player's measures at once (not only at the new day), so the screen can take the proof picture of the
+    // very moment (the dice still on the board, the tools just bought …). Walking steps change nothing measured.
+    const who = (e as { p?: number }).p;
+    if (e.t !== 'step' && isP(who) && g.players[who].whoPlays && g.here(g.players[who])) this.measureAll(g.players[who]);
   }
 
   private fx(e: Extract<GameEvent, { t: 'fx' }>, isP: (x?: number) => x is number) {
@@ -229,7 +242,7 @@ export class Challenge {
         this.newsToday.add(id);
         if (id === 24) this.crashDay = g.daysElapsed;
         // 鬧鬼 (news 14) on a lot or plot: its owner was haunted (鬼陰山).
-        if (id === 14 && e.node !== undefined) { const o = this.ownerOfRef(g.node(e.node).ref); if (o >= 0) this.bump(o, 'haunted'); }
+        if (id === 14 && e.node !== undefined) { const o = this.ownerOfRef(g.node(e.node)?.ref ?? 0); if (o >= 0) this.bump(o, 'haunted'); }
         break;
       }
       case 'god-attach': if (p >= 0) {
@@ -264,7 +277,7 @@ export class Challenge {
       case 'sleepwalk': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:sleepwalk'); break;
       case 'turtle': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:turtle'); break;
       case 'turn-around': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:turn'); break;
-      case 'hibernate': { const who = Array.isArray(d.who) ? (d.who as number[]) : []; for (const q of who) if (isP(q) && q !== p) this.bump(q, 'got:hibernate'); if (p >= 0 && who.length >= g.living().length - 1) this.bump(p, 'hibernateAll'); break; }
+      case 'hibernate': { const who = Array.isArray(d.who) ? (d.who as number[]) : []; for (const q of who) if (isP(q) && q !== p) this.bump(q, 'got:hibernate'); if (p >= 0 && who.length >= this.live().length - 1) this.bump(p, 'hibernateAll'); break; }
       case 'card-result': if (num('card') === 26 && tgt >= 0) this.bump(tgt, 'taxed'); break;
       case 'card-taken': if (p >= 0 && tgt >= 0) { this.bump(p, 'grab'); this.bump(p, `grabFrom:${tgt}`); } break;
       case 'magic': if (p >= 0) { this.own[p].magic.add(num('magic')); this.bump(p, 'magic'); } break;
@@ -365,15 +378,16 @@ export class Challenge {
     if (isP(to) && e.reason === '理賠金') this.bump(to, 'insurance');
     if (isP(from) && isP(to) && from !== to) {
       const at = g.node(g.players[from].node), day = g.daysElapsed;
-      if (at.ref > 6000) { const c = g.board.companies[at.ref - 6001]; if (c) this.bump(to, `coPaid:${c.name}:${from}:${day}`); }
+      if (at && at.ref > 6000) { const c = g.board.companies[at.ref - 6001]; if (c) this.bump(to, `coPaid:${c.name}:${from}:${day}`); }
       const f = this.facilityAt(g.players[from].node);
       if (f) this.bump(to, `facPaid:${f.name}:${from}:${day}`);
-      const land = at.ref > 2000 && at.ref < 4000 ? g.board.lands[at.ref - 2001] : undefined;
+      const land = at && at.ref > 2000 && at.ref < 4000 ? g.board.lands[at.ref - 2001] : undefined;
       if (land) this.bump(to, `streetPaid:${land.name}:${from}:${day}`);
     }
     if (!(isP(from) && isP(to) && from !== to && TOLL_REASONS.has(e.reason))) return;
     this.bestOf(g.players[to], 'O05', e.amount);
     const payer = g.players[from], at = g.node(payer.node);
+    if (!at) return; // 大富豪模式: paid from another city (小財神 …)
     const land = at.ref > 2000 && at.ref < 4000 ? g.board.lands[at.ref - 2001] : undefined;
     const fac = this.facilityAt(payer.node);
     this.bump(to, 'tollIn');
@@ -383,13 +397,13 @@ export class Challenge {
     if (fac && fac.type === 3) this.bump(to, 'gas');
     this.bump(from, 'paidToll');
     this.own[from].clean = 0;
-    const living = g.living().filter(q => q.id !== to);
+    const living = this.live().filter(q => q.id !== to);
     if (living.length && living.every(q => this.n(g.players[to], `paidBy:${q.id}:${g.daysElapsed}`) > 0)) this.bump(to, `allPaid:${g.daysElapsed}`);
   }
 
   /** Every living player in hospital / in prison at once (counted once per time it happens, for everyone). */
   private checkAll() {
-    const live = this.g.living();
+    const live = this.live();
     const h = live.length > 1 && live.every(q => q.hospital !== 0), pr = live.length > 1 && live.every(q => q.prison !== 0);
     if (h && !this.allHospital) for (const q of live) this.bump(q.id, 'allHospital');
     if (pr && !this.allPrison) for (const q of live) this.bump(q.id, 'allPrison');
@@ -416,6 +430,7 @@ export class Challenge {
 
   private stopped(p: number, node: number) {
     const g = this.g, pl = g.players[p], o = this.own[p], n = g.node(node);
+    if (!n) return;
     const name = this.placeName(node);
     if (name) this.bump(p, `stop:${name}`);
     if (n.event) this.bump(p, `ev:${n.event}`);
@@ -439,25 +454,25 @@ export class Challenge {
       if (o.lastStop['紐約'] !== undefined && o.lastStop['洛杉磯'] !== undefined && Math.abs(o.lastStop['紐約'] - o.lastStop['洛杉磯']) < 30 && (name === '紐約' || name === '洛杉磯')) this.bump(p, 'coast2coast');
       const f = this.facilityAt(node);
       if (f && f.name === '荷蘭風車村' && f.type === 0 && f.owner && f.owner - 1 !== p) this.bump(f.owner - 1, 'windmill');
-      if (g.living().every(q => !g.offRoad(q) && this.placeName(q.node) === '華山派')) for (const q of g.living()) this.bump(q.id, 'huashan');
+      if (this.live().every(q => !g.offRoad(q) && this.placeName(q.node) === '華山派')) for (const q of this.live()) this.bump(q.id, 'huashan');
     }
     // Same square: every living player / three or more.
-    const here = g.living().filter(q => q.placed && !g.offRoad(q) && q.node === node);
+    const here = this.live().filter(q => q.placed && !g.offRoad(q) && q.node === node);
     if (here.length >= 3) for (const q of here) this.bump(q.id, 'crowd3');
     if (here.length >= 2) this.bump(p, 'sumo');
-    if (here.length === g.living().length && here.length > 1) for (const q of here) this.bump(q.id, 'allSame');
+    if (here.length === this.live().length && here.length > 1) for (const q of here) this.bump(q.id, 'allSame');
   }
 
   // ---------------------------------------------------------------- the day
 
   newDay(): void {
     const g = this.g;
-    const live = g.living();
+    const live = this.live();
     const assets = live.map(p => g.wealth(p));
     const top = Math.max(...assets), bottom = Math.min(...assets);
     const sameStreet = live.length > 1 && live.every(q => this.placeName(q.node) && this.placeName(q.node) === this.placeName(live[0].node) && !g.offRoad(q));
     for (const p of g.players) {
-      if (!p.whoPlays) continue;
+      if (!p.whoPlays || !g.here(p)) continue;
       const o = this.own[p.id];
       if (o.stay && !p.god) this.endStay(p.id);
       o.justLeft = 0;
@@ -505,7 +520,7 @@ export class Challenge {
 
   /** The day's state-based counters (called by newDay before the measures are read on the next day). */
   private dayExtras() {
-    const g = this.g, b = g.board, day = g.daysElapsed, live = g.living();
+    const g = this.g, b = g.board, day = g.daysElapsed, live = this.live();
     const crash = this.newsToday;
     for (const p of live) {
       const o = this.own[p.id], me = p.id + 1;
@@ -602,17 +617,18 @@ export class Challenge {
   /** Opponents (other living players) who paid `to` today under `key` (a `${kind}:${name}` prefix). */
   paidToday(to: Player, prefix: string): number {
     const day = this.g.daysElapsed - 1;
-    return this.g.living().filter(q => q.id !== to.id && this.n(to, `${prefix}:${q.id}:${day}`) > 0).length;
+    return this.live().filter(q => q.id !== to.id && this.n(to, `${prefix}:${q.id}:${day}`) > 0).length;
   }
 
   facilityAt(node: number) {
     const n = this.g.node(node);
-    return n.ref > 4000 && n.ref < 6000 ? this.g.board.facilities[n.ref - 4001] : undefined;
+    return n && n.ref > 4000 && n.ref < 6000 ? this.g.board.facilities[n.ref - 4001] : undefined;
   }
 
   /** The street (lot name) or large plot name a road square belongs to ('' none). */
   placeName(node: number): string {
     const n = this.g.node(node);
+    if (!n) return '';
     if (n.ref > 2000 && n.ref < 4000) return this.g.board.lands[n.ref - 2001]?.name ?? '';
     if (n.ref > 4000 && n.ref < 6000) return this.g.board.facilities[n.ref - 4001]?.name ?? '';
     if (n.ref > 6000 && n.ref < 8000) return this.g.board.companies[n.ref - 6001]?.name ?? '';
@@ -643,7 +659,8 @@ const newsHit = (c: Challenge, p: Player, ...ids: number[]) => ids.reduce((n, id
 const used = (c: Challenge, p: Player, id: number) => c.n(p, `card:${id}`);
 const tool = (c: Challenge, p: Player, id: number) => c.stats(p)?.toolsUsed[id] ?? 0;
 const cardKinds = (p: Player) => new Set(p.cards.filter(Boolean)).size;
-const toolKinds = (p: Player) => new Set(p.tools.filter(Boolean)).size;
+/** Kinds of tools held (p.tools holds a count per kind). */
+const toolKinds = (p: Player) => p.tools.filter(n => n > 0).length;
 const lv5 = (c: Challenge, p: Player) => c.g.board.lands.filter(l => l.owner === p.id + 1 && l.level >= 5).length + c.g.board.facilities.filter(f => f.owner === p.id + 1 && f.level >= 5).length;
 const chairs = (c: Challenge, p: Player) => c.g.board.companies.filter(x => x.controller === p.id + 1).length;
 const allStops = (c: Challenge, p: Player) => {
@@ -672,7 +689,7 @@ const MEASURES: Record<string, Measure> = {
   G22: (c, p) => fate(c, p, 20, 21, 22),
   G23: (c, p) => c.own[p.id].rich,
   G24: (c, p) => fate(c, p, 26),
-  G25: (c, p) => fate(c, p, 5) + (c.g.living().filter(q => q.id !== p.id).every(q => c.n(p, `grabFrom:${q.id}`) > 0) ? 1 : 0),
+  G25: (c, p) => fate(c, p, 5) + (c.live().filter(q => q.id !== p.id).every(q => c.n(p, `grabFrom:${q.id}`) > 0) ? 1 : 0),
   G26: (c, p) => (fate(c, p, 10) && fate(c, p, 11) && fate(c, p, 13) ? 1 : 0),
   G27: (c, p) => FINE_FATES.filter(id => fate(c, p, id) > 0).length,
   G28: (c, p) => newsHit(c, p, 10),
@@ -826,7 +843,7 @@ const MAP_MEASURES: Record<string, Measure> = {
   C09: (c, p) => c.paidToday(p, 'facPaid:武漢'), C13: N('springFest'), C20: DATE(1, 1, ['北京']),
   D04: N('volcano'), D08: N('armor20'), D10: N('missiled'), D18: N('extinct'),
   J11: N('angelOn:倉敷'), J14: N('quakeProof'), J16: N('mitsukoshiDay'),
-  J18: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), N10: N('armor10'), O11: (c, p) => (c.paidToday(p, 'streetPaid:心齋橋筋') >= c.g.living().length - 1 ? 1 : 0),
+  J18: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), N10: N('armor10'), O11: (c, p) => (c.paidToday(p, 'streetPaid:心齋橋筋') >= c.live().length - 1 ? 1 : 0),
   Q15: N('windmill'), S04: (c, p) => { const fs = c.g.board.facilities.filter(f => f.owner === p.id + 1 && f.level > 0); const have = [0, 1, 2, 3, 4].map(t => fs.filter(f => f.type === t)); if (have.some(x => !x.length)) return 0; const top = (t: number, f: { level: number }) => f.level >= (t === 0 || t === 3 ? 1 : 5); const mid = (t: number, f: { level: number }) => f.level >= (t === 0 || t === 3 ? 1 : 3); return have.every((x, t) => x.some(f => top(t, f))) ? 3 : have.every((x, t) => x.some(f => mid(t, f))) ? 2 : 1; },
   S10: (c, p) => { const f = c.g.board.facilities.find(x => x.name === '千禧城'); if (f && f.owner === p.id + 1 && monthOf(c.g.date) === 1 && dayOf(c.g.date) === 1) c.bump(p.id, 'millennium'); return c.n(p, 'millennium'); },
   S12: (c, p) => { const fs = c.g.board.facilities.filter(x => x.name === '星月城' || x.name === '流星城'); return fs.length >= 2 && fs.every(f => f.owner === p.id + 1 && f.type === 1) && (c.n(p, 'guest4:星月城') + c.n(p, 'guest4:流星城')) > 0 ? 1 : 0; },

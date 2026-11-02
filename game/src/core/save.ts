@@ -129,7 +129,7 @@ export interface WorldSaveData {
   savedAt: number;
   settings: TycoonSettings & { mapId: number };
   players: Player[];
-  cities: { board: Board; game: SaveData['game']; modules: SaveData['modules'] }[];
+  cities: { board: Board; game: SaveData['game']; modules: SaveData['modules']; /** Its achievements' counters (core/challenge.ts). */ challenge?: ChallengeData }[];
   world: {
     date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number; rng: number; rngSalt?: number;
     landed: boolean[]; log: TickerLine[]; fallen: World['fallen']; history: World['history']; visited: number[][];
@@ -159,6 +159,7 @@ function cityState(g: Game): WorldSaveData['cities'][number] {
       current: g.current, diceTotal: g.diceTotal, lotteryPool: g.lotteryPool, rng: g.rng.seed,
     },
     modules,
+    ...(g.challengeTracker ? { challenge: plain(g.challengeTracker.save()) } : {}),
   };
 }
 
@@ -210,6 +211,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     repairCardPool(g);
     g.forks.afterLoad(c.modules.forks);
     if (maps?.[i]) adoptMapNames(g, maps[i]);
+    if (c.challenge) g.challengeTracker?.load(plain(c.challenge));
   });
   const x = s.world;
   Object.assign(w, {

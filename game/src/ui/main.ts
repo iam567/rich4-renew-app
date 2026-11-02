@@ -62,7 +62,9 @@ import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
 import { ChallengeBar, StarWatch, starTable, taskList } from './challenge';
-import { achievementScene, earnCards, openCollection, proofShot } from './collection';
+import { achievementScene, earnCards, openCollection, proofShot, type Earned, type Evidence } from './collection';
+import { itemIconSrc } from './screens/item-text';
+import { OBJECT_NAMES } from '../core/modules/objects';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
@@ -1040,8 +1042,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // 挑戰模式 (docs/rules/26 §4): everyone's stars over the map, the task list on a tap and at the start of a new game.
   const faceOf = (c: number) => bank!.art('Data', 2, c)?.src ?? '';
   const challenge = game.challenge && game.challengeTracker ? new ChallengeBar(game, faceOf) : null;
-  // A normal game measures every task of its map too, quietly: a human's achievement still goes into the 圖鑑.
-  const watch = challenge ?? (game.challengeTracker && !ty ? new StarWatch(game) : null);
+  // A normal game (and each 大富豪模式 city) measures every task of its map too, quietly: a human's achievement still
+  // goes into the 圖鑑. A city shown again after a trip starts its watch from its stars now.
+  const watch = challenge ?? (game.challengeTracker ? new StarWatch(game) : null);
   const openTasks = () => hud.sheetNode('挑戰任務', taskList(game, faceOf));
   if (challenge) {
     stage.append(challenge.el);
@@ -1052,6 +1055,18 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
    * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts)
    * with the day and a picture of the map as the proof, a new card with its own note.
    */
+  /** The player's state for a proof picture: tools and cards (pictures), the last dice, the money, the god on them. */
+  const lastDice: Record<number, number[]> = {};
+  const evidence = (p: number): Evidence => {
+    const q = game.players[p], god = game.objects.godType(q);
+    return {
+      tools: q.tools.map((n, i) => ({ src: itemIconSrc(bank!, i + 1), n })).filter(t => t.n > 0 && t.src),
+      cards: q.cards.map(c => itemIconSrc(bank!, c, true)).filter(Boolean),
+      dice: lastDice[p],
+      money: `現金 ${q.cash.toLocaleString()}・存款 ${q.bank.toLocaleString()}・總資產 ${game.wealth(q).toLocaleString()}`,
+      god: god ? OBJECT_NAMES[god - 1] : undefined,
+    };
+  };
   const starNotes = async () => {
     const mine: Record<string, { stars: number; p: number; name: string }> = {};
     for (const x of watch?.update() ?? []) {
@@ -1063,15 +1078,19 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const ids = Object.keys(mine);
     if (!ids.length) return;
     // The picture now, while the map still shows the moment; written only for a better result than the card has.
-    const got = ids.map(id => {
+    const got: Earned[] = [];
+    for (const id of ids) {
       const m = mine[id];
       const line = `${nameOf(m.p)} 完成「${m.name}」${'★'.repeat(m.stars)}・${mapName(game.settings.mapId)}・遊戲裡 ${format(game.date)}`;
-      return { id, stars: m.stars, proof: { real: Date.now(), game: game.date, map: game.settings.mapId, who: nameOf(m.p) }, shot: proofShot(view.canvas, line) };
-    });
-    // The scene for each better result than this device's 圖鑑 had (the game waits for it, as for any screen).
+      got.push({ id, stars: m.stars, proof: { real: Date.now(), game: game.date, map: game.settings.mapId, who: nameOf(m.p) }, shot: await proofShot(view.canvas, line, evidence(m.p)) });
+    }
+    // A better result than this device's 圖鑑 had: the scene only for ★★★ (the user 2026-11-02: less just unlocks, a
+    // line in the log); the game waits for it, as for any screen.
     for (const x of await earnCards(got)) {
       const t = game.challengeTracker!.tasks.find(k => k.id === x.id);
-      if (t) await shown('achievement', () => achievementScene(shell, t, x.stars, x.before, nameOf(mine[x.id].p)), undefined);
+      if (!t) continue;
+      if (x.stars >= 3) await shown('achievement', () => achievementScene(shell, t, x.stars, x.before, nameOf(mine[x.id].p)), undefined);
+      else hud.note(`圖鑑${x.before ? '更新' : '解鎖'}「${t.name}」${'★'.repeat(x.stars)}`);
     }
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
@@ -1179,6 +1198,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   for (;;) {
     if (me !== session) { stopWatch(); room?.close(); return; }
     if (room && sendSeq >= 0) { room.answer(sendSeq, answer); sendSeq = -1; }
+    // Achievements right after the event that made them, while the board still shows it (the dice, the tools …).
+    if (watch) await starNotes();
     const r = flow.next(answer);
     answer = undefined;
     if (r.done) break;
@@ -1379,6 +1400,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         view.refollow();
         break;
       case 'dice':
+        lastDice[s.p] = s.values; // for an achievement's proof (ui/collection.ts)
         view.followActor(s.p);
         hud.note(`${nameOf(s.p)}擲出 ${s.values.join(' + ')}`, colorOf(s.p));
         await shown('view.dice', () => view.dice(s.p, s.values), undefined);

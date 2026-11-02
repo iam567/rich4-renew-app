@@ -19,6 +19,7 @@ import { cardName, cardPrice } from './modules/cards';
 import { sellPrice, toolDef } from './modules/tools';
 import { chipScore, FINALE_CHIP, type ChipScore } from './chips';
 import { attachLedger, ledgerOf } from './stats';
+import { track } from './challenge';
 import { CITY_NAMES, type World } from './world';
 import type { GameEvent, GameSettings, Option, Player, TravelOption } from './types';
 
@@ -291,6 +292,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     const g = new Game(s, finaleBoard!, { index: w.cities.length, hooks: this, players: w.players });
     w.players.forEach((p, i) => Object.assign(p, keep[i]));
     w.settings.maps.push(FINALE_MAP);
+    track(g);
     w.cities.push(g);
     w.syncWanted(); // the city's own 通緝卡 flag (Cards.wanted), as a loaded world sets it
     // Chips have fixed prices (19 §2.3): the city's price index stays 1 (the world's goes on for the frozen cities).

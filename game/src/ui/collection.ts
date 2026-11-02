@@ -51,6 +51,9 @@ const parse = (s: string | null | undefined): Cards => {
   } catch { return {}; }
 };
 
+const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
+const image = (src: string) => new Promise<HTMLImageElement | null>(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
+
 let cache: Cards | null = null;
 
 const fsMod = () => import('@capacitor/filesystem');
@@ -175,22 +178,65 @@ export function achievementScene(root: HTMLElement, t: ChallengeTask, stars: num
   });
 }
 
+/** The player's state shown under a proof picture: tool pictures with counts, card pictures, the last dice, money, god. */
+export interface Evidence { tools: { src: string; n: number }[]; cards: string[]; dice?: number[]; money: string; god?: string }
+
 /**
- * The picture of the map at the moment (the board's canvas), with a strip naming who did what, where and when: the
- * proof saved with a card's better result. Null when the canvas can't be read.
+ * The proof picture: the map at the moment (the board's canvas, taken at once), a strip naming who did what, where
+ * and when, and the player's state under it (the tools, the cards, the last dice …), so the picture shows what the
+ * achievement was about. Null when the canvas can't be read.
  */
-export function proofShot(board: HTMLCanvasElement, line: string): string | null {
+export async function proofShot(board: HTMLCanvasElement, line: string, ev: Evidence): Promise<string | null> {
   try {
-    const w = Math.min(640, board.width), h = Math.round(board.height * w / board.width), strip = 40;
+    const w = Math.min(640, board.width), h = Math.round(board.height * w / board.width);
+    const map = document.createElement('canvas');
+    map.width = w; map.height = h;
+    map.getContext('2d')!.drawImage(board, 0, 0, w, h); // now, before anything below waits
+    const [tools, cards] = await Promise.all([Promise.all(ev.tools.map(t => image(t.src))), Promise.all(ev.cards.map(image))]);
+    const rowH = 54, rows = 2 + (ev.dice?.length ? 1 : 0) + (ev.god ? 0 : 0), strip = 40, pad = 10;
     const c = document.createElement('canvas');
-    c.width = w; c.height = h + strip;
+    c.width = w; c.height = h + strip + pad * 2 + rows * rowH + 34;
     const x = c.getContext('2d')!;
-    x.drawImage(board, 0, 0, w, h);
-    x.fillStyle = '#1c1240'; x.fillRect(0, h, w, strip);
-    x.fillStyle = '#ffe27a'; x.font = 'bold 18px "PingFang TC", "Noto Sans TC", sans-serif'; x.textBaseline = 'middle';
-    x.fillText(line, 12, h + strip / 2, w - 24);
-    return c.toDataURL('image/webp', 0.75);
+    x.drawImage(map, 0, 0);
+    x.fillStyle = '#1c1240'; x.fillRect(0, h, w, c.height - h);
+    x.textBaseline = 'middle';
+    x.fillStyle = '#ffe27a'; x.font = `bold 18px ${FONT}`; x.fillText(line, 12, h + strip / 2, w - 24);
+    let y = h + strip + pad;
+    const label = (s: string) => { x.fillStyle = '#9fb0e8'; x.font = `bold 15px ${FONT}`; x.fillText(s, 12, y + rowH / 2); };
+    label('道具');
+    let left = 62;
+    tools.forEach((im, i) => {
+      if (!im || left > w - 50) return;
+      x.drawImage(im, left, y + 5, 44, 44);
+      const n = ev.tools[i].n;
+      if (n > 1) { x.fillStyle = '#ff5a5a'; x.beginPath(); x.arc(left + 40, y + 12, 10, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.font = `bold 13px ${FONT}`; x.textAlign = 'center'; x.fillText(String(n), left + 40, y + 12); x.textAlign = 'left'; }
+      left += 50;
+    });
+    if (!tools.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT}`; x.fillText('（沒有道具）', 62, y + rowH / 2); }
+    y += rowH;
+    label('卡片');
+    left = 62;
+    for (const im of cards) { if (!im || left > w - 34) break; x.drawImage(im, left, y + 3, 31, 48); left += 35; }
+    if (!cards.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT}`; x.fillText('（沒有卡片）', 62, y + rowH / 2); }
+    y += rowH;
+    if (ev.dice?.length) {
+      label('骰子');
+      ev.dice.forEach((v, i) => drawDie(x, 62 + i * 52, y + 5, 44, v));
+      y += rowH;
+    }
+    x.fillStyle = '#e8ecff'; x.font = `15px ${FONT}`;
+    x.fillText(`${ev.money}${ev.god ? `・附身：${ev.god}` : ''}`, 12, y + 15, w - 24);
+    return c.toDataURL('image/webp', 0.8);
   } catch { return null; }
+}
+
+/** One die face (white with black pips; the 1 red, as dice are drawn in the game). */
+function drawDie(x: CanvasRenderingContext2D, left: number, top: number, s: number, v: number) {
+  x.fillStyle = '#fff'; x.beginPath(); x.roundRect(left, top, s, s, 8); x.fill();
+  const P: Record<number, [number, number][]> = { 1: [[.5, .5]], 2: [[.27, .27], [.73, .73]], 3: [[.25, .25], [.5, .5], [.75, .75]], 4: [[.27, .27], [.73, .27], [.27, .73], [.73, .73]],
+    5: [[.25, .25], [.75, .25], [.5, .5], [.25, .75], [.75, .75]], 6: [[.27, .22], [.73, .22], [.27, .5], [.73, .5], [.27, .78], [.73, .78]] };
+  x.fillStyle = v === 1 ? '#d22' : '#111';
+  for (const [a, b] of P[v] ?? []) { x.beginPath(); x.arc(left + a * s, top + b * s, s * (v === 1 ? .13 : .09), 0, Math.PI * 2); x.fill(); }
 }
 
 /** The star stickers over a card. */
@@ -269,9 +315,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   });
 }
 
-const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
 const dayOf = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
-const image = (src: string) => new Promise<HTMLImageElement | null>(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
 
 /** Wraps `text` into lines no wider than `w` (Chinese breaks anywhere). */
 function wrap(x: CanvasRenderingContext2D, text: string, w: number): string[] {
