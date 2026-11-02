@@ -73,8 +73,49 @@ export function taskList(g: Game, face: (character: number) => string): HTMLElem
     const done = players.some(p => starsOf(g, c, t, p.id) >= full);
     return `<li class="${done ? 'done' : ''}"><div class="chl-name"><b>${esc(t.name)}</b>${t.map === -1 ? '' : '<small>本圖</small>'}<i>${'★'.repeat(full)}</i></div>
       <p>${esc(t.desc)}</p>${how ? `<p class="chl-how">${how}</p>` : ''}<div class="chl-who">${who}</div></li>`;
-  }).join('');
-  root.innerHTML = `${head}<ul class="chl-list">${rows}</ul>`;
+  });
+  // Pages, not a scrolled list (the user 2026-11-02: some devices don't scroll): as many tasks as fit, ‹ › or a swipe.
+  root.innerHTML = `${head}<ul class="chl-list"></ul><div class="chl-nav"><button class="chip" data-p="-1">‹</button><span></span><button class="chip" data-p="1">›</button></div>`;
+  const list = root.querySelector<HTMLElement>('.chl-list')!, at = root.querySelector<HTMLElement>('.chl-nav span')!;
+  let starts = [0], page = 0, size = '';
+  /** Fills the list from task `from` until the next one would not fit; returns where the next page starts. */
+  const fill = (from: number) => {
+    list.innerHTML = '';
+    let i = from;
+    for (; i < rows.length; i++) {
+      list.insertAdjacentHTML('beforeend', rows[i]);
+      if (i > from && list.scrollHeight > list.clientHeight + 1) { list.lastElementChild!.remove(); break; }
+    }
+    return i;
+  };
+  const show = (n: number) => {
+    page = Math.max(0, Math.min(starts.length - 1, n));
+    fill(starts[page]);
+    at.textContent = `${page + 1} / ${starts.length}`;
+    root.querySelector<HTMLButtonElement>('[data-p="-1"]')!.disabled = page === 0;
+    root.querySelector<HTMLButtonElement>('[data-p="1"]')!.disabled = page === starts.length - 1;
+  };
+  const paginate = () => {
+    if (!list.clientHeight) return;
+    const key = `${list.clientWidth}x${list.clientHeight}`;
+    if (key === size) return;
+    size = key;
+    const first = starts[page] ?? 0;
+    starts = [0];
+    for (let i = fill(0); i < rows.length; i = fill(i)) starts.push(i);
+    show(starts.filter(s => s <= first).length - 1);
+  };
+  new ResizeObserver(() => { if (root.isConnected) paginate(); }).observe(list);
+  root.addEventListener('click', e => {
+    const d = (e.target as HTMLElement).closest<HTMLElement>('[data-p]')?.dataset.p;
+    if (d) { audio.ui('click'); show(page + Number(d)); }
+  });
+  let x0: number | null = null;
+  list.addEventListener('pointerdown', e => { x0 = e.clientX; });
+  list.addEventListener('pointerup', e => {
+    if (x0 !== null && Math.abs(e.clientX - x0) > 40) { audio.ui('click'); show(page + (e.clientX < x0 ? 1 : -1)); }
+    x0 = null;
+  });
   return root;
 }
 
