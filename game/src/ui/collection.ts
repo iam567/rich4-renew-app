@@ -4,11 +4,17 @@
  * keeps the best stars ever earned, shown as star stickers laid over the picture. Cards not earned yet show 「？？？」
  * (the user 2026-11-02); tapping one tells the task and what it takes.
  *
- * Kept as `{task id: best stars}`: in the app a file in its data folder (written to a temporary file first, the
- * previous copy kept), in the browser and as a second copy everywhere `localStorage`.
+ * The proof (the user 2026-11-02, so a card unlocked by cheating stands out): every card shows the day it was first
+ * earned and, for its best stars, the day they were reached (real and in the game, the map, who) with a picture of the
+ * map at that moment; a better result replaces the proof.
+ *
+ * Kept as `{task id: Card}`: in the app a file in its data folder (written to a temporary file first), in the browser
+ * and as a second copy everywhere `localStorage`; the pictures as files `collection/proof-<id>.webp` in the app,
+ * IndexedDB in the browser.
  */
 import { Capacitor } from '@capacitor/core';
 import { CHALLENGE_MAPS, CHALLENGE_TASKS, fullStars, type ChallengeTask } from '../core/challenge';
+import { format } from '../core/date';
 import { ASSETS } from './assets';
 import { audio } from './audio';
 import './collection.css';
@@ -16,23 +22,42 @@ import './collection.css';
 const KEY = 'rich4.cards';
 const FILE = 'collection/cards.json';
 const ART = `${ASSETS}/maps/remake/challenge`;
-type Cards = Record<string, number>;
+/** When a card's best stars were reached: real time (ms), the game's date (packed), map id, the player's name. */
+export interface Proof { real: number; game: number; map: number; who: string }
+export interface Card { s: number; first?: number; proof?: Proof }
+type Cards = Record<string, Card>;
+/** What a game reports: stars of a task, the proof and its picture (a data URL). */
+export interface Earned { id: string; stars: number; proof: Proof; shot?: string | null }
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
-const merge = (a: Cards, b: Cards): Cards => { const o = { ...a }; for (const [k, v] of Object.entries(b)) if (v > (o[k] ?? 0)) o[k] = v; return o; };
+const merge = (a: Cards, b: Cards): Cards => {
+  const o = { ...a };
+  for (const [k, v] of Object.entries(b)) {
+    const w = o[k];
+    const proof = v.s > (w?.s ?? 0) ? v.proof ?? w?.proof : w?.proof ?? v.proof;
+    o[k] = { s: Math.max(w?.s ?? 0, v.s), ...(w?.first || v.first ? { first: Math.min(w?.first ?? Infinity, v.first ?? Infinity) } : {}), ...(proof ? { proof } : {}) };
+  }
+  return o;
+};
 const parse = (s: string | null | undefined): Cards => {
   try {
-    const o = JSON.parse(s ?? '{}') as Record<string, unknown>;
-    return Object.fromEntries(Object.entries(o).filter(([, v]) => Number.isInteger(v) && (v as number) > 0 && (v as number) <= 3)) as Cards;
+    const o = JSON.parse(s ?? '{}') as Record<string, unknown>, out: Cards = {};
+    for (const [k, v] of Object.entries(o)) {
+      const c = typeof v === 'number' ? { s: v } : v as Card;   // the first builds kept only the stars
+      if (c && Number.isInteger(c.s) && c.s > 0 && c.s <= 3) out[k] = c;
+    }
+    return out;
   } catch { return {}; }
 };
 
 let cache: Cards | null = null;
 
+const fsMod = () => import('@capacitor/filesystem');
+
 async function readFile(): Promise<Cards> {
   if (!Capacitor.isNativePlatform()) return {};
   try {
-    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+    const { Filesystem, Directory, Encoding } = await fsMod();
     const r = await Filesystem.readFile({ path: FILE, directory: Directory.Data, encoding: Encoding.UTF8 });
     return parse(typeof r.data === 'string' ? r.data : '');
   } catch { return {}; }
@@ -41,7 +66,7 @@ async function readFile(): Promise<Cards> {
 async function writeFile(cards: Cards) {
   if (!Capacitor.isNativePlatform()) return;
   try {
-    const { Filesystem, Directory, Encoding } = await import('@capacitor/filesystem');
+    const { Filesystem, Directory, Encoding } = await fsMod();
     const tmp = `${FILE}.tmp`, data = JSON.stringify(cards);
     await Filesystem.writeFile({ path: tmp, data, directory: Directory.Data, encoding: Encoding.UTF8, recursive: true });
     await Filesystem.deleteFile({ path: FILE, directory: Directory.Data }).catch(() => {});
@@ -49,7 +74,42 @@ async function writeFile(cards: Cards) {
   } catch { /* the localStorage copy still has it */ }
 }
 
-/** Every card earned on this device: task id → best stars. */
+/** The browser's store of proof pictures (IndexedDB `rich4-cards`). */
+function proofDb(): Promise<IDBDatabase> {
+  return new Promise((ok, fail) => {
+    const req = indexedDB.open('rich4-cards', 1);
+    req.onupgradeneeded = () => req.result.createObjectStore('proof');
+    req.onsuccess = () => ok(req.result);
+    req.onerror = () => fail(req.error);
+  });
+}
+
+async function saveShot(id: string, dataUrl: string) {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const { Filesystem, Directory } = await fsMod();
+      await Filesystem.writeFile({ path: `collection/proof-${id}.webp`, data: dataUrl.slice(dataUrl.indexOf(',') + 1), directory: Directory.Data, recursive: true });
+      return;
+    }
+    const db = await proofDb();
+    await new Promise<void>((ok, fail) => { const t = db.transaction('proof', 'readwrite'); t.objectStore('proof').put(dataUrl, id); t.oncomplete = () => ok(); t.onerror = () => fail(t.error); });
+  } catch { /* the card keeps its dates without the picture */ }
+}
+
+/** The proof picture of a card (a data URL), if there is one. */
+export async function loadShot(id: string): Promise<string | null> {
+  try {
+    if (Capacitor.isNativePlatform()) {
+      const { Filesystem, Directory } = await fsMod();
+      const r = await Filesystem.readFile({ path: `collection/proof-${id}.webp`, directory: Directory.Data });
+      return typeof r.data === 'string' ? `data:image/webp;base64,${r.data}` : null;
+    }
+    const db = await proofDb();
+    return await new Promise<string | null>(ok => { const q = db.transaction('proof').objectStore('proof').get(id); q.onsuccess = () => ok((q.result as string) ?? null); q.onerror = () => ok(null); });
+  } catch { return null; }
+}
+
+/** Every card earned on this device. */
 export async function loadCards(): Promise<Cards> {
   if (cache) return cache;
   let local: Cards = {};
@@ -58,16 +118,43 @@ export async function loadCards(): Promise<Cards> {
   return cache;
 }
 
-/** Records stars earned (only ever raises a card's stars); resolves with the tasks whose card is new. */
-export async function earnCards(got: Cards): Promise<string[]> {
-  const had = await loadCards();
-  const fresh = Object.keys(got).filter(id => got[id] > 0 && !had[id]);
-  const next = merge(had, got);
-  if (Object.keys(next).every(k => next[k] === had[k])) return [];
+/** The stars this device has on a card (0: not earned); a game takes a proof picture only for more. */
+export async function cardStars(id: string): Promise<number> { return (await loadCards())[id]?.s ?? 0; }
+
+/**
+ * Records stars earned: a card's stars only ever rise, its first day stays, a better result brings its proof and
+ * picture. Resolves with the tasks whose card is new.
+ */
+export async function earnCards(got: Earned[]): Promise<string[]> {
+  const had = await loadCards(), now = Date.now();
+  const better = got.filter(x => x.stars > (had[x.id]?.s ?? 0));
+  if (!better.length) return [];
+  const add: Cards = {};
+  for (const x of better) add[x.id] = { s: x.stars, first: now, proof: x.proof };
+  const next = merge(had, add);
   cache = next;
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* the file has it */ }
   await writeFile(next);
-  return fresh;
+  for (const x of better) if (x.shot) await saveShot(x.id, x.shot);
+  return better.filter(x => !had[x.id]).map(x => x.id);
+}
+
+/**
+ * The picture of the map at the moment (the board's canvas), with a strip naming who did what, where and when: the
+ * proof saved with a card's better result. Null when the canvas can't be read.
+ */
+export function proofShot(board: HTMLCanvasElement, line: string): string | null {
+  try {
+    const w = Math.min(640, board.width), h = Math.round(board.height * w / board.width), strip = 40;
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h + strip;
+    const x = c.getContext('2d')!;
+    x.drawImage(board, 0, 0, w, h);
+    x.fillStyle = '#1c1240'; x.fillRect(0, h, w, strip);
+    x.fillStyle = '#ffe27a'; x.font = 'bold 18px "PingFang TC", "Noto Sans TC", sans-serif'; x.textBaseline = 'middle';
+    x.fillText(line, 12, h + strip / 2, w - 24);
+    return c.toDataURL('image/webp', 0.75);
+  } catch { return null; }
 }
 
 /** The star stickers over a card. */
@@ -94,6 +181,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   const cards = await loadCards();
   const groups = [{ id: -1, name: '通用' }, ...CHALLENGE_MAPS.map(id => ({ id, name: mapName(id) }))];
   const total = CHALLENGE_TASKS.length, have = CHALLENGE_TASKS.filter(t => cards[t.id]).length;
+  const starsOf = (id: string) => cards[id]?.s ?? 0;
   let group = 0, page = 0, perPage = 8;
   const overlay = document.createElement('div');
   overlay.className = 'col-overlay';
@@ -111,7 +199,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
     page = Math.max(0, Math.min(pages - 1, page));
     const got = list.filter(t => cards[t.id]).length;
     overlay.querySelector('.col-group b')!.textContent = `${groups[group].name}（${got}/${list.length}）`;
-    grid.innerHTML = list.slice(page * perPage, (page + 1) * perPage).map(t => cardHtml(t, cards[t.id] ?? 0)).join('');
+    grid.innerHTML = list.slice(page * perPage, (page + 1) * perPage).map(t => cardHtml(t, starsOf(t.id))).join('');
     overlay.querySelector('.col-nav span')!.textContent = `${page + 1} / ${pages}`;
     overlay.querySelector<HTMLButtonElement>('[data-p="-1"]')!.disabled = page === 0;
     overlay.querySelector<HTMLButtonElement>('[data-p="1"]')!.disabled = page >= pages - 1;
@@ -137,7 +225,7 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
       audio.ui('click');
       if (d.g) { group = (group + Number(d.g) + groups.length) % groups.length; page = 0; draw(); }
       if (d.p) { page += Number(d.p); draw(); }
-      if (d.card) showCard(overlay, CHALLENGE_TASKS.find(x => x.id === d.card)!, cards[d.card] ?? 0, mapName);
+      if (d.card) showCard(overlay, CHALLENGE_TASKS.find(x => x.id === d.card)!, cards[d.card], mapName);
     };
     let x0: number | null = null;
     grid.addEventListener('pointerdown', e => { x0 = e.clientX; });
@@ -145,14 +233,20 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   });
 }
 
-/** A card big, with its task; a tap anywhere closes it. */
-function showCard(over: HTMLElement, t: ChallengeTask, stars: number, mapName: (id: number) => string) {
+/** A card big, with its task, the days it was earned and its proof picture; a tap anywhere closes it. */
+function showCard(over: HTMLElement, t: ChallengeTask, card: Card | undefined, mapName: (id: number) => string) {
   const box = document.createElement('div');
   box.className = 'col-detail';
-  const where = t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`;
+  const stars = card?.s ?? 0, where = t.map === -1 ? '通用任務' : `${mapName(t.map)}・本圖任務`;
+  const day = (ms: number) => { const d = new Date(ms); return `${d.getFullYear()}年${d.getMonth() + 1}月${d.getDate()}日`; };
+  const f = card?.proof;
+  const record = !stars ? '<p class="col-best">還沒拿到：在挑戰模式完成這個任務就能得到這張卡</p>'
+    : `<p class="col-best">最好成績 ${'★'.repeat(stars)}${card?.first ? `・${day(card.first)}第一次拿到` : ''}</p>
+      ${f ? `<p class="col-proof">${day(f.real)}達成 ${'★'.repeat(stars)}<br><small>遊戲裡 ${format(f.game)}・${esc(mapName(f.map))}・${esc(f.who)}</small></p><div class="col-shot"></div>`
+        : '<p class="col-proof none">沒有達成紀錄</p>'}`;
   box.innerHTML = `<div class="col-big">${cardHtml(t, stars)}</div>
-    <div class="col-info"><h3>${esc(t.name)}</h3><small>${esc(where)}・最多 ${'★'.repeat(fullStars(t))}</small>${howHtml(t)}
-    <p class="col-best">${stars ? `你的最好成績：${'★'.repeat(stars)}` : '還沒拿到：在挑戰模式完成這個任務就能得到這張卡'}</p></div>`;
+    <div class="col-info"><h3>${esc(t.name)}</h3><small>${esc(where)}・最多 ${'★'.repeat(fullStars(t))}</small>${howHtml(t)}${record}</div>`;
+  if (f) void loadShot(t.id).then(src => { const el = box.querySelector('.col-shot'); if (el && src) el.innerHTML = `<img src="${src}" alt="">`; });
   box.onclick = e => { e.stopPropagation(); audio.ui('no'); box.remove(); };
   over.append(box);
 }

@@ -62,7 +62,7 @@ import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
 import { ChallengeBar, starTable, taskList } from './challenge';
-import { earnCards, openCollection } from './collection';
+import { earnCards, openCollection, proofShot } from './collection';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
@@ -1047,17 +1047,25 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     if (!loaded) { await openTasks(); if (me !== session) return; }
   }
   /**
-   * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts),
-   * a new card with its own note.
+   * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts)
+   * with the day and a picture of the map as the proof, a new card with its own note.
    */
   const starNotes = () => {
-    const mine: Record<string, number> = {};
+    const mine: Record<string, { stars: number; p: number; name: string }> = {};
     for (const x of challenge?.update() ?? []) {
       hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
-      if (room ? room.mine.has(x.p) : game.players[x.p].human) mine[x.task.id] = Math.max(mine[x.task.id] ?? 0, x.stars);
+      if ((room ? room.mine.has(x.p) : game.players[x.p].human) && x.stars > (mine[x.task.id]?.stars ?? 0)) mine[x.task.id] = { stars: x.stars, p: x.p, name: x.task.name };
     }
-    if (Object.keys(mine).length) void earnCards(mine).then(fresh => {
-      for (const id of fresh) hud.note(`獲得新圖卡「${game.challengeTracker!.tasks.find(t => t.id === id)?.name ?? ''}」！`);
+    const ids = Object.keys(mine);
+    if (!ids.length) return;
+    // The picture now, while the map still shows the moment; written only for a better result than the card has.
+    const got = ids.map(id => {
+      const m = mine[id];
+      const line = `${nameOf(m.p)} 完成「${m.name}」${'★'.repeat(m.stars)}・${mapName(game.settings.mapId)}・遊戲裡 ${format(game.date)}`;
+      return { id, stars: m.stars, proof: { real: Date.now(), game: game.date, map: game.settings.mapId, who: nameOf(m.p) }, shot: proofShot(view.canvas, line) };
+    });
+    void earnCards(got).then(fresh => {
+      for (const id of fresh) hud.note(`獲得新圖卡「${mine[id].name}」！`);
     });
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
