@@ -303,7 +303,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.2;
+				MARKETING_VERSION = 0.9.1;
 				OTHER_SWIFT_FLAGS = "$(inherited) \"-D\" \"COCOAPODS\" \"-DDEBUG\"";
 				PRODUCT_BUNDLE_IDENTIFIER = pro.areu.rich4;
 				DEVELOPMENT_TEAM = N4SK575992;
@@ -326,7 +326,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 0.9.2;
+				MARKETING_VERSION = 0.9.1;
 				PRODUCT_BUNDLE_IDENTIFIER = pro.areu.rich4;
 				DEVELOPMENT_TEAM = N4SK575992;
 				PRODUCT_NAME = "$(TARGET_NAME)";
