@@ -562,7 +562,16 @@ button:disabled { opacity: 0.4; cursor: default; }
    — off the bottom of an iPad's screen, where the sheet fills the height) */
 .ng-head { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
 .ng-head h3 { margin: 0; font-weight: 400; font-size: 20px; color: #ffe27a; }
-.ng-pager { margin-left: auto; display: flex; align-items: center; gap: 6px; color: #fff; font-size: 14px; }
+.ng-head .chips { flex-wrap: nowrap; min-width: 0; }
+/* The map pages (new-game): arrows on the grid's sides, the page under it, so the mode chips stay on one line. */
+.ng-maps-wrap { position: relative; }
+.ng-pg { position: absolute; top: calc(50% - 22px); z-index: 2; width: 30px; height: 44px; padding: 0; border: 2px solid #fff; border-radius: 15px;
+  font-family: inherit; font-size: 22px; line-height: 1; color: #fff; background: rgba(20, 40, 110, .8); box-shadow: 0 2px 6px rgba(0, 0, 0, .35); }
+.ng-pg.prev { left: -12px; } .ng-pg.next { right: -12px; }
+.ng-pg:disabled { opacity: .3; }
+.ng-pg.next { display: grid; place-items: center; align-content: center; height: 56px; top: calc(50% - 28px); }
+.ng-pg small { font-size: 10px; line-height: 1; opacity: .9; }
+.ng-pg.next:disabled { opacity: .55; }
 .ng-maps { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; text-align: left; }
 .ng-map { display: flex; flex-direction: column; gap: 3px; padding: 5px; border-radius: 14px; font-family: inherit; font-size: 12px; color: #fff;
   background: rgba(255,255,255,.12); border: 3px solid transparent; min-width: 0; }

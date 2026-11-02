@@ -418,10 +418,10 @@ function newGame() {
           <button class="chip${state.kind === 'orig' ? ' on' : ''}" data-maps="orig">原版地圖</button>
           <button class="chip${state.kind === 'custom' ? ' on' : ''}" data-maps="custom">自製地圖 ${maps.filter(m => m.custom && !m.hidden).length}</button>
           <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button>
-          <button class="chip${cm ? ' on' : ''}" data-maps="challenge">挑戰模式</button></div>
-          ${pages > 1 ? `<div class="ng-pager"><button class="chip" data-page="-1">‹</button><span>${page + 1}/${pages}</span><button class="chip" data-page="1">›</button></div>` : ''}</div>
+          <button class="chip${cm ? ' on' : ''}" data-maps="challenge">挑戰模式</button></div></div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
-          <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>`}</section>
+          <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : `<div class="ng-maps-wrap"><div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>
+          ${pages > 1 ? `<button class="ng-pg prev" data-page="-1"${page === 0 ? ' disabled' : ''} aria-label="上一頁">‹</button><button class="ng-pg next" data-page="1"${page >= pages - 1 ? ' disabled' : ''} aria-label="下一頁">›<small>${page + 1}/${pages}</small></button>` : ''}</div>`}</section>
       <section class="ng-players-sec"><div class="ng-head"><h3>選擇角色</h3><div class="chips">${ty ? '<span class="ng-ty-who">選你的角色，其他 11 位都是電腦</span>' : `${[2, 3, 4].map(n => `<button class="chip${state.count === n ? ' on' : ''}" data-count="${n}">${n} 人</button>`).join('')}
           <button class="chip" data-reroll="1">重新抽選</button>`}</div></div>
         <div class="ng-roster">${CHARACTERS.map(c => {
@@ -449,6 +449,18 @@ function newGame() {
       <div class="choices ng-actions"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
     app.append(sheet);
     fit();
+  };
+  // A swipe across the maps turns their page (the arrows beside them do too).
+  let swipe: number | null = null;
+  app.onpointerdown = e => { swipe = (e.target as HTMLElement).closest('.ng-maps') ? e.clientX : null; };
+  app.onpointerup = e => {
+    if (swipe === null) return;
+    const dx = e.clientX - swipe;
+    swipe = null;
+    if (Math.abs(dx) < 40) return;
+    const list = maps.filter(m => !m.hidden && (state.kind === 'challenge' ? CHALLENGE_MAPS.includes(m.id) : m.kind === state.kind));
+    const next = Math.max(0, Math.min(Math.ceil(list.length / PER_PAGE) - 1, page + (dx < 0 ? 1 : -1)));
+    if (next !== page) { page = next; audio.sfx(1); render(); }
   };
   app.onclick = e => {
     const t = (e.target as HTMLElement).closest<HTMLElement>('button');

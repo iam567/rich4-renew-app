@@ -154,8 +154,32 @@ async function inSlot<T>(run: () => Promise<T>): Promise<T> {
 export function decodeImage(url: string, size?: Size, laneName = 'sprite'): Promise<Pic> {
   return inSlot(() => decodeNow(url, size, laneName));
 }
+/**
+ * A file's own size from its header (PNG, WebP; null for anything else). The app's pictures are stored smaller than
+ * the sizes the game asks for (bundle-assets.mjs RICH4_SHRINK): a request for more than the file holds decodes it as
+ * it is, never enlarged (the same look, less memory).
+ */
+async function fileSize(blob: Blob): Promise<Size | null> {
+  try {
+    const b = new Uint8Array(await blob.slice(0, 32).arrayBuffer()), u24 = (i: number) => b[i] | (b[i + 1] << 8) | (b[i + 2] << 16);
+    if (b[0] === 0x89 && b[1] === 0x50) return { w: (b[16] << 24 | b[17] << 16 | b[18] << 8 | b[19]) >>> 0, h: (b[20] << 24 | b[21] << 16 | b[22] << 8 | b[23]) >>> 0 };
+    if (b[8] !== 0x57 || b[9] !== 0x45) return null; // not WEBP
+    const kind = String.fromCharCode(b[12], b[13], b[14], b[15]);
+    if (kind === 'VP8X') return { w: u24(24) + 1, h: u24(27) + 1 };
+    if (kind === 'VP8 ') return { w: (b[26] | b[27] << 8) & 0x3fff, h: (b[28] | b[29] << 8) & 0x3fff };
+    if (kind === 'VP8L') { const v = b[21] | b[22] << 8 | b[23] << 16 | b[24] << 24; return { w: (v & 0x3fff) + 1, h: ((v >>> 14) & 0x3fff) + 1 }; }
+  } catch { /* unknown */ }
+  return null;
+}
+async function noBigger(blob: Blob, size: Size | undefined): Promise<Size | undefined> {
+  if (!size) return size;
+  const own = await fileSize(blob);
+  return own && size.w >= own.w && size.h >= own.h ? undefined : size;
+}
+
 async function decodeNow(url: string, size: Size | undefined, laneName: string): Promise<Pic> {
   const blob = await fetchBlob(url);
+  size = await noBigger(blob, size);
   const l = lane(laneName);
   if (l) {
     try {
@@ -179,6 +203,7 @@ export function decodeCropped(url: string, size?: Size, laneName = 'clip'): Prom
 }
 async function croppedNow(url: string, size: Size | undefined, laneName: string): Promise<Cropped> {
   const blob = await fetchBlob(url);
+  size = await noBigger(blob, size);
   const l = lane(laneName);
   if (l) {
     try {
