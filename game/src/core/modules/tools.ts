@@ -410,10 +410,12 @@ export class Tools {
   }
 
   /** Lab finished: the developed tool (02 §4.5, 05 §7); not delivered when 9 are already held. */
-  *labDone(p: Player, tool: number): Flow {
+  *labDone(p: Player, tool: number, facility?: number): Flow {
     // Message box 「%s開發完成！」 1500 ms (core_actions:4590-4605).
     // The remake names the owner: with up to 12 players it isn't clear whose lab finished (user, 2026-10-18).
     yield* this.g.say(undefined, `${this.g.name(p.id)}的${toolDef(tool)?.name ?? ''}開發完成！`);
+    // For watchers only (core/challenge.ts: a tool developed, not just ordered); the screen shows nothing.
+    if (facility) yield { t: 'fx', kind: 'lab-done', p: p.id, data: { facility, tool } };
     this.receive(p, tool);
   }
 

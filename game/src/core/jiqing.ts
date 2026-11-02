@@ -375,7 +375,7 @@ export class JiqingRules implements MapRules {
   /** 關牛棚 (prison) with 免罪卡 / 嫁禍卡 (06 §2.2); the luck is the caller's. */
   *jail(g: Game, p: Player, days: number): Flow<ResultLine[]> {
     if (!p.whoPlays || g.over) return [];
-    const target = yield* g.cards.pardonOrFrame(p);
+    const target = yield* g.cards.pardonOrFrame(p, false, 'prison');
     if (target < 0) return [{ p: p.id, text: '免罪卡生效，逃過此劫' }];
     yield* g.sendTo(g.players[target], 'prison', days);
     const lines: ResultLine[] = [];

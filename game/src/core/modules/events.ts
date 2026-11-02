@@ -324,7 +324,7 @@ export class Events {
       return;
     }
     if (r === 2) days *= 2;
-    const target = yield* this.g.cards.pardonOrFrame(p);
+    const target = yield* this.g.cards.pardonOrFrame(p, false, fx);
     if (target < 0) { yield* done('blessed', [{ p: p.id, text: '免罪卡生效，逃過此劫' }]); return; }
     const q = this.g.players[target];
     yield* apply(q, days);
@@ -662,7 +662,7 @@ export class Events {
         const c = cs[rng.below(cs.length)];
         const q = g.players[c.controller - 1];
         yield* show(`${c.name}違法超貸，董事長${g.name(q.id)}入獄5天`, undefined, [{ p: q.id }]);
-        const target = yield* g.cards.pardonOrFrame(q);
+        const target = yield* g.cards.pardonOrFrame(q, false, 'prison');
         if (target >= 0) yield* g.sendTo(g.players[target], 'prison', 5);
         if (g.over) return;
         const lines: ResultLine[] = target < 0 ? [{ p: q.id, text: '免罪卡生效，逃過牢獄之災' }]

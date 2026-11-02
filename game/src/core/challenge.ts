@@ -67,6 +67,8 @@ const GOOD_GODS = new Set([1, 2, 3, 4, 9]);
 const BAD_GODS = new Set([5, 6, 7, 8, 10]);
 const ALL_GODS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12];
 const FINE_FATES = [14, 15, 16, 18, 19];
+/** Cards that act by themselves (modules/cards.ts `passive`): 復仇、嫁禍、免費、免罪、保鑣. */
+const PASSIVE_CARDS = new Set([18, 19, 20, 21, 37]);
 /** 春節 (lunar new year) 2026–2032, packed dates. */
 const LUNAR_NEW_YEAR = new Set([[2026, 2, 17], [2027, 2, 6], [2028, 1, 26], [2029, 2, 13], [2030, 2, 3], [2031, 1, 23], [2032, 2, 11]].map(([y, m, d]) => (y << 16) | (m << 8) | d));
 
@@ -93,13 +95,28 @@ interface Own {
   stay: { type: number; day: number; mine: number; others: number; seized: number; tools: number } | null;
   /** The god that just left (replaced in the same move), till the next turn or day (G80 / G81). */
   justLeft: number;
+  /** Own turns played; the turn of the last stop on a fate square (G69: three turns in a row). */
+  turnNo: number; lastFateTurn: number;
+  /** A card played, counted when it worked ('card-done'); whether a bad god was on when it was played (G44). */
+  pending: { id: number; badGod: boolean } | null;
+  /** 請神符 brought a god flying (G45): the next god counts. */
+  invited: boolean;
+  /** Who a birthday (fate 5) collected from, and the rivals robbed with 搶奪卡 this round (G25). */
+  bday: Set<number> | null; grabbed: Set<number>;
+  /** Teleporter uses (the ledger's) at the start of the turn (G62). */
+  tele: number;
+  /** Rivals this player sent to hospital or prison who are still inside (D18). */
+  sent: Set<number>;
+  /** Stock bought on a crash day: its price then, by slot (G32); the slot a 紅卡 raised (U10). */
+  redSlot: number;
 }
 const blankOwn = (): Own => ({
   n: {}, best: {}, gods: new Set(), godRounds: 0, god: 0, magic: new Set(), stops: new Set(), stopRounds: {},
   offRoadDays: 0, cashLowTurns: 0, debtMax: 0, dayCash: null, fatesSeen: new Set(), newsSeen: new Set(), route: {}, chair: {},
   rich: 0, poor: 0, clean: 0, walk: 0, car: 0, lastTurnMissiles: 0, carStreak: 0, godsToday: new Set(), fateRun: 0,
-  goodFates: 0, lastNode: -1, sameTurns: 0, monthClean: true, lv5Lots: new Set(), fallen: new Set(), cardDays: 0, lostDay: -99,
+  goodFates: 0, lastNode: -1, sameTurns: 0, monthClean: false, lv5Lots: new Set(), fallen: new Set(), cardDays: 0, lostDay: -99,
   dash: false, gotPrizes: new Set(), crashBuy: {}, redDay: -1, cashBefore: null, lastStop: {}, t18: 0, traffic: 0, stay: null, justLeft: 0,
+  turnNo: 0, lastFateTurn: -9, pending: null, invited: false, bday: null, grabbed: new Set(), tele: 0, sent: new Set(), redSlot: -1,
 });
 
 type Measure = (c: Challenge, p: Player) => number | undefined;
@@ -143,6 +160,20 @@ export class Challenge {
   /** Who stopped where today (place name → player ids). */
   private stopsToday = new Map<string, Set<number>>();
   private current = -1;
+  /** The last event was this player's turn: the same turn again is a loaded save replaying it (counted once). */
+  private turnSeen = -1;
+  /** Who fired the missile / nuke of this turn (G12, D10). */
+  private shooter = -1;
+  /** A player teleported by someone else, waiting to see whether it was the teleporter (G62). */
+  private teleported: { by: number; tgt: number } | null = null;
+  /** The robot doll's owner while it walks (G60). */
+  private dollBy = -1;
+  /** 強迫出國觀光 (fate 6) drawn: whoever goes abroad next was sent by it (G67). */
+  private fate6 = false;
+  /** Buildings before a news of the day hit (quake, aliens, gas): player → levels, '<name>' → levels (J14, Z04, D04). */
+  private newsSnap: Record<string, number> | null = null;
+  /** Who holds a time bomb and who placed it (G72). */
+  private bombBy = new Map<number, number>();
   /** Set when `p` reaches 100 stars (the first only). */
   winner = -1;
 
@@ -180,14 +211,29 @@ export class Challenge {
 
   see(e: GameEvent): void {
     const g = this.g, isP = (x?: number): x is number => x !== undefined && x >= 0 && x < g.players.length;
+    // 乾坤大挪移 (G62): the teleporter is counted (the ledger) only once it is done, so the event after the teleport tells.
+    if (this.teleported) {
+      const { by, tgt } = this.teleported, used = this.stats(g.players[by])?.toolsUsed[11] ?? 0;
+      if (used > this.own[by].tele) { this.own[by].tele = used; if (tgt !== by) this.bump(by, 'sentAway'); }
+      this.teleported = null;
+    }
+    if (e.t === 'turn' && this.turnSeen === e.p) return;
+    this.turnSeen = e.t === 'turn' ? e.p : -1;
     switch (e.t) {
       case 'turn': {
         this.current = e.p;
+        this.shooter = -1;
+        this.fate6 = false;
         for (const o of this.own) o.justLeft = 0;
         const p = g.players[e.p], o = this.own[e.p];
+        o.turnNo++;
+        o.tele = this.stats(p)?.toolsUsed[11] ?? 0;
+        this.syncGod(p);
+        this.endBirthday(e.p);
+        // Owners now (地被搶了 G47 reads who owned a lot before the 土地公 took it).
+        g.board.lands.forEach(l => this.owners.set(l.id + 2000, l.owner - 1));
+        g.board.facilities.forEach(f => this.owners.set(f.id + 4000, f.owner - 1));
         o.lastTurnMissiles = this.missiles(p);
-        if (o.dash) { o.dash = false; this.bump(e.p, 'dashAway'); }
-        if (o.cashBefore !== null) { this.bestOf(p, 'G53', p.cash - o.cashBefore); o.cashBefore = null; }
         if (!g.offRoad(p) && p.node === o.lastNode) { o.sameTurns++; if (o.sameTurns >= 2) { this.bump(e.p, 'spin3'); o.sameTurns = 0; } } else o.sameTurns = 0;
         o.lastNode = p.node;
         if (p.cash <= 0) o.cashLowTurns++; else o.cashLowTurns = 0;
@@ -204,7 +250,7 @@ export class Challenge {
           o.carStreak = sum >= 15 ? o.carStreak + 1 : 0;
           if (o.carStreak >= 3) { this.bump(e.p, 'car15x3'); o.carStreak = 0; }
         } else o.carStreak = 0;
-        if (v.length === 2) {
+        if (v.length === 2 && (g.players[e.p].traffic & 3) === 1) {
           if (v[0] === v[1]) this.bump(e.p, 'pair');
           if (sum === 12) this.bump(e.p, 'moto12');
         }
@@ -214,7 +260,24 @@ export class Challenge {
         if (isP(e.p)) { this.own[e.p].traffic = g.players[e.p].traffic & 3; this.passed(e.p, e.to); if (e.left === 0) this.stopped(e.p, e.to); }
         break;
       case 'pay': this.pay(e); break;
-      case 'points': if (isP(e.p) && e.amount < 0) { const ev = g.node(g.players[e.p].node)?.event; if (ev === 4 || ev === 5) this.bump(e.p, 'bail'); } break;
+      case 'points': if (isP(e.p)) {
+        const pl = g.players[e.p], ev = g.node(pl.node)?.event, o = this.own[e.p];
+        if (e.amount < 0 && (ev === 4 || ev === 5)) this.bump(e.p, 'bail');
+        // A mini game's score (human or computer): the ledger counts the game just before its points (G64, R09, R10).
+        const games = this.stats(pl)?.miniGames ?? 0;
+        if (games > (o.n.miniSeen ?? 0)) {
+          o.n.miniSeen = games;
+          this.bestOf(pl, 'G64', e.amount); this.bump(e.p, 'mini');
+          if (ev !== undefined && ev >= 6 && ev <= 8) this.bump(e.p, `mini:${ev}`);
+        }
+        break;
+      } break;
+      case 'teleport': {
+        // 醫院滿床 / 牢房客滿: the state now (sent in after their event); someone else moved by the current player (G62).
+        this.checkAll();
+        if (isP(e.p) && this.current >= 0 && e.p !== this.current && isP(this.current)) this.teleported = { by: this.current, tgt: e.p };
+        break;
+      }
       case 'buy': case 'build': break;
       case 'fx': this.fx(e, isP); break;
       default: break;
@@ -232,7 +295,8 @@ export class Challenge {
       case 'fate': if (p >= 0) {
         const id = num('id'), o = this.own[p];
         this.bump(p, `fate:${id}`); o.fatesSeen.add(id);
-        o.fateRun++;
+        if (id === 6) this.fate6 = true;
+        if (id === 5) o.bday = new Set();
         if (id < 1000) { if (eventTone('fate', id) === 'good') { o.goodFates++; if (o.goodFates >= 3) { this.bump(p, 'goodFate3'); o.goodFates = 0; } } else o.goodFates = 0; }
         break;
       } break;
@@ -241,6 +305,7 @@ export class Challenge {
         if (p >= 0) { this.bump(p, `drew-news:${id}`); this.own[p].newsSeen.add(id); }
         this.newsToday.add(id);
         if (id === 24) this.crashDay = g.daysElapsed;
+        if ((id === 4 || id === 15 || id === 18) && !this.newsSnap) this.newsSnap = this.buildings();
         // 鬧鬼 (news 14) on a lot or plot: its owner was haunted (鬼陰山).
         if (id === 14 && e.node !== undefined) { const o = this.ownerOfRef(g.node(e.node)?.ref ?? 0); if (o >= 0) this.bump(o, 'haunted'); }
         break;
@@ -252,40 +317,77 @@ export class Challenge {
         const before = o.justLeft || o.god;
         if (before === 1 && t === 2) this.bump(p, 'wealthOnWealth');
         if (before === 3 && t === 4) this.bump(p, 'joyOnJoy');
+        // 轉運大師 (G15): a bad god (just left) replaced by a good one or the 土地公.
+        if (BAD_GODS.has(before) && (GOOD_GODS.has(t) || t === 12)) this.bump(p, 'turnLuck');
+        // 請神 (G45): the god 請神符 brought flying.
+        if (o.invited && GOOD_GODS.has(t)) this.bump(p, 'prayGot');
+        o.invited = false;
         o.justLeft = 0;
         this.endStay(p);
         if (t === 9 || t === 10 || t === 12) o.stay = { type: t, day: g.daysElapsed, mine: 0, others: 0, seized: 0, tools: this.toolsUsed(p) };
-        if (BAD_GODS.has(o.god) && GOOD_GODS.has(t) || (BAD_GODS.has(o.god) && t === 12)) this.bump(p, 'turnLuck');
         if (o.godsToday.size && !o.godsToday.has(t)) this.bump(p, 'twoGodsDay');
         o.godsToday.add(t);
         if (t === 2 || t === 4) this.bump(p, 'bigGood');
         o.god = t; o.gods.add(t);
         if (ALL_GODS.every(x => o.gods.has(x))) { o.godRounds++; o.gods.clear(); }
-        if (this.n(g.players[p], 'pray') > this.n(g.players[p], 'prayGot') && GOOD_GODS.has(t)) this.bump(p, 'prayGot');
         break;
       } break;
       case 'god-detach': if (p >= 0) { this.endStay(p); this.own[p].justLeft = num('type'); this.own[p].god = 0; this.own[p].t18 = 0; } break;
       case 'card': if (p >= 0) {
+        // A played card counts when it worked ('card-done'); a passive card (免罪, 嫁禍, 免費, 抵押…) acts at once.
         const id = num('card');
-        this.bump(p, `card:${id}`);
-        if (id === 22 && BAD_GODS.has(this.own[p].god)) this.bump(p, 'sendBadGod');
-        if (id === 23) this.bump(p, 'pray');
-        if (id === 1) this.own[p].cashBefore = g.players[p].cash;
-        if (id === 24) this.own[p].redDay = g.daysElapsed;
+        if (PASSIVE_CARDS.has(id)) { this.bump(p, `card:${id}`); if (id === 21 && d.what) this.bump(p, `pardon:${String(d.what)}`); }
+        else this.own[p].pending = { id, badGod: BAD_GODS.has(this.own[p].god) };
         break;
+      } break;
+      case 'card-done': if (p >= 0) {
+        const id = num('card'), o = this.own[p];
+        this.bump(p, `card:${id}`);
+        if (id === 22 && o.pending?.id === 22 && o.pending.badGod) this.bump(p, 'sendBadGod');
+        if (id === 24) o.redDay = g.daysElapsed;
+        o.pending = null;
+        break;
+      } break;
+      case 'card-failed': if (p >= 0) this.own[p].pending = null; break;
+      case 'god-fly': if (p >= 0) this.own[p].invited = true; break;
+      case 'stock-up': if (p >= 0) this.own[p].redSlot = num('slot'); break;
+      case 'missile': case 'nuke': if (p >= 0) this.shooter = p; break;
+      case 'robot-doll': this.dollBy = p; break;
+      case 'robot-worker': if (p >= 0 && num('level') >= 0) this.bump(p, 'built'); break;
+      case 'robot-doll-end': this.dollBy = -1; break;
+      case 'doll-clear': if (this.dollBy >= 0 && (num('type') === 16 || num('type') === 17)) this.bump(this.dollBy, 'cleared'); break;
+      case 'abroad': if (p >= 0 && this.fate6) { this.bump(p, 'wentAbroad'); this.fate6 = false; } break;
+      case 'alien': if (p >= 0) this.bump(p, 'abducted'); break;
+      case 'roadblock': if (p >= 0 && e.node !== undefined) {
+        // Stopped by a roadblock with steps left: a stop all the same; the one who placed it stopped a rival (U15).
+        const by = this.placed.get(e.node);
+        if (by !== undefined && by !== p) this.bump(by, 'blocked');
+        this.stopped(p, e.node);
       } break;
       case 'sleepwalk': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:sleepwalk'); break;
       case 'turtle': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:turtle'); break;
       case 'turn-around': if (tgt >= 0 && tgt !== p) this.bump(tgt, 'got:turn'); break;
       case 'hibernate': { const who = Array.isArray(d.who) ? (d.who as number[]) : []; for (const q of who) if (isP(q) && q !== p) this.bump(q, 'got:hibernate'); if (p >= 0 && who.length >= this.live().length - 1) this.bump(p, 'hibernateAll'); break; }
-      case 'card-result': if (num('card') === 26 && tgt >= 0) this.bump(tgt, 'taxed'); break;
-      case 'card-taken': if (p >= 0 && tgt >= 0) { this.bump(p, 'grab'); this.bump(p, `grabFrom:${tgt}`); } break;
+      case 'card-result': {
+        const card = num('card');
+        if (card === 26 && tgt >= 0) this.bump(tgt, 'taxed');
+        // 均富卡 (G53): what the player got from it (its own result: the cash before and the average after).
+        if (card === 1 && p >= 0 && Array.isArray(d.before)) { const mine = (d.before as [number, number][]).find(([id]) => id === p); if (mine) this.bestOf(g.players[p], 'G53', num('avg') - mine[1]); }
+        // 搶奪卡 (G55; G25 a round of every rival).
+        if (card === 13 && p >= 0 && tgt >= 0 && (d.got !== undefined || d.tool !== undefined)) {
+          this.bump(p, 'grab');
+          const o = this.own[p], rivals = this.live().filter(q => q.id !== p);
+          o.grabbed.add(tgt);
+          if (rivals.length && rivals.every(q => o.grabbed.has(q.id))) { this.bump(p, 'grabAll'); o.grabbed.clear(); }
+        }
+        break;
+      }
+      case 'card-taken': if (p >= 0 && tgt >= 0) this.own[p].bday?.add(tgt); break;
       case 'magic': if (p >= 0) { this.own[p].magic.add(num('magic')); this.bump(p, 'magic'); } break;
       case 'lottery-draw': { const w = num('winner'); if (d.winner !== undefined && isP(w)) this.bump(w, 'lotto'); break; }
-      case 'mini-game': if (p >= 0) { this.bestOf(g.players[p], 'G64', num('points')); this.bump(p, 'mini'); this.bump(p, `mini:${String(d.game)}`); } break;
       case 'chest': if (p >= 0) this.bump(p, 'chest'); break;
       case 'gift': if (p >= 0) this.bump(p, 'gift'); break;
-      case 'dog': if (p >= 0) this.bump(p, 'dog'); break;
+      case 'dog': if (p >= 0 && !d.riding) this.bump(p, 'dog'); break;
       case 'earth-god': if (p >= 0) { this.bump(p, 'earthGod'); if (this.own[p].stay?.type === 12) this.own[p].stay!.seized++; const was = this.owners.get(num('ref')); if (was !== undefined && was >= 0 && was !== p) this.bump(was, 'seized'); } break;
       case 'angel': if (p >= 0 && e.node === undefined && Array.isArray(d.lots)) { const nm = this.placeNameOfRef(num('ref')); if (nm) this.bump(p, `angelOn:${nm}`); }
         if (p >= 0 && e.node !== undefined) {
@@ -298,10 +400,15 @@ export class Challenge {
         if (o === p) this.bump(p, 'selfDevil');
         if (st?.type === 10) { if (o === p) st.mine++; else if (o >= 0) st.others++; }
       } break;
-      case 'monster': case 'demolish': { const ref = num('ref'), o = this.ownerOfRef(ref); if (o >= 0) { this.bump(o, 'lostBuilding'); this.own[o].lostDay = g.daysElapsed; const nm = this.placeNameOfRef(ref); if (nm) this.bump(o, `lostAt:${nm}`); } break; }
+      case 'monster': case 'demolish': { const ref = num('ref'), o = this.ownerOfRef(ref); if (o >= 0) { this.bump(o, 'lostBuilding'); if (e.kind === 'monster') this.bump(o, 'monsterHit'); this.own[o].lostDay = g.daysElapsed; const nm = this.placeNameOfRef(ref); if (nm) this.bump(o, `lostAt:${nm}`); } break; }
       case 'place-object': if (p >= 0 && e.node !== undefined) {
         this.placed.set(e.node, p);
-        if (num('type') === 17) { this.mines.set(e.node, p); this.bestOf(g.players[p], 'G58', [...this.mines.values()].filter(x => x === p).length); }
+        if (num('type') === 17) {
+          this.mines.set(e.node, p);
+          // 地雷陣 (G58): the player's mines really on the map now (dolls, missiles, news and cards clear some unseen).
+          for (const [n] of this.mines) if (g.objects.at(n)?.type !== 17) this.mines.delete(n);
+          this.bestOf(g.players[p], 'G58', [...this.mines.values()].filter(x => x === p).length);
+        }
       } break;
       case 'mine': if (p >= 0 && e.node !== undefined) {
         const by = this.placed.get(e.node);
@@ -312,28 +419,31 @@ export class Challenge {
         if (this.own[p].traffic === 2) this.bump(p, 'carMine'); // the vehicle as it was before the mine destroyed it
         break;
       } break;
-      case 'bomb-pickup': if (p >= 0 && e.node !== undefined) { const by = this.placed.get(e.node); this.bombChain.set(p, by !== undefined && by !== p ? [by] : []); if (by !== undefined && by !== p) this.bump(by, 'bombPlanted'); } break;
-      case 'bomb-pass': if (p >= 0 && tgt >= 0) { this.bombChain.set(tgt, [...(this.bombChain.get(p) ?? []), p]); this.bombChain.delete(p); } break;
+      case 'bomb-pickup': if (p >= 0 && e.node !== undefined) { const by = this.placed.get(e.node); this.bombChain.set(p, []); this.bombBy.set(p, by ?? -1); if (by !== undefined && by !== p) this.bump(by, 'bombPlanted'); } break;
+      case 'bomb-pass': if (p >= 0 && tgt >= 0) { this.bombChain.set(tgt, [...(this.bombChain.get(p) ?? []), p]); this.bombChain.delete(p); this.bombBy.set(tgt, this.bombBy.get(p) ?? -1); this.bombBy.delete(p); } break;
       case 'bomb-explode': if (p >= 0) {
         const chain = this.bombChain.get(p) ?? [];
         this.bombChain.delete(p);
         for (const h of new Set(chain)) if (h !== p) this.bump(h, 'bombOnOther');
         if (chain.some(h => h !== p)) this.bump(p, 'bombOnMe');
-        if (chain.length === 1 && chain[0] === p) this.bump(p, 'selfHarm');
+        if (this.bombBy.get(p) === p) this.bump(p, 'selfHarm');
+        this.bombBy.delete(p);
         break;
       } break;
       case 'to-hospital': if (p >= 0) {
-        const cur = this.current;
-        if (cur >= 0 && cur !== p && this.missiles(g.players[cur]) > this.own[cur].lastTurnMissiles) { this.bump(cur, 'missileHit'); this.bump(p, 'missiled'); }
+        const by = this.shooter;
+        if (by >= 0 && by !== p) { this.bump(by, 'missileHit'); this.bump(p, 'missiled'); }
+        if (isP(this.current) && this.current !== p) this.own[this.current].sent.add(p);
         this.checkAll();
         break;
       } break;
-      case 'to-prison': if (p >= 0) { this.own[p].dash = false; if (this.own[p].god === 10) this.bump(p, 'devilJail'); } this.checkAll(); break;
+      case 'to-prison': if (p >= 0) { this.own[p].dash = false; if (this.own[p].god === 10) this.bump(p, 'devilJail'); if (isP(this.current) && this.current !== p) this.own[this.current].sent.add(p); } this.checkAll(); break;
       case 'enter-hotel': if (p >= 0) {
         const f = g.board.facilities[num('facility') - 1], days = num('days');
         if (!f) break;
         this.bump(p, `stayAt:${f.name}`);
         if (f.owner && f.owner - 1 !== p) {
+          this.bump(f.owner - 1, `guest:${f.name}`);
           if (days >= 4) { this.bump(p, 'stay4'); this.bump(f.owner - 1, 'guest4'); this.bump(f.owner - 1, `guest4:${f.name}`); }
           this.bump(p, `hotels:${f.id}`);
         }
@@ -349,9 +459,25 @@ export class Challenge {
         break;
       } break;
       case 'slot-machine': if (p >= 0) { const god = num('god'), a = num('amount'); if (god === 2 && a >= 5000) this.bump(p, 'slotRich'); if (god === 6 && a >= 5000) this.bump(p, 'slotPoor'); if (num('mult') > 1) this.bump(p, `slotSame:${god}`); } break;
-      case 'stock-trade': if (p >= 0) { const sl = num('slot'), o = this.own[p]; if (d.buy && this.crashDay === g.daysElapsed) o.crashBuy[sl] = 1; if (!d.buy && o.crashBuy[sl]) { this.bump(p, 'bottomFish'); delete o.crashBuy[sl]; } if (!d.buy && o.redDay === g.daysElapsed) this.bump(p, 'redFlip'); } break;
+      case 'stock-trade': if (p >= 0) {
+        const sl = num('slot'), o = this.own[p], price = g.stocks.stocks[sl]?.price ?? 0;
+        if (d.buy && this.crashDay === g.daysElapsed && !o.crashBuy[sl]) o.crashBuy[sl] = price || 1;
+        if (!d.buy && o.crashBuy[sl]) { if (price > o.crashBuy[sl]) this.bump(p, 'bottomFish'); delete o.crashBuy[sl]; }
+        if (!d.buy && o.redDay === g.daysElapsed && o.redSlot === sl) this.bump(p, 'redFlip');
+        break;
+      } break;
       case 'remote-dice': if (p >= 0) this.bump(p, `remoteAt:${this.placeName(g.players[p].node)}`); break;
-      case 'kb-incident': { const id = String(d.id); if (p >= 0) { this.bump(p, `kbv:${id}`); if (id === 'dash') this.own[p].dash = true; } if (tgt >= 0) this.bump(tgt, `kbo:${id}`); break; }
+      case 'kb-incident': {
+        const id = String(d.id);
+        if (p >= 0) {
+          // 急性酒精中毒 (B13) counts once the hospital wheel really gives days; 霸王酒 (B01) only when not caught.
+          if (id === 'drunk' || id === 'cdrunk') this.own[p].n.drunkWait = 1; else this.bump(p, `kbv:${id}`);
+          if (id === 'dash' && !String(d.visitor ?? '').includes('被抓')) this.bump(p, 'dashAway');
+        }
+        if (tgt >= 0) this.bump(tgt, `kbo:${id}`);
+        break;
+      }
+      case 'kb-hospital-wheel': if (p >= 0 && this.own[p].n.drunkWait) { this.own[p].n.drunkWait = 0; if (num('days') > 0) this.bump(p, 'kbv:drunk'); } break;
       case 'kb-protection': if (p >= 0) this.bump(p, 'protection'); break;
       case 'kb-smash': if (p >= 0) this.bump(p, 'smash'); break;
       case 'kb-gang-arrest': if (p >= 0) this.bump(p, 'gangArrest'); break;
@@ -359,22 +485,29 @@ export class Challenge {
       case 'kb-tout': if (p >= 0 && d.ok) this.bump(p, 'touted'); break;
       case 'kb-busy': if (p >= 0 && !d.sitting) this.bump(p, 'busy'); break;
       case 'kb-taxi-ride': if (p >= 0) this.bump(p, 'taxi'); break;
-      case 'kb-tool': if (p >= 0) this.own[p].gotPrizes.add(100 + num('tool')); break;
+      case 'kb-tool': if (p >= 0) { this.own[p].gotPrizes.add(100 + num('tool')); if (num('tool') === 18 && tgt < 0) this.bump(p, 'taxi'); } break;
       case 'card-received': if (p >= 0 && (num('card') === 37 || num('card') === 38)) this.own[p].gotPrizes.add(num('card')); break;
-      case 'kb-machine-result': if (p >= 0 && !d.skipped) { const left = num('left'); if (d.kind === 'pachinko') this.bestOf(g.players[p], 'B09', Math.floor(left / 25)); const big = /BIG (\d+)/.exec(String(d.text ?? '')); if (big && Number(big[1]) > 0) this.bump(p, 'big777'); } break;
+      case 'kb-machine-result': if (p >= 0 && !d.skipped) {
+        // 景品收藏家 (B11): what the prize counter gave.
+        for (const it of Array.isArray(d.items) ? (d.items as { id: number; card: boolean }[]) : []) this.own[p].gotPrizes.add(it.card ? it.id : 100 + it.id); const left = num('left'); if (d.kind === 'pachinko') this.bestOf(g.players[p], 'B09', Math.floor(left / 25)); const big = /BIG (\d+)/.exec(String(d.text ?? '')); if (big && Number(big[1]) > 0) this.bump(p, 'big777'); } break;
       case 'jq-study': if (p >= 0 && d.start) this.bump(p, 'study'); break;
       case 'jq-verdict': if (tgt >= 0) this.bump(tgt, 'verdict'); break;
       case 'jq-card': if (p >= 0 && d.good && tgt === p) this.bump(p, 'parkGood'); break;
-      case 'lab-order': if (p >= 0) { const f = g.board.facilities[num('facility') - 1]; this.bump(p, 'lab'); if (f) this.bump(p, `lab:${f.name}`); } break;
+      case 'lab-done': if (p >= 0) { const f = g.board.facilities[num('facility') - 1]; this.bump(p, 'lab'); if (f) this.bump(p, `lab:${f.name}`); } break;
       case 'auction-end': { const b = num('buyer'); if (isP(b) && d.buyer !== -1) this.bump(b, 'auctionWin'); break; }
       default: break;
     }
   }
 
   private pay(e: Extract<GameEvent, { t: 'pay' }>) {
-    const g = this.g, from = e.from, to = e.to;
+    const g = this.g, from = e.from;
     const isP = (x: number) => x >= 0 && x < g.players.length;
+    // A company fee goes to the company (100 + its number): its chairman is the one paid (一網打盡 G11 …).
+    const co = e.to > 100 ? g.board.companies[e.to - 101] : undefined;
+    const to = co ? (co.controller ? co.controller - 1 : -1) : e.to;
     if (isP(from)) this.bestOf(g.players[from], 'G20', e.amount + (e.owed ?? 0));
+    // Debt as it happens (G17 欠債翻身, G37): the deepest debt, and paid back once the cash is ≥ 0 again.
+    for (const q of [from, to]) if (isP(q)) this.debtCheck(g.players[q]);
     if (isP(to) && e.reason === '理賠金') this.bump(to, 'insurance');
     if (isP(from) && isP(to) && from !== to) {
       const at = g.node(g.players[from].node), day = g.daysElapsed;
@@ -382,7 +515,12 @@ export class Challenge {
       const f = this.facilityAt(g.players[from].node);
       if (f) this.bump(to, `facPaid:${f.name}:${from}:${day}`);
       const land = at && at.ref > 2000 && at.ref < 4000 ? g.board.lands[at.ref - 2001] : undefined;
-      if (land) this.bump(to, `streetPaid:${land.name}:${from}:${day}`);
+      if (land && land.owner === to + 1 && TOLL_REASONS.has(e.reason)) this.bump(to, `streetPaid:${land.name}:${from}:${day}`);
+    }
+    if (co && isP(from) && isP(to) && from !== to) {
+      this.bump(to, `paidBy:${from}:${this.g.daysElapsed}`);
+      const rivals = this.live().filter(q => q.id !== to);
+      if (rivals.length && rivals.every(q => this.n(g.players[to], `paidBy:${q.id}:${g.daysElapsed}`) > 0)) this.bump(to, `allPaid:${g.daysElapsed}`);
     }
     if (!(isP(from) && isP(to) && from !== to && TOLL_REASONS.has(e.reason))) return;
     this.bestOf(g.players[to], 'O05', e.amount);
@@ -413,19 +551,28 @@ export class Challenge {
   private passed(p: number, node: number) {
     const name = this.placeName(node);
     if (!name) return;
-    // 媽祖遶境 (T18): the round-island route while a god is attached (reset when it leaves).
-    const o = this.own[p], ring = ROUTES.T01;
-    if (o.god && this.tasks.some(t => t.id === 'T18')) {
-      if (o.t18 === 0 ? name === ring[0] : name === ring[o.t18]) { o.t18++; if (o.t18 === ring.length) { this.bump(p, 'mazu'); o.t18 = 0; } }
-    }
+    const o = this.own[p];
+    // 媽祖遶境 (T18): the round-island route (either way) while a god is on the player (reset when it leaves).
+    if (o.god && this.tasks.some(t => t.id === 'T18')) { if (this.routeStep(o, 'T18', ROUTES.T01, name)) this.bump(p, 'mazu'); }
+    else { delete o.route['T18>']; delete o.route['T18<']; }
     for (const [id, seq] of Object.entries(ROUTES)) {
-      if (!this.tasks.some(t => t.id === id)) continue;
-      const at = o.route[id] ?? 0, k = seq.length;
-      // Either direction: progress counts up the list; a negative value counts down it.
-      if (at === 0) { if (name === seq[0]) o.route[id] = 1; else if (name === seq[k - 1] && k > 2) o.route[id] = -1; continue; }
-      if (at > 0 && name === seq[at]) { o.route[id] = at + 1; if (at + 1 === k) { this.bump(p, `route:${id}`); o.route[id] = 0; } }
-      else if (at < 0 && name === seq[k - 1 + at]) { o.route[id] = at - 1; if (-(at - 1) === k) { this.bump(p, `route:${id}`); o.route[id] = 0; } }
+      if (this.tasks.some(t => t.id === id) && this.routeStep(o, id, seq, name)) this.bump(p, `route:${id}`);
     }
+  }
+
+  /**
+   * One place on an ordered route, followed both ways at once (a round trip starts and ends at the same place, so
+   * each direction keeps its own progress): true when a direction completes it (both start again).
+   */
+  private routeStep(o: Own, id: string, seq: string[], name: string): boolean {
+    for (const [key, list] of [[`${id}>`, seq], [`${id}<`, [...seq].reverse()]] as const) {
+      const at = o.route[key] ?? 0;
+      if (name === list[at]) o.route[key] = at + 1;
+      else if (name === list[0]) o.route[key] = 1;
+      else continue;
+      if (o.route[key] === list.length) { delete o.route[`${id}>`]; delete o.route[`${id}<`]; return true; }
+    }
+    return false;
   }
 
   private stopped(p: number, node: number) {
@@ -434,7 +581,12 @@ export class Challenge {
     const name = this.placeName(node);
     if (name) this.bump(p, `stop:${name}`);
     if (n.event) this.bump(p, `ev:${n.event}`);
-    if (n.event !== 3) o.fateRun = 0;
+    // 命運三連 (G69): stops on a fate square in three of the player's turns in a row (one per turn).
+    if (n.event === 3 && o.lastFateTurn !== o.turnNo) { o.fateRun = o.lastFateTurn === o.turnNo - 1 ? o.fateRun + 1 : 1; o.lastFateTurn = o.turnNo; }
+    // 處女座潔癖 (Z11): stopping on someone else's property breaks it, paid or not.
+    const owner = this.ownerOfRef(n.ref);
+    if (owner >= 0 && owner !== p) o.clean = 0;
+    else if (n.ref > 6000 && n.ref < 8000) { const c = g.board.companies[n.ref - 6001]; if (c?.controller && c.controller - 1 !== p) o.clean = 0; }
     o.stops.add(name ? `s:${name}` : '');
     if (n.event) o.stops.add(`e:${n.event}`);
     // Stopping in a 'god' state (財神 / 福神 / 衰神 …) at a named place.
@@ -453,7 +605,7 @@ export class Challenge {
       this.bestOf(pl, 'C01', recent);
       if (o.lastStop['紐約'] !== undefined && o.lastStop['洛杉磯'] !== undefined && Math.abs(o.lastStop['紐約'] - o.lastStop['洛杉磯']) < 30 && (name === '紐約' || name === '洛杉磯')) this.bump(p, 'coast2coast');
       const f = this.facilityAt(node);
-      if (f && f.name === '荷蘭風車村' && f.type === 0 && f.owner && f.owner - 1 !== p) this.bump(f.owner - 1, 'windmill');
+      if (f && f.name === '荷蘭風車村' && f.type === 0 && f.level > 0 && f.owner && f.owner - 1 !== p) this.bump(f.owner - 1, 'windmill');
       if (this.live().every(q => !g.offRoad(q) && this.placeName(q.node) === '華山派')) for (const q of this.live()) this.bump(q.id, 'huashan');
     }
     // Same square: every living player / three or more.
@@ -461,6 +613,7 @@ export class Challenge {
     if (here.length >= 3) for (const q of here) this.bump(q.id, 'crowd3');
     if (here.length >= 2) this.bump(p, 'sumo');
     if (here.length === this.live().length && here.length > 1) for (const q of here) this.bump(q.id, 'allSame');
+    this.measureAll(pl); // dated stops (1 月 1 日 …) and the like, at the stop itself
   }
 
   // ---------------------------------------------------------------- the day
@@ -475,13 +628,15 @@ export class Challenge {
       if (!p.whoPlays || !g.here(p)) continue;
       const o = this.own[p.id];
       if (o.stay && !p.god) this.endStay(p.id);
+      this.syncGod(p);
       o.justLeft = 0;
       o.offRoadDays = g.offRoad(p) ? o.offRoadDays + 1 : 0;
-      o.debtMax = Math.max(o.debtMax, -p.cash);
-      if (p.cash >= 0 && o.debtMax > 0) { this.bestOf(p, 'G17', o.debtMax); }
-      if (o.dayCash === null) o.dayCash = p.cash;
-      this.bestOf(p, 'G19', p.cash - o.dayCash);
-      o.dayCash = p.cash;
+      this.debtCheck(p);
+      // 一夜暴富 (G19): a day's gain of cash and deposit together (taking money out of the bank is no gain).
+      const money = p.cash + p.bank;
+      if (o.dayCash === null) o.dayCash = money;
+      this.bestOf(p, 'G19', money - o.dayCash);
+      o.dayCash = money;
       const w = g.wealth(p);
       o.rich = w === top ? o.rich + 1 : 0;
       o.poor = w === bottom && live.length > 1 ? o.poor + 1 : 0;
@@ -525,32 +680,45 @@ export class Challenge {
     for (const p of live) {
       const o = this.own[p.id], me = p.id + 1;
       // 浴火重生 (G14): a lot of the player's reached 5, fell to 0, and is at 5 again.
-      b.lands.forEach((l, i) => {
-        if (l.owner === me && l.level >= 5) { if (o.fallen.has(i)) { this.bump(p.id, 'rebuilt5'); o.fallen.delete(i); } o.lv5Lots.add(i); }
-        else if (o.lv5Lots.has(i) && l.level === 0) { o.lv5Lots.delete(i); o.fallen.add(i); }
-      });
+      // Lots by their ref (lands 2000 +, facilities 4000 +: a large plot counts like a lot).
+      for (const l of [...b.lands.map(x => ({ k: x.id + 2000, x })), ...b.facilities.map(x => ({ k: x.id + 4000, x }))]) {
+        const i = l.k, x = l.x;
+        if (x.owner === me && x.level >= 5) { if (o.fallen.has(i)) { this.bump(p.id, 'rebuilt5'); o.fallen.delete(i); } o.lv5Lots.add(i); }
+        else if (o.lv5Lots.has(i) && x.level === 0) { o.lv5Lots.delete(i); o.fallen.add(i); }
+      }
       // 完美的一個月 (G35): a month without hospital, prison, a bad god or debt.
       if (g.offRoad(p) && (p.hospital || p.prison) || BAD_GODS.has(o.god) || p.cash < 0) o.monthClean = false;
       if (dayOf(g.date) === 1) { if (o.monthClean) this.bump(p.id, 'perfectMonth'); o.monthClean = true; }
-      // 劍龍裝甲 / 風獅爺: buildings kept for 30 days.
-      const levels = b.lands.filter(l => l.owner === me).reduce((n, l) => n + l.level, 0) + b.facilities.filter(f => f.owner === me).reduce((n, f) => n + f.level, 0);
-      if (day - o.lostDay >= 30 && day % 30 === 0) { if (levels >= 20) this.bump(p.id, 'armor20'); if (levels >= 10) this.bump(p.id, 'armor10'); }
+      // 劍龍裝甲 / 風獅爺 (D08, N10): 20 / 10 buildings (棟: lots with a building) and none lost for 30 days. Any floor
+      // lost (news, cards, devils, missiles …) starts the 30 days again.
+      const lv = o.n, lots = [...b.lands.map(x => ({ k: x.id + 2000, x })), ...b.facilities.map(x => ({ k: x.id + 4000, x }))];
+      for (const { k, x } of lots) {
+        const was = lv[`lv:${k}`] ?? 0, now = x.owner === me ? x.level : 0;
+        if (x.owner === me && now < was) o.lostDay = day;
+        lv[`lv:${k}`] = now;
+      }
+      const built = lots.filter(({ x }) => x.owner === me && x.level > 0).length;
+      if (day - o.lostDay >= 30) { if (built >= 20) this.bump(p.id, 'armor20'); if (built >= 10) this.bump(p.id, 'armor10'); if (built >= 10) o.lostDay = day; }
       // 押鏢 (W07): 10 cards or more, none lost, for 30 days.
       const cards = p.cards.filter(Boolean).length;
       o.cardDays = cards >= 10 && cards >= (o.n.lastCards ?? 0) ? o.cardDays + 1 : 0;
       o.n.lastCards = cards;
       if (o.cardDays >= 30) { this.bump(p.id, 'escort'); o.cardDays = 0; }
-      // News of the day that hit the player's own buildings or spared them.
-      if (crash.has(18) && levels >= 10 && o.lostDay !== day) this.bump(p.id, 'quakeProof');
-      if (crash.has(4) && b.lands.some(l => l.owner === me && l.name === '地球區') && o.lostDay !== day) this.bump(p.id, 'earthSafe');
-      if ((crash.has(15) || crash.has(18)) && this.n(p, 'lostAt:火山區') > (o.n.volcanoSeen ?? 0)) { this.bump(p.id, 'volcano'); o.n.volcanoSeen = this.n(p, 'lostAt:火山區'); }
+      // News of the day that hit the player's buildings or spared them, against the buildings before it (newsSnap).
+      const snap = this.newsSnap, nowB = snap ? this.buildings() : null;
+      if (snap && nowB) {
+        if (crash.has(18) && (snap[p.id] ?? 0) >= 10 && (nowB[p.id] ?? 0) >= (snap[p.id] ?? 0)) this.bump(p.id, 'quakeProof');
+        if (crash.has(4) && (snap[`${p.id}:地球區:lots`] ?? 0) > 0 && (nowB[`${p.id}:地球區:lots`] ?? 0) >= (snap[`${p.id}:地球區:lots`] ?? 0) && (nowB[`${p.id}:地球區`] ?? 0) >= (snap[`${p.id}:地球區`] ?? 0)) this.bump(p.id, 'earthSafe');
+        if ((crash.has(15) || crash.has(18)) && (nowB[`${p.id}:火山區`] ?? 0) < (snap[`${p.id}:火山區`] ?? 0)) this.bump(p.id, 'volcano');
+      }
       if (crash.has(17) && (p.traffic & 3) === 2) this.bump(p.id, 'jam');
       if (crash.has(8) && this.streetLevel(p, '華盛頓') > 0 && (this.stats(p)?.events['news:8']?.[0] ?? 0) > (o.n.praised ?? 0)) this.bump(p.id, 'whiteHouse');
       if (crash.has(8) && this.streetLevel(p, '獅子座區') > 0 && (this.stats(p)?.events['news:8']?.[0] ?? 0) > (o.n.praised ?? 0)) this.bump(p.id, 'lionKing');
       o.n.praised = this.stats(p)?.events['news:8']?.[0] ?? 0;
-      // 大滅絕 (D18): every opponent in hospital or prison at once.
+      // 大滅絕 (D18): every opponent in hospital or prison at once, each sent there by this player.
       const others = live.filter(q => q.id !== p.id);
-      if (others.length && others.every(q => q.hospital || q.prison) && !(p.hospital || p.prison)) this.bump(p.id, 'extinct');
+      for (const q of [...o.sent]) if (!(g.players[q].hospital || g.players[q].prison)) o.sent.delete(q);
+      if (others.length && others.every(q => (q.hospital || q.prison) && o.sent.has(q.id)) && !(p.hospital || p.prison)) { this.bump(p.id, 'extinct'); o.sent.clear(); }
       // 春運 (C13): in hospital or prison on 春節 (lunar new year 2026–2032).
       if (LUNAR_NEW_YEAR.has(g.date) && (p.hospital || p.prison)) this.bump(p.id, 'springFest');
       // Dated stops in a place (1 月 1 日…): counted in the measures (DATE).
@@ -566,6 +734,42 @@ export class Challenge {
     for (const q of this.stopsToday.get('澀谷') ?? []) this.bestOf(g.players[q], 'K05', shibuya);
     this.stopsToday.clear();
     this.newsToday.clear();
+    this.newsSnap = null;
+  }
+
+  /** Levels of buildings: by player id, and by '<id>:<name>' (and '<id>:<name>:lots', lots owned) for the named ones. */
+  private buildings(): Record<string, number> {
+    const out: Record<string, number> = {}, add = (k: string, v: number) => { out[k] = (out[k] ?? 0) + v; };
+    for (const x of [...this.g.board.lands, ...this.g.board.facilities]) {
+      if (!x.owner) continue;
+      const q = x.owner - 1;
+      add(String(q), x.level); add(`${q}:${x.name}`, x.level); add(`${q}:${x.name}:lots`, 1);
+    }
+    return out;
+  }
+
+  /** The god actually on the player (one that left quietly, off the road or blown off, no longer counts). */
+  private syncGod(p: Player) {
+    const o = this.own[p.id], t = p.god ? this.g.objects.godType(p) : 0;
+    if (t !== o.god) { if (!t) { this.endStay(p.id); o.t18 = 0; } o.god = t; }
+  }
+
+  /** The deepest debt so far; back to cash ≥ 0: 欠債翻身 (G17) with that debt, and a new count starts. */
+  private debtCheck(p: Player) {
+    const o = this.own[p.id];
+    o.debtMax = Math.max(o.debtMax, -p.cash);
+    this.bestOf(p, 'G37', o.debtMax >= 1_000_000 ? 1 : 0);
+    if (p.cash >= 0 && o.debtMax > 0) { this.bestOf(p, 'G17', o.debtMax); o.debtMax = 0; }
+  }
+
+  /** A birthday (fate 5) at the end of its turn: it collected from every rival (G25). */
+  private endBirthday(next: number) {
+    for (const [i, o] of this.own.entries()) {
+      if (!o.bday || i === next) continue;
+      const rivals = this.live().filter(q => q.id !== i);
+      if (rivals.length && rivals.every(q => o.bday!.has(q.id))) this.bump(i, 'bdayAll');
+      o.bday = null;
+    }
   }
 
   /** The first player with 100 stars, or −1. */
@@ -652,7 +856,7 @@ export class Challenge {
 // ---------------------------------------------------------------- measures
 
 /** Tasks whose best value is set where it happens (bestOf in the event / day handlers). */
-const BEST_OF = new Set(['G17', 'G18', 'G19', 'G20', 'G53', 'G58', 'G64', 'O05', 'C01', 'K05', 'B09']);
+const BEST_OF = new Set(['G17', 'G18', 'G19', 'G20', 'G37', 'G53', 'G58', 'G64', 'O05', 'C01', 'K05', 'B09']);
 
 const fate = (c: Challenge, p: Player, ...ids: number[]) => ids.reduce((n, id) => n + c.n(p, `fate:${id}`), 0);
 const newsHit = (c: Challenge, p: Player, ...ids: number[]) => ids.reduce((n, id) => n + (c.stats(p)?.events[`news:${id}`]?.reduce((a, b) => a + b, 0) ?? 0), 0);
@@ -684,12 +888,12 @@ const MEASURES: Record<string, Measure> = {
   G13: (c, p) => c.n(p, 'bombOnOther'),
   G14: (c, p) => c.n(p, 'rebuilt5'),
   G15: (c, p) => c.n(p, 'turnLuck'),
-  G16: (c, p) => fate(c, p, 7) + newsHit(c, p, 4),
+  G16: (c, p) => c.n(p, 'abducted') + newsHit(c, p, 4),
   G21: (c, p) => c.n(p, 'bombOnMe'),
   G22: (c, p) => fate(c, p, 20, 21, 22),
   G23: (c, p) => c.own[p.id].rich,
   G24: (c, p) => fate(c, p, 26),
-  G25: (c, p) => fate(c, p, 5) + (c.live().filter(q => q.id !== p.id).every(q => c.n(p, `grabFrom:${q.id}`) > 0) ? 1 : 0),
+  G25: (c, p) => c.n(p, 'bdayAll') + c.n(p, 'grabAll'),
   G26: (c, p) => (fate(c, p, 10) && fate(c, p, 11) && fate(c, p, 13) ? 1 : 0),
   G27: (c, p) => FINE_FATES.filter(id => fate(c, p, id) > 0).length,
   G28: (c, p) => newsHit(c, p, 10),
@@ -701,7 +905,6 @@ const MEASURES: Record<string, Measure> = {
   G35: (c, p) => c.n(p, 'perfectMonth'),
   G34: (c, p) => [18, 20, 21, 19, 15].filter(id => newsHit(c, p, id) > 0).length,
   G36: (c, p) => c.n(p, 'auctionWin'),
-  G37: (c, p) => (c.own[p.id].debtMax >= 1_000_000 ? 1 : 0),
   G38: (c, p) => c.g.board.lands.filter(l => l.owner === p.id + 1).length + c.g.board.facilities.filter(f => f.owner === p.id + 1).length,
   G39: (c, p) => lv5(c, p),
   G40: (c, p) => c.n(p, 'kindAngel'),
@@ -715,20 +918,20 @@ const MEASURES: Record<string, Measure> = {
   G48: (c, p) => c.n(p, 'got:sleepwalk'),
   G49: (c, p) => used(c, p, 17),
   G50: (c, p) => c.stats(p)?.events['card:19']?.[0] ?? used(c, p, 19),
-  G51: (c, p) => used(c, p, 21),
+  G51: (c, p) => c.n(p, 'pardon:prison'),
   G52: (c, p) => c.n(p, 'got:turtle'),
   G54: (c, p) => used(c, p, 2),
   G55: (c, p) => c.n(p, 'grab'),
   G56: (c, p) => used(c, p, 28),
   G57: (c, p) => used(c, p, 3),
   G59: (c, p) => c.n(p, 'bombPlanted'),
-  G60: (c, p) => tool(c, p, 1),
+  G60: (c, p) => c.n(p, 'cleared'),
   G61: (c, p) => c.n(p, 'bail'),
-  G62: (c, p) => tool(c, p, 11),
+  G62: (c, p) => c.n(p, 'sentAway'),
   G63: (c, p) => c.n(p, 'stay4'),
   G65: (c, p) => c.own[p.id].poor,
   G66: (c, p) => c.n(p, 'insurance'),
-  G67: (c, p) => fate(c, p, 6),
+  G67: (c, p) => c.n(p, 'wentAbroad'),
   G68: (c, p) => used(c, p, 29),
   G69: (c, p) => (c.own[p.id].fateRun >= 3 ? 1 : 0),
   G70: (c, p) => c.n(p, 'spin3'),
@@ -756,7 +959,8 @@ const ROUTES: Record<string, string[]> = {
 // Map tasks by template (streets, plots, companies, stops, events…): id → measure.
 const S = (names: string[]): Measure => (c, p) => c.streetsOwned(p, names);
 const L = (name: string): Measure => (c, p) => c.streetLevel(p, name);
-const CH = (name: string): Measure => (c, p) => c.own[p.id].chair[name] ?? 0;
+/** Chairman days in a row: 30 / 90 / 180 (the tiers of the 董事長 tasks). */
+const CH = (name: string): Measure => (c, p) => { const d = c.own[p.id].chair[name] ?? 0; return d >= 180 ? 3 : d >= 90 ? 2 : d >= 30 ? 1 : 0; };
 const CH1 = (name: string): Measure => (c, p) => ((c.own[p.id].chair[name] ?? 0) > 0 ? 1 : 0);
 const N = (key: string): Measure => (c, p) => c.n(p, key);
 const TOUR = (names: string[]): Measure => (c, p) => c.stopRounds(p, names);
@@ -764,7 +968,8 @@ const FATE = (...ids: number[]): Measure => (c, p) => fate(c, p, ...ids);
 const NEWS = (...ids: number[]): Measure => (c, p) => newsHit(c, p, ...ids);
 const DEPOSIT: Measure = (_c, p) => p.bank;
 const INS: Measure = (c, p) => c.n(p, 'insurance');
-const BUILDERS: Measure = (c, p) => (c.stats(p)?.toolsUsed[9] ?? 0) + (c.stats(p)?.toolsUsed[12] ?? 0);
+/** Floors a robot worker really built (the 工程車 only knocks buildings down). */
+const BUILDERS: Measure = (c, p) => c.n(p, 'built');
 const DATE = (m: number, d: number, names: string[]): Measure => (c, p) => {
   const g = c.g;
   if (monthOf(g.date) === m && dayOf(g.date) === d && names.includes(c.placeName(p.node))) c.bump(p.id, `date:${m}${d}`);
@@ -783,9 +988,9 @@ const MAP_MEASURES: Record<string, Measure> = {
   T19: N('earthGod'), T20: TOUR(['台北市', '桃園市', '新竹市', '台中市', '彰化市', '台南市', '高雄市', '屏東市', '台東縣', '花蓮縣', '花蓮市', '太魯閣', '宜蘭市']),
   // 中國大陸
   C02: S(['北京', '天津', '承德']), C03: (c, p) => { const n = c.streetsOwned(p, ['成都', '重慶']); return n === 2 && c.streetLevel(p, '成都') === 3 && c.streetLevel(p, '重慶') === 3 ? 3 : n; },
-  C04: L('桂林'), C05: S(['歸綏', '銀川', '蘭州']), C07: N('guest4:康定'), C08: N('mall6:上海'), C10: CH('中國石油'),
+  C04: L('桂林'), C05: S(['歸綏', '銀川', '蘭州']), C07: N('guest:康定'), C08: N('mall6:上海'), C10: CH('中國石油'),
   C11: (c, p) => [33, 34, 35, 36].filter(id => fate(c, p, id) > 0).length, C12: N('walkStop:成都'),
-  C14: (_c, p) => p.tools.filter(t => t === 1).length, C15: (c, p) => c.n(p, 'lostBuilding'), C16: DEPOSIT, C17: FATE(17), C18: NEWS(19),
+  C14: (_c, p) => p.tools[0] ?? 0, C15: (c, p) => c.n(p, 'monsterHit') + newsHit(c, p, 5), C16: DEPOSIT, C17: FATE(17), C18: NEWS(19),
   C19: N('tollAt:昆明'),
   // 日本
   J01: N('route:J01'), J02: S(['盛岡', '仙台', '福島', '秋田']), J03: S(['京都', '大阪', '神戶']), J04: (c, p) => (c.plotsOwned(p, ['姬路']) >= 2 ? 1 : 0),
@@ -793,7 +998,7 @@ const MAP_MEASURES: Record<string, Measure> = {
   J13: DATE(1, 1, ['京都']), J15: NEWS(20, 21), J17: BUILDERS, J20: INS,
   // 美國
   U02: S(['波士頓', '紐約', '華盛頓']), U03: S(['西雅圖', '洛杉磯', '聖地牙哥']), U04: N('mall6:拉斯維加斯'), U05: N('mall5:奧蘭度'),
-  U06: N('guest4:邁阿密'), U07: N('gasCar:鳳凰城'), U09: (c, p) => tool(c, p, 13), U11: N('lab'), J06: N('lab:廣島'), U12: (c, p) => tool(c, p, 11), U15: (c, p) => tool(c, p, 2),
+  U06: N('guest4:邁阿密'), U07: N('gasCar:鳳凰城'), U09: (c, p) => tool(c, p, 13), U11: N('lab'), J06: N('lab:廣島'), U12: (c, p) => tool(c, p, 11), U15: N('blocked'),
   U16: DATE(7, 4, ['華盛頓', '紐約']), U17: DEPOSIT, U18: N('raisedToll:新紐奧良'), U19: N('carMine'), U20: INS,
   // 星座
   Z01: TOUR(['魔羯座區', '獅子座區', '雙子座區', '水瓶座區', '白羊座區', '天秤座區', '巨蟹座區', '射手座區', '雙魚座區', '金牛座區', '處女座區', '天蠍座區']),
@@ -838,7 +1043,7 @@ const MAP_MEASURES: Record<string, Measure> = {
   R17: (c, p) => chairs(c, p), R19: N('ev:10'),
   R01: N('study'), R02: N('verdict'), R03: N('parkGood'),
   R08: (c, p) => Object.values(c.stats(p)?.toolsBought ?? {}).reduce((a, b) => a + b, 0), R10: (c, p) => Math.min(c.n(p, 'mini:6'), c.n(p, 'mini:7'), c.n(p, 'mini:8')),
-  R20: (c, p) => Object.values(c.stats(p)?.cardsBought ?? {}).reduce((a, b) => a + b, 0),
+  R20: N('ev:13'),
   // the rest of the maps' tasks
   C09: (c, p) => c.paidToday(p, 'facPaid:武漢'), C13: N('springFest'), C20: DATE(1, 1, ['北京']),
   D04: N('volcano'), D08: N('armor20'), D10: N('missiled'), D18: N('extinct'),
@@ -852,7 +1057,7 @@ const MAP_MEASURES: Record<string, Measure> = {
   Z11: (c, p) => (c.own[p.id].clean >= 30 ? 1 : 0), Z13: N('lionKing'), Z15: N('goodFate3'),
   // 歌舞伎町
   B01: N('dashAway'), B02: N('kbv:tower'), B03: N('kbv:love'), B04: N('touted'), B05: N('protection'), B06: N('smash'), B07: N('gangArrest'), B08: N('bodyguard'),
-  B10: N('big777'), B11: (c, p) => ([117, 118, 37, 38].every(x => c.own[p.id].gotPrizes.has(x)) ? 1 : 0), B12: (c, p) => used(c, p, 38), B13: (c, p) => c.n(p, 'kbv:drunk') + c.n(p, 'kbv:cdrunk'),
+  B10: N('big777'), B11: (c, p) => ([117, 118, 37, 38].every(x => c.own[p.id].gotPrizes.has(x)) ? 1 : 0), B12: (c, p) => used(c, p, 38), B13: N('kbv:drunk'),
   B14: N('taxi'), B15: N('busy'), B16: N('kbo:tv'), B19: N('tollAt:黃金街'), B20: N('luckyStop:花園'),
   B17: (c, p) => { const fs = c.g.board.facilities.filter(f => f.owner === p.id + 1 && f.level > 0); const types = [10, 11, 12, 13, 4]; if (!types.every(t => fs.some(f => f.type === t))) return 0; return types.every(t => fs.some(f => f.type === t && f.level >= 5)) ? 3 : types.every(t => fs.some(f => f.type === t && f.level >= 3)) ? 2 : 1; },
 };

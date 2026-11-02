@@ -726,7 +726,7 @@ export class World implements WorldHooks {
     if (shown !== here && (q.human || p.human || shown === at)) yield { t: 'fx', kind: 'tycoon-notice', p: p.id, target: q.id, data: { text, icon: 'wanted' } };
     this.ticker(at, text, 'wanted', q.id);
     let sufferer = q.id;
-    yield* this.across(at, (function* () { sufferer = yield* c.cards.pardonOrFrame(q); })());
+    yield* this.across(at, (function* () { sufferer = yield* c.cards.pardonOrFrame(q, false, 'prison'); })());
     // 免罪卡 / 嫁禍卡: said on screen too (the user 2026-10-19), and in the log.
     if (sufferer !== q.id) {
       const said = sufferer < 0 ? `${this.name(q.id)}使用免罪卡，躲過了${this.name(p.id)}的通緝！` : `${this.name(q.id)}使用嫁禍卡，把通緝轉給${this.name(sufferer)}！`;

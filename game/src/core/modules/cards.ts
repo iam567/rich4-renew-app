@@ -335,7 +335,7 @@ export class Cards {
       if (!this.aiWants(p, id)) continue;
       yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
       yield* this.say(p, `使用${cardName(id)}`);
-      yield* this.play(p, id, false);
+      if (yield* this.play(p, id, false)) yield { t: 'fx', kind: 'card-done', p: p.id, data: { card: id } };
       return;
     }
   }
@@ -349,7 +349,9 @@ export class Cards {
     this.aiArg0 = arg0; this.aiArg1 = arg1;
     yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
     yield* this.say(p, `使用${cardName(id)}`);
-    return yield* this.play(p, id, false);
+    const ok = yield* this.play(p, id, false);
+    if (ok) yield { t: 'fx', kind: 'card-done', p: p.id, data: { card: id } };
+    return ok;
   }
 
   /** Human picks and plays a card from the turn menu (04 §2.2, §2.4): failures and cancels keep the card. */
@@ -368,7 +370,8 @@ export class Cards {
       if (cardDef(id)?.passive) { yield* this.say(p, `${cardName(id)}會自動使用`); continue; }
       yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
       yield* this.say(p, `使用${cardName(id)}`);
-      if (yield* this.play(p, id, true)) return;
+      // 'card-done': the card really worked (a watcher's word only, core/challenge.ts; the screen shows nothing).
+      if (yield* this.play(p, id, true)) { yield { t: 'fx', kind: 'card-done', p: p.id, data: { card: id } }; return; }
       yield { t: 'fx', kind: 'card-failed', p: p.id, data: { card: id } };
     }
   }
@@ -881,10 +884,11 @@ export class Cards {
 
   /** Pardon (21) or frame (19) before a punishment (06 §2.2): -1 = cancelled, otherwise who suffers it. */
   /** `local`: 大富豪模式's magic house — only someone in this city can be framed (17 §4, the user 2026-10-19). */
-  *pardonOrFrame(p: Player, local = false): Flow<number> {
+  /** `what`: the punishment it is about ('prison', 'hospital' …), told to watchers with the 免罪卡 (core/challenge.ts). */
+  *pardonOrFrame(p: Player, local = false, what?: string): Flow<number> {
     if (this.consume(p, 21)) {
       // _rich4_use_card_mianzuika: the announcement and the holder's card[0][20]; nobody else speaks.
-      yield { t: 'fx', kind: 'card', p: p.id, data: { card: 21 } };
+      yield { t: 'fx', kind: 'card', p: p.id, data: { card: 21, ...(what ? { what } : {}) } };
       return -1;
     }
     const r = yield* this.tryFrame(p, 0, 0, local);

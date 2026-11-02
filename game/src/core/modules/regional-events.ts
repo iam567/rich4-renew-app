@@ -278,7 +278,7 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
         return;
       }
       const days = fx.days * (r === 2 ? 2 : 1);
-      const target = yield* g.cards.pardonOrFrame(p);
+      const target = yield* g.cards.pardonOrFrame(p, false, fx.t);
       if (target < 0) { yield* result(g, p, e, 'blessed', [{ p: p.id, text: '免罪卡生效，逃過此劫' }]); return; }
       const q = g.players[target];
       yield* g.sendTo(q, fx.t, days);

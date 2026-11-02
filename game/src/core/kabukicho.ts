@@ -202,7 +202,7 @@ export class KabukichoRules implements MapRules {
       if (r === 1) return [{ p: p.id, text: `${g.objects.godName(p) || '神明'}保佑，逃過此劫` }];
       if (r === 2) days *= 2;
     }
-    const target = yield* g.cards.pardonOrFrame(p);
+    const target = yield* g.cards.pardonOrFrame(p, false, 'prison');
     if (target < 0) return [{ p: p.id, text: '免罪卡生效，逃過此劫' }];
     yield* g.sendTo(g.players[target], 'prison', days);
     const lines: ResultLine[] = [];

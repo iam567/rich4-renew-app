@@ -938,7 +938,7 @@ export class Game {
     for (const f of this.board.facilities) {
       if (f.type === 4 && f.owner === p.id + 1 && f.labDays) {
         f.labDays -= 1;
-        if (!f.labDays) yield* this.tools.labDone(p, this.tools.labToolId(f.labTool));
+        if (!f.labDays) yield* this.tools.labDone(p, this.tools.labToolId(f.labTool), f.id);
       }
     }
   }
