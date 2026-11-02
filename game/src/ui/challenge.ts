@@ -91,7 +91,7 @@ function monthShown(g: Game, p: number): string {
   const c = g.challengeTracker!, t = c.monthTask()!, v = c.monthValue(g.players[p]);
   if (t.kind === 'keep') return v === 0 ? '✓' : '✗';
   const val = t.money ? money(v) : String(v);
-  return t.kind === 'race' ? `${val} / ${t.money ? money(c.monthGoal()) : c.monthGoal()}` : val;
+  return val;
 }
 
 /** The month's card for the task list and the new month's notice: its picture, rule, goal, and everyone on it. */
@@ -103,10 +103,10 @@ export function monthCard(g: Game, face: (character: number) => string, big = fa
     const won = m.won.includes(p.id);
     return `<span class="${won ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? '<i class="chl-on">★★★</i>' : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
   }).join('');
-  el.innerHTML = `<img class="chl-month-pic" src="${MONTH_ART}/${t.id}.webp" alt="" onerror="this.style.visibility='hidden'">
+  el.innerHTML = `<span class="chl-month-art"><img class="chl-month-pic" src="${MONTH_ART}/${t.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
     <div class="chl-month-body"><small>本月任務・到 ${monthOf(g.date)} 月底${m.done ? '・已結束' : ''}</small>
       <b>${esc(t.name)}</b><p>${esc(monthlyDesc(t, c.monthGoal()))}</p><p class="chl-how">${esc(MONTHLY_RULE[t.kind])}</p>
-      <div class="chl-who">${who}</div></div>`;
+      <div class="chl-who${g.players.length > 4 ? ' many' : ''}">${who}</div></div>`;
   return el;
 }
 
@@ -115,7 +115,7 @@ export function monthNotice(g: Game, face: (character: number) => string, last: 
   const root = document.createElement('div');
   root.className = 'chl chl-notice';
   const names = (ids: number[]) => ids.map(i => esc(playerName(g.players[i]))).join('、');
-  const lines = last.map(r => `<p class="chl-last">上個月「${esc(r.task.name)}」：${r.won.length ? `${names(r.won)} 拿到 ★★★` : '沒有人拿到'}</p>`).join('');
+  const lines = last.map(r => `<p class="chl-last">上月「${esc(r.task.name)}」${r.won.length ? `${names(r.won)} ★★★` : '沒人拿到'}</p>`).join('');
   root.innerHTML = lines;
   root.append(monthCard(g, face, true));
   return root;
@@ -139,7 +139,8 @@ export class ChallengeBar {
   update(): { p: number; task: ChallengeTask; stars: number }[] {
     const g = this.g, c = g.challengeTracker!, got = this.watch.update();
     const b = this.el.querySelector('.chb-badge')!;
-    b.innerHTML = `<b>★ 任務</b>${g.players.map(p => `<span style="--c:${color(g, p.id)}"><img src="${this.face(p.character)}" alt="">${c.stars(p)}</span>`).join('')}`;
+    b.classList.toggle('many', g.players.length > 4);
+    b.innerHTML = `<b>★任務</b>${g.players.map(p => `<span style="--c:${color(g, p.id)}"><img src="${this.face(p.character)}" alt=""><em>${c.stars(p)}</em></span>`).join('')}`;
     const mb = this.el.querySelector<HTMLElement>('.chb-month')!, t = c.monthTask();
     mb.hidden = !t;
     if (t) { mb.classList.toggle('done', !!c.month?.done); mb.textContent = `本月：${t.name}${c.month?.done ? ' ✓' : ''}`; }
@@ -154,15 +155,16 @@ export function taskList(g: Game, face: (character: number) => string): HTMLElem
   const players = g.players;
   const order = [...c.tasks].sort((a, b) => (a.map === -1 ? 0 : 1) - (b.map === -1 ? 0 : 1) || a.id.localeCompare(b.id));
   const head = `<p class="chl-goal">${esc(challengeGoal(g))}</p>
-    <div class="chl-totals">${players.map(p => `<div style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><b>${esc(playerName(p))}</b><em>★ ${c.stars(p)}</em></div>`).join('')}</div>
+    <div class="chl-totals${players.length > 4 ? ' many' : ''}">${players.map(p => `<div style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><b>${esc(playerName(p))}</b><em>★${c.stars(p)}</em></div>`).join('')}</div>
     ${c.monthly ? '<div class="chl-month-slot"></div>' : ''}`;
   const rows = order.map(t => {
     const full = fullStars(t);
     const how = t.once ? `可獲得 ${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
-    const who = players.map(p => { const s = starsOf(g, c, t, p.id); return `<span class="${s ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${starRow(s, full)}</span>`; }).join('');
+    // Each player: the face and the stars earned (the full marks are on the name's line), all on the tiers' line.
+    const who = players.map(p => { const s = starsOf(g, c, t, p.id); return `<span class="${s ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><i class="chl-on">${s ? `★${s}` : ''}</i></span>`; }).join('');
     const done = players.some(p => starsOf(g, c, t, p.id) >= full);
     return `<li class="${done ? 'done' : ''}"><div class="chl-name"><b>${esc(t.name)}</b>${t.map === -1 ? '' : '<small>本圖</small>'}<i>${'★'.repeat(full)}</i></div>
-      <p>${esc(t.desc)}</p>${how ? `<p class="chl-how">${how}</p>` : ''}<div class="chl-who">${who}</div></li>`;
+      <p class="chl-desc">${esc(t.desc)}</p><div class="chl-foot"><p class="chl-how">${how}</p><div class="chl-who${players.length > 4 ? ' many' : ''}">${who}</div></div></li>`;
   });
   // Pages, not a scrolled list (the user 2026-11-02: some devices don't scroll): as many tasks as fit, ‹ › or a swipe.
   root.innerHTML = `${head}<ul class="chl-list"></ul><div class="chl-nav"><button class="chip" data-p="-1">‹</button><span></span><button class="chip" data-p="1">›</button></div>`;

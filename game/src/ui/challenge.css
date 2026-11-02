@@ -59,11 +59,99 @@
 .chl-month .chl-who span { opacity: 1; }
 .chl-month .chl-who span.got { font-weight: 700; }
 .chl-month-none { margin: 0; font-size: 12px; }
-.chl.chl-notice { height: auto; max-height: min(70vh, 640px); width: min(520px, 86vw); }
-.chl-last { margin: 0 0 8px; text-align: center; font-weight: 700; font-size: 14px; }
-.chl-month.big { flex-direction: column; align-items: center; text-align: center; padding: 12px; }
-.chl-month.big .chl-month-pic { width: min(180px, 42vw); }
-.chl-month.big b { font-size: 20px; }
-.chl-month.big p { font-size: 14px; }
-.chl-month.big small { font-size: 12px; }
-.chl-month.big .chl-who { justify-content: center; }
+.chl-month-art { flex: none; display: flex; }
+/* The new month's notice fills its sheet: the picture takes the height left (portrait) or the left side (landscape). */
+.chl.chl-notice { width: 100%; height: auto; flex: 1 1 auto; min-height: 0; }
+.chl-last { flex: none; margin: 0 0 8px; text-align: center; font-weight: 700; font-size: 15px; color: #fff; text-shadow: 0 2px 0 #0b2160; }
+.chl-month.big { flex: 1 1 auto; min-height: 0; margin: 0; flex-direction: column; align-items: center; justify-content: center; gap: 10px; text-align: center; padding: 16px 14px; }
+.chl-month.big .chl-month-art { flex: 1 1 0; min-height: 0; max-height: 440px; width: 100%; justify-content: center; }
+.chl-month.big .chl-month-pic { width: auto; height: 100%; max-width: 100%; object-fit: contain; border-radius: 14px; box-shadow: 0 0 0 3px #fff, 0 6px 14px rgba(0, 0, 0, .25); }
+.chl-month.big .chl-month-body { flex: none; width: 100%; }
+.chl-month.big small { font-size: 13px; }
+.chl-month.big b { display: block; margin: 2px 0; font-size: 26px; }
+.chl-month.big p { font-size: 16px; }
+.chl-month.big .chl-how { display: inline-block; margin-top: 6px; padding: 3px 12px; border-radius: 999px; font-size: 14px; color: #fff; background: #2f74d8; }
+.chl-month.big .chl-who { justify-content: center; gap: 10px; margin-top: 10px; }
+.chl-month.big .chl-who span { font-size: 15px; gap: 4px; }
+.chl-month.big .chl-who img { width: 30px; height: 30px; }
+/* Everyone's progress on one line, never wrapped (the user 2026-11-02): smaller with more players. */
+.chl-month .chl-who { flex-wrap: nowrap; white-space: nowrap; min-width: 0; }
+.chl-month .chl-who span { flex: 0 1 auto; min-width: 0; }
+.chl-month .chl-who.many { gap: 6px; }
+.chl-month .chl-who.many span { flex-direction: column; font-size: 10px !important; gap: 0; line-height: 1.1; }
+.chl-month .chl-who.many img { width: 20px !important; height: 20px !important; }
+@media (orientation: landscape) {
+  .chl-month.big { flex-direction: row; gap: 18px; text-align: left; padding: 12px 18px; }
+  .chl-month.big .chl-month-art { flex: none; align-self: stretch; max-height: none; width: auto; max-width: 42%; }
+  .chl-month.big .chl-month-body { flex: 1 1 0; min-width: 0; }
+  .chl-month.big .chl-who { justify-content: flex-start; }
+}
+/* A short landscape screen: the goal, totals and the month's card kept low, so the task pages keep their room. */
+@media (orientation: landscape) and (max-height: 560px) {
+  .chl-goal { margin: 0 0 4px; font-size: 13px; }
+  .chl-totals { margin-bottom: 4px; }
+  .chl-totals img { width: 22px; height: 22px; }
+  .chl-month:not(.big) { align-items: center; gap: 8px; margin-bottom: 4px; padding: 4px 8px; }
+  .chl-month:not(.big) .chl-month-pic { width: 30px; border-radius: 5px; }
+  .chl-month:not(.big) .chl-month-body > * { display: inline; margin: 0 8px 0 0; }
+  .chl-month:not(.big) .chl-month-body > b { font-size: 14px; }
+  .chl-month:not(.big) .chl-who { display: inline-flex; vertical-align: middle; margin: 0; gap: 2px 8px; }
+}
+/* One line each (the user 2026-11-02: no wrapped rows): the month's label, rule and last month's result. */
+.chl-month small, .chl-month .chl-how, .chl-last { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+
+/* A task: its name, what counts (two lines at most), then the tiers and everyone's stars on one line. */
+.chl-list .chl-desc { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.chl-foot { display: flex; align-items: center; gap: 6px; margin-top: 3px; min-width: 0; }
+.chl-foot .chl-how { flex: 1 1 auto; min-width: 0; margin: 0 !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chl-foot .chl-who { flex: none; flex-wrap: nowrap; margin: 0; gap: 5px; }
+.chl-foot .chl-who span { gap: 1px; font-size: 11px; font-weight: 700; }
+.chl-foot .chl-who img { width: 18px; height: 18px; }
+.chl-foot .chl-who.many { gap: 2px; }
+.chl-foot .chl-who.many img { width: 14px; height: 14px; }
+.chl-name { white-space: nowrap; min-width: 0; }
+.chl-name b { overflow: hidden; text-overflow: ellipsis; }
+.chl-totals { flex-wrap: nowrap; white-space: nowrap; }
+.chl-totals div { min-width: 0; }
+.chl-goal { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+@media (orientation: landscape) and (max-height: 560px) {
+  .chl { height: min(calc(100vh - 96px), 640px); }
+  .chl-list { grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 5px; }
+  .chl-list li { padding: 4px 7px; }
+  .chl-name b { font-size: 13px; }
+  .chl-list p { font-size: 11px; line-height: 1.35; }
+  .chl-list .chl-desc { -webkit-line-clamp: 1; }
+  .chl-foot { margin-top: 1px; }
+  .chl-foot .chl-who img { width: 16px; height: 16px; }
+  .chl-totals img { width: 20px; height: 20px; }
+}
+@media (orientation: portrait) {
+  .chl-list { gap: 5px; }
+  .chl-list li { padding: 4px 8px; }
+  .chl-name b { font-size: 14px; }
+  .chl-list p { margin-top: 1px; line-height: 1.3; }
+  .chl-foot { margin-top: 2px; }
+}
+/* Narrow screens: the totals are the faces and stars (names under 520px wide would not fit one line). */
+@media (max-width: 560px) { .chl-totals b { display: none; } .chl-totals { gap: 12px; } .chl-totals img { width: 24px; height: 24px; } }
+.chl-totals div { flex: none; gap: 3px; }
+.chl-totals em { font-size: 15px; }
+/* Five to eight players (派對模式): each face with its stars under it. */
+.chl-totals.many { gap: 7px; }
+.chl-totals.many div { flex-direction: column; gap: 0; }
+.chl-totals.many img { width: 22px; height: 22px; }
+.chl-totals.many em { font-size: 11px; line-height: 1.1; }
+.chl-totals.many b { display: none; }
+/* Room for three-digit stars on the badge, last month's line and everyone's progress (checked at 375px wide). */
+.chb-badge { gap: 5px; padding: 3px 7px; }
+.chb-badge span { gap: 1px; }
+.chl-last { font-size: 13px; }
+.chl-month.big .chl-who span { font-size: 14px; }
+.chl-month.big .chl-who img { width: 26px; height: 26px; }
+.chb-badge em { font-style: normal; }
+/* Five to eight players: the faces only, each with its stars under it. */
+.chb-badge.many { gap: 8px; padding: 2px 10px; border-radius: 16px; }
+.chb-badge.many b { display: none; }
+.chb-badge.many span { flex-direction: column; gap: 0; }
+.chb-badge.many img { width: 20px; height: 20px; }
+.chb-badge.many em { font-size: 10px; line-height: 1.1; }

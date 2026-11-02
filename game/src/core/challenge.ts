@@ -839,8 +839,8 @@ export class Challenge {
     this.month = { id: t.id, seq: this.monthSeq++, since: g.daysElapsed, goal, base, mo: g.players.map(() => ({})), won: [], done: false };
   }
 
-  /** The goal now: every rival is the living players less one. */
-  monthGoal(): number { const m = this.month; return !m ? 0 : m.goal < 0 ? Math.max(1, this.live().length - 1) : m.goal; }
+  /** The goal now: every rival is the game's players (not bankrupt; not yet on the board at the start too) less one. */
+  monthGoal(): number { const m = this.month; return !m ? 0 : m.goal < 0 ? Math.max(1, this.g.players.filter(p => !p.bankrupt && this.g.here(p)).length - 1) : m.goal; }
 
   /** What player `p` has done toward the month's card (堅持: what broke it). */
   monthValue(p: Player, f?: (x: MonthX) => number): number {
