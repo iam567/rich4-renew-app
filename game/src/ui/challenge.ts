@@ -68,7 +68,7 @@ export function taskList(g: Game, face: (character: number) => string): HTMLElem
     <div class="chl-totals">${players.map(p => `<div style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt=""><b>${esc(playerName(p))}</b><em>★ ${c.stars(p)}</em></div>`).join('')}</div>`;
   const rows = order.map(t => {
     const full = fullStars(t);
-    const how = t.once ? `一次就${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
+    const how = t.once ? `可獲得 ${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
     const who = players.map(p => { const s = starsOf(g, c, t, p.id); return `<span class="${s ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${starRow(s, full)}</span>`; }).join('');
     const done = players.some(p => starsOf(g, c, t, p.id) >= full);
     return `<li class="${done ? 'done' : ''}"><div class="chl-name"><b>${esc(t.name)}</b>${t.map === -1 ? '' : '<small>本圖</small>'}<i>${'★'.repeat(full)}</i></div>
