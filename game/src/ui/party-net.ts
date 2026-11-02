@@ -70,14 +70,20 @@ export function myRegion(): string {
  * goes on with them) and a joining phone gets them with the room; the game starts with them (StartMsg.settings).
  * Indexes into core/types.ts FUNDS, LAND_LIMIT_MONTHS, DAY_LIMITS, VICTORY_MULTIPLES (labels: rule-options.ts).
  */
-export interface PartyRules { fundIndex: number; traffic: 0 | 1 | 2; landLimitIndex: number; daysLimitIndex: number; victoryIndex: number }
+export interface PartyRules {
+  fundIndex: number; traffic: 0 | 1 | 2; landLimitIndex: number; daysLimitIndex: number; victoryIndex: number;
+  /** 挑戰模式 (docs/rules/26 §7.1): 0 a normal game, else the deadline PARTY_CHALLENGE_YEARS[i] (online: always one). */
+  challenge: number;
+}
+/** 挑戰模式's deadlines online (the user 2026-11-02: 1 year by default, 3 / 5 to pick, no unlimited game). */
+export const PARTY_CHALLENGE_YEARS = [0, 1, 3, 5];
 /** As every 派對模式 game started before the rules could be picked: 20萬, 步行, no limits. */
-export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0 };
+export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0 };
 /** Rules as kept: each a whole number in its range, else the default. */
 export function cleanRules(r: unknown): PartyRules {
   const o = (r ?? {}) as Record<string, unknown>;
   const at = (k: keyof PartyRules, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
-  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6) };
+  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE_YEARS.length) };
 }
 /** What the host sends when the game starts. */
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
@@ -89,7 +95,9 @@ export function startMsg(r: Room, fill: number, startDate: number, seed: number)
   const used = new Set(r.members.map(m => m.character));
   const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
   const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
-  return { settings: { mapId: Number(r.map), players, ...r.rules, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
+  const { challenge, ...rules } = r.rules;
+  const mode = challenge ? { challenge: true, challengeYears: PARTY_CHALLENGE_YEARS[challenge], daysLimitIndex: 0, victoryIndex: 0 } : {};
+  return { settings: { mapId: Number(r.map), players, ...rules, ...mode, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
 }
 
 type Msg =

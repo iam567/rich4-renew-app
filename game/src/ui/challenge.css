@@ -1,0 +1,40 @@
+/* 挑戰模式 (ui/challenge.ts): the badge over the map, the task list and the closing stars. */
+.chb { position: absolute; left: 104px; right: 8px; top: 8px; z-index: 5; display: flex; justify-content: flex-start; pointer-events: none; }
+.chb-badge { pointer-events: auto; max-width: 100%; overflow: hidden; display: flex; align-items: center; gap: 8px; border: 2px solid #fff; border-radius: 999px; padding: 3px 10px;
+  color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); white-space: nowrap; box-shadow: 0 3px 0 rgba(0,0,0,.25), 0 4px 8px rgba(0,0,0,.25); }
+.chb-badge b { font-size: 14px; }
+.chb-badge span { display: flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; }
+.chb-badge img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px var(--c); background: #fff; }
+
+.chl { width: min(720px, 86vw); max-height: min(64vh, 640px); overflow: auto; padding: 2px 4px; color: #4a2a10; -webkit-overflow-scrolling: touch; }
+.chl-goal { margin: 2px 0 8px; text-align: center; font-weight: 700; font-size: 15px; }
+.chl-totals { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px 14px; margin-bottom: 10px; }
+.chl-totals div { display: flex; align-items: center; gap: 5px; }
+.chl-totals img, .chl-who img, .chl-rank img { border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 2px var(--c); }
+.chl-totals img { width: 28px; height: 28px; }
+.chl-totals b { font-size: 13px; }
+.chl-totals em { font-style: normal; font-weight: 700; color: #d07a00; }
+.chl-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 8px; }
+.chl-list li { text-align: left; padding: 7px 9px; border-radius: 10px; background: rgba(255, 255, 255, .7); box-shadow: inset 0 0 0 1px rgba(120, 70, 20, .18); }
+.chl-list li.done { background: rgba(255, 236, 160, .85); }
+.chl-name { display: flex; align-items: baseline; gap: 6px; }
+.chl-name b { font-size: 15px; }
+.chl-name small { font-size: 11px; padding: 0 5px; border-radius: 6px; color: #fff; background: #3c8fd6; }
+.chl-name i { margin-left: auto; font-style: normal; color: #e8a400; letter-spacing: -1px; }
+.chl-list p { margin: 3px 0 0; font-size: 12px; line-height: 1.4; }
+.chl-list .chl-how { color: #9a5a10; }
+.chl-who { display: flex; flex-wrap: wrap; gap: 4px 10px; margin-top: 5px; }
+.chl-who span { display: flex; align-items: center; gap: 2px; font-size: 12px; opacity: .55; }
+.chl-who span.got { opacity: 1; }
+.chl-who img { width: 18px; height: 18px; }
+.chl-who i { font-style: normal; letter-spacing: -1px; }
+.chl-on { color: #f0a800; }
+.chl-off { color: #c9b9a0; }
+.chl-rank { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+.chl-rank li { display: grid; grid-template-columns: 40px 1fr auto; grid-template-rows: auto auto; align-items: center; column-gap: 10px; padding: 6px 12px;
+  border-radius: 12px; background: rgba(255, 255, 255, .7); }
+.chl-rank li.win { background: linear-gradient(#fff3a0, #ffd24a); }
+.chl-rank img { grid-row: 1 / 3; width: 38px; height: 38px; }
+.chl-rank b { font-size: 15px; }
+.chl-rank em { grid-row: 1 / 3; grid-column: 3; font-style: normal; font-weight: 800; font-size: 20px; color: #d07a00; }
+.chl-rank small { font-size: 12px; opacity: .8; }

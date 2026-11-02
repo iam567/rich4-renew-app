@@ -9,7 +9,7 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, startMsg, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
+import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_CHALLENGE_YEARS, PARTY_VERSION, Room, ROOM_MAX, startMsg, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
 import { RULE_ITEMS, RULE_LABELS } from './rule-options';
 import { sameVersion, verOf } from './party-version';
 import { inlineChat } from './party-chat';
@@ -34,16 +34,22 @@ export interface PartyDeps {
   back: () => void;
 }
 
-const RULE_KEYS = Object.keys(RULE_LABELS) as (keyof PartyRules)[];
+const RULE_KEYS = Object.keys(RULE_LABELS) as (keyof typeof RULE_LABELS)[];
+/** 挑戰模式 has no 期限／勝利條件 of its own kind (its deadline is the 模式 row). */
+const CHALLENGE_OFF = new Set<string>(['daysLimitIndex', 'victoryIndex']);
+const MODE_ITEMS = PARTY_CHALLENGE_YEARS.map(y => (y ? `挑戰 ${y} 年` : '大富翁'));
 /**
  * The room's 「規則」 row (issue #31): everyone sees the rules (a guest's redrawn as the host changes them); the host
  * taps the row to unfold the new-game screen's steppers.
  */
 function rulesHtml(rules: PartyRules, host: boolean, open: boolean): string {
-  const sum = RULE_KEYS.map(k => `<span>${RULE_LABELS[k]}<b>${RULE_ITEMS[k][rules[k]]}</b></span>`).join('');
-  if (!host) return `<div class="pt-row"><b>規則</b><div class="pt-rsum">${sum}</div></div>`;
-  return `<div class="pt-row"><b>規則</b><button class="pt-rsum host${open ? ' open' : ''}" data-a="rules">${sum}<i>${open ? '收起 ▲' : '設定 ▼'}</i></button></div>
-    ${open ? `<div class="pt-rset">${RULE_KEYS.map(k => `<div class="pt-ropt"><span>${RULE_LABELS[k]}</span><div class="stepper">
+  const keys = RULE_KEYS.filter(k => !rules.challenge || !CHALLENGE_OFF.has(k));
+  const sum = keys.map(k => `<span>${RULE_LABELS[k]}<b>${RULE_ITEMS[k][rules[k]]}</b></span>`).join('');
+  // 模式 (docs/rules/26 §7.1): 大富翁 or 挑戰模式 with its deadline; the host picks it like the rules.
+  const mode = `<div class="pt-row"><b>模式</b>${host ? `<div class="chips">${MODE_ITEMS.map((m, i) => `<button class="chip${rules.challenge === i ? ' on' : ''}" data-mode="${i}">${m}</button>`).join('')}</div>` : `<span class="pt-map">${MODE_ITEMS[rules.challenge]}</span>`}</div>`;
+  if (!host) return `${mode}<div class="pt-row"><b>規則</b><div class="pt-rsum">${sum}</div></div>`;
+  return `${mode}<div class="pt-row"><b>規則</b><button class="pt-rsum host${open ? ' open' : ''}" data-a="rules">${sum}<i>${open ? '收起 ▲' : '設定 ▼'}</i></button></div>
+    ${open ? `<div class="pt-rset">${keys.map(k => `<div class="pt-ropt"><span>${RULE_LABELS[k]}</span><div class="stepper">
       <button data-rule="${k}" data-d="-1">‹</button><button class="val" data-rule="${k}" data-d="1">${RULE_ITEMS[k][rules[k]]}</button><button data-rule="${k}" data-d="1">›</button></div></div>`).join('')}</div>` : ''}`;
 }
 
@@ -162,11 +168,13 @@ export function openParty(d: PartyDeps): void {
       const rule = t.closest<HTMLElement>('[data-rule]')?.dataset;
       if (rule && r.host) {
         audio.ui('click');
-        const key = rule.rule as keyof PartyRules, n = RULE_ITEMS[key].length;
+        const key = rule.rule as keyof typeof RULE_LABELS, n = RULE_ITEMS[key].length;
         r.setRules({ [key]: (r.rules[key] + Number(rule.d) + n) % n }); // → onLobby: redrawn here, sent to everyone
         return;
       }
       if (a === 'rules') { audio.ui('click'); rulesOpen = !rulesOpen; render(); return; }
+      const mode = t.closest<HTMLElement>('[data-mode]')?.dataset.mode;
+      if (mode !== undefined && r.host) { audio.ui('click'); r.setRules({ challenge: Number(mode) }); return; }
       if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
       if (f) { audio.ui('click'); fill = Number(f.dataset.fill); render(); return; }
       if (a === 'char') {

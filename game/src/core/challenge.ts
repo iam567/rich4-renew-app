@@ -17,6 +17,10 @@ export { CHALLENGE_TASKS, type ChallengeTask };
 
 export const CHALLENGE_TOTAL = 120;
 export const CHALLENGE_WIN = 100;
+/** The maps with a task list (docs/rules/26-challenge-tasks.md §2–§16), in the list's order. */
+export const CHALLENGE_MAPS = [0, 1, 2, 3, 4, 5, 6, 7, 100, 101, 102, 103, 104, 106, 107];
+/** The deadlines to pick (26 §1): 0 = none (the first to 100 stars wins). */
+export const CHALLENGE_YEARS = [0, 1, 3, 5];
 
 /** The tasks a game on `mapId` can draw: the shared library (less those the map skips) and the map's own. */
 export const taskPool = (mapId: number) => CHALLENGE_TASKS.filter(t => (t.map === -1 && !t.skip?.includes(mapId)) || t.map === mapId);

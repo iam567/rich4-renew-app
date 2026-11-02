@@ -60,6 +60,8 @@ import { CHAT_MODES, ChatBox, chatMode, CITY_COLORS, cityThumb, installWorldScre
 import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
+import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
+import { ChallengeBar, starTable, taskList } from './challenge';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
@@ -352,7 +354,9 @@ function newGame() {
     mapId: 2, count: 4, fundIndex: 1, traffic: 0 as 0 | 1 | 2, daysLimitIndex: 0, victoryIndex: 0, landLimitIndex: 0,
     /** 電腦難度 (core/smart-ai.ts, Game.aiLevel): 0 簡單 = the original's computer, 1 中級, 2 困難; not in 大富豪模式. */
     aiLevel: 0 as 0 | 1 | 2,
-    kind: 'orig' as MapInfo['kind'] | 'tycoon',
+    /** 挑戰模式's deadline (docs/rules/26 §1): CHALLENGE_YEARS[i]. */
+    yearsIndex: 0,
+    kind: 'orig' as MapInfo['kind'] | 'tycoon' | 'challenge',
     slots: [{ character: 9, human: true }, { character: 4, human: false }, { character: 3, human: false }, { character: 0, human: false }],
   };
   const face = (c: number) => b.art('Data', 2, c)?.src ?? '';
@@ -387,8 +391,9 @@ function newGame() {
   window.addEventListener('resize', fit);
   const render = () => {
     // 大富豪模式 (docs/rules/17): the five cities, your character against the other eleven.
-    const ty = state.kind === 'tycoon';
-    const list = maps.filter(m => m.kind === state.kind && !m.hidden);
+    const ty = state.kind === 'tycoon', cm = state.kind === 'challenge';
+    // 挑戰模式 (docs/rules/26): the maps with a task list, original and custom together.
+    const list = maps.filter(m => !m.hidden && (cm ? CHALLENGE_MAPS.includes(m.id) : m.kind === state.kind));
     const pages = Math.max(1, Math.ceil(list.length / PER_PAGE));
     page = Math.min(page, pages - 1);
     const shown = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
@@ -407,7 +412,8 @@ function newGame() {
       <section class="ng-maps-sec"><div class="ng-head"><h3>地圖</h3><div class="chips">
           <button class="chip${state.kind === 'orig' ? ' on' : ''}" data-maps="orig">原版地圖</button>
           <button class="chip${state.kind === 'custom' ? ' on' : ''}" data-maps="custom">自製地圖 ${maps.filter(m => m.custom && !m.hidden).length}</button>
-          <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button></div>
+          <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button>
+          <button class="chip${cm ? ' on' : ''}" data-maps="challenge">挑戰模式</button></div>
           ${pages > 1 ? `<div class="ng-pager"><button class="chip" data-page="-1">‹</button><span>${page + 1}/${pages}</span><button class="chip" data-page="1">›</button></div>` : ''}</div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
           <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : `<div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>`}</section>
@@ -429,7 +435,8 @@ function newGame() {
         ${opt(RULE_LABELS.fundIndex, 'fundIndex', RULE_ITEMS.fundIndex)}
         ${opt(RULE_LABELS.traffic, 'traffic', RULE_ITEMS.traffic)}
         ${opt(RULE_LABELS.landLimitIndex, 'landLimitIndex', RULE_ITEMS.landLimitIndex)}
-        ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
+        ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : cm ? `${opt('期限', 'yearsIndex', CHALLENGE_YEARS.map(y => (y ? `${y} 年` : '不限')))}
+        <p class="ng-date">${CHALLENGE_YEARS[state.yearsIndex] ? '期限到時星最多的人獲勝' : '先拿到 100 顆星的人獲勝'}・不會破產，錢不夠就欠銀行</p>` : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
         ${opt(RULE_LABELS.victoryIndex, 'victoryIndex', RULE_ITEMS.victoryIndex)}
         ${opt('電腦難度', 'aiLevel', ['簡單', '中級', '困難'])}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
@@ -447,7 +454,11 @@ function newGame() {
     if (d.back) { app.querySelector('.ng')?.remove(); window.removeEventListener('resize', fit); title(); return; }
     if (d.page) page = Math.max(0, page + Number(d.page));
     if (d.maps === 'tycoon') { state.kind = 'tycoon'; render(); return; }
-    if (d.maps) {
+    if (d.maps === 'challenge') {
+      state.kind = 'challenge';
+      if (!CHALLENGE_MAPS.includes(state.mapId)) state.mapId = CHALLENGE_MAPS[0];
+      page = 0;
+    } else if (d.maps) {
       state.kind = d.maps as MapInfo['kind'];
       const first = maps.find(m => m.kind === state.kind && !m.hidden);
       if (first && !maps.some(m => m.id === state.mapId && m.kind === state.kind && !m.hidden)) state.mapId = first.id;
@@ -489,10 +500,11 @@ function newGame() {
       window.removeEventListener('resize', fit);
       const players = state.slots.slice(0, state.count);
       if (!players.some(p => p.human)) players[0].human = true;
+      const cm = state.kind === 'challenge';
       start({
         mapId: state.mapId, players, fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex,
-        daysLimitIndex: state.daysLimitIndex, victoryIndex: state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
-        ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}),
+        daysLimitIndex: cm ? 0 : state.daysLimitIndex, victoryIndex: cm ? 0 : state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
+        ...(cm ? { challenge: true, challengeYears: CHALLENGE_YEARS[state.yearsIndex] } : state.aiLevel ? { aiLevel: state.aiLevel } : {}),
       });
       return;
     }
@@ -1022,6 +1034,19 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const openLog = () => void hud.sheetNode('各地動態', logPanel(ty!.world, bank!));
   if (bar) { stage.append(bar.el); bar.onOpen = openLog; }
   if (chat) { stage.append(chat.el); chat.onOpen = openLog; }
+  // 挑戰模式 (docs/rules/26 §4): everyone's stars over the map, the task list on a tap and at the start of a new game.
+  const faceOf = (c: number) => bank!.art('Data', 2, c)?.src ?? '';
+  const challenge = game.challengeTracker ? new ChallengeBar(game, faceOf) : null;
+  const openTasks = () => hud.sheetNode('挑戰任務', taskList(game, faceOf));
+  if (challenge) {
+    stage.append(challenge.el);
+    challenge.onOpen = () => void openTasks();
+    if (!loaded) { await openTasks(); if (me !== session) return; }
+  }
+  /** Stars just earned: a note each (the badge redrawn). */
+  const starNotes = () => {
+    for (const x of challenge?.update() ?? []) hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+  };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
   const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),
     chat: chat ? l => chat.push(l) : undefined, mapIndex: () => ty?.world.view() ?? 0 });
@@ -1307,6 +1332,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         // Anyone's turn (a computer's too): the big clips of the tools they hold start loading in idle time.
         warmFor(game.players[s.p]);
         hud.refresh();
+        starNotes();
         await pause(250);
         break;
       case 'airdrop':
@@ -1400,6 +1426,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         hud.refresh();
         bar?.update();
         hud.note(`—— ${format(s.date)} ——`);
+        starNotes();
         break;
       case 'fx':
         if (fxScreens[s.kind]) {
@@ -1468,6 +1495,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         }
         {
           // The results screen (docs/rules/20 §4), then 「下一局」 (another map, the same settings) or the title.
+          if (challenge) { starNotes(); await hud.sheetNode('挑戰結果', starTable(game, s.winner, faceOf)); }
           const results = gameResults(game, s.winner);
           run = recordResult(run, results);
           const humans = game.players.filter(p => p.human).map(p => p.character);
