@@ -46,6 +46,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   // 派對模式's bar icons and the characters' reaction stickers (party-chat.ts, tools/tycoon-art/party_icons.py).
   if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
+  // 挑戰模式's picture cards and star sticker (ui/collection.ts, tools/tycoon-art/challenge_cards.py).
+  if (existsSync(join(src, 'maps/remake/challenge'))) for (const f of readdirSync(join(src, 'maps/remake/challenge'))) if (f.endsWith('.webp')) copy(`maps/remake/challenge/${f}`);
   // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps), and the APARTMENT
   // HOTEL 11 towers (ui/ah11.ts: map/2611..2615 on 日本 and the five cities).
   for (const res of ['2604', '2605', '2611', '2612', '2613', '2614', '2615']) {

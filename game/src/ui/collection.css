@@ -1,0 +1,37 @@
+/* 圖鑑 (ui/collection.ts): 挑戰模式's picture cards, a group and a page at a time. */
+.col-overlay { position: fixed; inset: 0; z-index: 60; display: grid; place-items: center; background: rgba(10, 20, 50, .55); }
+.col-sheet { width: min(860px, 94vw); height: min(92vh, 760px); display: flex; flex-direction: column; gap: 6px; }
+.col-count { margin: 4px 0 0; text-align: center; font-weight: 700; }
+.col-group, .col-nav { flex: none; display: flex; align-items: center; justify-content: center; gap: 12px; }
+.col-group b { min-width: 150px; text-align: center; font-size: 16px; }
+.col-nav span { min-width: 56px; text-align: center; font-weight: 700; }
+.col-group button, .col-nav button { min-width: 46px; font-size: 18px; }
+.col-nav button:disabled { opacity: .35; }
+.col-grid { flex: 1 1 auto; min-height: 0; width: 100%; align-self: stretch; box-sizing: border-box; padding: 0 6px; overflow: hidden; display: grid; grid-template-columns: repeat(var(--cols, 4), 1fr); gap: 8px;
+  align-content: start; touch-action: pan-y; }
+.col-card { position: relative; aspect-ratio: 3 / 4; padding: 0; border: 3px solid #fff; border-radius: 12px; overflow: hidden; background: #1c2a5a;
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .25); cursor: pointer; }
+.col-card.none { display: grid; place-items: center; background: linear-gradient(#3a4a80, #1c2a5a); border-color: #8fa0d0; }
+.col-card.none b { color: #c8d4ff; font-size: 22px; letter-spacing: 2px; }
+.col-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.col-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 4px 5px; color: #fff; font-size: 13px; font-weight: 700; text-align: center;
+  background: linear-gradient(transparent, rgba(20, 10, 40, .85)); text-shadow: 0 1px 2px #000; }
+.col-stars { position: absolute; left: 3px; top: 3px; right: 3px; display: flex; pointer-events: none; }
+.col-stars img { width: 26%; max-width: 34px; min-width: 18px; margin-right: -4%; transform: rotate(calc((var(--i) - 1) * 10deg)); }
+.col-detail { position: absolute; inset: 0; z-index: 2; display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 18px; padding: 16px;
+  background: rgba(10, 20, 50, .94); }
+.col-big { width: min(300px, 70vw, 50vh); }
+.col-big .col-card { width: 100%; cursor: default; }
+.col-big .col-name { font-size: 20px; }
+.col-big .col-stars img { max-width: 64px; }
+.col-big .col-card.none b { font-size: 40px; }
+.col-info { max-width: 340px; color: #fff; text-align: left; }
+.col-info h3 { margin: 0 0 4px; font-size: 22px; }
+.col-info small { opacity: .8; }
+.col-info p { margin: 8px 0 0; line-height: 1.5; }
+.col-info .col-how { color: #ffd76a; }
+.col-info .col-best { color: #bfe3ff; }
+.title-cards { position: absolute; right: 14px; top: 14px; z-index: 3; display: flex; align-items: center; gap: 6px; padding: 5px 14px;
+  border: 2px solid #fff; border-radius: 999px; color: #5a2d00; font-weight: 700; background: linear-gradient(#fff07a, #ffbf2e);
+  box-shadow: 0 3px 0 rgba(0, 0, 0, .25), 0 4px 8px rgba(0, 0, 0, .25); }
+.title-cards img { width: 22px; height: 22px; }

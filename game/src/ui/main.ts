@@ -62,6 +62,7 @@ import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
 import { ChallengeBar, starTable, taskList } from './challenge';
+import { earnCards, openCollection } from './collection';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
@@ -171,6 +172,7 @@ function title() {
   audio.setMusicSet(null); // the title and everything outside 激情歲月 play the original's music
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
+    <button class="title-cards" data-act="cards"><img src="${ASSETS}/maps/remake/challenge/star.webp" alt="">圖鑑</button>
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
     <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div>
     <div class="title-ver">v${__APP_VERSION__}</div></div>`;
@@ -183,6 +185,7 @@ function title() {
     if (act === 'party') openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} });
     if (act === 'load') void openLoad();
     if (act === 'option') options();
+    if (act === 'cards') void openCollection(app, mapName); // 挑戰模式's picture cards (docs/rules/26 §7.2)
   };
   afterLoadTrouble();
 }
@@ -1043,9 +1046,19 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     challenge.onOpen = () => void openTasks();
     if (!loaded) { await openTasks(); if (me !== session) return; }
   }
-  /** Stars just earned: a note each (the badge redrawn). */
+  /**
+   * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts),
+   * a new card with its own note.
+   */
   const starNotes = () => {
-    for (const x of challenge?.update() ?? []) hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+    const mine: Record<string, number> = {};
+    for (const x of challenge?.update() ?? []) {
+      hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+      if (room ? room.mine.has(x.p) : game.players[x.p].human) mine[x.task.id] = Math.max(mine[x.task.id] ?? 0, x.stars);
+    }
+    if (Object.keys(mine).length) void earnCards(mine).then(fresh => {
+      for (const id of fresh) hud.note(`獲得新圖卡「${game.challengeTracker!.tasks.find(t => t.id === id)?.name ?? ''}」！`);
+    });
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
   const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),
