@@ -18,7 +18,7 @@ import { Stocks } from './modules/stocks';
 import { Tools, type ToolDef } from './modules/tools';
 import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { SmartAi } from './smart-ai';
-import { Challenge, CHALLENGE_WIN } from './challenge';
+import { Challenge, CHALLENGE_WIN, taskPool } from './challenge';
 import { ChallengeAi } from './challenge-ai';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
@@ -357,9 +357,9 @@ export class Game {
     this.forks.init();
     // 大富翁城 (docs/rules/19): its finale city gets the world link's rules, a normal game on it the map's own.
     this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this);
-    if (settings.challenge && !link) {
-      this.challengeTracker = new Challenge(this);
-      this.challengeAi = new ChallengeAi(this, this.challengeTracker);
+    if (!link) {
+      this.challengeTracker = new Challenge(this, settings.challenge ? undefined : taskPool(settings.mapId));
+      if (settings.challenge) this.challengeAi = new ChallengeAi(this, this.challengeTracker);
     }
   }
 
@@ -381,7 +381,10 @@ export class Game {
   testLevels?: readonly (0 | 1 | 2)[];
   /** 挑戰模式's computer (core/challenge-ai.ts): set with the game's task tracker; the smarter computer reads it. */
   challengeAi?: ChallengeAi;
-  /** 挑戰模式's tasks and stars (core/challenge.ts): it only watches, like the statistics ledger it reads. */
+  /**
+   * The tasks and stars (core/challenge.ts): 挑戰模式's drawn tasks; in a normal game every task of the map, for the
+   * 圖鑑 (the user 2026-11-02: an achievement in a normal game is kept too). It only watches, like the ledger it reads.
+   */
   challengeTracker?: Challenge;
   /**
    * The level a computer-played seat (a computer, a human on 托管, in 派對模式 also a player voted out or dropped) plays
@@ -843,7 +846,7 @@ export class Game {
 
   /** Daily victory check fcn_0041d89e (docs/rules/01 §8.1). */
   private *checkVictory(): Flow {
-    const ch = this.challengeTracker;
+    const ch = this.challenge ? this.challengeTracker : undefined;
     if (ch) {
       // 挑戰模式 (docs/rules/26 §2): with a deadline the most stars when it comes (ties: the richer); without one the
       // first to 100 stars.

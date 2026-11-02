@@ -42,3 +42,32 @@
 .col-info .col-proof small { opacity: .75; }
 .col-info .col-proof.none { color: #ff9a8a; }
 .col-shot img { display: block; width: 100%; max-height: 38vh; object-fit: contain; margin-top: 8px; border: 2px solid #fff; border-radius: 8px; }
+
+/* The achievement scene (achievementScene): rays, the card turning over, the stars landing. */
+.ach { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; background: rgba(8, 12, 40, .72); animation: ach-in .25s ease-out both; }
+.ach.out { animation: ach-out .25s ease-in both; }
+.ach-rays { position: absolute; width: 160vmax; height: 160vmax; left: 50%; top: 50%; translate: -50% -50%; opacity: .35; pointer-events: none;
+  background: repeating-conic-gradient(from 0deg, rgba(255, 220, 90, .55) 0 8deg, transparent 8deg 22deg); animation: ach-spin 14s linear infinite; }
+.ach-box { position: relative; display: grid; justify-items: center; gap: 6px; color: #fff; text-align: center; }
+.ach-title { margin: 0; font-size: clamp(22px, 5vmin, 34px); font-weight: 800; color: #ffe066; text-shadow: 0 3px 0 #a0430a, 0 0 18px rgba(255, 200, 60, .8);
+  animation: ach-pop .5s cubic-bezier(.3, 1.6, .5, 1) both; }
+.ach-card { position: relative; width: min(240px, 52vw, 40vh); aspect-ratio: 3 / 4; perspective: 900px; }
+.ach-back, .ach-front { position: absolute; inset: 0; backface-visibility: hidden; }
+.ach-back .col-card, .ach-front .col-card { width: 100%; height: 100%; cursor: default; }
+.ach-front { transform: rotateY(180deg); }
+.ach:not(.up) .ach-back { animation: ach-back .7s .25s ease-in-out both; }
+.ach:not(.up) .ach-front { animation: ach-front .7s .25s ease-in-out both; }
+.ach.up .ach-back { display: none; }
+.ach.up .ach-front { transform: none; }
+.ach-front .col-stars img { max-width: 56px; }
+.ach-star { animation: ach-stamp .35s cubic-bezier(.3, 1.6, .5, 1) both; }
+.ach-name { margin: 6px 0 0; font-size: clamp(18px, 4vmin, 26px); font-weight: 800; text-shadow: 0 2px 3px #000; }
+.ach-who { margin: 0; color: #ffd76a; font-weight: 700; }
+.ach-tap { margin: 4px 0 0; font-size: 13px; opacity: .75; }
+@keyframes ach-in { from { opacity: 0; } }
+@keyframes ach-out { to { opacity: 0; } }
+@keyframes ach-spin { to { rotate: 360deg; } }
+@keyframes ach-pop { from { transform: scale(.3); opacity: 0; } }
+@keyframes ach-back { from { transform: rotateY(0); } to { transform: rotateY(-180deg); } }
+@keyframes ach-front { from { transform: rotateY(180deg); } to { transform: rotateY(0); } }
+@keyframes ach-stamp { from { transform: scale(2.6) rotate(calc((var(--i) - 1) * 10deg)); opacity: 0; } }

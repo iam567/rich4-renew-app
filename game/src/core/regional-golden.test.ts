@@ -65,6 +65,8 @@ export function goldenRun(mapId: number, days: number): string {
   if (process.env.RICH4_PRINT_GOLDEN) console.log(mapId, game.daysElapsed, boards, !!game.over);
   const save = saveGame(game) as unknown as Record<string, unknown>;
   delete save.savedAt;
+  // The task tracker (core/challenge.ts, in every game since 2026-11-02 for the 圖鑑) only watches: left out, like savedAt.
+  delete save.challenge;
   h.update(JSON.stringify(save));
   return h.digest('hex').slice(0, 16);
 }

@@ -61,8 +61,8 @@ import { setWeatherMode, WEATHER_MODES, weatherMode } from './weather';
 import { initLang, lang, LANGS, setLang } from './lang';
 import { attachLedger, gameResults, ledgerOf, worldResults } from '../core/stats';
 import { CHALLENGE_MAPS, CHALLENGE_YEARS } from '../core/challenge';
-import { ChallengeBar, starTable, taskList } from './challenge';
-import { earnCards, openCollection, proofShot } from './collection';
+import { ChallengeBar, StarWatch, starTable, taskList } from './challenge';
+import { achievementScene, earnCards, openCollection, proofShot } from './collection';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
@@ -1039,7 +1039,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   if (chat) { stage.append(chat.el); chat.onOpen = openLog; }
   // 挑戰模式 (docs/rules/26 §4): everyone's stars over the map, the task list on a tap and at the start of a new game.
   const faceOf = (c: number) => bank!.art('Data', 2, c)?.src ?? '';
-  const challenge = game.challengeTracker ? new ChallengeBar(game, faceOf) : null;
+  const challenge = game.challenge && game.challengeTracker ? new ChallengeBar(game, faceOf) : null;
+  // A normal game measures every task of its map too, quietly: a human's achievement still goes into the 圖鑑.
+  const watch = challenge ?? (game.challengeTracker && !ty ? new StarWatch(game) : null);
   const openTasks = () => hud.sheetNode('挑戰任務', taskList(game, faceOf));
   if (challenge) {
     stage.append(challenge.el);
@@ -1050,11 +1052,13 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
    * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts)
    * with the day and a picture of the map as the proof, a new card with its own note.
    */
-  const starNotes = () => {
+  const starNotes = async () => {
     const mine: Record<string, { stars: number; p: number; name: string }> = {};
-    for (const x of challenge?.update() ?? []) {
-      hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
-      if ((room ? room.mine.has(x.p) : game.players[x.p].human) && x.stars > (mine[x.task.id]?.stars ?? 0)) mine[x.task.id] = { stars: x.stars, p: x.p, name: x.task.name };
+    for (const x of watch?.update() ?? []) {
+      const own = room ? room.mine.has(x.p) : game.players[x.p].human;
+      if (challenge) hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+      else if (own) hud.note(`${nameOf(x.p)}達成成就「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+      if (own && x.stars > (mine[x.task.id]?.stars ?? 0)) mine[x.task.id] = { stars: x.stars, p: x.p, name: x.task.name };
     }
     const ids = Object.keys(mine);
     if (!ids.length) return;
@@ -1064,9 +1068,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       const line = `${nameOf(m.p)} 完成「${m.name}」${'★'.repeat(m.stars)}・${mapName(game.settings.mapId)}・遊戲裡 ${format(game.date)}`;
       return { id, stars: m.stars, proof: { real: Date.now(), game: game.date, map: game.settings.mapId, who: nameOf(m.p) }, shot: proofShot(view.canvas, line) };
     });
-    void earnCards(got).then(fresh => {
-      for (const id of fresh) hud.note(`獲得新圖卡「${mine[id].name}」！`);
-    });
+    // The scene for each better result than this device's 圖鑑 had (the game waits for it, as for any screen).
+    for (const x of await earnCards(got)) {
+      const t = game.challengeTracker!.tasks.find(k => k.id === x.id);
+      if (t) await shown('achievement', () => achievementScene(shell, t, x.stars, x.before, nameOf(mine[x.id].p)), undefined);
+    }
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
   const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),
@@ -1353,7 +1359,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         // Anyone's turn (a computer's too): the big clips of the tools they hold start loading in idle time.
         warmFor(game.players[s.p]);
         hud.refresh();
-        starNotes();
+        await starNotes();
         await pause(250);
         break;
       case 'airdrop':
@@ -1447,7 +1453,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         hud.refresh();
         bar?.update();
         hud.note(`—— ${format(s.date)} ——`);
-        starNotes();
+        await starNotes();
         break;
       case 'fx':
         if (fxScreens[s.kind]) {
@@ -1516,7 +1522,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         }
         {
           // The results screen (docs/rules/20 §4), then 「下一局」 (another map, the same settings) or the title.
-          if (challenge) { starNotes(); await hud.sheetNode('挑戰結果', starTable(game, s.winner, faceOf)); }
+          await starNotes();
+          if (challenge) await hud.sheetNode('挑戰結果', starTable(game, s.winner, faceOf));
           const results = gameResults(game, s.winner);
           run = recordResult(run, results);
           const humans = game.players.filter(p => p.human).map(p => p.character);

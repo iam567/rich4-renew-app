@@ -16,7 +16,7 @@ import { Capacitor } from '@capacitor/core';
 import { CHALLENGE_MAPS, CHALLENGE_TASKS, fullStars, type ChallengeTask } from '../core/challenge';
 import { format } from '../core/date';
 import { ASSETS } from './assets';
-import { audio } from './audio';
+import { audio, Sfx } from './audio';
 import './collection.css';
 
 const KEY = 'rich4.cards';
@@ -123,9 +123,9 @@ export async function cardStars(id: string): Promise<number> { return (await loa
 
 /**
  * Records stars earned: a card's stars only ever rise, its first day stays, a better result brings its proof and
- * picture. Resolves with the tasks whose card is new.
+ * picture. Resolves with the better results (the stars the card had before: 0 for a new card).
  */
-export async function earnCards(got: Earned[]): Promise<string[]> {
+export async function earnCards(got: Earned[]): Promise<{ id: string; stars: number; before: number }[]> {
   const had = await loadCards(), now = Date.now();
   const better = got.filter(x => x.stars > (had[x.id]?.s ?? 0));
   if (!better.length) return [];
@@ -136,7 +136,42 @@ export async function earnCards(got: Earned[]): Promise<string[]> {
   try { localStorage.setItem(KEY, JSON.stringify(next)); } catch { /* the file has it */ }
   await writeFile(next);
   for (const x of better) if (x.shot) await saveShot(x.id, x.shot);
-  return better.filter(x => !had[x.id]).map(x => x.id);
+  return better.map(x => ({ id: x.id, stars: x.stars, before: had[x.id]?.s ?? 0 }));
+}
+
+/**
+ * The achievement scene (the user 2026-11-02: in any mode, an achievement plays its own short scene and goes into the
+ * 圖鑑): the card turns over (a new one) or stays (a better result), its new stars land one by one, 「解鎖成就」 and the
+ * task. Ends on a tap or after a while.
+ */
+export function achievementScene(root: HTMLElement, t: ChallengeTask, stars: number, before: number, who: string): Promise<void> {
+  return new Promise(resolve => {
+    const el = document.createElement('div');
+    el.className = `ach${before ? ' up' : ''}`;
+    el.innerHTML = `<div class="ach-rays"></div><div class="ach-box"><p class="ach-title">${before ? '成就升級！' : '解鎖成就！'}</p>
+      <div class="ach-card"><div class="ach-back">${cardHtml(t, 0)}</div><div class="ach-front">${cardHtml(t, 0, true)}</div></div>
+      <p class="ach-name">${esc(t.name)}</p><p class="ach-who">${esc(who)}・${before ? `${'★'.repeat(before)} → ` : ''}${'★'.repeat(stars)}</p>
+      <p class="ach-tap">${before ? '' : '已收進圖鑑・'}點一下繼續</p></div>`;
+    root.append(el);
+    audio.sfx(Sfx.special);
+    // The stars land one by one on the card's front, after the turn (a better result: the old ones are there already).
+    const front = el.querySelector<HTMLElement>('.ach-front .col-card')!;
+    const row = document.createElement('span');
+    row.className = 'col-stars';
+    front.append(row);
+    const land = (i: number) => {
+      const img = document.createElement('img');
+      img.src = `${ART}/star.webp`; img.alt = ''; img.style.setProperty('--i', String(i));
+      if (i >= before) { img.className = 'ach-star'; audio.sfx(Sfx.points); }
+      row.append(img);
+    };
+    for (let i = 0; i < before; i++) land(i);
+    const timers = [...Array(stars - before)].map((_, k) => window.setTimeout(() => land(before + k), (before ? 400 : 900) + k * 380));
+    let done = false;
+    const close = () => { if (done) return; done = true; timers.forEach(clearTimeout); clearTimeout(auto); el.classList.add('out'); setTimeout(() => { el.remove(); resolve(); }, 250); };
+    const auto = window.setTimeout(close, 4200 + stars * 380);
+    el.onclick = () => { audio.ui('click'); close(); };
+  });
 }
 
 /**
@@ -160,9 +195,9 @@ export function proofShot(board: HTMLCanvasElement, line: string): string | null
 /** The star stickers over a card. */
 const stickers = (n: number) => `<span class="col-stars">${Array.from({ length: n }, (_, i) => `<img src="${ART}/star.webp" alt="" style="--i:${i}">`).join('')}</span>`;
 
-/** One card: the picture, its name and its stars; 「？？？」 while not earned. */
-export function cardHtml(t: ChallengeTask, stars: number): string {
-  if (!stars) return `<button class="col-card none" data-card="${t.id}"><b>？？？</b></button>`;
+/** One card: the picture, its name and its stars; 「？？？」 while not earned (`shown`: the picture anyway). */
+export function cardHtml(t: ChallengeTask, stars: number, shown = stars > 0): string {
+  if (!shown) return `<button class="col-card none" data-card="${t.id}"><b>？？？</b></button>`;
   return `<button class="col-card" data-card="${t.id}"><img class="col-pic" src="${ART}/${t.id}.webp" alt="" loading="lazy" onerror="this.style.visibility='hidden'">
     ${stickers(stars)}<span class="col-name">${esc(t.name)}</span></button>`;
 }

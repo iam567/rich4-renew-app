@@ -26,32 +26,42 @@ export function challengeGoal(g: Game): string {
   return `${years} 年內星最多的人獲勝・還剩 ${left} 天（共 ${CHALLENGE_TOTAL} 顆）`;
 }
 
-/** The badge over the map: everyone's stars; a tap opens the task list. */
-export class ChallengeBar {
-  readonly el = document.createElement('div');
-  onOpen: () => void = () => {};
-  /** Stars by player and task at the last update, to tell what was just earned. */
+/** Stars by player and task, telling what was earned since the last look (挑戰模式's badge, a normal game's 圖鑑). */
+export class StarWatch {
   private last: number[][];
-
-  constructor(private g: Game, private face: (character: number) => string) {
-    this.el.className = 'chb';
-    this.el.innerHTML = '<button class="chb-badge"></button>';
-    this.el.addEventListener('click', () => { audio.ui('click'); this.onOpen(); });
-    this.last = this.table();
-    this.update();
-  }
+  constructor(private g: Game) { this.last = this.table(); }
 
   private table(): number[][] {
     const c = this.g.challengeTracker!;
     return this.g.players.map(p => c.tasks.map(t => starsOf(this.g, c, t, p.id)));
   }
 
-  /** Redraws the badge; returns the stars earned since the last call, for the notes. */
+  /** The stars earned since the last call. */
   update(): { p: number; task: ChallengeTask; stars: number }[] {
-    const g = this.g, c = g.challengeTracker!;
-    const now = this.table(), got: { p: number; task: ChallengeTask; stars: number }[] = [];
+    const c = this.g.challengeTracker!, now = this.table(), got: { p: number; task: ChallengeTask; stars: number }[] = [];
     now.forEach((row, p) => row.forEach((s, i) => { if (s > (this.last[p]?.[i] ?? 0)) got.push({ p, task: c.tasks[i], stars: s }); }));
     this.last = now;
+    return got;
+  }
+}
+
+/** The badge over the map: everyone's stars; a tap opens the task list. */
+export class ChallengeBar {
+  readonly el = document.createElement('div');
+  readonly watch: StarWatch;
+  onOpen: () => void = () => {};
+
+  constructor(private g: Game, private face: (character: number) => string) {
+    this.el.className = 'chb';
+    this.el.innerHTML = '<button class="chb-badge"></button>';
+    this.el.addEventListener('click', () => { audio.ui('click'); this.onOpen(); });
+    this.watch = new StarWatch(g);
+    this.update();
+  }
+
+  /** Redraws the badge; returns the stars earned since the last call, for the notes. */
+  update(): { p: number; task: ChallengeTask; stars: number }[] {
+    const g = this.g, c = g.challengeTracker!, got = this.watch.update();
     const b = this.el.querySelector('.chb-badge')!;
     b.innerHTML = `<b>★ 任務</b>${g.players.map(p => `<span style="--c:${color(g, p.id)}"><img src="${this.face(p.character)}" alt="">${c.stars(p)}</span>`).join('')}`;
     return got;
