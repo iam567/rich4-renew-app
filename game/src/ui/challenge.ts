@@ -24,7 +24,7 @@ const starRow = (got: number, full: number) => `<i class="chl-on">${'★'.repeat
 /** The line under the title: how this game is won and how long it still runs. */
 export function challengeGoal(g: Game): string {
   const years = g.settings.challengeYears ?? 0;
-  const total = g.challengeTracker?.monthly ? `共 ${CHALLENGE_TOTAL} 顆＋每月任務` : `共 ${CHALLENGE_TOTAL} 顆`;
+  const total = g.challengeTracker?.monthly ? `${CHALLENGE_TOTAL} 顆＋每月` : `共 ${CHALLENGE_TOTAL} 顆`;
   if (!years) return `先拿到 ${CHALLENGE_WIN} 顆星的人獲勝（${total}）`;
   const left = Math.max(0, years * 365 - g.daysElapsed);
   return `${years} 年內星最多的人獲勝・還剩 ${left} 天（${total}）`;
