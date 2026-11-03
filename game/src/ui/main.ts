@@ -50,7 +50,7 @@ import { prepareAh11 } from './ah11';
 import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
-import { neonMode, prepareKabukicho, setNeonMode, setVehiclesMode, setWalkersMode, STREET_MODES, vehiclesMode, walkersMode } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
+import { mapAnimMode, prepareKabukicho, setMapAnimMode, STREET_MODES } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
 import { JQ_QUALITIES, jqMusicMode, jqMusicQuality, musicSetFor, setJqMusicMode, setJqMusicQuality } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
 import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { applyJqTheme } from './jq-theme';
@@ -317,10 +317,8 @@ function options() {
       { label: '魔法屋提示對象', opts: STREET_MODES, cur: () => magicHintMode(), pick: i => setMagicHintMode(i) },
       { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => { write('rich4.orientation', i); void applyOrientation(); } },
       { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => write('rich4.weather', i) },
-      // 歌舞伎町's living street (docs/rules/21 §8): kept for every game, used on that map only.
-      { label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: i => setWalkersMode(i) },
-      { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: i => setVehiclesMode(i) },
-      { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: i => setNeonMode(i) },
+      // 歌舞伎町's / 激情歲月's living street (docs/rules/21 §8, 24): 行人, 車輛 and 霓虹 as one (the user 2026-11-03).
+      { label: '地圖動畫', opts: STREET_MODES, cur: () => mapAnimMode(), pick: i => setMapAnimMode(i) },
       { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
         pick: i => void setLang(LANGS[i].id).then(render) },
       // fonts.ts (the user 2026-11-03): 粉圓 / 文楷 / 圓體 / 系統, at once on every screen.
@@ -885,12 +883,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
           // 歌舞伎町's living street (docs/rules/21 §8).
-          ...(mapId === KB_MAP ? [{ label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: (i: number) => setWalkersMode(i) },
-            { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
-            { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: (i: number) => setNeonMode(i) }] : []),
+          ...(mapId === KB_MAP ? [{ label: '地圖動畫', opts: STREET_MODES, cur: () => mapAnimMode(), pick: (i: number) => setMapAnimMode(i) }] : []),
           // 激情歲月 (docs/rules/24 §7–§10): its street, the loudspeakers, the quotations, the intro again.
-          ...(mapId === JQ_MAP ? [{ label: '街頭行人', opts: STREET_MODES, cur: () => walkersMode(), pick: (i: number) => setWalkersMode(i) },
-            { label: '街頭車輛', opts: STREET_MODES, cur: () => vehiclesMode(), pick: (i: number) => setVehiclesMode(i) },
+          ...(mapId === JQ_MAP ? [{ label: '地圖動畫', opts: STREET_MODES, cur: () => mapAnimMode(), pick: (i: number) => setMapAnimMode(i) },
             { label: '大喇叭廣播', opts: STREET_MODES, cur: () => loudspeakerMode(), pick: (i: number) => setLoudspeakerMode(i) },
             { label: '語錄開場白', opts: STREET_MODES, cur: () => quotesMode(), pick: (i: number) => setQuotesMode(i) },
             { label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } },

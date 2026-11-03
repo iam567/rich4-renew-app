@@ -156,6 +156,15 @@ const write = (key: string, v: number) => {
 export const setWalkersMode = (v: number) => write(KEY_WALKERS, v);
 export const setNeonMode = (v: number) => write(KEY_NEON, v);
 export const setVehiclesMode = (v: number) => write(KEY_VEHICLES, v);
+/**
+ * 地圖動畫 (the user 2026-11-03: 街頭行人, 街頭車輛 and 霓虹閃爍 as one setting): on while any of the three is on;
+ * choosing sets all three.
+ */
+export const mapAnimMode = () => (walkersMode() === 0 || vehiclesMode() === 0 || neonMode() === 0 ? 0 : 1);
+export const setMapAnimMode = (v: number) => {
+  try { for (const k of [KEY_WALKERS, KEY_VEHICLES, KEY_NEON]) localStorage.setItem(k, String(v)); } catch { /* not kept */ }
+  for (const f of listeners) f();
+};
 /** Called when one of these settings changes (激情歲月's street reads 街頭行人 / 街頭車輛 too, ui/jq-street.ts). */
 export const onStreetSettings = (f: () => void) => { listeners.add(f); return () => { listeners.delete(f); }; };
 
