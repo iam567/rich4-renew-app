@@ -104,7 +104,8 @@ function fitShell(shell: HTMLElement) {
       shell.classList.remove('roomy');
     } else {
       // The right column takes at most ~36 % of the width (only near-square screens reach that cap).
-      const u = Math.max(0.7, Math.min(2, h / 480, (w * 0.36) / 200));
+      // (at least 0.6: an iPhone SE on its side, 320 px high, needs 0.67 for the panel and the calendar to fit)
+      const u = Math.max(0.6, Math.min(2, h / 480, (w * 0.36) / 200));
       shell.style.setProperty('--tu', String(u));
       shell.style.setProperty('--pu', String(u));
       // That cap leaves room under the panel and the calendar (480 original px): the small map goes there (日曆 mode).

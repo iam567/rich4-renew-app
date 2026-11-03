@@ -379,6 +379,7 @@ export function fitToScreen(overlay: HTMLElement, box: HTMLElement): void {
   const fit = () => {
     if (!box.isConnected) { ro.disconnect(); return; }
     box.style.zoom = '';
+    box.style.maxHeight = 'none'; // its whole height (a max-height would shrink with it and keep the overflow)
     const os = getComputedStyle(overlay);
     const room = overlay.clientHeight - parseFloat(os.paddingTop) - parseFloat(os.paddingBottom);
     const need = box.scrollHeight + Math.abs(parseFloat(getComputedStyle(box).marginTop) || 0) + 8;
