@@ -382,7 +382,10 @@ export function fitToScreen(overlay: HTMLElement, box: HTMLElement): void {
     box.style.maxHeight = 'none'; // its whole height (a max-height would shrink with it and keep the overflow)
     const os = getComputedStyle(overlay);
     const room = overlay.clientHeight - parseFloat(os.paddingTop) - parseFloat(os.paddingBottom);
-    const need = box.scrollHeight + Math.abs(parseFloat(getComputedStyle(box).marginTop) || 0) + 8;
+    // the ribbon sits half over the top edge: its overhang counts (not the box's margins, which centring may stretch)
+    const rib = box.querySelector(':scope > .ribbon');
+    const over = rib ? Math.max(0, box.getBoundingClientRect().top - rib.getBoundingClientRect().top) : 0;
+    const need = box.scrollHeight + over + 8;
     if (need > room && room > 0) box.style.zoom = String(Math.max(0.5, room / need));
   };
   const ro = new ResizeObserver(fit);

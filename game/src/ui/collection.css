@@ -14,6 +14,9 @@
   box-shadow: 0 3px 0 rgba(0, 0, 0, .25); cursor: pointer; }
 .col-card.none { display: grid; place-items: center; background: linear-gradient(#3a4a80, #1c2a5a); border-color: #8fa0d0; }
 .col-card.none b { color: #c8d4ff; font-size: 22px; letter-spacing: 2px; }
+/* narrow cards (an iPhone SE on its side): the ？？？ as wide as the card allows (container units; older WebViews keep 22 px) */
+.col-grid .col-card.none { container-type: inline-size; }
+.col-grid .col-card.none b { font-size: min(22px, 24cqw); letter-spacing: min(2px, 1cqw); }
 .col-pic { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .col-name { position: absolute; left: 0; right: 0; bottom: 0; padding: 18px 4px 5px; color: #fff; font-size: 13px; font-weight: 700; text-align: center;
   background: linear-gradient(transparent, rgba(20, 10, 40, .85)); text-shadow: 0 1px 2px #000; }

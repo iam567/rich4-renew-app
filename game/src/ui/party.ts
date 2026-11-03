@@ -19,6 +19,8 @@ import { inlineChat } from './party-chat';
 import { checkNetwork } from './party-check';
 import type { SpriteBank } from './sprites';
 import './party.css';
+import { shrinkText } from './text';
+import { fitToScreen } from './saves';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 const KEY = 'rich4.party.character';
@@ -92,6 +94,7 @@ export function openParty(d: PartyDeps): void {
   box.className = 'msg sheet pt';
   overlay.append(box);
   d.app.append(overlay);
+  fitToScreen(overlay, box); // a screen taller than the window shrinks instead of scrolling (saves.ts)
   let lobby: Lobby | null = null, room: Room | null = null;
   const leave = () => { lobby?.close(); lobby = null; if (room && !room.started) room.close(); room = null; overlay.remove(); stopCount(); inParty(null); };
   // 派對模式's head count (party-presence.ts): every 「.pt-online」 line on the screen shows the newest.
@@ -116,19 +119,21 @@ export function openParty(d: PartyDeps): void {
     let shared = false, map = maps[0]?.id ?? 0, page = 0;
     const render = () => show('建立房間', `
       <div class="pt-types">
-        <button class="pt-type${shared ? '' : ' on'}" data-shared="0"><b>私享房間</b><small>只有拿到房間碼的人能進來</small></button>
-        <button class="pt-type${shared ? ' on' : ''}" data-shared="1"><b>公開房間</b><small>顯示在遊戲大廳，大家都能加入</small></button>
+        <button class="pt-type${shared ? '' : ' on'}" data-shared="0"><b>私享房間</b><small>憑房間碼才能進來</small></button>
+        <button class="pt-type${shared ? ' on' : ''}" data-shared="1"><b>公開房間</b><small>大家都能從大廳加入</small></button>
       </div>
       <div class="pt-sec">選擇地圖</div>
       ${mapCards(maps, map, page)}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy yes" data-a="open">建立房間</button></div>`);
-    render();
+    // both kinds side by side even on a 320 px phone: their words shrink to the card
+    const draw = () => { render(); shrinkText(box, '.pt-type b, .pt-type small', 8); };
+    draw();
     box.onclick = async e => {
       const t = e.target as HTMLElement;
       const s2 = t.closest<HTMLElement>('[data-shared]'), mp = t.closest<HTMLElement>('[data-map]'), pg = t.closest<HTMLElement>('[data-mp]'), a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
-      if (s2) { audio.ui('click'); shared = s2.dataset.shared === '1'; render(); return; }
-      if (mp) { audio.ui('click'); map = Number(mp.dataset.map); render(); return; }
-      if (pg && !(pg as HTMLButtonElement).disabled) { audio.ui('click'); page = Math.max(0, page + Number(pg.dataset.mp)); render(); return; }
+      if (s2) { audio.ui('click'); shared = s2.dataset.shared === '1'; draw(); return; }
+      if (mp) { audio.ui('click'); map = Number(mp.dataset.map); draw(); return; }
+      if (pg && !(pg as HTMLButtonElement).disabled) { audio.ui('click'); page = Math.max(0, page + Number(pg.dataset.mp)); draw(); return; }
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
       if (a === 'open') {
         audio.ui('yes');
@@ -191,7 +196,7 @@ export function openParty(d: PartyDeps): void {
           if (!x.m) return '<div class="pt-seat cpu"><span>電腦</span></div>';
           const me = x.m.id === r.myId, votes = r.votes.get(x.m.id), voted = votes?.has(r.myId);
           return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(x.m.name)}</b>
-            <small>${x.m.nick ? `${esc(CHARACTERS[x.m.character].name)}・` : ''}${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}</small>
+            <small class="pt-role">${me ? '點我換角色' : `${x.m.nick ? `${esc(CHARACTERS[x.m.character].name)}・` : ''}${i === 0 ? '房主' : '玩家'}`}</small>
             <small class="pt-ping" data-pid="${esc(x.m.id)}"></small>
             ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
         }).join('')}</div>
@@ -201,6 +206,7 @@ export function openParty(d: PartyDeps): void {
         ${choiceRow('電腦難度', AI_LEVELS.map((text, v) => ({ v, text })), r.rules.aiLevel, host, 'ai')}
         <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p></div>`;
       acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
+      shrinkText(dyn, '.pt-seat b, .pt-seat small.pt-role', 8); // one line each, smaller where the seat is narrow
     };
     /** Each seat's ping (the host's table, every heartbeat): only the small lines, so nothing else jumps. */
     const pings = () => {

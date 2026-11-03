@@ -302,7 +302,9 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
     if (!w || !h) return;
     // A short landscape screen: smaller cards, more to a row (one row is all the height there holds).
     const min = innerWidth > innerHeight && innerHeight < 560 ? 80 : 96;
-    const cols = Math.max(2, Math.floor((w + 8) / min)), cw = (w - 8 * (cols - 1)) / cols;
+    let cols = Math.max(2, Math.floor((w + 8) / min)), cw = (w - 8 * (cols - 1)) / cols;
+    // not even one row of that size fits (an iPhone SE on its side): narrower cards until a whole row does
+    while (cw * 4 / 3 > h && cols < 14) { cols++; cw = (w - 8 * (cols - 1)) / cols; }
     const rows = Math.max(1, Math.floor((h + 8) / (cw * 4 / 3 + 8)));
     grid.style.setProperty('--cols', String(cols));
     if (cols * rows !== perPage) { const first = page * perPage; perPage = cols * rows; page = Math.floor(first / perPage); }

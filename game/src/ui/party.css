@@ -81,7 +81,8 @@
 @keyframes pt-spin { to { transform: rotate(360deg); } }
 .pt-nick { min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 10px; border: 2px solid #ffe14a; background: #fff; color: #333; }
 .pt-hint { margin: -4px 0 0; font-size: 11px; color: #dfe8ff; text-align: center; }
-.pt-seat b, .pt-seat small { white-space: normal; text-align: center; line-height: 1.2; word-break: break-all; max-width: 100%; }
+/* One line each (v1.0 sweep: 「你・點我換角色」 broke onto two); party.ts shrinks the words to the seat instead. */
+.pt-seat b, .pt-seat small { white-space: nowrap; overflow: hidden; text-align: center; line-height: 1.2; max-width: 100%; }
 
 /* 派對模式's own row of buttons under the toolbar (PartyBar): the game's grid gets a row for it. */
 .game.party { grid-template-rows: calc(40px * var(--tu)) calc(34px * var(--tu)) 1fr; }
@@ -209,11 +210,12 @@
 .net-tag.me { box-shadow: 0 0 0 2px rgba(255, 225, 74, .55); }
 /* The rooms' screens redrawn (the user 2026-11-03: too dense and limp): room type cards, the maps as picture cards a
    page at a time, the settings as tiles always shown, choices as one segmented bar. */
-.pt-types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.pt-types { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; width: 100%; }
 .pt-type { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 8px; border-radius: 16px; font: inherit; color: #fff;
   background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .25); cursor: pointer; }
-.pt-type b { font-weight: 700; font-size: 17px; white-space: nowrap; }
-.pt-type small { font-size: 11px; opacity: .85; white-space: nowrap; }
+.pt-type { min-width: 0; }
+.pt-type b { font-weight: 700; font-size: 17px; white-space: nowrap; max-width: 100%; overflow: hidden; }
+.pt-type small { font-size: 11px; opacity: .85; white-space: nowrap; max-width: 100%; overflow: hidden; }
 .pt-type.on { color: #5a2d00; background: linear-gradient(#fff6b0, #ffc93a); border-color: #fff; box-shadow: 0 3px 0 #c97a00; }
 .pt-sec { align-self: flex-start; font-size: 14px; color: #ffe14a; margin: 2px 0 -4px; }
 .pt-mgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
