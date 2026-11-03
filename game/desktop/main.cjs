@@ -59,6 +59,11 @@ function createWindow() {
     autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, preload: join(__dirname, 'preload.cjs') },
   });
   win.loadURL('app://rich4/index.html');
+  // Test runs: the page asks for a picture of itself (console 'RICH4-SHOT name' -> RICH4_SHOTS_DIR/name.png).
+  if (process.env.RICH4_SHOTS_DIR) win.webContents.on('console-message', async (_e, _level, message) => {
+    const m = /^RICH4-SHOT (.+)$/.exec(String(message));
+    if (m) require('node:fs').writeFileSync(join(process.env.RICH4_SHOTS_DIR, `${m[1].replace(/[\/:]/g, '_').slice(0, 80)}.png`), (await win.webContents.capturePage()).toPNG());
+  });
   // A scripted run (RICH4_STEPS=steps.json: [{ js, wait, shot }]): each step's script in the page, a wait, a picture.
   if (process.env.RICH4_STEPS) win.webContents.once('did-finish-load', async () => {
     const fs = require('node:fs'), steps = JSON.parse(fs.readFileSync(process.env.RICH4_STEPS, 'utf8'));

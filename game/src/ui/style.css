@@ -785,6 +785,14 @@ button:disabled { opacity: 0.4; cursor: default; }
   .sys-grid > .cell.w > .chips { flex: 1 1 auto; }
   .sys-grid .chip { padding-left: 7px; padding-right: 7px; }
 }
+/* Under 350 px (iPhone SE 1st gen): one setting per line, but the wide rows (字體, 地圖: four choices) put their label
+   above the choices, so the choices get the whole width and none is cut (v1.0 sweep). */
+@media (orientation: portrait) and (max-width: 349px) {
+  .sys-grid > .cell.w { display: flex; grid-column: 1 / -1; flex-direction: column; align-items: flex-start; gap: 3px; min-width: 0; }
+  .sys-grid > .cell.w > b { text-align: left; padding-left: 2px; }
+  .sys-grid > .cell.w > .chips { width: 100%; }
+  .sys-grid .chips.w .chip { flex: 1 1 0; padding-left: 3px; padding-right: 3px; text-align: center; text-overflow: clip; }
+}
 @media (orientation: portrait) and (min-width: 350px) and (max-width: 379px) {
   .msg.sheet.sys-sheet { padding-left: 14px; padding-right: 14px; }
   .sys-grid { column-gap: 8px; }

@@ -371,6 +371,25 @@ export function interruptedLoad(): number | null {
  * portrait. `mode` save lists slots 1..5 (the automatic slot is not written by hand); load lists 0..5 and
  * only filled slots can be picked. Resolves with the slot, or -1 when cancelled.
  */
+/**
+ * A sheet taller than the screen shrinks as a whole (v1.0 sweep: on a landscape phone or an iPhone SE the slot list
+ * pushed 取消 off the screen) — nothing scrolls, nothing is cut. Follows the window's size until the sheet goes.
+ */
+export function fitToScreen(overlay: HTMLElement, box: HTMLElement): void {
+  const fit = () => {
+    if (!box.isConnected) { ro.disconnect(); return; }
+    box.style.zoom = '';
+    const os = getComputedStyle(overlay);
+    const room = overlay.clientHeight - parseFloat(os.paddingTop) - parseFloat(os.paddingBottom);
+    const need = box.scrollHeight + Math.abs(parseFloat(getComputedStyle(box).marginTop) || 0) + 8;
+    if (need > room && room > 0) box.style.zoom = String(Math.max(0.5, room / need));
+  };
+  const ro = new ResizeObserver(fit);
+  ro.observe(overlay);
+  ro.observe(box);
+  fit();
+}
+
 export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapName: (id: number) => string,
                                bank: SpriteBank | null, mapThumb: (id: number) => string): Promise<number> {
   // Only the previews (save-codec.ts); the automatic slots come from their rings (load) or are not shown (save).
@@ -450,5 +469,6 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
     overlay.append(box);
     overlay.onclick = e => { if (e.target === overlay) done(-1); };
     parent.append(overlay);
+    fitToScreen(overlay, box);
   });
 }
