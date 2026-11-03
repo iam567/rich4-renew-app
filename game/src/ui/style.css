@@ -598,6 +598,14 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ng-date { margin: 2px 0 0; color: #c8d8ff; font-size: 13px; }
 .ng-actions { justify-content: flex-end; gap: 12px; }
 .ng-sheet.portrait .ng-actions { justify-content: center; }
+/* Portrait (the user 2026-11-03): the settings two to a row, so they take half the height and 返回 / 開始遊戲 sit well
+   inside the frame; the notes under them span both columns. */
+.ng-sheet.portrait .ng-opts { grid-template-columns: 1fr 1fr; column-gap: 16px; }
+.ng-sheet.portrait .ng-opts .ng-date { grid-column: 1 / -1; }
+.ng-sheet.portrait .ng-opt .stepper { max-width: none; }
+/* …and the sheet only as tall as what it holds (main.ts fit scales by its real height), no empty band above the buttons. */
+.msg.sheet.ng-sheet.portrait { height: auto; grid-template-rows: auto; }
+.ng-sheet.portrait .ng-actions { margin-top: 6px; }
 .ng-actions .candy.yes { min-width: 170px; font-size: 20px; }
 .mm-big { position: relative; margin: 0 auto 12px; border-radius: 12px; overflow: hidden; border: 3px solid #fff; }
 .mm-big .mm { position: absolute; left: 0; top: 0; }

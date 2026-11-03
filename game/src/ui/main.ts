@@ -412,7 +412,8 @@ function newGame() {
     if (!sheet) return;
     const w = app.clientWidth, h = app.clientHeight, portrait = h > w;
     sheet.classList.toggle('portrait', portrait);
-    const [dw, dh] = portrait ? [540, 900] : [960, 540];
+    // Portrait: as tall as its content (style.css: height auto, the settings two to a row), at most 900.
+    const [dw, dh] = portrait ? [540, Math.min(900, sheet.offsetHeight || 900)] : [960, 540];
     // room above for the ribbon (it sits half over the top edge)
     const k = Math.min((w - 12) / dw, (h - 12) / (dh + 34));
     sheet.style.top = `calc(50% + ${Math.round(14 * k)}px)`;
