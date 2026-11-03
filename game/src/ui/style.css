@@ -836,3 +836,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .title-btn .party-live[hidden] { display: none; }
 .title-btn .party-live b { font-weight: 400; font-size: clamp(11px, 1.7vmin, 14px); color: #fff; padding: 1px 9px; border-radius: 999px;
   background: rgba(226, 69, 154, .92); border: 2px solid #fff; box-shadow: 0 2px 6px rgba(0, 0, 0, .3); }
+
+/* 在線更新 (update.ts): the download's progress bar in its sheet. */
+.update-sheet .up-bar { height: 12px; margin: 10px 4px 2px; border-radius: 6px; background: rgba(0, 0, 0, .15); overflow: hidden; }
+.update-sheet .up-bar i { display: block; height: 100%; width: 0; background: linear-gradient(#9af5a4, #2dbb48); transition: width .2s; }

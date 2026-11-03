@@ -25,7 +25,7 @@ export function partyVersion(): string | null {
   return fake === 'none' ? null : fake.replace(/^v/, '');
 }
 
-const UPDATE = '請兩邊都到下載頁下載最新版本後再連線';
+const UPDATE = '請兩邊都更新到最新版本後再連線';
 const v = (s: string) => `v${s}`;
 
 /** A version from a message (anything else: none). */

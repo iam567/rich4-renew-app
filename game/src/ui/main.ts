@@ -72,6 +72,7 @@ import { OBJECT_NAMES } from '../core/modules/objects';
 import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
+import { confirmStart, offerOnTitle, partyNeedsUpdate } from './update';
 
 const app = document.getElementById('app')!;
 // The orientation chosen in the settings is applied at start, before the title screen is laid out.
@@ -188,12 +189,16 @@ function title() {
     const act = (e.target as HTMLElement).closest<HTMLElement>('[data-act]')?.dataset.act;
     if (act) stopWatchingParty();
     if (act === 'start') newGame();
-    if (act === 'party') openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} });
+    // 派對模式 only on the newest version (update.ts, the user 2026-11-03); playing alone may stay on an old one.
+    if (act === 'party') void partyNeedsUpdate(app).then(go => { if (go) openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} }); else title(); });
     if (act === 'load') void openLoad();
     if (act === 'option') options();
     if (act === 'cards') void openCollection(app, mapName); // 挑戰模式's picture cards (docs/rules/26 §7.2)
   };
   afterLoadTrouble();
+  // 在線更新 (update.ts): this version reached the title (it starts fine); a newer one is offered once per start.
+  void confirmStart();
+  void offerOnTitle(app);
 }
 
 /** The title's 讀取進度: the slot list, then the game; a slot that can't be loaded says so and the list comes back. */

@@ -8,7 +8,8 @@ const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.u
 // linked art (public/assets, over 1 GB) for quick test builds that link it instead.
 export default defineConfig({
   base: './',
-  define: { __APP_VERSION__: JSON.stringify(version) },
+  // RICH4_UPDATE_CHANNEL=test: a build that takes its online updates from the test channel (ui/update.ts).
+  define: { __APP_VERSION__: JSON.stringify(version), __UPDATE_CHANNEL__: JSON.stringify(process.env.RICH4_UPDATE_CHANNEL ?? '') },
   build: {
     copyPublicDir: !process.env.RICH4_NO_ASSETS,
     // Android's System WebView can be old on phones without Google Play (issue #7: HarmonyOS 4.2 runs the APK on

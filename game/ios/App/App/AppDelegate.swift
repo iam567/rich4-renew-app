@@ -71,6 +71,60 @@ class GameViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(PhotoSaverPlugin())
     }
+
+    override func router() -> Router { UpdateRouter() }
+}
+
+/// 在線更新 (docs/rules/29, game/src/ui/update.ts): a newer version downloaded into Library/rich4-update/v<version>/
+/// holds only the files that changed; every request looks there first, then in the app's own files. Which version is
+/// chosen when the page (index.html) loads: the one named in `current`, if it is newer than the app's own build
+/// (update-base.json) — a newer installer wins over an older download. `boot` counts the starts that never reached
+/// the title (the page deletes it once it is up): after three, that version is dropped (`bad`) and the app's own runs.
+struct UpdateRouter: Router {
+    var basePath: String = ""
+    private static var overlay: String?
+    private static let root = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("rich4-update")
+
+    func route(for path: String) -> String {
+        let doc = URL(fileURLWithPath: path).pathExtension.isEmpty || path == "/index.html"
+        let rel = doc ? "/index.html" : path
+        if doc { Self.overlay = Self.choose(basePath) }
+        if let o = Self.overlay, !rel.contains(".."), FileManager.default.fileExists(atPath: o + rel) { return o + rel }
+        return basePath + rel
+    }
+
+    private static func read(_ name: String) -> String? {
+        (try? String(contentsOf: root.appendingPathComponent(name), encoding: .utf8))?.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+    private static func write(_ name: String, _ text: String) { try? text.write(to: root.appendingPathComponent(name), atomically: true, encoding: .utf8) }
+    private static func remove(_ name: String) { try? FileManager.default.removeItem(at: root.appendingPathComponent(name)) }
+
+    /// "0.9.10" > "0.9.9".
+    static func newer(_ a: String, than b: String) -> Bool {
+        let x = a.split(separator: ".").map { Int($0) ?? 0 }, y = b.split(separator: ".").map { Int($0) ?? 0 }
+        for i in 0..<max(x.count, y.count) {
+            let p = i < x.count ? x[i] : 0, q = i < y.count ? y[i] : 0
+            if p != q { return p > q }
+        }
+        return false
+    }
+
+    private static func choose(_ basePath: String) -> String? {
+        guard let ver = read("current"), ver.range(of: "^[0-9]+(\\.[0-9]+){1,3}$", options: .regularExpression) != nil else { return nil }
+        let dir = root.appendingPathComponent("v" + ver).path
+        guard FileManager.default.fileExists(atPath: dir + "/index.html") else { return nil }
+        var own = ""
+        if let data = FileManager.default.contents(atPath: basePath + "/update-base.json"),
+           let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let v = j["version"] as? String { own = v }
+        guard newer(ver, than: own) else { remove("current"); return nil }
+        let tries = read("boot").flatMap { b -> Int? in
+            let p = b.split(separator: " ")
+            return p.count == 2 && String(p[0]) == ver ? Int(p[1]) : nil
+        } ?? 0
+        if tries >= 3 { remove("current"); remove("boot"); write("bad", ver); return nil }
+        write("boot", "\(ver) \(tries + 1)")
+        return dir
+    }
 }
 
 /// 「儲存到相簿」 of the results screen: adds a PNG (base64 `data`) to the photo library, asking for add-only access

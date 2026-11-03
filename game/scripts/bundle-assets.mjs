@@ -245,3 +245,10 @@ if (encode.length) {
 }
 
 console.log(`bundled ${count} files, ${(bytes / 1e6).toFixed(0)} MB → ${out}`);
+
+// 在線更新: the build's file list (scripts/update-manifest.mjs), when the build is the app's own dist.
+if (resolve(out) === join(root, 'dist/assets')) {
+  const { writeBase } = await import('./update-manifest.mjs');
+  const m = writeBase(join(root, 'dist'));
+  console.log(`update-base.json: v${m.version}, ${Object.keys(m.files).length} files`);
+}

@@ -10,7 +10,7 @@ module.exports = {
   copyright: 'Rich4 remake',
   extraMetadata: { version },
   directories: { output: process.env.RICH4_DESKTOP_OUT || join(__dirname, 'out'), buildResources: 'build' },
-  files: ['main.cjs', 'package.json'],
+  files: ['main.cjs', 'preload.cjs', 'package.json'],
   extraResources: [{ from: process.env.RICH4_DIST || join(__dirname, '..', 'dist'), to: 'dist' }],
   asar: true,
   compression: 'store',            // the art is WebP / MP3 already: nothing to gain, much time to lose

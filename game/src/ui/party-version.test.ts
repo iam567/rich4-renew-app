@@ -22,7 +22,7 @@ describe('version texts', () => {
     expect(refuseGuest('0.7.4', '0.7.4', '阿土伯')).toBeNull();
     const r = refuseGuest('0.7.4', '0.7.2', '阿土伯')!;
     expect(r.why).toContain('版本不同：房主是 v0.7.4，你是 v0.7.2');
-    expect(r.why).toContain('到下載頁下載最新版本');
+    expect(r.why).toContain('更新到最新版本');
     expect(r.line).toBe('阿土伯的版本是 v0.7.2，和你的 v0.7.4 不同，無法加入');
   });
   it('an old phone (no version) is told its version is too old, in words its own screen shows (請出)', () => {
@@ -67,7 +67,7 @@ describe('the handshake (mocked PeerJS)', () => {
     const host = room('0.7.4', 0);
     const code = await host.create('2', false);
     const g = room('0.7.2', 3, '小美');
-    await expect(g.join(code)).rejects.toThrow(/版本不同：房主是 v0\.7\.4，你是 v0\.7\.2。\n請兩邊都到下載頁下載最新版本後再連線/);
+    await expect(g.join(code)).rejects.toThrow(/版本不同：房主是 v0\.7\.4，你是 v0\.7\.2。\n請兩邊都更新到最新版本後再連線/);
     expect(g.refused).toBe(true);
     await settle();
     expect(host.members.length).toBe(1);

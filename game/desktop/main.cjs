@@ -1,8 +1,9 @@
 // 大富翁4 for Windows and macOS (the user 2026-10-20): the same web build (../dist) in an Electron window.
 // The game is served from its own app:// origin (fetch of the maps' JSON and the art works, unlike file://), saves live
 // in the browser storage of the app's profile (IndexedDB, as on the web), 派對模式's WebRTC works as in Chrome.
-const { app, BrowserWindow, Menu, net, protocol, shell } = require('electron');
-const { join, normalize } = require('node:path');
+const { app, BrowserWindow, ipcMain, Menu, net, protocol, shell } = require('electron');
+const fs = require('node:fs');
+const { dirname, join, normalize, sep } = require('node:path');
 const { pathToFileURL } = require('node:url');
 
 protocol.registerSchemesAsPrivileged([{ scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, corsEnabled: true } }]);
@@ -12,10 +13,47 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 if (process.env.RICH4_USER_DATA) app.setPath('userData', process.env.RICH4_USER_DATA);
 const DIST = process.env.RICH4_DIST || (app.isPackaged ? join(process.resourcesPath, 'dist') : join(__dirname, '..', 'dist'));
 
+// 在線更新 (docs/rules/29, game/src/ui/update.ts): a newer version downloaded into <userData>/rich4-update/v<version>/
+// holds only the files that changed; every request looks there first, then in DIST. The same rules as the phone
+// apps (ios AppDelegate.swift UpdateRouter, android UpdateClient.java): chosen when index.html loads — `current`, if
+// newer than DIST's own build (update-base.json); `boot` counts starts that never reached the title (the page deletes
+// it), and after three that version is dropped (`bad`).
+const UPDATE = join(app.getPath('userData'), 'rich4-update');
+let overlay = null;
+const uRead = name => { try { return fs.readFileSync(join(UPDATE, name), 'utf8').trim(); } catch { return null; } };
+const uWrite = (name, text) => { try { fs.mkdirSync(UPDATE, { recursive: true }); fs.writeFileSync(join(UPDATE, name), text); } catch { /* not kept */ } };
+const uRemove = name => { try { fs.rmSync(join(UPDATE, name), { recursive: true, force: true }); } catch { /* gone */ } };
+const newer = (a, b) => {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) { const p = x[i] || 0, q = y[i] || 0; if (p !== q) return p > q; }
+  return false;
+};
+function chooseOverlay() {
+  const ver = uRead('current');
+  if (!ver || !/^[0-9]+(\.[0-9]+){1,3}$/.test(ver)) return null;
+  const dir = join(UPDATE, `v${ver}`);
+  if (!fs.existsSync(join(dir, 'index.html'))) return null;
+  let own = '';
+  try { own = JSON.parse(fs.readFileSync(join(DIST, 'update-base.json'), 'utf8')).version || ''; } catch { /* none */ }
+  if (!newer(ver, own)) { uRemove('current'); return null; }
+  const [bv, bn] = (uRead('boot') || '').split(' ');
+  const tries = bv === ver ? Number(bn) || 0 : 0;
+  if (tries >= 3) { uRemove('current'); uRemove('boot'); uWrite('bad', ver); return null; }
+  uWrite('boot', `${ver} ${tries + 1}`);
+  return dir;
+}
+/** A name inside rich4-update (no way out of it). */
+const inside = name => { const f = normalize(join(UPDATE, String(name))); if (!f.startsWith(UPDATE + sep)) throw new Error('outside'); return f; };
+ipcMain.handle('update:read', (_e, name) => { try { return new Uint8Array(fs.readFileSync(inside(name))); } catch { return null; } });
+ipcMain.handle('update:write', (_e, name, data) => { const f = inside(name); fs.mkdirSync(dirname(f), { recursive: true }); fs.writeFileSync(f, typeof data === 'string' ? data : Buffer.from(data)); return true; });
+ipcMain.handle('update:remove', (_e, name) => { fs.rmSync(inside(name), { recursive: true, force: true }); return true; });
+ipcMain.handle('update:rename', (_e, from, to) => { const b = inside(to); fs.rmSync(b, { recursive: true, force: true }); fs.renameSync(inside(from), b); return true; });
+ipcMain.handle('update:list', () => { try { return fs.readdirSync(UPDATE); } catch { return []; } });
+
 function createWindow() {
   const win = new BrowserWindow({
     width: 1280, height: 800, minWidth: 800, minHeight: 500, backgroundColor: '#0b2427', title: '大富翁4',
-    autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true },
+    autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, preload: join(__dirname, 'preload.cjs') },
   });
   win.loadURL('app://rich4/index.html');
   // A scripted run (RICH4_STEPS=steps.json: [{ js, wait, shot }]): each step's script in the page, a wait, a picture.
@@ -46,7 +84,12 @@ function createWindow() {
 
 app.whenReady().then(() => {
   protocol.handle('app', req => {
-    const path = decodeURIComponent(new URL(req.url).pathname);
+    let path = decodeURIComponent(new URL(req.url).pathname);
+    if (path === '/' || path === '/index.html') { path = '/index.html'; overlay = chooseOverlay(); }
+    if (overlay) {
+      const o = normalize(join(overlay, path));
+      if (o.startsWith(overlay + sep) && fs.existsSync(o)) return net.fetch(pathToFileURL(o).toString());
+    }
     const file = normalize(join(DIST, path));
     if (!file.startsWith(DIST)) return new Response('', { status: 403 });
     if (!require('node:fs').existsSync(file)) { if (process.env.RICH4_SHOT) console.log('MISSING', path); return new Response('', { status: 404 }); }
