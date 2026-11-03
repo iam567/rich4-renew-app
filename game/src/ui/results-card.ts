@@ -16,7 +16,7 @@ export const statIcon = (name: StatIcon) => `${ASSETS}/maps/remake/stats/${name}
 
 
 const W = 1080;
-export const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+export const FONT = '"Huninn", "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const money = (n: number) => Math.trunc(n).toLocaleString('en-US');
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`;

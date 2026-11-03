@@ -160,7 +160,7 @@ function playMini(ctx: ScreenContext, a: MiniAsk): Promise<number> {
       if (phase === 'result' || phase === 'done') {
         for (const s of bigScore(game.score)) draw(c, s);
         c.save();
-        c.font = '700 22px Huninn, "PingFang TC", sans-serif';
+        c.font = '700 22px Huninn, "PingFang SC", "PingFang TC", sans-serif';
         c.textAlign = 'center';
         c.lineJoin = 'round';
         c.lineWidth = 5;

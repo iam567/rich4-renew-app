@@ -52,7 +52,7 @@ const parse = (s: string | null | undefined): Cards => {
   } catch { return {}; }
 };
 
-const FONT = '"Huninn", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
+const FONT = '"Huninn", "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
 const image = (src: string) => new Promise<HTMLImageElement | null>(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
 
 let cache: Cards | null = null;

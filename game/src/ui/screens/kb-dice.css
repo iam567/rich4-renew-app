@@ -2,7 +2,7 @@
 .kbd-ov { background: rgba(10, 5, 30, .55); }
 .kbd-scene img { position: static; }
 .kbd-scene .kbd-die { position: relative; margin: 0; }
-.kbd-scene { font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; }
+.kbd-scene { font-family: "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif; }
 .kbd-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; padding: 10px 14px; border-radius: 24px; color: #fff;
   background: radial-gradient(120% 80% at 50% 0%, #7a4bf5, #3a14a0); box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffc93c, 0 14px 30px rgba(0,0,0,.5);
   animation: kbd-pop .35s cubic-bezier(.3, 1.5, .5, 1) both; }

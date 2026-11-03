@@ -4,7 +4,7 @@
   font-size: 24px; letter-spacing: 3px; color: #3a1c08; border-radius: 6px;
   background: radial-gradient(ellipse at 50% 50%, #ead39a 40%, #c9a25a 100%); box-shadow: 0 0 6px 2px rgba(201, 162, 90, .8); }
 .mg-banner.bottom { font-size: 26px; }
-.mg-banner.top { font-family: "Huninn", "PingFang TC", system-ui, sans-serif; font-style: normal; font-weight: 700; letter-spacing: 4px; }
+.mg-banner.top { font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; font-style: normal; font-weight: 700; letter-spacing: 4px; }
 .mg-glow { position: absolute; border-radius: 50%; opacity: 0; transition: opacity .2s;
   background: radial-gradient(circle, rgba(255, 240, 160, .85), rgba(255, 170, 60, .35) 55%, transparent 70%); }
 .mg-glow.on { opacity: 1; animation: mg-pulse 1.2s ease-in-out infinite; }

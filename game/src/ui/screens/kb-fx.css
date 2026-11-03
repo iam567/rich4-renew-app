@@ -73,7 +73,7 @@
 .kbt { position: fixed; left: 50%; top: 14%; z-index: 70; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; width: max-content; max-width: calc(100vw - 24px);
   padding: 6px 18px 6px 6px; border-radius: 18px; border: 3px solid #fff; color: #fff; pointer-events: none; text-shadow: 0 2px 0 rgba(0,0,0,.35);
   background: linear-gradient(#8a5af5, #5a21cf); box-shadow: 0 5px 0 rgba(0,0,0,.25), 0 8px 18px rgba(0,0,0,.4);
-  animation: kbt-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; transition: opacity .3s, translate .3s; font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; }
+  animation: kbt-pop .35s cubic-bezier(.3, 1.6, .5, 1) both; transition: opacity .3s, translate .3s; font-family: "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif; }
 .kbt.out { opacity: 0; translate: 0 -12px; }
 @keyframes kbt-pop { from { transform: translateX(-50%) scale(.3); opacity: 0; } }
 .kbt.kbt-good { background: linear-gradient(#5ad07a, #1c8a3a); }
@@ -99,7 +99,7 @@
 .kba-ov { background: rgba(10, 5, 30, .5); cursor: pointer; }
 .kba-ov.out { opacity: 0; transition: opacity .16s; }
 .kba-scene img { position: static; }
-.kba-scene { pointer-events: none; font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; color: #fff; }
+.kba-scene { pointer-events: none; font-family: "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif; color: #fff; }
 .kba-card { position: absolute; inset: 0; border-radius: 22px; overflow: hidden; box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffc93c, 0 14px 30px rgba(0,0,0,.5);
   background: radial-gradient(120% 80% at 50% 0%, #6a3bf5, #2a0f80); animation: kba-pop calc(.4s * var(--k)) cubic-bezier(.3, 1.5, .5, 1) both; }
 @keyframes kba-pop { from { transform: scale(.5) rotate(-4deg); opacity: 0; } }
@@ -193,7 +193,7 @@
 .kbn-scene img { position: static; }
 .kbn-card { position: absolute; inset: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px 16px; border-radius: 22px; color: #fff;
   background: radial-gradient(120% 80% at 50% 0%, #6a3bf5, #2a0f80); box-shadow: 0 0 0 4px #fff, 0 0 0 8px #ffc93c, 0 14px 30px rgba(0,0,0,.5);
-  animation: kbi-drop .4s cubic-bezier(.3, 1.35, .5, 1) both; font-family: "Huninn", "PingFang TC", "Noto Sans TC", sans-serif; }
+  animation: kbi-drop .4s cubic-bezier(.3, 1.35, .5, 1) both; font-family: "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif; }
 .kbn-ov.bad .kbn-card { background: radial-gradient(120% 80% at 50% 0%, #ff6a5a, #9a1020); }
 .kbn-ov.gang .kbn-card { background: radial-gradient(120% 80% at 50% 0%, #4a4a5a, #15151e); box-shadow: 0 0 0 4px #ffd84a, 0 0 0 8px #2a2a2a, 0 14px 30px rgba(0,0,0,.5); }
 .kbn-title { flex: none; text-align: center; font-size: 34px; line-height: 1.15; color: #ffe14a; text-shadow: 0 3px 0 rgba(0,0,0,.45); white-space: nowrap; }

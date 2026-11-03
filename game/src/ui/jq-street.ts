@@ -509,7 +509,7 @@ export class JqStreet {
   private bannerText(v: StreetView, text: string, x: number, y: number, z: number) {
     const ctx = v.ctx, size = Math.max(5, 4.4 * z);
     ctx.save();
-    ctx.font = `800 ${size}px "Noto Serif TC", "Songti TC", "PingFang TC", serif`;
+    ctx.font = `800 ${size}px "Noto Serif TC", "Songti TC", "PingFang SC", "PingFang TC", serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillStyle = '#ffe58a';
     const w = Math.min(ctx.measureText(text).width, 44 * z);

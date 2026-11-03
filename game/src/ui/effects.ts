@@ -278,7 +278,7 @@ export class Effects {
           const ic = icon ? this.host.bank.board('Data', 519)?.[Number(icon[1]) - 1] : null;
           if (icon) w = ic ? ic.w * ic.scale * 1.4 * z : 56 * z;
           else {
-            ctx.font = `600 ${size}px "Huninn", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
+            ctx.font = `600 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
             lines ??= wrap(ctx, text, 150 * z);
             w = Math.max(...lines.map(l => ctx.measureText(l).width));
           }
@@ -321,7 +321,7 @@ export class Effects {
     ctx.fillStyle = '#7a0a10'; ctx.fillRect(x + 4 * z, y + 3 * z, 12 * z, 16 * z);
     ctx.fillStyle = '#ffd84a'; ctx.font = `${9 * z}px sans-serif`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('★', x + 10 * z, y + 11 * z);
-    ctx.font = `700 ${fs}px "Noto Serif TC", "Songti TC", "PingFang TC", serif`;
+    ctx.font = `700 ${fs}px "Noto Serif TC", "Songti TC", "PingFang SC", "PingFang TC", serif`;
     ctx.textAlign = 'left';
     const head = '毛主席教導我們：', room = w - 24 * z;
     let body = quote;
@@ -408,7 +408,7 @@ export class Effects {
 function caption(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number, z: number) {
   const size = 28 * z * 0.9, lh = size * 1.2;
   const lines = text.split('\n');
-  ctx.font = `700 ${size}px "Huninn", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
+  ctx.font = `700 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.lineJoin = 'round';
