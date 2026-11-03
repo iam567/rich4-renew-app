@@ -18,7 +18,7 @@ import type { GameSettings } from './types';
 const MAPS = [0, 1, 100, 106];
 const have = haveSimMaps(MAPS);
 
-interface RunOpts { party?: boolean; human?: boolean; level?: 0 | 1 | 2; levels?: (0 | 1 | 2)[]; days?: number }
+interface RunOpts { party?: boolean; human?: boolean; level?: 0 | 1 | 2 | 3; levels?: (0 | 1 | 2 | 3)[]; days?: number }
 
 function newGame(mapId: number, seed: number, opts: RunOpts): Game {
   const board = parseBoard(JSON.parse(readFileSync(simMapFile(mapId), 'utf8')) as RawMap);
@@ -79,15 +79,29 @@ describe.skipIf(!have)('the smarter computer and the computer levels', () => {
     expect(back.settings.aiLevel).toBe(1);
   }, 60_000);
 
-  it('plays a party at 困難, the same from the same seed (every phone), whatever aiLevel says', () => {
+  it('plays a party at the room\'s 電腦難度 (none: 困難), the same from the same seed (every phone)', () => {
     for (const mapId of [1, 106]) {
       const a = run(mapId, 4242, { party: true, human: true, days: 150 });
       expect(run(mapId, 4242, { party: true, human: true, days: 150 })).toBe(a);
-      expect(run(mapId, 4242, { party: true, human: true, level: 0, days: 150 })).toBe(a);
+      expect(run(mapId, 4242, { party: true, human: true, level: 0, days: 150 })).not.toBe(a);
       expect(run(mapId, 4242, { party: true, human: true, levels: [2, 2, 2, 2], days: 150 })).toBe(a);
       expect(run(mapId, 4242, { party: true, human: true, levels: [0, 0, 0, 0], days: 150 })).not.toBe(a);
     }
   }, 60_000);
+
+  it('地獄 (the user 2026-11-03): the computers gang up on the players — a fellow computer is no rival, the richest player is the leader', () => {
+    const g = newGame(1, 7, { party: true, human: true, level: 3 });
+    const [h0, h1, c2, c3] = g.players;
+    for (const p of g.players) p.whoPlays = p.human ? 1 : 2;
+    h0.autopilot = false; h1.autopilot = false;
+    Object.assign(c3, { cash: 9_000_000 }); Object.assign(h1, { cash: 500_000 }); Object.assign(h0, { cash: 100_000 });
+    expect([g.aiLevel(c2), g.aiLevel(h0)]).toEqual([3, 0]);
+    const ai = (g as unknown as { smart: { rival(p: unknown, q: unknown): boolean; leader(p: unknown): number } }).smart;
+    expect([ai.rival(c2, h0), ai.rival(c2, h1), ai.rival(c2, c3)]).toEqual([true, true, false]);
+    expect(ai.leader(c2)).toBe(h1.id);                // not the richer computer
+    h1.autopilot = true;                              // a player on 托管 plays 困難, not with the gang
+    expect(g.aiLevel(h1)).toBe(2);
+  });
 
   it('簡單 < 中級 < 困難: two seats of one level against two of another', () => {
     const maps = [0, 1, 100], seeds = [1000, 1001, 1002];

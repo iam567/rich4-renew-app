@@ -19,7 +19,7 @@ import { askScreens, closeStuckScreens, fxScreens } from './screens/registry';
 import { PartyBar } from './party-chat';
 import { openParty } from './party';
 import { RULE_ITEMS, RULE_LABELS } from './rule-options';
-import { Lobby, type Room } from './party-net';
+import { Lobby, TURN_SECONDS, type Room } from './party-net';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, interruptedLoad, loadSlot, markLoading, notice, pickSlot, writeAuto, writeSlot, type Loaded } from './saves';
 import { lowerTier } from './mem-tier';
 import { memReport } from './mem-report';
@@ -40,7 +40,10 @@ import { isWorldSave, saveWorld } from '../core/save';
 import { openCityViewer } from './city-viewer';
 import { tycoonEnding } from './tycoon-ending';
 import { finaleResults } from './finale-ending'; // 大富翁城 (docs/rules/19)
-import { finaleToolbar, noStocks, prepareFinale } from './finale';
+import { fetchHeadCount, inParty } from './party-presence';
+import { PingTags, seatPing } from './party-hud';
+import { reportParty } from './party-report';
+import { chipGame, finaleToolbar, noStocks, prepareFinale } from './finale';
 import { prepareHotels } from './hotels';
 import { prepareAh11 } from './ah11';
 import { prepareCityLots } from './city-lots';
@@ -230,19 +233,27 @@ function afterLoadTrouble() {
  * from the room list (party-net Lobby, which this phone may come to hold). Only while the title is shown and online.
  */
 let titleLobby: Lobby | null = null;
+let titleCount = 0;
 function watchParty(el: HTMLElement) {
   stopWatchingParty();
+  inParty(null); // back at the title: no longer in 派對模式
   if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
   const lobby = new Lobby();
   titleLobby = lobby;
-  lobby.onStats = s => {
+  // 派對模式's head count from the relay (party-presence.ts, the user 2026-11-03), read every 20 s here.
+  let online = 0, stats = { privateRooms: 0, waiting: 0 };
+  const draw = () => {
     if (titleLobby !== lobby || !el.isConnected) { if (!el.isConnected) stopWatchingParty(); return; }
-    el.hidden = !(s.privateRooms || s.waiting);
-    el.innerHTML = `${s.privateRooms ? `<b>私享房間 ${s.privateRooms}</b>` : ''}${s.waiting ? `<b>等待夥伴 ${s.waiting} 人</b>` : ''}`;
+    el.hidden = !(online || stats.privateRooms || stats.waiting);
+    el.innerHTML = `${online ? `<b>派對模式 ${online} 人在線</b>` : ''}${stats.privateRooms ? `<b>私享房間 ${stats.privateRooms}</b>` : ''}${stats.waiting ? `<b>等待夥伴 ${stats.waiting} 人</b>` : ''}`;
   };
+  lobby.onStats = s => { stats = s; draw(); };
+  const count = async () => { const n = await fetchHeadCount(); if (titleLobby !== lobby) return; online = n?.online ?? 0; draw(); };
+  void count();
+  titleCount = window.setInterval(() => void count(), 20_000);
   void lobby.start();
 }
-function stopWatchingParty() { titleLobby?.close(); titleLobby = null; }
+function stopWatchingParty() { titleLobby?.close(); titleLobby = null; clearInterval(titleCount); titleCount = 0; }
 
 /** 動畫過程 (RICH4.CFG +1) as far as the remake goes: play the mini games, or take the automatic 50..69 points. */
 const MINI_GAME_MODES = ['親自玩', '自動結算'];
@@ -543,6 +554,12 @@ let currentView: BoardView | null = null;
 let currentWeather: WeatherFx | null = null;
 
 function start(settings: GameSettings, room?: Room) {
+  // 派對模式, back after the app closed (issue #50): the game from the room's newest turn, the answers since follow.
+  const back = room?.resume;
+  if (back) {
+    begin(settings.mapId, board => { const g = loadGame(JSON.parse(back.save) as SaveData, board); if (!ledgerOf(g.players)) attachLedger(g.players); return g; }, true, undefined, room);
+    return;
+  }
   // Every game keeps the statistics ledger (core/stats.ts) for the results screen.
   begin(settings.mapId, board => { const g = new Game(settings, board); attachLedger(g.players); return g; }, false, undefined, room);
 }
@@ -659,6 +676,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     if (mapId === KB_MAP) prepareKabukicho(bank); // 歌舞伎町's tool icons (docs/rules/21 §7.5)
     await prepareJiqingPlaces(bank, mapId === JQ_MAP); // 激情歲月's place screens (docs/rules/24 §11.3); off on every other map
     game = make(art.board);
+    chipGame.game = ty ? null : game;
   } catch (e) {
     firstGround?.dispose(); boot.dispose();
     if (me !== session) return;
@@ -1125,7 +1143,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   const flow = ty ? ty.flow : game.run();
   let answer: Answer = undefined;
   // 派對模式: the game's questions are numbered; this phone sends its seats' answers, waits for the others'.
-  let askSeq = 0, sendSeq = -1, warnedDesync = false;
+  // A phone back in a party game (issue #50) starts at the question its snapshot was taken at.
+  let askSeq = room?.resume?.seq ?? 0, sendSeq = -1, warnedDesync = false;
+  if (room) room.resume = null;
   const waiting = document.createElement('div');
   waiting.className = 'pt-waiting'; waiting.hidden = true;
   if (room) {
@@ -1153,9 +1173,10 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       if (t) { waiting.textContent = t; waiting.hidden = false; } else waiting.hidden = true;
     };
   }
-  // 派對模式's clock (the user 2026-10-19: no stalling): a turn not rolled within 60 s after GO first shows — card and
-  // tool menus included — goes to the computer (托管); 取消托管 hands it back from the next turn.
-  const TURN_MS = 60000;
+  // 派對模式's clock (the user 2026-10-19: no stalling; 2026-11-03: the room's 等待時間, 10–60 s): each of a player's
+  // decisions has that long; when it runs out that one step is taken for them (GO rolls, a question gets the safe
+  // answer) and the game goes on — nobody is put on 托管 for it.
+  const turnMs = () => (TURN_SECONDS[room?.rules.turnSec ?? TURN_SECONDS.length - 1] ?? 60) * 1000;
   let turnDeadline = 0;
   const cancelAuto = new Set<number>();
   /** 托管 asked for from the bar, waiting for this phone's next turn. */
@@ -1173,7 +1194,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const tick = window.setInterval(() => {
       if (me !== session) { clearInterval(tick); return; }
       const left = turnDeadline ? Math.ceil((turnDeadline - Date.now()) / 1000) : 99;
-      clock.hidden = left > 20 || left < 0;
+      clock.hidden = left > 10 || left < 0;
       clock.textContent = `還剩 ${left} 秒`;
       const auto = [...room.mine].some(seat => game.players[seat]?.autopilot && !game.players[seat].bankrupt);
       unauto.hidden = !auto;
@@ -1196,12 +1217,14 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       },
     });
     shell.insertBefore(partyBar.el, stage);
+    // Each human player's ping over their head on the map (party-hud.ts PingTags), with the 延遲 panel.
+    new PingTags(stage, room, view, () => partyBar.netShown);
     shell.classList.add('party');
   }
   /** The rest of this phone's turn clock (null when it does not run for this question). */
   const expires = (p: number): Promise<void> | null => {
     if (!room || !room.mine.has(p) || p !== game.current) return null;
-    if (!turnDeadline) turnDeadline = Date.now() + TURN_MS;
+    turnDeadline = Date.now() + turnMs(); // each decision its own time
     return new Promise(res => setTimeout(res, Math.max(0, turnDeadline - Date.now())));
   };
   /** `ui` or, when the clock runs out first, `late()`. */
@@ -1213,6 +1236,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const never = new Promise<T>(() => {});
     const r = await Promise.race([ui.then(v => { settled = true; return v; }), clockRun.then(() => (settled ? never : late()))]);
     settled = true;
+    turnDeadline = 0; // answered: no countdown until the next decision
     return r;
   };
   const dropped = new Map<number, number>();
@@ -1230,6 +1254,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     answer = undefined;
     if (r.done) break;
     const s = r.value;
+    // 派對模式: the game as each turn begins, for a player whose app closed and comes back (issue #50).
+    if (room && !('ask' in s) && s.t === 'turn') room.snapshot(askSeq, () => JSON.stringify(saveGame(game)));
     // One event a screen cannot show (say, a player still on another city's square) is skipped and logged; it must
     // never stop the game (the user lost games to that: 小財神's payers, a summoned rival).
     try {
@@ -1262,7 +1288,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       hud.refresh();
       if (room) {
         const seq = askSeq++;
-        if (s.t === 'turn' && !room.digest(seq, digest()) && !warnedDesync) { warnedDesync = true; void hud.flash('和房主的遊戲不同步了\n請把這局截圖給開發者', 2600); }
+        if (s.t === 'turn' && !room.digest(seq, digest()) && !warnedDesync) { warnedDesync = true; void hud.flash('和房主的遊戲不同步了\n請把這局截圖給開發者', 2600); void reportParty('desync', '和房主的遊戲不同步', { seq, detail: `第 ${game.daysElapsed} 天・輪到 ${nameOf(s.p)}` }); }
         if (!room.mine.has(s.p)) {
           // Another phone's player decides: wait for the answer. A seat sent away (voted out) is answered by the
           // host for the computer: 托管 at its turn (then the rules play it), the safe answer otherwise.
@@ -1270,12 +1296,16 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           const auto = () => (s.t === 'turn' ? { action: 'autopilot' } : s.t === 'auto-turn' ? 0 : autoAnswer(s)) as Answer;
           wd.setHuman(true);
           let got: { v: Answer } | null = null;
+          // Stuck (party-report.ts): a wait far past the room's 等待時間 is reported once.
+          const waitFrom = Date.now();
+          let stuckSent = false;
           while (!got) {
+            if (!stuckSent && Date.now() - waitFrom > 45_000) { stuckSent = true; void reportParty('stuck', `等待 ${nameOf(s.p)} 操作已超過 45 秒（${s.t}）`, { seq, detail: `第 ${game.daysElapsed} 天・${room.connected() ? '和房主連線正常' : '和房主斷線中'}・${room.ownerConnected(s.p) ? '對方在線' : '對方斷線'}` }); }
             if (room.host) {
               if (room.ownerConnected(s.p)) dropped.delete(s.p); else if (!dropped.has(s.p)) dropped.set(s.p, Date.now());
               if (room.kickedSeats.has(s.p) || Date.now() - (dropped.get(s.p) ?? Infinity) >= 10000) { answer = auto(); sendSeq = seq; break; }
             }
-            waiting.textContent = room.kickedSeats.has(s.p) ? `${nameOf(s.p)} 由電腦接手…` : `等待 ${nameOf(s.p)} 操作…`; waiting.hidden = false;
+            waiting.textContent = room.kickedSeats.has(s.p) ? `${nameOf(s.p)} 由電腦接手…` : `等待 ${nameOf(s.p)} 操作…${seatPing(room, s.p)}`; waiting.hidden = false;
             // (untilHost only for a guest: it is already settled on the host, and racing it there spun forever)
             got = await Promise.race([room.wait(seq).then(v => ({ v: v as Answer })), ...(room.host ? [] : [room.untilHost().then(() => null)]), new Promise<null>(r => setTimeout(() => r(null), 1000))]);
           }
@@ -1317,7 +1347,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           answerTurn = resolve;
           toolbar.setTurnOpen(true);
           go.show(p.traffic & 3, keptDice?.key === key ? keptDice.dice : p.dice, s.maxDice, p.stay !== 0, p.turtle !== 0).then(dice => resolve({ dice }));
-        }), expires(s.p), () => { go.cancel(); void hud.flash('60 秒沒有前進\n改由電腦托管（可按「取消托管」）', 2200); return { action: 'autopilot' } as Answer; });
+        }), expires(s.p), () => { go.cancel(); void hud.flash(`${turnMs() / 1000} 秒沒有操作\n自動擲骰`, 1600); return autoAnswer(s); });
         answerTurn = null;
         // Another action first (card, tool, stocks…): keep the dice picked on GO for when the turn menu opens again.
         keptDice = answer && typeof answer === 'object' && 'dice' in answer ? null : { key, dice: go.picked() };

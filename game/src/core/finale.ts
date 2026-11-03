@@ -107,9 +107,8 @@ export class Finale extends CasinoRules implements WorldHooks {
     const [lo, hi] = FINALE_FEE[Math.max(1, Math.min(5, level))];
     return (lo + rng.below(hi - lo + 1)) * FINALE_CHIP * this.blind();
   }
-  /** The finale's texts in chips (1 chip = 100 元). */
-  price(n: number): string { return this.active ? `${fmt(Math.trunc(n / FINALE_CHIP))}籌碼` : `${fmt(n)}元`; }
-  moneyWord(): string { return this.active ? '籌碼' : '現金'; }
+  /** Chips only once the finale starts (before it the city is an ordinary one of the world, unplayed). */
+  get chipsOnly(): boolean { return this.active; }
 
   protected note(text: string, p: number, important: boolean): void { this.w.ticker(this.index, text, 'casino', p, { important }); }
 
@@ -124,9 +123,6 @@ export class Finale extends CasinoRules implements WorldHooks {
     if (g) g.priceIndex = 1;   // fixed chip prices (World.updatePriceIndex sets every city's each day)
   }
 
-  /** The bank counter is closed in the finale (chips: no loans); the ATM still takes and gives back chips. */
-  get noLoans(): boolean { return this.active; }
-
   /** A finalist with no chips left is out (19 §2): the original bankruptcy (their halls back to the bank, unowned). */
   private *outOfChips(): Flow {
     const g = this.game();
@@ -134,7 +130,7 @@ export class Finale extends CasinoRules implements WorldHooks {
     for (const id of this.finalists) {
       const p = this.w.players[id];
       // Out below one chip (19 §2): what the screen shows as 0 籌碼.
-      if (p.whoPlays && !p.bankrupt && p.cash + p.bank < FINALE_CHIP && p.loan === 0) yield* this.bankrupt(p, g);
+      if (p.whoPlays && !p.bankrupt && p.cash < FINALE_CHIP) yield* this.bankrupt(p, g);
       if (this.w.over) return;
     }
   }

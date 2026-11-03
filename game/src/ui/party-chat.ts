@@ -4,6 +4,7 @@
  * the map opens the panel (history, quick phrases, input, the players with 靜音 and 請出); new lines pop up at the
  * top for a few seconds (not from someone muted).
  */
+import { bars, grade, NetHud } from './party-hud';
 import { ASSETS } from './assets';
 import { audio } from './audio';
 import type { ChatLine, Room } from './party-net';
@@ -83,19 +84,23 @@ export class PartyBar {
   /** When this phone may taunt again. */
   private tauntAt = 0;
   private tauntTarget = '';
+  private hud: NetHud;
 
   constructor(private stage: HTMLElement, private room: Room, private face: (c: number) => string, private auto: AutoControl) {
     this.el.className = 'party-bar';
     // The icons drawn like the toolbar's (party_icons.py): normal, and lit (-h) when pressed, open or on.
     const icon = (k: string, title: string, extra = '') => `<button data-v="${k}" title="${title}"><img class="pb-n" src="${PARTY_ART}/icon-${k}.webp" alt=""><img class="pb-h" src="${PARTY_ART}/icon-${k}-h.webp" alt="">${extra}</button>`;
     this.el.innerHTML = icon('chat', '聊天', '<i hidden></i>') + icon('quick', '快捷語') + icon('emoji', '表情') + icon('taunt', '嘲諷') +
-      icon('people', '玩家', '<em></em>') + icon('votes', '投票', '<i hidden></i>') + icon('auto', '托管', '<em class="pb-tag"></em>');
+      icon('people', '玩家', '<em></em>') + icon('votes', '投票', '<i hidden></i>') + icon('auto', '托管', '<em class="pb-tag"></em>') +
+      '<button data-v="net" title="延遲面板"><span class="pb-net"></span><em></em></button>';
+    this.hud = new NetHud(stage, room, face);
     this.el.addEventListener('click', e => {
       e.stopPropagation();
       const v = (e.target as HTMLElement).closest<HTMLElement>('[data-v]')?.dataset.v;
       if (!v) return;
       audio.ui('click');
       if (v === 'auto') { this.auto.toggle(); this.refresh(); return; }
+      if (v === 'net') { this.hud.toggle(); this.refresh(); return; }
       this.toggle(v as View);
     });
     this.pops.className = 'pc-pops';
@@ -103,6 +108,7 @@ export class PartyBar {
     room.onChat = l => this.arrive(l);
     room.onVotes = () => { this.refresh(); if (this.panel) this.draw(); };
     room.onLobby = () => { this.refresh(); if (this.panel) this.draw(); };
+    room.onNet = () => { this.hud.draw(); this.refresh(); };
     this.refresh();
     window.setInterval(() => this.refresh(), 1000);
   }
@@ -121,6 +127,12 @@ export class PartyBar {
     ab.title = st === 'auto' ? '取消托管' : st === 'pending' ? '托管中…' : st === 'back' ? '下回合恢復手動' : '托管';
     ab.querySelector('em')!.textContent = st === 'auto' ? '托管中' : st === 'pending' ? '等待中' : st === 'back' ? '下回合' : '';
     for (const b of this.el.querySelectorAll<HTMLElement>('[data-v]')) b.classList.toggle('on', b.dataset.v === this.view);
+    // 延遲: this phone's round trip to the host (the host: its own way to the relay), lit while the panel shows.
+    const link = r.link(), nb = q('net');
+    const g = link.via === 'host' ? grade(link.relay || null) : grade(link.rtt, !r.connected());
+    nb.querySelector('.pb-net')!.innerHTML = bars(link.via === 'host' && !link.relay ? 'good' : g);
+    nb.querySelector('em')!.textContent = !r.connected() ? '斷線' : link.via === 'host' ? '房主' : link.rtt === null ? '' : `${link.rtt}`;
+    nb.classList.toggle('lit', this.hud.shown);
   }
 
   private arrive(l: ChatLine) {
@@ -231,5 +243,8 @@ export class PartyBar {
     };
   }
 
-  destroy() { this.el.remove(); this.pops.remove(); this.panel?.remove(); }
+  /** The 延遲 panel is shown (the heads' ping tags go with it). */
+  get netShown(): boolean { return this.hud.shown; }
+
+  destroy() { this.el.remove(); this.pops.remove(); this.panel?.remove(); this.hud.destroy(); }
 }

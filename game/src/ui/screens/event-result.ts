@@ -75,8 +75,11 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
   // sideways), pages with a pager — never cut off, never scrolled.
   const n = lines.length, list = node.querySelector<HTMLElement>('.er-rows')!;
   const room = () => (node.parentElement?.clientHeight ?? 0) - 40;
-  const across = (textLines: number) => node.offsetWidth <= (node.parentElement?.clientWidth ?? 0) + 1
-    && list.scrollWidth <= list.clientWidth + 1 && rowsReadable(node, ONE_LINE, '.er-text', textLines);
+  const across = (textLines: number, texts = '.er-text') => node.offsetWidth <= (node.parentElement?.clientWidth ?? 0) + 1
+    && list.scrollWidth <= list.clientWidth + 1 && rowsReadable(node, ONE_LINE, texts, textLines);
+  // Rows on one line each (the name and its text side by side, the user 2026-11-02: no wrapped rows) when any layout
+  // allows it; else a text may take two lines.
+  const fitsFlat = () => node.offsetHeight <= room() && across(1, '.er-text, .er-body');
   const fits = () => node.offsetHeight <= room() && across(2);
   const cols = (c: string) => (n >= 3 ? [c ? `${c} two` : 'two'] : []);
   const looks = (full: boolean) => [
@@ -93,7 +96,7 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
     fitPhrases(node.querySelector<HTMLElement>('.er-title')!, 0.8);
   };
   let pages = onePage;
-  if (pickLayout([...looks(false), ...looks(true)], apply, fits) === null) {
+  if (pickLayout([...looks(false), ...looks(true)], apply, fitsFlat) === null && pickLayout([...looks(false), ...looks(true)], apply, fits) === null) {
     // The most compact layout whose rows still read (a long text on up to three lines), its rows on pages.
     const cap = (l: { cls: string }) => (l.cls.includes('tight') ? 2 : 3);
     const last = [...looks(true)].reverse().find(l => (apply(l), across(cap(l)))) ?? looks(true)[0];

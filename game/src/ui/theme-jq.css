@@ -64,6 +64,12 @@
 
 /* ---------------------------------------------------------------- the result box (a certificate, 獎狀) */
 .game.theme-jq .msg.er-box { background: #fbf2d8 var(--jq-award) center / 100% 100%; border: 3px solid #c8161d; }
+/* The certificate is stretched to the box, its wheat borders with it (about 9% of the width each side): the rows stay
+   inside them on a wide landscape box (issue #49); the banner and the map's tag apart. */
+.game.theme-jq .msg.er-box { padding: 60px calc(9% + 4px) 24px; }
+.game.theme-jq .msg.er-box.tight { padding: 48px calc(9% + 4px) 18px; }
+.game.theme-jq .er-head { gap: 18px; margin-top: -76px; margin-bottom: 32px; }
+.game.theme-jq .er-box.tight .er-head { margin-top: -64px; margin-bottom: 24px; }
 .game.theme-jq .er-cat { border-radius: 0; border: none; color: #ffe58a; background: #c8161d var(--jq-banner) center / 100% 100%; box-shadow: none; padding: 3px 22px 5px; }
 .game.theme-jq .er-title { color: #b3131b; text-shadow: none; font-family: "Noto Serif TC", "Songti TC", serif; font-weight: 900; }
 .game.theme-jq .er-text, .game.theme-jq .er-name { color: #3a1a0a; }

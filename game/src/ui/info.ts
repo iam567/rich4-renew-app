@@ -10,9 +10,11 @@ import { itemIconSrc, itemText } from './screens/item-text';
 import { cardName, handStacks, stackOf } from '../core/modules/cards';
 import type { SpriteBank } from './sprites';
 import { tycoon } from './tycoon';
+import { chipMode } from './finale';
 import { shrinkText } from './text';
 
-const money = (n: number) => `$${Math.trunc(n).toLocaleString('en-US')}`;
+// 大富翁城 shows chips (docs/rules/19 §2, §9).
+const money = (n: number) => (chipMode() ? `${Math.trunc(n / 100).toLocaleString('en-US')}籌碼` : `$${Math.trunc(n).toLocaleString('en-US')}`);
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const LAND_STAGES = ['空　地', '平　房', '店　舖', '商　場', '商業大樓', '摩天大樓'];
 const FACILITY_TYPES = ['公園', '旅館', '購物中心', '加油站', '研究所', '輪盤館', '二十一點館', '百家樂館', '德州撲克館', '骰寶館', '居酒屋', '陪酒店', '泡泡浴', '情人酒店']; // 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21)
@@ -151,10 +153,12 @@ export class InfoScreen {
     const cards = handStacks(p.cards, stackOf(g)).map(st => `<span class="info-card" data-card="${st.id}" title="${cardName(st.id)}">${cardName(st.id)}${st.n > 1 ? `<b>×${st.n}</b>` : ''}</span>`).join('') || '<span class="info-none">沒有卡片</span>';
     // Two blocks (the figures; 道具 and 卡片): on a small screen that cannot hold both, one at a time (fit()).
     return `<div class="info-blk"><div class="info-grid">
-        ${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}
+        ${chipMode() ? `${cell('籌碼', money(p.cash))}${cell('點券', String(p.points))}
+        ${cell('總資產', money(g.wealth(p)))}${cell('保險', `${p.insurance & 0x7f}天`)}`
+        : `${cell('現金', money(p.cash))}${cell('股票', money(stockValue))}
         ${cell('存款', money(p.bank))}${cell('點券', String(p.points))}
         ${cell('貸款', money(p.loan))}${cell('保險', `${p.insurance & 0x7f}天`)}
-        ${cell('總資產', money(g.wealth(p)))}${cell('企業', `×${companies}`)}
+        ${cell('總資產', money(g.wealth(p)))}${cell('企業', `×${companies}`)}`}
       </div>
       <div class="info-grid four">
         ${cell('土地', `×${lands.length + facs.length}`)}${cell('連鎖店', `×${lands.filter(l => l.chain).length}`)}

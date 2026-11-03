@@ -11,6 +11,7 @@
  */
 import Peer from 'peerjs';
 import { ICE_SERVERS } from './party-net';
+import { relayReachable } from './net-peer';
 
 export type NetCheck =
   | { ok: true; note?: string }
@@ -56,9 +57,12 @@ async function candidates(): Promise<Set<string>> {
 export async function checkNetwork(): Promise<NetCheck> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false)
     return { ok: false, title: '沒有網路', text: '這支手機目前沒有連上網路，\n無法進行多人對戰。\n請開啟 Wi-Fi 或行動數據後再試一次。', retry: true };
-  if (typeof RTCPeerConnection === 'undefined')
+  // The VPS relay (net-peer.ts, the user 2026-11-03) answering is enough: everything goes through it.
+  const rtc = typeof RTCPeerConnection !== 'undefined';
+  const [relay, server, kinds] = await Promise.all([relayReachable(), rtc ? signalling() : Promise.resolve(false), rtc ? candidates() : Promise.resolve(new Set<string>())]);
+  if (relay) return { ok: true };
+  if (!rtc)
     return { ok: false, title: '不支援聯機', text: '這支手機（或系統版本）不支援聯機功能，\n無法進行多人對戰。\n請更新系統後再試。', retry: false };
-  const [server, kinds] = await Promise.all([signalling(), candidates()]);
   return verdict(server, kinds);
 }
 
@@ -67,9 +71,9 @@ const VPN = '如果開了翻牆 VPN 或代理，請先關掉再試\n（或在代
 /** What the check says from what it found: the signalling server reached, the kinds of ICE candidate gathered. */
 export function verdict(server: boolean, kinds: Set<string>): NetCheck {
   if (!server)
-    return { ok: false, title: '連不上聯機伺服器', text: `這支手機現在連不上聯機伺服器，\n暫時無法進行多人對戰。\n${VPN}\n也請確認網路正常（公司、學校的網路可能擋住聯機），\n或換個網路再試。`, retry: true };
+    return { ok: false, title: '暫時無法聯機', text: `這支手機現在無法聯機，\n暫時無法進行多人對戰。\n${VPN}\n也請確認網路正常（公司、學校的網路可能擋住聯機），\n或換個網路再試。`, retry: true };
   if (kinds.has('srflx')) return { ok: true };
-  if (kinds.has('relay')) return { ok: true, note: '你的網路只能透過轉送伺服器聯機，可能會比較慢' };
+  if (kinds.has('relay')) return { ok: true, note: '你的網路聯機可能會比較慢' };
   // Only this phone's own addresses: the other phones on the same Wi-Fi can still be reached.
   if (kinds.has('host')) return { ok: true, note: `你的網路擋住了對外的聯機，現在只能和同一個 Wi-Fi 的人連線。\n${VPN}` };
   return { ok: false, title: '網路不支援聯機', text: `這支手機目前的網路擋住了手機之間的連線，\n無法進行多人對戰。\n${VPN}\n也可以換成其他 Wi-Fi 或行動數據再試。`, retry: true };

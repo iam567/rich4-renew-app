@@ -174,3 +174,101 @@
    centred while it fits, from the top (the ribbon showing) when it does not */
 .slots-overlay.pt-ov { overflow-y: auto; -webkit-overflow-scrolling: touch; padding-top: max(30px, calc(env(safe-area-inset-top) + 18px)); }
 .pt-ov > .msg.sheet.pt { margin-block: auto; }
+/* 延遲 panel (party-hud.ts, the user 2026-11-03): everyone's ping in the map's top right; never takes a tap. */
+.net-hud { position: absolute; right: 6px; top: 6px; z-index: 13; display: grid; gap: 2px; padding: 4px 6px; border-radius: 10px;
+  background: rgba(20, 24, 60, .62); pointer-events: none; font-size: 11px; line-height: 16px; color: #fff; white-space: nowrap; }
+.net-hud[hidden], .net-hud:empty { display: none; }
+.nh-row { display: grid; grid-template-columns: 16px minmax(0, 5.5em) 16px 4.2em; align-items: center; gap: 4px; }
+.nh-row img { width: 16px; height: 16px; border-radius: 50%; object-fit: cover; }
+.nh-row b { overflow: hidden; text-overflow: clip; font-weight: 700; }
+.nh-row span { text-align: right; font-variant-numeric: tabular-nums; }
+.nh-row em { font-style: normal; font-size: 10px; opacity: .75; }
+.nh-row.me b { color: #ffe14a; }
+.nh-row.good span { color: #7dff8a; } .nh-row.fair span { color: #ffe14a; } .nh-row.poor span { color: #ff7a6a; } .nh-row.none span { color: #c9c9d9; }
+.nh-bars { width: 16px; height: 13px; }
+.nh-bars rect { fill: rgba(255, 255, 255, .25); }
+.nh-bars.good rect.on { fill: #5be36a; } .nh-bars.fair rect.on { fill: #ffd23a; } .nh-bars.poor rect.on { fill: #ff5a46; }
+.party-bar button .pb-net { grid-area: 1 / 1; display: grid; place-items: center; width: calc(30px * var(--tu)); height: calc(30px * var(--tu));
+  border-radius: 8px; background: rgba(255, 255, 255, .1); }
+.party-bar button .pb-net .nh-bars { width: 70%; height: 60%; }
+.party-bar button.lit .pb-net { background: rgba(255, 225, 74, .25); box-shadow: inset 0 0 0 2px #ffe14a; }
+/* The room: each seat's ping, the host's 延遲上限. */
+.pt-ping { font-size: 10px; font-variant-numeric: tabular-nums; }
+.pt-ping.good { color: #7dff8a; } .pt-ping.fair { color: #ffe14a; } .pt-ping.poor { color: #ff7a6a; } .pt-ping.none { opacity: .7; }
+.pt-seat small.pt-ping { white-space: nowrap; word-break: normal; overflow: hidden; }
+.pt-seats.many small.pt-ping { font-size: 9px; letter-spacing: -.02em; }
+/* 派對模式's head count (party-presence.ts): one line under the lead. */
+.pt-online { margin: -4px 0 2px; font-size: 13px; color: #7dff8a; text-align: center; white-space: nowrap; }
+.pt-online[hidden] { display: none; }
+/* The ping over each human player's head (party-hud.ts PingTags): follows the figure, never takes a tap. */
+.net-tags { position: absolute; inset: 0; z-index: 12; pointer-events: none; overflow: hidden; }
+.net-tags[hidden] { display: none; }
+.net-tag { position: absolute; left: 0; top: 0; padding: 1px 7px; border-radius: 999px; font-size: 11px; line-height: 16px; font-weight: 700;
+  white-space: nowrap; font-variant-numeric: tabular-nums; color: #fff; background: rgba(20, 24, 60, .72); border: 1.5px solid currentColor; }
+.net-tag.good { color: #7dff8a; } .net-tag.fair { color: #ffe14a; } .net-tag.poor { color: #ff7a6a; } .net-tag.none { color: #c9c9d9; }
+.net-tag.me { box-shadow: 0 0 0 2px rgba(255, 225, 74, .55); }
+/* The rooms' screens redrawn (the user 2026-11-03: too dense and limp): room type cards, the maps as picture cards a
+   page at a time, the settings as tiles always shown, choices as one segmented bar. */
+.pt-types { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; width: 100%; }
+.pt-type { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 12px 8px; border-radius: 16px; font: inherit; color: #fff;
+  background: rgba(255, 255, 255, .1); border: 2px solid rgba(255, 255, 255, .25); cursor: pointer; }
+.pt-type b { font-weight: 700; font-size: 17px; white-space: nowrap; }
+.pt-type small { font-size: 11px; opacity: .85; white-space: nowrap; }
+.pt-type.on { color: #5a2d00; background: linear-gradient(#fff6b0, #ffc93a); border-color: #fff; box-shadow: 0 3px 0 #c97a00; }
+.pt-sec { align-self: flex-start; font-size: 14px; color: #ffe14a; margin: 2px 0 -4px; }
+.pt-mgrid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; width: 100%; }
+.pt-mcard { display: flex; flex-direction: column; gap: 4px; padding: 5px 5px 6px; border-radius: 14px; font: inherit; color: #fff; cursor: pointer;
+  background: rgba(255, 255, 255, .1); border: 2px solid transparent; }
+.pt-mcard img { width: 100%; aspect-ratio: 4 / 3; object-fit: cover; border-radius: 10px; background: rgba(0, 0, 0, .25); }
+.pt-mcard span { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-mcard.on { border-color: #ffe14a; background: rgba(255, 225, 74, .22); box-shadow: 0 0 0 2px rgba(255, 225, 74, .35); }
+.pt-mcard.on span { color: #ffe14a; }
+.pt-pager { display: flex; align-items: center; justify-content: center; gap: 18px; color: #fff; font-size: 14px; }
+.pt-pager button { width: 40px; height: 32px; border-radius: 12px; border: 0; font: inherit; font-size: 20px; color: #5a2d00; background: linear-gradient(#fff6b0, #ffc93a); box-shadow: 0 2px 0 #c97a00; cursor: pointer; }
+.pt-pager button:disabled { opacity: .3; cursor: default; }
+.pt-mapline { display: flex; align-items: center; gap: 10px; width: 100%; padding: 6px 10px; border-radius: 12px; background: rgba(0, 0, 0, .18); color: #fff; }
+.pt-mapline img { width: 48px; height: 36px; object-fit: cover; border-radius: 6px; }
+.pt-mapline span { font-size: 13px; color: #ffe14a; }
+.pt-mapline b { font-weight: 700; font-size: 16px; white-space: nowrap; }
+.pt-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
+.pt-tile { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; padding: 6px 8px 6px 12px; border-radius: 12px;
+  background: rgba(0, 0, 0, .18); color: #fff; }
+.pt-tile > span { font-size: 13px; color: #ffe14a; white-space: nowrap; }
+.pt-tile > b { font-weight: 700; font-size: 15px; white-space: nowrap; padding-right: 6px; }
+.pt-step { display: grid; grid-template-columns: 30px minmax(3.6em, auto) 30px; align-items: center; gap: 4px; }
+.pt-step b { font-weight: 700; font-size: 15px; text-align: center; white-space: nowrap; }
+.pt-step button { height: 30px; padding: 0; border: 0; border-radius: 10px; font: inherit; font-size: 18px; color: #5a2d00; cursor: pointer;
+  background: linear-gradient(#fff6b0, #ffc93a); box-shadow: 0 2px 0 #c97a00; }
+.pt-choice { display: grid; grid-template-columns: 4.6em 1fr; align-items: center; gap: 8px; width: 100%; color: #fff; }
+.pt-choice > span { font-size: 13px; color: #ffe14a; white-space: nowrap; }
+.pt-choice > b { font-weight: 700; font-size: 15px; }
+.pt-seg { display: flex; padding: 3px; gap: 3px; border-radius: 14px; background: rgba(0, 0, 0, .22); }
+.pt-seg button { flex: 1; min-width: 0; padding: 7px 4px; border: 0; border-radius: 11px; font: inherit; font-size: 14px; white-space: nowrap; color: #dfe8ff; background: none; cursor: pointer; }
+.pt-seg button.on { color: #5a2d00; font-weight: 700; background: linear-gradient(#fff6b0, #ffc93a); box-shadow: 0 2px 0 #c97a00; }
+/* The room's two halves: one under the other; side by side on a landscape phone, the name and the chat side by side
+   under them too, so the whole room fits without scrolling. */
+.pt-dyn { display: flex; flex-direction: column; gap: 10px; width: 100%; }
+.pt-half { display: flex; flex-direction: column; align-items: center; gap: 8px; width: 100%; min-width: 0; }
+@media (max-height: 560px) and (orientation: landscape) {
+  .pt-mgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .msg.sheet.pt.pt-roomv { width: min(940px, 96vw); max-width: min(940px, 96vw); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; row-gap: 6px; align-items: start; }
+  .pt-roomv > .ribbon, .pt-roomv > .pt-dyn, .pt-roomv > .pt-acts { grid-column: 1 / -1; }
+  .pt-roomv > .pt-hint { display: none; }
+  .pt-roomv > .pt-me { grid-column: 1; }
+  .pt-roomv > .pt-chat { grid-column: 2; grid-row: span 2; }
+  .pt-roomv .pt-dyn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; align-items: start; }
+  .pt-roomv .pt-half { gap: 6px; }
+  .pt-roomv .pt-code b { font-size: 34px; }
+  .pt-roomv .pt-seat { min-height: 78px; padding: 4px; }
+  .pt-roomv .pt-seat img { width: 40px; height: 40px; }
+  .pt-roomv .pt-tile { padding: 3px 6px 3px 10px; }
+  .pt-roomv .pt-step button { height: 26px; }
+  .pt-roomv .pt-seg button { padding: 5px 2px; font-size: 13px; }
+  .pt-roomv .pt-wait { font-size: 12px; }
+}
+.pt-choice > span { text-align: left; }
+/* A listed room's 等待時間 and 電腦難度 (the user 2026-11-03: know a quick room before joining it). */
+.pt-room .pt-rtags { display: flex; gap: 4px; margin-top: 2px; font-style: normal; }
+.pt-room .pt-rtag { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; color: #2a3f8f; background: rgba(42, 63, 143, .12); }
+.pt-room .pt-rtag.quick { color: #7a3b00; background: #ffd23a; }
+.pt-room .pt-rtag.hell { color: #fff; background: #d8432f; }

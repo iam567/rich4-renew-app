@@ -18,7 +18,8 @@
  * room and every phone looking at the list connects to it, and when it goes another one takes the id over and the
  * rooms announce themselves again.
  */
-import Peer, { type DataConnection } from 'peerjs';
+import { freshId, netConfig, openNet, type NetConn, type NetPeer } from './net-peer';
+import { postChat, reportCtx, reportParty } from './party-report';
 import { CHARACTERS } from '../core/characters';
 import { hostMismatch, partyVersion, refuseGuest, statsByVersion } from './party-version';
 
@@ -30,6 +31,8 @@ const PREFIX = 'rich4-party-v2-';
 // v2 (2026-10-20): the list also counts private rooms and seekers; older versions keep their own list (v1).
 export const LOBBY = `${PREFIX}lobby-v2`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
+/** Where this device keeps its seat in the last party game (issue #50). */
+const SEAT_KEY = 'rich4.party.seat';
 
 /** `nick`: the name the player gave themself (the user 2026-10-19); `name` is it or the character's. */
 export interface Member { id: string; name: string; character: number; region?: string; nick?: string; /** In the game: its phone is gone (the host tells everyone). */ away?: boolean }
@@ -43,7 +46,12 @@ const named = (m: Member) => { m.nick = cleanNick(m.nick) || undefined; m.name =
 export const ROOM_MAX = 8;
 
 /** A room in the list. `private`: a 私享 room counted only (its code is a random token, never shown or joinable). */
-export interface RoomInfo { code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string; private?: boolean; /** The host's app version (v0.7.4 on; none: older). */ ver?: string }
+export interface RoomInfo {
+  code: string; host: string; character: number; map: string; players: number; max: number; at: number; region?: string; private?: boolean;
+  /** The host's app version (v0.7.4 on; none: older). */ ver?: string;
+  /** 等待時間 in seconds and 電腦難度 (AI_LEVELS index), shown in the list (the user 2026-11-03: a quick room's players should know before they join; none: an older host). */
+  turn?: number; ai?: number;
+}
 /** The title button's figures (the user 2026-10-20): 私享 rooms open now, and people waiting for partners (the players
  * in shared rooms not started, plus those looking at 「尋找夥伴」). */
 export interface LobbyStats { privateRooms: number; waiting: number }
@@ -74,16 +82,27 @@ export interface PartyRules {
   fundIndex: number; traffic: 0 | 1 | 2; landLimitIndex: number; daysLimitIndex: number; victoryIndex: number;
   /** 挑戰模式 (docs/rules/26 §7.1): 0 a normal game, else the deadline PARTY_CHALLENGE_YEARS[i] (online: always one). */
   challenge: number;
+  /** 延遲上限 (the user 2026-11-03): PING_LIMITS[i] ms; a phone slower than that can't join (0: no limit). */
+  maxPing: number;
+  /** 等待時間 (the user 2026-11-03): TURN_SECONDS[i] seconds for each of a player's decisions. */
+  turnSec: number;
+  /** 電腦難度 of the computers filling the seats (the user 2026-11-03): 0 簡單, 1 中等, 2 困難 (as before), 3 地獄. */
+  aiLevel: number;
 }
+export const AI_LEVELS = ['簡單', '中等', '困難', '地獄'];
+/** 等待時間's choices: quick players 10 s, patient ones up to 60 s (the clock as it always was). */
+export const TURN_SECONDS = [10, 20, 30, 40, 50, 60];
+/** 延遲上限's choices in ms (0: 不限). */
+export const PING_LIMITS = [0, 150, 250, 400];
 /** 挑戰模式's deadlines online (the user 2026-11-02: 1 year by default, 3 / 5 to pick, no unlimited game). */
 export const PARTY_CHALLENGE_YEARS = [0, 1, 3, 5];
 /** As every 派對模式 game started before the rules could be picked: 20萬, 步行, no limits. */
-export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0 };
+export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0, maxPing: 0, turnSec: 5, aiLevel: 2 };
 /** Rules as kept: each a whole number in its range, else the default. */
 export function cleanRules(r: unknown): PartyRules {
   const o = (r ?? {}) as Record<string, unknown>;
   const at = (k: keyof PartyRules, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
-  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE_YEARS.length) };
+  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE_YEARS.length), maxPing: at('maxPing', PING_LIMITS.length), turnSec: at('turnSec', TURN_SECONDS.length), aiLevel: at('aiLevel', AI_LEVELS.length) };
 }
 /** What the host sends when the game starts. */
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
@@ -95,9 +114,10 @@ export function startMsg(r: Room, fill: number, startDate: number, seed: number)
   const used = new Set(r.members.map(m => m.character));
   const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
   const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
-  const { challenge, ...rules } = r.rules;
-  const mode = challenge ? { challenge: true, challengeYears: PARTY_CHALLENGE_YEARS[challenge], daysLimitIndex: 0, victoryIndex: 0 } : {};
-  return { settings: { mapId: Number(r.map), players, ...rules, ...mode, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
+  // Online is 大富翁 only (the user 2026-11-03: 挑戰模式 off in 派對模式); the limits are the room's, not the game's.
+  const { challenge, maxPing, turnSec, aiLevel, ...rules } = r.rules;
+  void challenge; void maxPing; void turnSec;
+  return { settings: { mapId: Number(r.map), players, ...rules, aiLevel: aiLevel as 0 | 1 | 2 | 3, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
 }
 
 type Msg =
@@ -105,6 +125,8 @@ type Msg =
   | { t: 'char'; character: number; nick?: string }
   | { t: 'lobby'; members: Member[]; map: string; shared: boolean; /** The host's version (v0.7.4 on). */ ver?: string; /** The room's rules (issue #31; none: the defaults). */ rules?: PartyRules }
   | { t: 'start'; start: StartMsg }
+  /** Back to a game after the app was closed (issue #50): the game, the newest turn's snapshot and its question number. */
+  | { t: 'resume'; start: StartMsg; save?: string; seq: number }
   | { t: 'ans'; seq: number; v: unknown; u?: boolean }
   | { t: 'log'; from: number; answers: [unknown, boolean][]; total: number }
   | { t: 'digest'; seq: number; h: number }
@@ -112,8 +134,17 @@ type Msg =
   | { t: 'vote'; target: string; voter: string }
   | { t: 'votes'; target: string; voters: string[] }
   | { t: 'kicked'; id: string; seat?: number }
-  | { t: 'bye'; why?: string; /** v0.7.4 on: the host's version, and `version` when that is why. */ ver?: string; reason?: 'version' }
-  | { t: 'ping' };
+  | { t: 'bye'; why?: string; /** v0.7.4 on: the host's version, and `version` when that is why. */ ver?: string; reason?: 'version' | 'ping' }
+  /** The heartbeat; `at` (v0.9.2 on) is answered with a pong: the round trip. */
+  | { t: 'ping'; at?: number }
+  | { t: 'pong'; at: number }
+  /** The host's table of everyone's connection, every heartbeat. */
+  | { t: 'net'; rows: NetRow[] };
+
+/** One player's connection (the 延遲 panel): round trip to the host in ms (null: not measured yet / gone), which way. */
+export interface NetRow { id: string; rtt: number | null; via: 'vps' | 'p2p' | 'host'; away?: boolean }
+/** The middle of the newest round trips. */
+const median = (a: number[]) => { if (!a.length) return null; const b = [...a].sort((x, y) => x - y); return b[b.length >> 1]; };
 
 const wait = (ms: number) => new Promise(r => setTimeout(r, ms));
 
@@ -130,51 +161,32 @@ export const ICE_SERVERS: RTCIceServer[] = [
   { urls: 'stun:game.flj.info:3478' },
   { urls: ['turn:game.flj.info:3478?transport=udp', 'turn:game.flj.info:3478?transport=tcp'], username: 'rich4', credential: '29e57ad82edb53b7f8dde103' },
 ];
-const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } } as const;
+const PEER_OPTS = { debug: 0, config: { iceServers: ICE_SERVERS } };
 
-/** A PeerJS peer with a given id, or null when the id is taken (another phone has it). */
-function open(id?: string): Promise<Peer | null> {
-  return new Promise(resolve => {
-    const p = id ? new Peer(id, PEER_OPTS) : new Peer(PEER_OPTS);
-    let done = false;
-    p.on('open', () => { if (!done) { done = true; resolve(p); } });
-    p.on('error', e => {
-      if (done) return;
-      done = true;
-      p.destroy();
-      resolve((e as { type?: string }).type === 'unavailable-id' ? null : null);
-    });
-    setTimeout(() => { if (!done) { done = true; p.destroy(); resolve(null); } }, 12000);
-  });
-}
+netConfig.peerOpts = PEER_OPTS;
 
-function connect(peer: Peer, id: string): Promise<DataConnection | null> {
-  return new Promise(resolve => {
-    const c = peer.connect(id, { reliable: true });
-    let done = false;
-    const fail = () => { if (!done) { done = true; c.close(); resolve(null); } };
-    c.on('open', () => { if (!done) { done = true; resolve(c); } });
-    c.on('error', fail);
-    peer.on('error', e => { if ((e as { type?: string }).type === 'peer-unavailable') fail(); });
-    setTimeout(fail, 10000);
-  });
-}
+/**
+ * This phone on the network (net-peer.ts: the VPS relay when it answers, else PeerJS) under `id` or a fresh one;
+ * null when the id is taken (another phone has it) or nothing answers.
+ */
+const open = (id?: string): Promise<NetPeer | null> => openNet(id ?? freshId(PREFIX), !!id);
+const connect = (peer: NetPeer, id: string): Promise<NetConn | null> => peer.dial(id);
 
 /** The 「尋找夥伴」 list: held by whichever phone has the LOBBY id (see the header). */
 export class Lobby {
   rooms = new Map<string, RoomInfo>();
   onRooms: (rooms: RoomInfo[]) => void = () => {};
-  private peer: Peer | null = null;
-  private holder: Peer | null = null;
-  private conns = new Set<DataConnection>();
-  private toHolder: DataConnection | null = null;
+  private peer: NetPeer | null = null;
+  private holder: NetPeer | null = null;
+  private conns = new Set<NetConn>();
+  private toHolder: NetConn | null = null;
   private timer = 0;
   private closed = false;
   private mine: RoomInfo | null = null;
   /** This phone looks at 「尋找夥伴」 (counted as waiting for partners). */
   seeking = false;
   /** Seekers by connection (the holder's bookkeeping), last seen and their version (none: an old phone). */
-  private seekers = new Map<DataConnection, { at: number; ver?: string }>();
+  private seekers = new Map<NetConn, { at: number; ver?: string }>();
   stats: LobbyStats = { privateRooms: 0, waiting: 0 };
   onStats: (s: LobbyStats) => void = () => {};
 
@@ -291,6 +303,14 @@ export class Room {
   /** The rules the host picked (issue #31), kept on every phone. */
   rules: PartyRules = { ...DEFAULT_RULES };
   started: StartMsg | null = null;
+  /**
+   * Issue #50 (a player whose app closed came back with the room code and was a stranger): every phone keeps the game
+   * as it was when the newest turn began (a save, core/save.ts) and the number of the next question then; the host
+   * gives a returning player that and the answers since, and that phone plays on from there.
+   */
+  private snap: { seq: number; save: string } | null = null;
+  /** A returning phone's start: the snapshot to load and the question number it begins at (main.ts takes it). */
+  resume: { save: string; seq: number } | null = null;
   /** The player seats this phone plays. */
   mine = new Set<number>();
   onLobby: () => void = () => {};
@@ -323,8 +343,8 @@ export class Room {
   private replied: ((why: string) => void) | null = null;
   private kickedIds = new Set<string>();
 
-  private peer: Peer | null = null;
-  private guests = new Map<string, DataConnection>();
+  private peer: NetPeer | null = null;
+  private guests = new Map<string, NetConn>();
   /**
    * The heartbeat (issue #4: a phone that quits without a word left everyone 「等待 … 操作」 for good — a closed app's
    * connection may never report closing): host and guests ping each other every PING_MS; a side silent for
@@ -335,8 +355,14 @@ export class Room {
   private static readonly SILENT_MS = 10000;
   private lastSeen = new Map<string, number>();
   private hostSeen = 0;
+  /** Round trips (ms, the newest few): the host's to each guest, a guest's to the host. */
+  private rtts = new Map<string, number[]>();
+  private hostRtts: number[] = [];
+  /** Everyone's connection (the host's table; a guest's own row from its own measure). */
+  net: NetRow[] = [];
+  onNet: () => void = () => {};
   private beat = 0;
-  private toHost: DataConnection | null = null;
+  private toHost: NetConn | null = null;
   private lostHost = '';
   private rejoining = false;
   private log: [unknown, boolean][] = [];
@@ -351,7 +377,7 @@ export class Room {
   /** Host: a new room; resolves with its code. */
   async create(map: string, shared: boolean): Promise<string> {
     this.map = map; this.shared = shared;
-    let peer: Peer | null = null;
+    let peer: NetPeer | null = null;
     for (let k = 0; k < 6 && !peer; k++) {
       const code = String(1000 + Math.floor(Math.random() * 9000));
       peer = await open(roomId(code));
@@ -377,7 +403,7 @@ export class Room {
   untilHost(): Promise<void> { return this.host ? Promise.resolve() : new Promise(r => this.hostWaiters.push(r)); }
 
   /** The room's id is this phone's: it hosts. */
-  private becomeHost(peer: Peer) {
+  private becomeHost(peer: NetPeer) {
     const prev = this.myId;
     this.peer?.destroy();
     this.peer = peer;
@@ -393,6 +419,7 @@ export class Room {
     peer.on('error', e => { if (!this.closed && this.host && (e as { type?: string }).type === 'unavailable-id') void this.demote(); });
     for (const w of this.hostWaiters.splice(0)) w();
     for (const w of this.connWaiters.splice(0)) w();
+    this.remember();
   }
 
   /** A player's peer id changed (a phone that became the host, or came back with a new connection). */
@@ -407,6 +434,22 @@ export class Room {
     }
     for (const m of this.members) if (m.id === prev) m.id = id;
     if (this.started && prev in this.started.seats) { this.started.seats[id] = this.started.seats[prev]; delete this.started.seats[prev]; }
+  }
+
+  /** The game as a turn begins (main.ts at each turn): kept for a player who comes back (issue #50). */
+  snapshot(seq: number, save: () => string) { if (this.started) this.snap = { seq, save: save() }; }
+
+  /** This phone's seat in a started game, kept on the device so the room code brings it back (issue #50). */
+  private remember() {
+    if (!this.started) return;
+    try { localStorage.setItem(SEAT_KEY, JSON.stringify({ code: this.code, id: this.myId, at: Date.now() })); } catch { /* not kept */ }
+  }
+  /** The peer id this phone had in the room `code` (a game within the last 12 hours), if any. */
+  private remembered(code: string): string | undefined {
+    try {
+      const x = JSON.parse(localStorage.getItem(SEAT_KEY) ?? 'null') as { code: string; id: string; at: number } | null;
+      return x && x.code === code && Date.now() - x.at < 12 * 3600_000 ? x.id : undefined;
+    } catch { return undefined; }
   }
 
   /** Guest: joins the room with that code. */
@@ -426,10 +469,11 @@ export class Room {
     if (why) { this.close(); throw new Error(why); }
   }
 
-  private asGuest(peer: Peer) {
+  private asGuest(peer: NetPeer) {
     this.peer = peer;
     this.host = false;
     this.myId = peer.id;
+    this.remember();
     peer.on('disconnected', () => { if (!this.closed && !this.host) peer.reconnect(); });
   }
 
@@ -453,8 +497,16 @@ export class Room {
     this.toHost = c;
     this.hostSeen = Date.now();
     this.startBeat();
-    c.on('data', d => { this.hostSeen = Date.now(); if ((d as Msg).t !== 'ping') this.fromHost(d as Msg); });
+    c.on('data', d => {
+      this.hostSeen = Date.now();
+      const m = d as Msg;
+      if (m.t === 'ping') { if (m.at !== undefined) c.send({ t: 'pong', at: m.at } satisfies Msg); return; }
+      if (m.t === 'pong') { this.hostRtts = [...this.hostRtts.slice(-4), Math.max(1, Date.now() - m.at)]; return; }
+      this.fromHost(m);
+    });
     c.on('close', () => { if (this.toHost === c) { this.toHost = null; if (!this.closed && !this.host) void this.rejoin(); } });
+    // A phone with no game here yet that played in this room before says who it was (issue #50).
+    prev ??= this.started ? undefined : this.remembered(this.code);
     c.send({ t: 'hi', name: this.me.name, character: this.me.character, region: this.me.region, nick: this.me.nick, have: this.started ? this.log.length : undefined, prev, ...(this.ver !== null ? { ver: this.ver } : {}) } satisfies Msg);
     for (const w of this.connWaiters.splice(0)) w();
     return true;
@@ -469,6 +521,7 @@ export class Room {
     this.rejoining = true;
     const lost = this.lostHost || this.members[0]?.id || '';
     this.onStatus('與房主的連線中斷，重新連線中…');
+    if (this.started) void reportParty('drop', `與房主（${this.nameOf(lost)}）的連線中斷`, { seq: this.log.length });
     for (let k = 0; !this.closed && !this.toHost && !this.host; k++) {
       await wait(Math.min(2000 + k * 1000, 6000));
       if (this.closed || this.host) break;
@@ -476,7 +529,7 @@ export class Room {
       const next = this.members.find(x => x.id !== lost);
       if (next?.id === this.myId && k >= 1) {
         const p = await open(roomId(this.code));
-        if (p) { this.becomeHost(p); this.onStatus(''); this.heard({ from: '', name: '系統', character: -1, text: '你成為新的房主', at: Date.now() }); break; }
+        if (p) { this.becomeHost(p); this.onStatus(''); this.heard({ from: '', name: '系統', character: -1, text: '你成為新的房主', at: Date.now() }); void reportParty('host', `${this.nameOf(this.myId)} 成為新的房主（原房主 ${this.nameOf(lost)} 斷線）`, { seq: this.log.length }); break; }
       }
     }
     this.lostHost = '';
@@ -484,7 +537,7 @@ export class Room {
     if (this.toHost) this.onStatus('');
   }
 
-  private guest(c: DataConnection) {
+  private guest(c: NetConn) {
     this.lastSeen.set(c.peer, Date.now());
     this.startBeat();
     /** Another version's phone: told why, nothing more taken from it. */
@@ -493,7 +546,8 @@ export class Room {
       const m = d as Msg;
       if (refused) return;
       this.lastSeen.set(c.peer, Date.now());
-      if (m.t === 'ping') return;
+      if (m.t === 'ping') { if (m.at !== undefined) c.send({ t: 'pong', at: m.at } satisfies Msg); return; }
+      if (m.t === 'pong') { this.rtts.set(c.peer, [...(this.rtts.get(c.peer) ?? []).slice(-4), Math.max(1, Date.now() - m.at)]); return; }
       if (this.kickedIds.has(c.peer)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
       if (m.t === 'hi' && this.ver !== null) {
         // The version check (party-version.ts): another version (or an old phone, which sends none) is refused.
@@ -511,6 +565,25 @@ export class Room {
         if (m.prev && this.kickedIds.has(m.prev)) { c.send({ t: 'bye', why: '你已被投票請出房間' } satisfies Msg); return; }
         if (m.prev) this.rename(m.prev, c.peer);
         this.guests.set(c.peer, c);
+        if (this.started && m.have === undefined && m.prev && c.peer in this.started.seats) {
+          // Back after its app closed (issue #50): its seat again, the game from the newest turn's snapshot and the
+          // answers since (the computer played its seat meanwhile, 托管: cancelled at its next turn as usual).
+          const snap = this.snap;
+          c.send({ t: 'resume', start: this.started, save: snap?.save, seq: snap?.seq ?? 0 } satisfies Msg);
+          const from = snap?.seq ?? 0;
+          c.send({ t: 'log', from, answers: this.log.slice(from), total: this.log.length } satisfies Msg);
+          for (const x of this.members) if (x.id === c.peer) x.away = false;
+          this.lobbyChanged();
+          this.onStatus('');
+          this.heard({ from: '', name: '系統', character: -1, text: `${this.nameOf(c.peer)} 回到遊戲`, at: Date.now() });
+          return;
+        }
+        if (this.started && m.have === undefined) {
+          // A phone with no game and no seat here (another device, or its seat forgotten): it would wait for a start
+          // that never comes.
+          c.send({ t: 'bye', why: '這局遊戲已經開始了，無法加入\n（原本在這局的玩家，請用同一台裝置輸入房間碼回到遊戲）' } satisfies Msg);
+          return;
+        }
         if (this.started) {
           // Back after a drop, or to a new host: what it missed; it sends back what this phone lacks.
           const from = Math.min(m.have ?? 0, this.log.length);
@@ -541,13 +614,13 @@ export class Room {
   }
 
   /** A guest's connection closed, or it went silent (heartbeat): it is gone until it comes back. */
-  private dropGuest(c: DataConnection) {
+  private dropGuest(c: NetConn) {
     if (this.guests.get(c.peer) !== c) return;
     this.guests.delete(c.peer);
     this.lastSeen.delete(c.peer);
     try { c.close(); } catch { /* already closed */ }
     if (!this.started) { this.members = this.members.filter(x => x.id !== c.peer); this.lobbyChanged(); }
-    else if (!this.closed) { for (const x of this.members) if (x.id === c.peer) x.away = true; this.lobbyChanged(); this.onStatus('有玩家斷線，等待他回來…'); }
+    else if (!this.closed) { for (const x of this.members) if (x.id === c.peer) x.away = true; this.lobbyChanged(); this.onStatus('有玩家斷線，等待他回來…'); void reportParty('drop', `${this.nameOf(c.peer)} 斷線（房主這邊看到）`, { seq: this.log.length }); }
   }
 
   freeCharacter(want: number, id: string): number {
@@ -585,6 +658,7 @@ export class Room {
       this.replied?.('');
     }
     else if (m.t === 'start') { this.begin(m.start); }
+    else if (m.t === 'resume') { if (!this.started) { this.resume = m.save ? { save: m.save, seq: m.seq } : null; this.begin(m.start); } }
     else if (m.t === 'ans') this.record(m.seq, m.u ? undefined : m.v, false);
     else if (m.t === 'log') {
       m.answers.forEach(([v, u], k) => this.record(m.from + k, u ? undefined : v, false));
@@ -592,11 +666,13 @@ export class Room {
       for (let seq = m.total; seq < this.log.length; seq++) { const e = this.log[seq]; if (e) this.toHost?.send({ t: 'ans', seq, v: e[0] ?? null, u: e[1] } satisfies Msg); }
     }
     else if (m.t === 'digest') this.digests.set(m.seq, m.h);
+    else if (m.t === 'net') { this.net = m.rows.map(r => (r.id === this.myId ? { ...r, rtt: median(this.hostRtts) ?? r.rtt } : r)); this.onNet(); }
     else if (m.t === 'chat') this.heard(m.line);
     else if (m.t === 'votes') { this.votes.set(m.target, new Set(m.voters)); this.onVotes(); }
     else if (m.t === 'kicked') this.away(m.id, m.seat);
     else if (m.t === 'bye') {
       if (m.reason === 'version' && this.ver !== null) { this.leaveRefused(m.why ?? hostMismatch(this.ver ?? '', m.ver) ?? '版本不同'); return; }
+      if (m.reason === 'ping') { this.leaveRefused(m.why ?? '網路延遲太高'); return; }
       this.kicked = /請出/.test(m.why ?? '');
       if (this.replied) this.replied(m.why ?? '房間已滿'); else this.onStatus(m.why ?? '房間已滿');
       this.close();
@@ -627,7 +703,9 @@ export class Room {
   }
   private begin(s: StartMsg) {
     this.started = s;
+    reportCtx.room = this.code;
     this.mine = new Set(Object.entries(s.seats).filter(([id]) => id === this.myId).map(([, seat]) => seat));
+    this.remember();
     this.onStart(s);
   }
 
@@ -671,6 +749,7 @@ export class Room {
     if (!t) return;
     const mine = this.members.find(x => x.id === this.myId);
     const line: ChatLine = { from: this.myId, name: mine?.name ?? this.me.name, character: mine?.character ?? this.me.character, text: t, at: Date.now() };
+    void postChat(this.code, t);
     if (this.host) this.heard(line);
     else { this.toHost?.send({ t: 'chat', line } satisfies Msg); this.heard(line, false); }
   }
@@ -738,17 +817,50 @@ export class Room {
   }
   nameOf(id: string) { return this.members.find(x => x.id === id)?.name ?? '玩家'; }
 
+  /** Host: a guest slower than the room's 延遲上限 is told why and leaves (before the game). */
+  private tooSlow(c: NetConn, ms: number, limit: number) {
+    const name = this.nameOf(c.peer);
+    try { c.send({ t: 'bye', why: `你的網路延遲 ${ms} ms，超過房主設定的 ${limit} ms\n換個網路（例如 Wi-Fi）再試試`, reason: 'ping' } satisfies Msg); } catch { /* closing */ }
+    setTimeout(() => this.dropGuest(c), 800);
+    this.lastSeen.set(c.peer, Date.now());
+    this.rtts.delete(c.peer);
+    this.heard({ from: '', name: '系統', character: -1, text: `${name} 的網路延遲 ${ms} ms，超過上限，無法加入`, at: Date.now() });
+  }
+
+  /** Host: everyone's connection now, kept and sent to all (the 延遲 panel). */
+  private tableNet() {
+    const rows: NetRow[] = this.members.map(m => {
+      if (m.id === this.myId) return { id: m.id, rtt: this.peer?.relayRtt || null, via: 'host' as const };
+      const c = this.guests.get(m.id);
+      return { id: m.id, rtt: c?.open ? median(this.rtts.get(m.id) ?? []) : null, via: c?.via ?? 'p2p', ...(m.away || !c?.open ? { away: true } : {}) };
+    });
+    this.net = rows;
+    const msg: Msg = { t: 'net', rows };
+    for (const c of this.guests.values()) { try { if (c.open) c.send(msg); } catch { /* closing */ } }
+    this.onNet();
+  }
+  /** This phone's way to the room: 'host', 'vps' or 'p2p', and its round trip to the host (null: not yet). */
+  link(): { via: 'host' | 'vps' | 'p2p'; rtt: number | null; relay: number } {
+    if (this.host) return { via: 'host', rtt: 0, relay: this.peer?.relayRtt ?? 0 };
+    return { via: this.toHost?.via ?? 'p2p', rtt: this.toHost?.open ? median(this.hostRtts) : null, relay: this.peer?.relayRtt ?? 0 };
+  }
+
   /** Every PING_MS: ping the other side(s); whoever has been silent for SILENT_MS is taken as gone. */
   private startBeat() {
     if (this.beat) return;
     this.beat = window.setInterval(() => {
       if (this.closed) { clearInterval(this.beat); this.beat = 0; return; }
-      const now = Date.now(), ping: Msg = { t: 'ping' };
+      const now = Date.now(), ping: Msg = { t: 'ping', at: now };
       if (this.host) {
+        const limit = this.started ? 0 : PING_LIMITS[this.rules.maxPing] ?? 0;
         for (const c of [...this.guests.values()]) {
           if (now - (this.lastSeen.get(c.peer) ?? now) > Room.SILENT_MS) { this.dropGuest(c); continue; }
+          // 延遲上限 (before the game only: in it nobody is sent away for a slow moment): three measures over it.
+          const r = this.rtts.get(c.peer) ?? [], mid = median(r);
+          if (limit && r.length >= 3 && mid !== null && mid > limit) { this.tooSlow(c, mid, limit); continue; }
           try { if (c.open) c.send(ping); } catch { /* closing */ }
         }
+        this.tableNet();
       } else if (this.toHost) {
         const c = this.toHost;
         if (now - this.hostSeen > Room.SILENT_MS) {

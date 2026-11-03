@@ -122,6 +122,11 @@ export interface MapRules {
   daily?(g: Game): void;
   /** The bank counter is closed (no loans: 大富翁城's finale plays in chips); the ATM stays open. */
   readonly noLoans?: boolean;
+  /**
+   * 大富翁城 (both modes, the user 2026-11-03): chips are all there is — no deposits, ATM, loans or interest; whatever
+   * pays a deposit pays the cash, and below one chip a player is out.
+   */
+  readonly chipsOnly?: boolean;
   /** A plot's worth in the total assets here (大富翁城's halls: plot + build + token upgrades). */
   facilityWorth?(f: Facility): number;
   /** Gods and objects that may appear here (大富翁城: no 天使 / 小惡魔 / 土地公 / 死神). */
@@ -357,6 +362,7 @@ export class Game {
     this.forks.init();
     // 大富翁城 (docs/rules/19): its finale city gets the world link's rules, a normal game on it the map's own.
     this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this);
+    this.foldChips();
     if (!link) {
       this.challengeTracker = new Challenge(this, settings.challenge ? undefined : taskPool(settings.mapId));
       if (settings.challenge) this.challengeAi = new ChallengeAi(this, this.challengeTracker);
@@ -380,7 +386,7 @@ export class Game {
    * Test hook only (never set by the game): the computer's level by seat, in place of the settings'. The simulation
    * (core/ai-sim.ts, scripts/ai-sim.ts, smart-ai.test.ts) pits the levels against each other.
    */
-  testLevels?: readonly (0 | 1 | 2)[];
+  testLevels?: readonly (0 | 1 | 2 | 3)[];
   /** 挑戰模式's computer (core/challenge-ai.ts): set with the game's task tracker; the smarter computer reads it. */
   challengeAi?: ChallengeAi;
   /**
@@ -392,14 +398,17 @@ export class Game {
    * The level a computer-played seat (a computer, a human on 托管, in 派對模式 also a player voted out or dropped) plays
    * at (core/smart-ai.ts): 0 簡單 = the original's rules bit for bit, 1 中級 = the smarter money, buying, building and
    * dice with the original's cards, tools and shop, 2 困難 = the smarter computer in full. A normal game takes
-   * `settings.aiLevel` (none: 0, as every game before it); 派對模式 and 挑戰模式 always 2 (the user 2026-10-22; the
-   * challenge computer chases stars, docs/rules/26 §5); 大富豪模式 always 0.
-   * A human playing by hand: 0.
+   * `settings.aiLevel` (none: 0, as every game before it); 挑戰模式 always 2 (the user 2026-10-22; the challenge
+   * computer chases stars, docs/rules/26 §5); 派對模式 the room's 電腦難度 (the user 2026-11-03; none: 2, as before);
+   * 大富豪模式 always 0. 3 地獄: 困難 playing safer (SmartAi HELL), its own share trading (hellShares: takes profits, cuts
+   * losses) and every computer against the humans (SmartAi.rival) — a human's seat on 托管 or dropped plays 困難. A human playing by hand: 0.
    */
-  aiLevel(p: Player): 0 | 1 | 2 {
+  aiLevel(p: Player): 0 | 1 | 2 | 3 {
     if (this.world || this.isHuman(p) || !p.whoPlays) return 0;
     if (this.testLevels) return this.testLevels[p.id] ?? 0;
-    return this.settings.party || this.settings.challenge ? 2 : this.settings.aiLevel ?? 0;
+    if (this.settings.challenge) return 2;
+    if (this.settings.party) { const l = this.settings.aiLevel ?? 2; return p.human && l > 2 ? 2 : l; }
+    return this.settings.aiLevel ?? 0;
   }
   /** 中級 and up: the smarter money, buying, building and dice (core/smart-ai.ts). */
   smartAi(p: Player): boolean { return this.aiLevel(p) >= 1; }
@@ -563,14 +572,14 @@ export class Game {
     else if (to >= 100) { const c = this.board.companies[to - 101]; c.fundA += amount; c.fundB += amount; }
     else if (to >= 0) {
       const q = this.players[to];
-      if (flags & 1) q.cash += amount; else q.bank += amount;
+      if (flags & 1 || this.rules?.chipsOnly) q.cash += amount; else q.bank += amount;
       q.monthGain += amount;
     }
   }
 
   /** Money from nowhere fcn_0041d3f4 (docs/rules/02 §9.1): flags & 1 cash, else deposit. */
   gain(p: Player, amount: number, flags: number) {
-    if (flags & 1) p.cash += amount; else p.bank += amount;
+    if (flags & 1 || this.rules?.chipsOnly) p.cash += amount; else p.bank += amount;
     p.monthGain += amount;
   }
 
@@ -752,7 +761,30 @@ export class Game {
         while (!this.over && p.whoPlays && this.rules?.extraTurn?.(this, p)) yield* this.playerTurn(p);
       } else yield* this.places.npcTurn(this.current);
       if (this.over) break;
+      yield* this.outOfChips();
+      if (this.over) break;
       yield* this.endTurn();
+    }
+  }
+
+  /**
+   * 大富翁城 plays in chips only (MapRules.chipsOnly, docs/rules/19 §2, §9): any deposit (the new game's split, a save
+   * from before) goes into the cash, a loan comes off it.
+   */
+  private foldChips(): void {
+    if (!this.rules?.chipsOnly) return;
+    for (const p of this.players) {
+      if (p.bankrupt || (!p.bank && !p.loan && !p.specialFinance)) continue;
+      p.cash += p.bank - p.loan; p.bank = 0; p.loan = 0; p.loanDue = 0; p.specialFinance = 0;
+    }
+  }
+
+  /** 大富翁城 in a normal game (19 §9): below one chip (100 元) a player is out; the finale's own check is the world's. */
+  private *outOfChips(): Flow {
+    if (this.world || !this.rules?.chipsOnly || this.challenge) return; // 挑戰模式: debt, never bankruptcy
+    for (const p of this.players) {
+      if (this.over) return;
+      if (p.whoPlays && !p.bankrupt && p.cash < 100) yield* this.bankrupt(p);
     }
   }
 
@@ -799,7 +831,8 @@ export class Game {
       // The original shows its report screen here (09 §7.12): the figures are taken before and after the interest.
       const rows = this.living().map(p => ({ p: p.id, character: p.character, bank: p.bank, loan: p.loan !== 0, interest: p.loan ? 0 : Math.trunc(p.bank * 0.1) }));
       for (const p of this.players) if (p.whoPlays && p.loan === 0) p.bank = Math.trunc(p.bank * 1.1);
-      yield { t: 'fx', kind: 'month-report', data: this.monthReport(rows) as unknown as Record<string, unknown> };
+      // 大富翁城 (chips only, 19 §9): no deposits, so no bank settlement to show.
+      if (!this.rules?.chipsOnly) yield { t: 'fx', kind: 'month-report', data: this.monthReport(rows) as unknown as Record<string, unknown> };
       for (const p of this.players) { p.monthLoss = 0; p.monthGain = 0; p.monthBadDays = 0; }
       yield* this.objects.monthly();
       yield* this.blackMarket.monthly();
@@ -885,6 +918,7 @@ export class Game {
 
   /** Turn start fcn_0041c84f (docs/rules/01 §3.2) with the loan due check fcn_00436a5a (02 §8.4). */
   *turnStart(p: Player): Flow {
+    this.foldChips();
     this.stocks.turnStart(p);
     if (!p.whoPlays) return;
     if (p.loanDue) {
@@ -1181,7 +1215,9 @@ export class Game {
         if (id) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id } };
         break;
       }
-      case 14: yield* this.atm(p); if (!this.over && p.whoPlays) yield* this.bankCounter(p); break;
+      case 14:
+        if (this.rules?.chipsOnly) { if (this.isHuman(p)) yield* this.say(p.id, '大富翁城只用籌碼，銀行不辦存款和貸款'); break; }
+        yield* this.atm(p); if (!this.over && p.whoPlays) yield* this.bankCounter(p); break;
       case 15: yield* this.tools.shop(p); break;
       case 16: yield* this.places.magicHouse(p); break;
       case 17: case 18: if (this.world) yield* this.world.hooks.travelSquare(this, p, 0); break;
@@ -1517,6 +1553,7 @@ export class Game {
   // ---------------------------------------------------------------- bank (docs/rules/02 §8)
 
   *atm(p: Player): Flow {
+    if (this.rules?.chipsOnly) return; // 大富翁城: chips only, no deposits (docs/rules/19 §2)
     if (p.bankRefused) {
       if (this.isHuman(p)) yield* this.say(p.id, `銀行拒絕往來還剩${(p.bankRefused & 0x7f) + 1}天`);
       return;

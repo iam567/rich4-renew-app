@@ -21,6 +21,8 @@ const TABS = ['資金', '地產', '股票', '其他'];
  * sit left of the 24 px column, so the labels are centred on them rather than on the 70 px bands. */
 const TAB_MID = [38, 106, 175, 243];
 const ROWS = [['現　金', '存　款', '總資產'], ['土　地', '連鎖店', '設　施'], ['總市值', '成　本', '經營權'], ['點　券', '貸　款', '保險期']];
+/** 大富翁城 (chips only, 19 §2): the chips, the casinos' worth and the two together; no deposit. */
+const CHIP_ROWS = ['籌　碼', '賭　場', '總資產'];
 /** Month → season photo (0x475218): 0 spring, 1 summer, 2 autumn, 3 winter. */
 const SEASON = [3, 0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3];
 /** Top of the three value bands in the redrawn panel art (measured; the original's are at 96/160/224). */
@@ -63,8 +65,9 @@ export class PlayerPanel {
       this.el.innerHTML = `${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
         <div class="pp-face small" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
         <div class="pp-cname"${fit(playerName(p), 116, 18)}>${playerName(p)}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
-        <div class="pp-cl" style="top:36px">現金</div><div class="pp-cv" style="top:34px">${money(p.cash)}</div>
-        <div class="pp-cl" style="top:56px">存款</div><div class="pp-cv" style="top:54px">${money(p.bank)}</div>`;
+        ${chipMode() ? `<div class="pp-cl" style="top:46px">籌碼</div><div class="pp-cv" style="top:44px">${money(p.cash)}</div>`
+          : `<div class="pp-cl" style="top:36px">現金</div><div class="pp-cv" style="top:34px">${money(p.cash)}</div>
+        <div class="pp-cl" style="top:56px">存款</div><div class="pp-cv" style="top:54px">${money(p.bank)}</div>`}`;
       return;
     }
     const bg = this.bank.art('Panel', 0, tab);
@@ -80,7 +83,7 @@ export class PlayerPanel {
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
       ${kbPanelTags(g, p)}${jqPanelTags(g, p)}
       ${g.world ? g.world.hooks.overlordTitles(p).map((t, i) => `<div class="pp-overlord" style="--i:${i}">${t}</div>`).join('') : ''}
-      ${ROWS[tab].map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
+      ${(tab === 0 && chipMode() ? CHIP_ROWS : ROWS[tab]).map((label, i) => `<div class="pp-row" style="top:${BANDS[i]}px">
         <span class="pp-label">${label}${i === 1 && loanDays ? `<em>${loanDays}天</em>` : ''}</span><span class="pp-value${values[i].length > 11 ? ' longer' : values[i].length > 8 ? ' long' : ''}">${values[i]}</span></div>`).join('')}
       <div class="pp-price">物價指數 ${g.priceIndex}${blindsTag()}</div>
       ${TABS.map((t, i) => `<button class="pp-tab${i === tab ? ' on' : ''}" data-tab="${i}" style="top:${TAB_MID[i] - 35}px">${t.split('').join('<br>')}</button>`).join('')}`;
@@ -101,7 +104,7 @@ export class PlayerPanel {
     const g = this.game, p = g.players[who], me = who + 1;
     // 大富豪模式: every city's properties and the nationwide market (docs/rules/17 §12).
     const boards = g.boards();
-    if (tab === 0) return [money(p.cash), money(p.bank), money(g.wealth(p))];
+    if (tab === 0) return chipMode() ? [money(p.cash), money(g.wealth(p) - p.cash), money(g.wealth(p))] : [money(p.cash), money(p.bank), money(g.wealth(p))];
     if (tab === 1) {
       const lands = boards.flatMap(b => b.lands.filter(l => l.owner === me)), facs = boards.flatMap(b => b.facilities.filter(f => f.owner === me));
       return [String(lands.length + facs.length), String(lands.filter(l => l.chain).length), String(facs.filter(f => f.level).length)];

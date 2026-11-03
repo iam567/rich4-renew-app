@@ -9,7 +9,10 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { cleanNick, Lobby, myRegion, NICK_MAX, PARTY_CHALLENGE_YEARS, PARTY_VERSION, Room, ROOM_MAX, startMsg, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
+import { AI_LEVELS, cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, startMsg, TURN_SECONDS, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
+import { pingText, rowGrade } from './party-hud';
+import { headLine, inParty, lastHeadCount, onHeadCount, type HeadCount } from './party-presence';
+import { setReportName, watchErrors } from './party-report';
 import { RULE_ITEMS, RULE_LABELS } from './rule-options';
 import { sameVersion, verOf } from './party-version';
 import { inlineChat } from './party-chat';
@@ -34,26 +37,52 @@ export interface PartyDeps {
   back: () => void;
 }
 
-const RULE_KEYS = Object.keys(RULE_LABELS) as (keyof typeof RULE_LABELS)[];
-/** 挑戰模式 has no 期限／勝利條件 of its own kind (its deadline is the 模式 row). */
-const CHALLENGE_OFF = new Set<string>(['daysLimitIndex', 'victoryIndex']);
-const MODE_ITEMS = PARTY_CHALLENGE_YEARS.map(y => (y ? `挑戰 ${y} 年` : '大富翁'));
 /**
- * The room's 「規則」 row (issue #31): everyone sees the rules (a guest's redrawn as the host changes them); the host
- * taps the row to unfold the new-game screen's steppers.
+ * The room's settings (the user 2026-11-03): always shown as tiles — the new-game screen's five rules and 等待時間 in
+ * the sixth place — the host with ‹ › on each, everyone else the values. No 模式 (online is 大富翁 only) and no
+ * 延遲上限 any more.
  */
-function rulesHtml(rules: PartyRules, host: boolean, open: boolean): string {
-  const keys = RULE_KEYS.filter(k => !rules.challenge || !CHALLENGE_OFF.has(k));
-  const sum = keys.map(k => `<span>${RULE_LABELS[k]}<b>${RULE_ITEMS[k][rules[k]]}</b></span>`).join('');
-  // 模式 (docs/rules/26 §7.1): 大富翁 or 挑戰模式 with its deadline; the host picks it like the rules.
-  const mode = `<div class="pt-row"><b>模式</b>${host ? `<div class="chips">${MODE_ITEMS.map((m, i) => `<button class="chip${rules.challenge === i ? ' on' : ''}" data-mode="${i}">${m}</button>`).join('')}</div>` : `<span class="pt-map">${MODE_ITEMS[rules.challenge]}</span>`}</div>`;
-  if (!host) return `${mode}<div class="pt-row"><b>規則</b><div class="pt-rsum">${sum}</div></div>`;
-  return `${mode}<div class="pt-row"><b>規則</b><button class="pt-rsum host${open ? ' open' : ''}" data-a="rules">${sum}<i>${open ? '收起 ▲' : '設定 ▼'}</i></button></div>
-    ${open ? `<div class="pt-rset">${keys.map(k => `<div class="pt-ropt"><span>${RULE_LABELS[k]}</span><div class="stepper">
-      <button data-rule="${k}" data-d="-1">‹</button><button class="val" data-rule="${k}" data-d="1">${RULE_ITEMS[k][rules[k]]}</button><button data-rule="${k}" data-d="1">›</button></div></div>`).join('')}</div>` : ''}`;
+type SetKey = keyof typeof RULE_LABELS | 'turnSec';
+const SET_KEYS: SetKey[] = ['fundIndex', 'traffic', 'landLimitIndex', 'daysLimitIndex', 'victoryIndex', 'turnSec'];
+const SET_LABEL = (k: SetKey) => (k === 'turnSec' ? '等待時間' : RULE_LABELS[k]);
+const SET_ITEMS = (k: SetKey): readonly string[] => (k === 'turnSec' ? TURN_SECONDS.map(s => `${s} 秒`) : RULE_ITEMS[k]);
+function rulesHtml(rules: PartyRules, host: boolean): string {
+  return `<div class="pt-tiles">${SET_KEYS.map(k => {
+    const v = SET_ITEMS(k)[rules[k]];
+    return `<div class="pt-tile"><span>${SET_LABEL(k)}</span>${host
+      ? `<div class="pt-step"><button data-rule="${k}" data-d="-1" aria-label="上一個">‹</button><b>${v}</b><button data-rule="${k}" data-d="1" aria-label="下一個">›</button></div>`
+      : `<b>${v}</b>`}</div>`;
+  }).join('')}</div>`;
+}
+/** A row of choices (空位, 電腦難度): chips for the host, the value for everyone else. */
+function choiceRow(label: string, items: { v: number; text: string }[], on: number, host: boolean, attr: string): string {
+  return `<div class="pt-choice"><span>${label}</span>${host
+    ? `<div class="pt-seg">${items.map(x => `<button class="${x.v === on ? 'on' : ''}" data-${attr}="${x.v}">${x.text}</button>`).join('')}</div>`
+    : `<b>${items.find(x => x.v === on)?.text ?? ''}</b>`}</div>`;
 }
 
+/** A listed room's 等待時間 and 電腦難度 as tags (a quick room in yellow, 地獄 in red); none from an older host. */
+function roomTags(x: RoomInfo): string {
+  const t = Number.isFinite(x.turn) ? Math.trunc(x.turn as number) : 0, ai = Number.isInteger(x.ai) ? (x.ai as number) : -1;
+  if (!t && ai < 0) return '';
+  return `<i class="pt-rtags">${t ? `<i class="pt-rtag${t <= 20 ? ' quick' : ''}">每步 ${t} 秒</i>` : ''}${ai >= 0 && AI_LEVELS[ai] ? `<i class="pt-rtag${ai === 3 ? ' hell' : ''}">電腦${AI_LEVELS[ai]}</i>` : ''}</i>`;
+}
+
+/** The maps as picture cards, a page at a time (the user 2026-11-03: the name buttons were a jumble). */
+const MAP_PAGE = 6;
+function mapCards(maps: MapInfo[], selected: number, page: number): string {
+  const pages = Math.max(1, Math.ceil(maps.length / MAP_PAGE)), pg = Math.min(page, pages - 1);
+  return `<div class="pt-mgrid">${maps.slice(pg * MAP_PAGE, pg * MAP_PAGE + MAP_PAGE).map(m => `<button class="pt-mcard${m.id === selected ? ' on' : ''}" data-map="${m.id}">
+      <img src="${m.thumbnail}" alt="" loading="lazy"><span>${esc(shortName(m.name))}</span></button>`).join('')}</div>
+    <div class="pt-pager"><button data-mp="-1"${pg === 0 ? ' disabled' : ''} aria-label="上一頁">‹</button><span>${pg + 1} / ${pages}</span><button data-mp="1"${pg >= pages - 1 ? ' disabled' : ''} aria-label="下一頁">›</button></div>`;
+}
+/** 「地圖05・星座主題」 → 「星座主題」 (the number says nothing on a picture card). */
+const shortName = (n: string) => n.replace(/^地[圖图]\s*\d+\s*[・·•‧]\s*/, '');
+
 export function openParty(d: PartyDeps): void {
+  // Problem reports (party-report.ts): who this phone is, and program errors while in 派對模式.
+  watchErrors();
+  setReportName(myNick() || CHARACTERS[myCharacter()].name);
   const face = (c: number) => d.bank.art('Data', 2, c)?.src ?? '';
   const maps = d.maps.filter(m => !m.hidden && (m.kind === 'orig' || m.kind === 'custom'));
   const overlay = document.createElement('div');
@@ -63,33 +92,42 @@ export function openParty(d: PartyDeps): void {
   overlay.append(box);
   d.app.append(overlay);
   let lobby: Lobby | null = null, room: Room | null = null;
-  const leave = () => { lobby?.close(); lobby = null; if (room && !room.started) room.close(); room = null; overlay.remove(); };
-  const show = (title: string, html: string) => { box.innerHTML = `<div class="ribbon">${esc(title)}</div>${html}`; };
+  const leave = () => { lobby?.close(); lobby = null; if (room && !room.started) room.close(); room = null; overlay.remove(); stopCount(); inParty(null); };
+  // 派對模式's head count (party-presence.ts): every 「.pt-online」 line on the screen shows the newest.
+  const counted = (n: HeadCount | null) => { if (n) for (const el of box.querySelectorAll<HTMLElement>('.pt-online')) { el.hidden = false; el.textContent = `派對模式現在 ${headLine(n)}`; } };
+  const stopCount = onHeadCount(counted);
+  const show = (title: string, html: string) => { box.classList.remove('pt-roomv'); box.innerHTML = `<div class="ribbon">${esc(title)}</div>${html}`; counted(lastHeadCount()); };
   const fail = (e: unknown) => { audio.ui('error'); home(`<p class="pt-err">${esc((e as Error)?.message ?? '連線失敗').replace(/\n/g, '<br>')}</p>`); };
 
   function home(note = '') {
     lobby?.close(); lobby = null; room?.close(); room = null;
-    show('派對模式', `<p class="pt-lead">和朋友各用自己的手機，一起玩同一局</p>${note}
+    inParty('menu');
+    show('派對模式', `<p class="pt-lead">和朋友各用自己的手機，一起玩同一局</p><p class="pt-online" hidden></p>${note}
       <div class="pt-menu">
-        <button class="candy yes" data-a="create">建立房間<small>私享房間碼，或公開找夥伴</small></button>
+        <button class="candy yes" data-a="create">建立房間<small>私享房間碼，或公開到遊戲大廳</small></button>
         <button class="candy opt" data-a="join">進入房間<small>輸入朋友的房間碼</small></button>
-        <button class="candy opt" data-a="find">尋找夥伴<small>加入想找人一起玩的房間</small></button>
+        <button class="candy opt" data-a="find">遊戲大廳<small>看看大家開的房間，加入一起玩</small></button>
       </div>
       <div class="choices"><button class="candy ghost" data-a="back">返回</button></div>`);
   }
 
   function create() {
-    let shared = false, map = maps[0]?.id ?? 0;
+    let shared = false, map = maps[0]?.id ?? 0, page = 0;
     const render = () => show('建立房間', `
-      <div class="pt-row"><b>房間</b><div class="chips"><button class="chip${shared ? '' : ' on'}" data-shared="0">私享（房間碼）</button><button class="chip${shared ? ' on' : ''}" data-shared="1">共享（公開找夥伴）</button></div></div>
-      <div class="pt-row"><b>地圖</b><div class="chips pt-maps">${maps.map(m => `<button class="chip${m.id === map ? ' on' : ''}" data-map="${m.id}">${esc(m.name)}</button>`).join('')}</div></div>
-      <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy yes" data-a="open">建立</button></div>`);
+      <div class="pt-types">
+        <button class="pt-type${shared ? '' : ' on'}" data-shared="0"><b>私享房間</b><small>只有拿到房間碼的人能進來</small></button>
+        <button class="pt-type${shared ? ' on' : ''}" data-shared="1"><b>公開房間</b><small>顯示在遊戲大廳，大家都能加入</small></button>
+      </div>
+      <div class="pt-sec">選擇地圖</div>
+      ${mapCards(maps, map, page)}
+      <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy yes" data-a="open">建立房間</button></div>`);
     render();
     box.onclick = async e => {
       const t = e.target as HTMLElement;
-      const s = t.closest<HTMLElement>('[data-shared]'), mp = t.closest<HTMLElement>('[data-map]'), a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
-      if (s) { audio.ui('click'); shared = s.dataset.shared === '1'; render(); return; }
+      const s2 = t.closest<HTMLElement>('[data-shared]'), mp = t.closest<HTMLElement>('[data-map]'), pg = t.closest<HTMLElement>('[data-mp]'), a = t.closest<HTMLElement>('[data-a]')?.dataset.a;
+      if (s2) { audio.ui('click'); shared = s2.dataset.shared === '1'; render(); return; }
       if (mp) { audio.ui('click'); map = Number(mp.dataset.map); render(); return; }
+      if (pg && !(pg as HTMLButtonElement).disabled) { audio.ui('click'); page = Math.max(0, page + Number(pg.dataset.mp)); render(); return; }
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
       if (a === 'open') {
         audio.ui('yes');
@@ -107,17 +145,18 @@ export function openParty(d: PartyDeps): void {
   /** A private room's token in the list (never its code). */
   const token = `p-${Math.random().toString(36).slice(2, 10)}`;
   const info = (r: Room): RoomInfo => r.shared ? infoShared(r) : { ...infoShared(r), code: token, host: '', map: '', private: true };
-  const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region, ...(r.ver ? { ver: r.ver } : {}) });
+  const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region, ...(r.ver ? { ver: r.ver } : {}),
+    turn: TURN_SECONDS[r.rules.turnSec], ai: r.rules.aiLevel });
 
   function roomView(r: Room) {
+    inParty('room');
     /** Computers up to this many players (4 or 8), or 0: players only. */
     let fill = 4;
-    /** The host's 「規則」 steppers shown (issue #31; folded by default, so the room fits on a phone). */
-    let rulesOpen = false;
     show(r.shared ? '共享房間' : '私享房間', `<div class="pt-dyn"></div>
       <div class="pt-row pt-me"><b>名字</b><input class="pt-nick" maxlength="${NICK_MAX}" enterkeyhint="done" value="${esc(myNick())}"></div>
       <p class="pt-hint">可以自己取名（最多 ${NICK_MAX} 字），遊戲中大家看到的就是這個名字</p>
       <div class="pt-chat"></div><div class="choices pt-acts"></div>`);
+    box.classList.add('pt-roomv'); // the room's own layout (party.css: two halves on a landscape phone)
     // Own name: outside the part redrawn on every change, so typing is never interrupted.
     const nick = box.querySelector<HTMLInputElement>('.pt-nick')!;
     let nickTimer = 0;
@@ -126,6 +165,7 @@ export function openParty(d: PartyDeps): void {
       nickTimer = window.setTimeout(() => {
         const v = cleanNick(nick.value);
         keepNick(v);
+        setReportName(v || CHARACTERS[myCharacter()].name);
         const mine = r.members.find(m => m.id === r.myId);
         if (mine) r.setCharacter(mine.character, v);
       }, 400);
@@ -143,38 +183,53 @@ export function openParty(d: PartyDeps): void {
       if (mine) nick.placeholder = CHARACTERS[mine.character].name;
       if (fill && fill <= r.members.length) fill = fill === 4 ? 0 : fill; // 補滿4人 with four players already: players only
       const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, fill - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
-      dyn.innerHTML = `
-        <div class="pt-code"><small>房間碼</small><b>${r.code}</b>${r.shared ? '<em>已公開在「尋找夥伴」</em>' : '<em>把房間碼告訴朋友</em>'}</div>
+      // Two halves (side by side on a landscape phone, one under the other otherwise): who and where / the settings.
+      dyn.innerHTML = `<div class="pt-half">
+        <div class="pt-code"><small>房間碼</small><b>${r.code}</b>${r.shared ? '<em>已公開在「遊戲大廳」</em>' : '<em>把房間碼告訴朋友</em>'}</div>
         <div class="pt-seats${seats.length > 4 ? " many" : ""}">${seats.map((x, i) => {
           if (!x.m) return '<div class="pt-seat cpu"><span>電腦</span></div>';
           const me = x.m.id === r.myId, votes = r.votes.get(x.m.id), voted = votes?.has(r.myId);
           return `<div class="pt-seat${me ? ' me' : ''}" ${me ? 'data-a="char"' : ''}><img src="${face(x.m.character)}" alt=""><b>${esc(x.m.name)}</b>
-            <small>${x.m.nick ? `${esc(CHARACTERS[x.m.character].name)}・` : ''}${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}${x.m.region ? `・${esc(x.m.region)}` : ''}</small>
+            <small>${x.m.nick ? `${esc(CHARACTERS[x.m.character].name)}・` : ''}${me ? '你・點我換角色' : i === 0 ? '房主' : '玩家'}</small>
+            <small class="pt-ping" data-pid="${esc(x.m.id)}"></small>
             ${me ? '' : `<button class="chip pt-kick${voted ? ' on' : ''}" data-kick="${x.m.id}"${voted ? ' disabled' : ''}>請出 ${votes?.size ?? 0}/2</button>`}</div>`;
         }).join('')}</div>
-        <div class="pt-row"><b>地圖</b><span class="pt-map">${esc(mapName(r.map))}</span></div>
-        ${rulesHtml(r.rules, host, rulesOpen)}
-        ${host ? `<div class="pt-row"><b>空位</b><div class="chips">${r.members.length < 4 ? `<button class="chip${fill === 4 ? ' on' : ''}" data-fill="4">電腦補滿4人</button>` : ''}<button class="chip${fill === 8 ? ' on' : ''}" data-fill="8">電腦補滿8人</button><button class="chip${fill ? '' : ' on'}" data-fill="0">只有玩家</button></div></div>` : ''}
-        <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p>`;
+        <div class="pt-mapline">${(m => m ? `<img src="${m.thumbnail}" alt="">` : '')(maps.find(m => String(m.id) === r.map))}<span>地圖</span><b>${esc(mapName(r.map))}</b></div></div>
+        <div class="pt-half">${rulesHtml(r.rules, host)}
+        ${host ? choiceRow('空位', [...(r.members.length < 4 ? [{ v: 4, text: '電腦補滿4人' }] : []), { v: 8, text: '電腦補滿8人' }, { v: 0, text: '只有玩家' }], fill, true, 'fill') : ''}
+        ${choiceRow('電腦難度', AI_LEVELS.map((text, v) => ({ v, text })), r.rules.aiLevel, host, 'ai')}
+        <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p></div>`;
       acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
     };
-    r.onLobby = () => { render(); if (r.members[0]?.id === r.myId) lobby?.announce(info(r)); };
+    /** Each seat's ping (the host's table, every heartbeat): only the small lines, so nothing else jumps. */
+    const pings = () => {
+      for (const el of box.querySelectorAll<HTMLElement>('.pt-ping[data-pid]')) {
+        const row = r.net.find(x => x.id === el.dataset.pid);
+        const g = !row ? 'none' : rowGrade(row);
+        el.className = `pt-ping ${g}`;
+        // Only the round trip in ms (the user 2026-11-03: no region, server or way on screen); a host without one: nothing.
+        el.textContent = !row || (row.via === 'host' && !row.rtt) ? '' : `延遲 ${pingText(row)}`;
+      }
+    };
+    r.onNet = pings;
+    r.onLobby = () => { render(); pings(); if (r.members[0]?.id === r.myId) lobby?.announce(info(r)); };
     r.onVotes = () => render();
     r.onStatus = t => { if (t && !r.started && (r.kicked || r.refused || /滿/.test(t))) { audio.ui('error'); home(`<p class="pt-err">${esc(t).replace(/\n/g, '<br>')}</p>`); box.onclick = menu; } };
-    r.onStart = (s: StartMsg) => { lobby?.close(); lobby = null; overlay.remove(); d.play(s.settings, r); };
-    render();
+    r.onStart = (s: StartMsg) => { lobby?.close(); lobby = null; overlay.remove(); stopCount(); inParty('game'); d.play(s.settings, r); };
+    render(); pings();
+    // Back in a game already going (issue #50): the host sent it while joining, before this screen.
+    if (r.started) r.onStart(r.started);
     box.onclick = e => {
       const t = e.target as HTMLElement, a = t.closest<HTMLElement>('[data-a]')?.dataset.a, f = t.closest<HTMLElement>('[data-fill]'), k = t.closest<HTMLElement>('[data-kick]');
       const rule = t.closest<HTMLElement>('[data-rule]')?.dataset;
       if (rule && r.host) {
         audio.ui('click');
-        const key = rule.rule as keyof typeof RULE_LABELS, n = RULE_ITEMS[key].length;
+        const key = rule.rule as SetKey, n = SET_ITEMS(key).length;
         r.setRules({ [key]: (r.rules[key] + Number(rule.d) + n) % n }); // → onLobby: redrawn here, sent to everyone
         return;
       }
-      if (a === 'rules') { audio.ui('click'); rulesOpen = !rulesOpen; render(); return; }
-      const mode = t.closest<HTMLElement>('[data-mode]')?.dataset.mode;
-      if (mode !== undefined && r.host) { audio.ui('click'); r.setRules({ challenge: Number(mode) }); return; }
+      const ai = t.closest<HTMLElement>('[data-ai]')?.dataset.ai;
+      if (ai !== undefined && r.host) { audio.ui('click'); r.setRules({ aiLevel: Number(ai) }); return; }
       if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
       if (f) { audio.ui('click'); fill = Number(f.dataset.fill); render(); return; }
       if (a === 'char') {
@@ -219,18 +274,18 @@ export function openParty(d: PartyDeps): void {
   }
 
   function find() {
-    show('尋找夥伴', '<p class="pt-lead">正在找想一起玩的人…</p>');
+    show('遊戲大廳', '<p class="pt-lead">正在找想一起玩的人…</p>');
     lobby = new Lobby();
     // Rooms of another version (v0.7.4 on, party-version.ts) are listed after this version's, 「版本不同」 and not joinable.
     const render = (all: RoomInfo[]) => {
       const rooms = [...all.filter(x => sameVersion(x, PARTY_VERSION)), ...all.filter(x => !sameVersion(x, PARTY_VERSION))];
-      show('尋找夥伴', `
+      show('遊戲大廳', `<p class="pt-online" hidden></p>
       ${rooms.length ? `<div class="pt-rooms">${rooms.map(x => {
         const other = !sameVersion(x, PARTY_VERSION), full = x.players >= x.max;
         return `<button class="pt-room${other ? ' other' : ''}"${other ? '' : ` data-code="${x.code}"`}${full || other ? ' disabled' : ''}>
-        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${x.region ? `${esc(x.region)}・` : ''}${esc(x.map)}・${x.players}/${x.max} 人${other ? `・${verOf(x.ver) ? `v${esc(verOf(x.ver)!)}` : '舊版'}` : ''}</small></span><em>${other ? '版本不同' : full ? '已滿' : '加入'}</em></button>`;
+        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${esc(x.map)}・${x.players}/${x.max} 人${other ? `・${verOf(x.ver) ? `v${esc(verOf(x.ver)!)}` : '舊版'}` : ''}</small>${roomTags(x)}</span><em>${other ? '版本不同' : full ? '已滿' : '加入'}</em></button>`;
       }).join('')}</div>`
-        : '<p class="pt-lead">目前沒有人在找夥伴<br>可以自己建一個共享房間，等別人加入</p>'}
+        : '<p class="pt-lead">大廳裡現在沒有房間<br>可以自己建一個共享房間，等別人加入</p>'}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy opt" data-a="create">建立共享房間</button></div>`);
     };
     lobby.onRooms = rooms => { if (lobby) render(rooms); };

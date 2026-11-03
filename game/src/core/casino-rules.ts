@@ -115,10 +115,17 @@ export abstract class CasinoRules implements MapRules {
   /** A line for the record (the finale's ticker; nothing in a normal game). */
   protected note(_text: string, _p: number, _important: boolean): void { /* none */ }
 
-  /** Money in the texts: 元 (a normal game), 籌碼 in the finale (Finale overrides). */
-  price(n: number): string { return `${fmt(n)}元`; }
-  /** What the visitor bets with: 現金 (籌碼 in the finale). */
-  moneyWord(): string { return '現金'; }
+  /**
+   * Chips only (the user 2026-11-03: 大富翁城 is chips, a deposit means nothing there): no deposits, ATM, loans or
+   * interest, in a normal game on the map and in the finale once it starts (Finale overrides).
+   */
+  get chipsOnly(): boolean { return true; }
+  /** The bank counter is closed with the chips. */
+  get noLoans(): boolean { return this.chipsOnly; }
+  /** Money in the texts: 籌碼 (1 chip = 100 元); 元 in 大富豪模式's city before the finale. */
+  price(n: number): string { return this.chipsOnly ? `${fmt(Math.trunc(n / 100))}籌碼` : `${fmt(n)}元`; }
+  /** What the visitor bets with: 籌碼 (現金 before the finale). */
+  moneyWord(): string { return this.chipsOnly ? '籌碼' : '現金'; }
 
   /** Gods here (19 §5.6): the eight money / luck gods only, 3 days, no original effects (core/modules/objects.ts). */
   godAllowed(type: number): boolean { return !NO_GODS_HERE.has(type); }
@@ -202,7 +209,7 @@ export abstract class CasinoRules implements MapRules {
     if (f.owner === 0) {
       if (p.sleepwalk || god === 12) return true;
       const price = this.plotPrice(g);
-      if (price > p.cash) { if (human) yield* g.say(p.id, '您的現金不足！'); return true; }
+      if (price > p.cash) { if (human) yield* g.say(p.id, `您的${this.moneyWord()}不足！`); return true; }
       const yes = human
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}賭場用地\n\n費用:${this.price(price)}\n\n是否買下此地？`, price })) as boolean
         : this.aiInvest(g, p, price);
@@ -217,7 +224,7 @@ export abstract class CasinoRules implements MapRules {
     if (f.owner === me) {
       if (p.sleepwalk || f.level >= 5) return true;
       const cost = f.level === 0 ? this.buildCost(g) : this.upgradeCost(g), next = f.level + 1;
-      if (cost > p.cash) { if (human) yield* g.say(p.id, '您的現金不足！'); return true; }
+      if (cost > p.cash) { if (human) yield* g.say(p.id, `您的${this.moneyWord()}不足！`); return true; }
       const text = f.level === 0
         ? `${f.name}\n\n建設賭場（1級）:${this.price(cost)}\n每次贏錢上限 ${this.price(this.cap(1))}\n\n是否建設？`
         : `${f.name}${HALL_NAMES[f.type] ?? '賭場'}\n\n升到${next}級:${this.price(cost)}\n每次贏錢上限 ${this.price(this.cap(next))}\n\n是否升級？`;

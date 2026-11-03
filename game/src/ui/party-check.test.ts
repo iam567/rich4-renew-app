@@ -19,7 +19,8 @@ describe('the network check (issue #12)', () => {
   it('a way out (STUN) plays; the relay only plays with a note', () => {
     expect(verdict(true, new Set(['host', 'srflx']))).toEqual({ ok: true });
     const r = verdict(true, new Set(['host', 'relay']));
-    expect(r.ok && r.note).toMatch(/轉送/);
+    expect(r.ok && r.note).toMatch(/比較慢/);
+    expect(r.ok && r.note).not.toMatch(/伺服器|轉送/); // no word of a server for players (the user 2026-11-03)
   });
   it("only the phone's own addresses: plays, on the same Wi-Fi only, and says a VPN may be why", () => {
     const r = verdict(true, new Set(['host']));

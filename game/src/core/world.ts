@@ -1366,7 +1366,8 @@ export class World implements WorldHooks {
       for (const p of this.players) if (p.whoPlays && p.loan === 0) p.bank = Math.trunc(p.bank * 1.1);
       // One quick nationwide sheet, then 本月全國富豪榜 (top 5 and the human's place, 17 §6).
       const ranking = this.players.filter(p => !p.bankrupt).map(p => ({ p: p.id, wealth: this.wealth(p) })).sort((a, b) => b.wealth - a.wealth || a.p - b.p);
-      yield { t: 'fx', kind: 'month-report', data: { ...g0.monthReport(rows), world: true, ranking } as unknown as Record<string, unknown> };
+      // The finale plays in chips only (19 §2): no deposits, no bank settlement to show.
+      if (!this.finale.active) yield { t: 'fx', kind: 'month-report', data: { ...g0.monthReport(rows), world: true, ranking } as unknown as Record<string, unknown> };
       for (const p of this.players) { p.monthLoss = 0; p.monthGain = 0; p.monthBadDays = 0; }
       for (const [i, c] of this.cities.entries()) {
         if (!this.finale.runs(i)) continue;

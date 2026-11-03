@@ -51,10 +51,14 @@ export function finaleToolbar(toolbar: HTMLElement | null | undefined, game: Gam
   toolbar?.classList.toggle('finale', noStocks(game));
 }
 
-/** 大富翁城's finale plays in chips (19 §2): the screen shows money as 元 / 100 籌碼 there. */
+/** The normal game on the screen (main.ts sets it): 大富翁城 there plays in chips too (19 §9). */
+export const chipGame: { game: Game | null } = { game: null };
+
+/** 大富翁城 plays in chips (19 §2, §9): the screen shows money as 元 / 100 籌碼 there, deposits not at all. */
 export function chipMode(): boolean {
   const w = tycoon.world;
-  return !!w?.finale.active && w.view() === w.finale.index;
+  if (w) return w.finale.active && w.view() === w.finale.index;
+  return !!chipGame.game?.rules?.chipsOnly;
 }
 
 /** The finale's blinds on the money panel (19 §5.5): 「・盲注 ×4」 from day 20 on; '' elsewhere. */

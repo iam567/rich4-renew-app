@@ -16,9 +16,10 @@ export interface GameSettings {
   party?: boolean;
   /**
    * A normal game's computer level (core/smart-ai.ts, Game.aiLevel): 0 簡單 (the original's computer; none = 0, as every
-   * game and save before it), 1 中級, 2 困難. 派對模式 plays 困難, 大富豪模式 簡單, whatever this says.
+   * game and save before it), 1 中級, 2 困難, 3 地獄 (safer money, share trading, the computers ganging up on the humans: SmartAi HELL / rival). 派對模式: the room's
+   * choice (none: 困難); 大富豪模式 簡單, whatever this says.
    */
-  aiLevel?: 0 | 1 | 2;
+  aiLevel?: 0 | 1 | 2 | 3;
   /** 挑戰模式 (docs/rules/26): no bankruptcy (debt), tasks and stars; core/challenge.ts. */
   challenge?: boolean;
   /** 挑戰模式's deadline in years (1 / 3 / 5: the most stars then wins); 0 or none: the first to 100 stars wins. */

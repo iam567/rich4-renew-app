@@ -246,6 +246,32 @@ describe.skipIf(!haveFinale)('大富翁城 as a normal map (19 §9)', () => {
     expect(f.fees[0]).toBe(UPGRADE_COST);
   });
 
+  it('plays in chips only (the user 2026-11-03): no deposit, ATM, loan or bank settlement; out below one chip', () => {
+    const g = new Game(classic(3, 9), finaleBoard());
+    expect(g.rules!.chipsOnly).toBe(true);
+    expect(g.rules!.noLoans).toBe(true);
+    for (const p of g.players) { expect(p.bank).toBe(0); expect(p.cash).toBe(g.fund); }
+    const [a, b] = g.players;
+    for (const p of g.players) p.whoPlays = 2;
+    g.gain(a, 5000, 0);   // a deposit anywhere else
+    expect([a.cash, a.bank]).toEqual([g.fund + 5000, 0]);
+    // The bank square does nothing; a deposit from an old save is folded in at the next turn.
+    Object.assign(b, { bank: 30_000, loan: 10_000, node: g.board.nodes.find(n => n.event === 14)!.id });
+    drain((g as unknown as { land(p: unknown): Flow<unknown> }).land(b));
+    expect(b.bank).toBe(30_000);
+    drain(g.turnStart(b));
+    expect([b.cash, b.bank, b.loan]).toEqual([g.fund + 20_000, 0, 0]);
+    // Below one chip: out after that turn (an all-computer game then ends: no human left).
+    a.cash = 99;
+    play(g, g.run(), () => a.bankrupt);
+    expect([a.bankrupt, b.bankrupt, g.daysElapsed]).toEqual([true, false, 0]);
+    // No bank settlement at a month's end.
+    const h = new Game(classic(2, 11), finaleBoard());
+    const steps = play(h, h.run(), () => h.monthsElapsed > 0);
+    expect(h.monthsElapsed).toBe(1);
+    expect(steps.some(s => s.t === 'fx' && s.kind === 'month-report')).toBe(false);
+  });
+
   it('leaves every other map alone (no map rules there)', () => {
     const r = JSON.parse(readFileSync(file(100), 'utf8')) as RawMap;
     const g = new Game({ ...classic(2, 1), mapId: 100 }, parseBoard(r));
@@ -733,7 +759,11 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     // (about 2,000 chips, 19 §11) so that halls get built and visited before the road tax ends it.
     drain(w.finale.check());
     for (const id of w.finale.finalists) w.players[id].cash = 2000 * FINALE_CHIP;
-    play(w, w.run(), () => w.daysElapsed > 3000);
+    // Chips only (the user 2026-11-03): nothing ever goes into a deposit, no bank settlement.
+    let deposits = 0;
+    const steps = play(w, w.run(), () => { for (const id of w.finale.finalists) deposits = Math.max(deposits, w.players[id].bank); return w.daysElapsed > 3000; });
+    expect(deposits).toBe(0);
+    expect(steps.some(s => s.t === 'fx' && s.kind === 'month-report')).toBe(false);
     expect(w.over).toBeTruthy();
     expect(w.finale.active).toBe(true);
     expect(w.players.filter(p => !p.bankrupt).length).toBe(1);

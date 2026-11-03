@@ -42,8 +42,26 @@ function diceDist(n: number): number[] {
 }
 const DIST = [diceDist(0), diceDist(1), diceDist(2), diceDist(3)];
 
+/**
+ * 地獄's dials (Game.aiLevel 3, the user 2026-11-03: as strong as a computer can be, on every front, and fair): the
+ * reserve kept before buying or building, the margins to buy and to build, and how many cards / tools a turn —
+ * tuned by simulation against 困難 (scripts/hell-sim.ts, 2026-11-03: one 地獄 seat among three 困難, 40 games on each
+ * of maps 0, 2, 3, a year each). Keeping three times the reserve halved its bankruptcies (44 → 22 of 120) and made it
+ * the richest in 40 of 120 games (困難 in that seat: 30); more cards a turn made it weaker; the margins to buy and build
+ * changed nothing. 困難 keeps 1 / 1 / 0.5 / 3.
+ */
+export const HELL = { reserve: 3, buy: 1, build: 0.5, acts: 3 };
+
 export class SmartAi {
   constructor(private readonly g: Game) {}
+  /** 地獄 (Game.aiLevel 3). */
+  private hell(p: Player): boolean { return this.g.aiLevel(p) === 3; }
+  /**
+   * Whether q is someone p plays against. 地獄 (the user 2026-11-03: the computers that fill the seats all gang up on
+   * the players): only the humans — cards, tools, tolls and the leader count against them, a fellow computer is
+   * never hurt. Fair all the same: nothing hidden is looked at.
+   */
+  rival(p: Player, q: Player): boolean { return q.id !== p.id && (!this.hell(p) || q.human); }
 
   // ---------------------------------------------------------------- what it knows
 
@@ -53,7 +71,7 @@ export class SmartAi {
   leader(p: Player): number {
     let best = -1, w = -Infinity;
     for (const q of this.g.players) {
-      if (q.id === p.id || !q.whoPlays) continue;
+      if (!this.rival(p, q) || !q.whoPlays) continue;
       const v = this.g.wealth(q);
       if (v > w) { w = v; best = q.id; }
     }
@@ -160,7 +178,7 @@ export class SmartAi {
       if (i < 6 * d) now = Math.max(now, f); else later = Math.max(later, f);
     });
     // 挑戰模式 (docs/rules/26): nobody goes bankrupt, so its computer keeps a third of the usual reserve.
-    return Math.max(5000 * PI, now, later * 0.7) * (g.challengeAi ? 0.35 : 1);
+    return Math.max(5000 * PI, now, later * 0.7) * (g.challengeAi ? 0.35 : 1) * (this.hell(p) ? HELL.reserve : 1);
   }
 
   // ---------------------------------------------------------------- where a roll ends
@@ -261,7 +279,7 @@ export class SmartAi {
   /** Buy an empty lot or plot for `price` (already ≤ cash)? */
   wantsToBuy(p: Player, price: number, land?: Land, plot?: string): boolean {
     if (this.g.challengeAi?.wantsPlace(p, land?.name ?? plot ?? '')) return true; // 挑戰模式: a place its tasks name
-    const spare = this.money(p) - price, reserve = this.reserve(p);
+    const spare = this.money(p) - price, reserve = this.reserve(p) * (this.hell(p) ? HELL.buy : 1);
     if (spare >= reserve) return true;
     // A lot on a street it already has a foot in (the tolls add up): a smaller margin.
     return !!land && this.ownOnStreet(p, land.name) > 0 && spare >= reserve * 0.6;
@@ -269,7 +287,7 @@ export class SmartAi {
 
   /** Build one more level for `cost` (already ≤ cash)? Levels pay back many times: half the reserve is enough. */
   wantsToBuild(p: Player, cost: number): boolean {
-    return this.money(p) - cost >= this.reserve(p) * 0.5;
+    return this.money(p) - cost >= this.reserve(p) * (this.hell(p) ? HELL.build : 0.5);
   }
 
   /** The facility type for an empty plot of its own: a shopping mall (the highest expected fee, upgrades to 5). */
@@ -302,6 +320,49 @@ export class SmartAi {
     const room = Math.max(0, g.wealth(p) - p.loan);
     const x = Math.trunc(Math.min(room, reserve * 1.5 - money));
     if (x > 0) { p.bank += x; p.loan += x; g.setLoanDue(p); }
+  }
+
+  /**
+   * 地獄's shares (Game.aiLevel 3, the user 2026-11-03: the computer bought and never sold, however far the price had
+   * risen). Every turn, from what everyone can see (today's prices and their history; nothing ahead, no luck looked
+   * at): a holding up 25 % on its cost is sold, up 10 % once its short average turns below the long one, down 15 %
+   * while it keeps falling; then, with half the money above its reserve and shares kept under 40 % of its assets, the
+   * stock furthest below its long average that has started back up is bought. A chairman's stake stays.
+   */
+  *hellShares(p: Player): Flow {
+    const g = this.g, m = g.stocks;
+    if (!m.open()) return;
+    for (let slot = 0; slot < 12; slot++) {
+      const s = m.stocks[slot], h = m.holding(p.id, slot);
+      if (!h.shares || s.suspendDays || !h.avgCost || s.price <= s.prevClose * 0.905) continue; // limit down: no buyers
+      if (m.companyOf(slot)?.controller === p.id + 1 || g.challengeAi?.keepShares(p, slot)) continue;
+      const gain = s.price / h.avgCost - 1, avg6 = m.recentAverage(slot, 6), avg24 = m.recentAverage(slot, 24);
+      const turning = avg6 > 0 && avg24 > 0 && avg6 < avg24;
+      if (!(gain >= 0.25 || (gain >= 0.1 && turning) || (gain <= -0.15 && turning))) continue;
+      const n = h.shares;
+      m.sell(p, slot, n, true);
+      yield { t: 'fx', kind: 'stock-trade', p: p.id, data: { slot, n, buy: false } };
+      yield* g.say(undefined, `${g.name(p.id)}\n\n賣出${s.name}${n}張`);
+      if (g.over || !p.whoPlays) return;
+    }
+    const budget = Math.min((this.money(p) - this.reserve(p) * 1.5) * 0.5, g.wealth(p) * 0.4 - m.shareValue(p), p.bank);
+    if (budget <= 0) return;
+    let pick = -1, best = 0.05; // at least 5 % under its long average
+    for (let slot = 0; slot < 12; slot++) {
+      const s = m.stocks[slot];
+      if (s.suspendDays || s.turnQuota <= 0 || s.price <= 0 || s.price >= s.prevClose * 1.095) continue; // limit up: no sellers
+      const avg24 = m.recentAverage(slot, 24), avg3 = m.recentAverage(slot, 3);
+      if (!avg24 || !avg3 || s.price <= avg3) continue; // still falling
+      const dip = 1 - s.price / avg24;
+      if (dip > best) { best = dip; pick = slot; }
+    }
+    if (pick < 0) return;
+    const s = m.stocks[pick], n = Math.min(Math.trunc(budget / s.price), s.turnQuota);
+    if (n <= 0) return;
+    const changed = m.buyMarket(p, pick, n);
+    yield { t: 'fx', kind: 'stock-trade', p: p.id, data: { slot: pick, n, buy: true } };
+    yield* g.say(undefined, `${g.name(p.id)}\n\n買進${s.name}${n}張`);
+    if (changed) yield { t: 'board' };
   }
 
   /** Short of the reserve at the start of its turn: shares are sold (into the bank) until it is covered. */
@@ -341,7 +402,7 @@ export class SmartAi {
    */
   frameTarget(p: Player, mode: 0 | 1 | 2, amount: number, payee: number, local: boolean): number {
     const g = this.g, PI = g.priceIndex;
-    const others = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0 && (!local || g.here(q)));
+    const others = g.players.filter(q => this.rival(p, q) && q.whoPlays !== 0 && (!local || g.here(q)));
     if (!others.length) return -1;
     if (mode === 1 && !this.useFreeCard(p, amount)) return -1;
     if (mode === 2 && !(p.cash * 0.2 > 4000 * PI)) return -1;
@@ -396,8 +457,10 @@ export class SmartAi {
     const g = this.g;
     yield* this.sellShares(p);
     if (g.over || !p.whoPlays) return;
-    // Shares as the original's computer trades them (by the character's stock ratio), only with money to spare.
-    if (this.money(p) >= this.reserve(p) * 2) { yield* g.stocks.aiTrade(p); if (g.over || !p.whoPlays) return; }
+    // Shares as the original's computer trades them (by the character's stock ratio), only with money to spare;
+    // 地獄 trades them itself, every turn (hellShares).
+    if (g.aiLevel(p) === 3) { yield* this.hellShares(p); if (g.over || !p.whoPlays) return; }
+    else if (this.money(p) >= this.reserve(p) * 2) { yield* g.stocks.aiTrade(p); if (g.over || !p.whoPlays) return; }
     yield* g.financeRecall(); // rich4.asm:11632, as after the computer's trading
     if (g.over || !p.whoPlays) return;
     if (g.challengeAi) { yield* g.challengeAi.shares(p); if (g.over || !p.whoPlays) return; } // 挑戰模式: shares toward its 董事長 tasks
@@ -405,7 +468,7 @@ export class SmartAi {
     if (!g.smartTactics(p)) { if (g.rng.rand() & 1) yield* g.cards.aiUse(p); else yield* g.tools.aiUse(p); return; }
     const stopped = () => g.over || !p.whoPlays || g.offRoad(p) || !!p.sleep || !!p.sleepwalk || g.tools.pending !== 'none';
     if (g.rules?.aiTools && (yield* g.rules.aiTools(g, p))) { if (stopped()) return; } // 歌舞伎町's own tools (21 §7.5)
-    for (let k = 0; k < 3; k++) {
+    for (let k = 0, n = this.hell(p) ? HELL.acts : 3; k < n; k++) {
       let best: Act | null = null;
       for (const a of this.actions(p)) if (a.score > 0 && (!best || a.score > best.score)) best = a;
       if (!best) break;
@@ -446,10 +509,14 @@ export class SmartAi {
   private onRoad(q: Player): boolean { return q.placed && !!q.whoPlays && !this.g.offRoad(q); }
   /** Rivals standing on p's screen (pickable on the map). */
   private rivalsInView(p: Player): Player[] {
-    return this.g.players.filter(q => q.id !== p.id && this.onRoad(q) && (n => !!n && this.inView(p, n.x, n.y))(this.g.node(q.node)));
+    return this.g.players.filter(q => this.rival(p, q) && this.onRoad(q) && (n => !!n && this.inView(p, n.x, n.y))(this.g.node(q.node)));
   }
   /** How much hurting rival q counts: the leader most. */
-  private weight(_p: Player, q: number, lead: number): number { return q === lead ? 1.5 : 1; }
+  private weight(p: Player, q: number, lead: number): number {
+    const o = this.g.players[q];
+    if (o && !this.rival(p, o)) return 0; // 地獄: a fellow computer
+    return q === lead ? 1.5 : 1;
+  }
 
   /**
    * The toll value of a lot at `level` for its street (what each landing pays more): a lot adds its own toll to the
