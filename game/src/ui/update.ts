@@ -222,7 +222,7 @@ async function runUpdate(parent: HTMLElement, version: string): Promise<void> {
   }
 }
 
-const INSTALLER = (v: string) => `新版本 v${v} 需要下載新的安裝包才能更新\n（存檔會保留）`;
+const INSTALLER = (v: string) => `新版本 v${v} 需要重新下載安裝包\n（存檔會保留）`;
 const DOWNLOAD_PAGE = 'https://github.com/iam567/rich4-renew-app/releases/latest';
 function openDownloadPage() { window.open(DOWNLOAD_PAGE, '_blank'); }
 
