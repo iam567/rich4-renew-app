@@ -14,6 +14,7 @@ import { loadClip } from '../effects';
 import { Balloons, bigScore, Gifts, libcRand, Penguin, type Sound, type Sprite } from './mini-logic';
 import './mini-games.css';
 import { sceneWeather } from '../weather-fx';
+import { uiFont } from '../fonts';
 
 type MiniAsk = Extract<Ask, { t: 'mini-game' }>;
 type Arc = 'Panel' | 'Data';
@@ -160,7 +161,7 @@ function playMini(ctx: ScreenContext, a: MiniAsk): Promise<number> {
       if (phase === 'result' || phase === 'done') {
         for (const s of bigScore(game.score)) draw(c, s);
         c.save();
-        c.font = '700 22px Huninn, "PingFang SC", "PingFang TC", sans-serif';
+        c.font = `700 22px ${uiFont()}, "PingFang SC", "PingFang TC", sans-serif`;
         c.textAlign = 'center';
         c.lineJoin = 'round';
         c.lineWidth = 5;

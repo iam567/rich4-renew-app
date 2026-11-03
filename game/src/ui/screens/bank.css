@@ -3,7 +3,7 @@
  */
 .game:has(> .fx-overlay) { position: relative; }
 .fx-overlay { position: absolute; inset: 0; z-index: 40; overflow: hidden; touch-action: none; user-select: none; -webkit-user-select: none;
-  font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; animation: fx-in .22s ease-out; }
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; animation: fx-in .22s ease-out; }
 .fx-overlay.out { animation: fx-out .16s ease-in forwards; }
 @keyframes fx-in { from { opacity: 0; } to { opacity: 1; } }
 @keyframes fx-out { to { opacity: 0; } }

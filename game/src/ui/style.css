@@ -4,10 +4,11 @@
   --teal: #0e6b72;
   --teal-dark: #0b3b40;
   --gold: #ffc23e;
+  --ui-font: "Huninn";       /* 設定 → 字體 (fonts.ts) replaces it */
   --line: rgba(16, 42, 46, 0.14);
   /* Huninn has no simplified-only characters (图, 鉴 …). On iOS, "PingFang TC" right after it draws some of them (鉴) as a
      box instead of passing on, so "PingFang SC" (which has the traditional ones too) comes first — everywhere in the UI. */
-  font-family: "Huninn", "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", system-ui, sans-serif;
   color: var(--ink);
   -webkit-font-smoothing: antialiased;
   /* Huninn's own "normal" line height: 简体 characters it lacks fall back to a font whose normal line is ~20 % taller,
@@ -243,7 +244,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* save / load screen (09 §7.11) */
 .slots-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: center; padding: max(12px, env(safe-area-inset-top)) 10px 12px;
-  background: rgba(20, 10, 50, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; }
+  background: rgba(20, 10, 50, 0.55); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; }
 .msg.slots { width: min(660px, 100%); max-width: min(660px, 100%); max-height: 96vh; }
 .slot-list { position: relative; display: flex; flex-direction: column; gap: 9px; width: 100%; overflow: auto; padding: 4px 4px 10px; margin-bottom: 8px; }
 .slot-row { display: grid; grid-template-columns: 52px 62px 66px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; width: 100%;
@@ -519,7 +520,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game { position: relative; }
 
 /* ============================================================== title and new game */
-.title { position: relative; height: 100%; background: #1b6fd1 var(--title-bg, none) center 22% / cover no-repeat; overflow: hidden; font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; }
+.title { position: relative; height: 100%; background: #1b6fd1 var(--title-bg, none) center 22% / cover no-repeat; overflow: hidden; font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; }
 .title-buttons { position: absolute; left: 0; right: 0; bottom: max(7%, env(safe-area-inset-bottom)); display: flex; justify-content: center; align-items: flex-end; gap: clamp(10px, 4vw, 48px); }
 .title-btn { position: relative; display: grid; justify-items: center; padding: 0; background: none; width: calc(clamp(92px, 18vmin, 170px) * var(--k, 1)); }
 .title-btn img { grid-area: 1 / 1; width: 100%; height: auto; transition: transform .15s; filter: drop-shadow(0 6px 8px rgba(0, 20, 60, .45)); }
@@ -549,7 +550,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* new-game sheet: a fixed 960×540 (portrait 540×960) canvas scaled to fit, so everything shows on one page */
 .ng { position: absolute; inset: 0; z-index: 10; background: rgba(10, 30, 80, .35); backdrop-filter: blur(4px); -webkit-backdrop-filter: blur(4px);
-  font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; overflow: hidden; }
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; overflow: hidden; }
 .msg.sheet.ng-sheet { position: absolute; left: 50%; top: 50%; width: 960px; height: 540px; min-width: 0; max-width: none; max-height: none; margin: 0; padding: 26px 20px 20px;
   transform-origin: 50% 50%; display: grid; gap: 8px 16px; align-items: start;
   grid-template-columns: 560px 1fr; grid-template-rows: auto auto auto 1fr auto;
@@ -731,7 +732,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* Map info box (09 §6.4): Data#517.0-3 with the tail tip on the tap; lines centred beside the tip. */
 .map-info { position: absolute; z-index: 30; pointer-events: none; background: center / 100% 100% no-repeat;
-  font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; font-weight: 700; color: #f0f0f0;
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; font-weight: 700; color: #f0f0f0;
   text-shadow: 1px 1px 0 #101010, -1px 1px 0 #101010, 0 2px 3px rgba(0, 0, 0, .6); animation: map-info-in .15s ease-out; }
 .map-info-text { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: .2em; }
 .map-info-text span { max-width: 100%; text-align: center; line-height: 1.1; overflow-wrap: anywhere; text-wrap: balance; }

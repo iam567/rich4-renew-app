@@ -20,6 +20,7 @@ import { ASSETS } from './assets';
 import { audio, Sfx } from './audio';
 import { saveImage, shareImage } from './share';
 import './collection.css';
+import { uiFont } from './fonts';
 
 const KEY = 'rich4.cards';
 const FILE = 'collection/cards.json';
@@ -52,7 +53,7 @@ const parse = (s: string | null | undefined): Cards => {
   } catch { return {}; }
 };
 
-const FONT = '"Huninn", "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif';
+const FONT = () => `${uiFont()}, "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", sans-serif`;
 const image = (src: string) => new Promise<HTMLImageElement | null>(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = src; });
 
 let cache: Cards | null = null;
@@ -201,31 +202,31 @@ export async function proofShot(board: HTMLCanvasElement, line: string, ev: Evid
     x.drawImage(map, 0, 0);
     x.fillStyle = '#1c1240'; x.fillRect(0, h, w, c.height - h);
     x.textBaseline = 'middle';
-    x.fillStyle = '#ffe27a'; x.font = `bold 18px ${FONT}`; x.fillText(line, 12, h + strip / 2, w - 24);
+    x.fillStyle = '#ffe27a'; x.font = `bold 18px ${FONT()}`; x.fillText(line, 12, h + strip / 2, w - 24);
     let y = h + strip + pad;
-    const label = (s: string) => { x.fillStyle = '#9fb0e8'; x.font = `bold 15px ${FONT}`; x.fillText(s, 12, y + rowH / 2); };
+    const label = (s: string) => { x.fillStyle = '#9fb0e8'; x.font = `bold 15px ${FONT()}`; x.fillText(s, 12, y + rowH / 2); };
     label('道具');
     let left = 62;
     tools.forEach((im, i) => {
       if (!im || left > w - 50) return;
       x.drawImage(im, left, y + 5, 44, 44);
       const n = ev.tools[i].n;
-      if (n > 1) { x.fillStyle = '#ff5a5a'; x.beginPath(); x.arc(left + 40, y + 12, 10, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.font = `bold 13px ${FONT}`; x.textAlign = 'center'; x.fillText(String(n), left + 40, y + 12); x.textAlign = 'left'; }
+      if (n > 1) { x.fillStyle = '#ff5a5a'; x.beginPath(); x.arc(left + 40, y + 12, 10, 0, Math.PI * 2); x.fill(); x.fillStyle = '#fff'; x.font = `bold 13px ${FONT()}`; x.textAlign = 'center'; x.fillText(String(n), left + 40, y + 12); x.textAlign = 'left'; }
       left += 50;
     });
-    if (!tools.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT}`; x.fillText('（沒有道具）', 62, y + rowH / 2); }
+    if (!tools.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT()}`; x.fillText('（沒有道具）', 62, y + rowH / 2); }
     y += rowH;
     label('卡片');
     left = 62;
     for (const im of cards) { if (!im || left > w - 34) break; x.drawImage(im, left, y + 3, 31, 48); left += 35; }
-    if (!cards.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT}`; x.fillText('（沒有卡片）', 62, y + rowH / 2); }
+    if (!cards.some(Boolean)) { x.fillStyle = '#6c78a8'; x.font = `15px ${FONT()}`; x.fillText('（沒有卡片）', 62, y + rowH / 2); }
     y += rowH;
     if (ev.dice?.length) {
       label('骰子');
       ev.dice.forEach((v, i) => drawDie(x, 62 + i * 52, y + 5, 44, v));
       y += rowH;
     }
-    x.fillStyle = '#e8ecff'; x.font = `15px ${FONT}`;
+    x.fillStyle = '#e8ecff'; x.font = `15px ${FONT()}`;
     x.fillText(`${ev.money}${ev.god ? `・附身：${ev.god}` : ''}`, 12, y + 15, w - 24);
     return c.toDataURL('image/webp', 0.8);
   } catch { return null; }
@@ -353,7 +354,7 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
   for (let i = 0; i < 18; i++) { x.rotate(Math.PI / 9); x.beginPath(); x.moveTo(0, 0); x.lineTo(-90, -1100); x.lineTo(90, -1100); x.closePath(); x.fill(); }
   x.restore();
   const text = (s: string, px: number, y: number, color: string, weight = 700, align: CanvasTextAlign = 'center', left = W / 2) => {
-    x.font = `${weight} ${px}px ${FONT}`; x.fillStyle = color; x.textAlign = align; x.fillText(s, left, y);
+    x.font = `${weight} ${px}px ${FONT()}`; x.fillStyle = color; x.textAlign = align; x.fillText(s, left, y);
   };
   text('大富翁4・成就卡', 44, 92, '#ffe27a', 800);
   // The card: the picture in a white frame, its stars, its name.
@@ -367,7 +368,7 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
   band.addColorStop(0, 'rgba(20,10,40,0)'); band.addColorStop(1, 'rgba(20,10,40,.88)');
   x.fillStyle = band; x.fillRect(cx, cy + ch - 150, cw, 150);
   x.restore();
-  x.save(); x.font = `800 54px ${FONT}`; x.textAlign = 'center'; x.lineWidth = 8; x.strokeStyle = '#3a1450'; x.strokeText(t.name, W / 2, cy + ch - 34);
+  x.save(); x.font = `800 54px ${FONT()}`; x.textAlign = 'center'; x.lineWidth = 8; x.strokeStyle = '#3a1450'; x.strokeText(t.name, W / 2, cy + ch - 34);
   x.fillStyle = '#fff'; x.fillText(t.name, W / 2, cy + ch - 34); x.restore();
   const star = await image(`${ART}/star.webp`);
   if (star) for (let i = 0; i < card.s; i++) {
@@ -377,7 +378,7 @@ async function bragCanvas(t: ChallengeTask, card: Card, mapName: (id: number) =>
   // The task and the record.
   let y = cy + ch + 96;
   text(`${whereOf(t, mapName)}　${'★'.repeat(card.s)} / ${'★'.repeat(fullStars(t))}`, 34, y, '#ffd76a');
-  x.font = `500 32px ${FONT}`;
+  x.font = `500 32px ${FONT()}`;
   for (const l of wrap(x, descOf(t), W - 160).slice(0, 3)) { y += 50; text(l, 32, y, '#e8ecff', 500); }
   const f = card.proof;
   y += 74;

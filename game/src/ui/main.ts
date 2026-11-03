@@ -1,6 +1,7 @@
 /** Title/setup screen and the game controller that plays the engine's flow on screen. */
 import './compat'; // older Android / vendor WebViews (issue #7): first, before anything runs
 import '@fontsource/huninn/index.css';
+import { applyFont, fontMode, FONTS, setFont } from './fonts';
 import { Capacitor } from '@capacitor/core';
 import { CHARACTERS, playerName } from '../core/characters';
 import { format, today } from '../core/date';
@@ -129,6 +130,7 @@ function buttonSounds(root: HTMLElement, sel = 'button') {
 
 /** Title screen (Data#1: the world map with START / LOAD / OPTION), then the new-game sheet. */
 async function setup() {
+  applyFont(); // 設定 → 字體 (fonts.ts)
   app.innerHTML = '<div class="loading">載入中…</div>';
   try {
     [maps, bank] = await Promise.all([mapList(), bank ?? SpriteBank.create()]);
@@ -318,6 +320,8 @@ function options() {
       { label: '霓虹閃爍', opts: STREET_MODES, cur: () => neonMode(), pick: i => setNeonMode(i) },
       { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
         pick: i => void setLang(LANGS[i].id).then(render) },
+      // fonts.ts (the user 2026-11-03): 粉圓 / 文楷 / 圓體 / 系統, at once on every screen.
+      { label: '字體', opts: FONTS.map(f => f.label), cur: () => fontMode(), pick: i => setFont(i) },
     ];
     if (grounds.length) {
       const styles = GROUND_STYLES.filter(g => !g.id || grounds.includes(g.id));

@@ -10,6 +10,7 @@ import { isAndroid, memTier } from './mem-tier';
 import { Fireworks, FIREWORKS_MS } from './fireworks';
 import { watch } from './watchdog';
 import { BUBBLE_BODY } from './bubble-text';
+import { uiFont } from './fonts';
 
 /** The speech cloud's body (Data #517.6). */
 /** How long a quotation shows alone before the line (激情歲月, docs/rules/24 §7.1). */
@@ -278,7 +279,7 @@ export class Effects {
           const ic = icon ? this.host.bank.board('Data', 519)?.[Number(icon[1]) - 1] : null;
           if (icon) w = ic ? ic.w * ic.scale * 1.4 * z : 56 * z;
           else {
-            ctx.font = `600 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
+            ctx.font = `600 ${size}px ${uiFont()}, "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
             lines ??= wrap(ctx, text, 150 * z);
             w = Math.max(...lines.map(l => ctx.measureText(l).width));
           }
@@ -408,7 +409,7 @@ export class Effects {
 function caption(ctx: CanvasRenderingContext2D, text: string, x: number, bottom: number, z: number) {
   const size = 28 * z * 0.9, lh = size * 1.2;
   const lines = text.split('\n');
-  ctx.font = `700 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
+  ctx.font = `700 ${size}px ${uiFont()}, "PingFang SC", "PingFang TC", "Noto Sans TC", system-ui, sans-serif`;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.lineJoin = 'round';

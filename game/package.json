@@ -28,7 +28,9 @@
     "@capacitor/ios": "7.6.9",
     "@capacitor/screen-orientation": "7.0.4",
     "@capacitor/share": "7.0.4",
+    "@fontsource/chiron-goround-tc": "5.3.1",
     "@fontsource/huninn": "5.3.1",
+    "@fontsource/lxgw-wenkai-tc": "5.3.1",
     "fflate": "0.8.3",
     "opencc-js": "1.4.2",
     "peerjs": "1.5.5"

@@ -1,5 +1,5 @@
 /* Shared frame for the special-place scenes (place-scene.ts). */
-.pl-scene { position: fixed; inset: 0; z-index: 60; overflow: hidden; font-family: "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif;
+.pl-scene { position: fixed; inset: 0; z-index: 60; overflow: hidden; font-family: var(--ui-font), "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif;
   background: radial-gradient(circle at 50% 40%, rgba(60, 30, 90, .82), rgba(12, 6, 24, .94)); animation: pl-in .2s ease-out;
   -webkit-user-select: none; user-select: none; touch-action: manipulation; }
 .pl-scene.out { animation: pl-out .16s ease-in forwards; }

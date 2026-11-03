@@ -2,7 +2,7 @@
 .rs-cover { position: absolute; inset: 0; z-index: 45; display: flex; align-items: stretch; justify-content: center; overflow: hidden;
   padding: max(26px, calc(env(safe-area-inset-top) + 22px)) max(8px, env(safe-area-inset-right)) max(10px, env(safe-area-inset-bottom)) max(8px, env(safe-area-inset-left));
   background: radial-gradient(circle at 50% 18%, #5a2d9a, #170a33 70%); animation: rs-in .35s ease-out both;
-  font-family: "Huninn", "PingFang SC", "PingFang TC", system-ui, sans-serif; }
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; }
 .rs-cover.won { background: radial-gradient(circle at 50% 14%, #b07a3a, #281046 62%); }
 @keyframes rs-in { from { opacity: 0; } }
 .rs-confetti { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }

@@ -7,6 +7,7 @@
  */
 import type { BoardView } from './board-view';
 import { TOP } from './effects';
+import { uiFont } from './fonts';
 
 type Pt = { x: number; y: number };
 type Ctx = CanvasRenderingContext2D;
@@ -118,7 +119,7 @@ function coin(ctx: Ctx, x: number, y: number, r: number, spin: number, alpha = 1
   ctx.lineWidth = Math.max(1, r * 0.16); ctx.strokeStyle = '#8a5a00'; ctx.stroke();
   if (sx > 0.45) {
     ctx.fillStyle = '#9a6400';
-    ctx.font = `900 ${r * 1.2}px "Huninn", "PingFang SC", "PingFang TC", sans-serif`;
+    ctx.font = `900 ${r * 1.2}px ${uiFont()}, "PingFang SC", "PingFang TC", sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText('$', 0, r * 0.05);
   }
@@ -139,7 +140,7 @@ function star(ctx: Ctx, x: number, y: number, r: number, color: string, alpha: n
 }
 
 function label(ctx: Ctx, text: string, x: number, y: number, size: number, fill: string, stroke = '#101010') {
-  ctx.font = `900 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif`;
+  ctx.font = `900 ${size}px ${uiFont()}, "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif`;
   ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   ctx.lineJoin = 'round'; ctx.lineWidth = Math.max(3, size * 0.16); ctx.strokeStyle = stroke;
   ctx.strokeText(text, x, y); ctx.fillStyle = fill; ctx.fillText(text, x, y);
@@ -423,7 +424,7 @@ function stamp(k: Kit, text: string, color: string, at: (() => Pt) | null): Pain
     ctx.lineWidth = 2 * z;
     ctx.beginPath(); ctx.roundRect(-w / 2 + 6 * z, -h / 2 + 6 * z, w - 12 * z, h - 12 * z, 6 * z); ctx.stroke();
     ctx.fillStyle = color;
-    ctx.font = `900 ${size}px "Huninn", "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif`;
+    ctx.font = `900 ${size}px ${uiFont()}, "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif`;
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(text, 0, 2 * z);
     ctx.restore();

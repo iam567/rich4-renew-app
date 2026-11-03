@@ -8,6 +8,7 @@ import { format } from '../core/date';
 import { sum, type GameResults, type PlayerResult } from '../core/stats';
 import { ASSETS, image, portrait } from './assets';
 import { t } from './lang';
+import { uiFont } from './fonts';
 
 /** The statistics icons (tools/tycoon-art/stats_icons.py → maps/remake/stats/<name>.webp); also drawn on the share card. */
 export type StatIcon = 'assets' | 'money' | 'land' | 'build' | 'facility' | 'stock' | 'toll-in' | 'toll-out' | 'cards' | 'tools'
@@ -16,7 +17,8 @@ export const statIcon = (name: StatIcon) => `${ASSETS}/maps/remake/stats/${name}
 
 
 const W = 1080;
-export const FONT = '"Huninn", "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif';
+/** The cards' font list, the chosen font first (fonts.ts). */
+export const FONT = () => `${uiFont()}, "PingFang SC", "PingFang TC", "Hiragino Sans CNS", "Noto Sans TC", "Microsoft JhengHei", sans-serif`;
 const hex = (c: number) => `#${c.toString(16).padStart(6, '0')}`;
 const money = (n: number) => Math.trunc(n).toLocaleString('en-US');
 const signed = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${money(Math.abs(n))}`;
@@ -30,7 +32,7 @@ export function round(c: CanvasRenderingContext2D, x: number, y: number, w: numb
 }
 
 export function text(c: CanvasRenderingContext2D, s: string, x: number, y: number, size: number, color: string, align: CanvasTextAlign = 'left', shadow = true, maxW?: number) {
-  c.font = `${size}px ${FONT}`;
+  c.font = `${size}px ${FONT()}`;
   c.textAlign = align;
   c.textBaseline = 'middle';
   if (shadow) { c.fillStyle = 'rgba(11, 33, 96, .9)'; c.fillText(t(s), x + 2, y + 3, maxW); }
@@ -84,7 +86,7 @@ export interface CardOptions {
 
 /** Draws the results picture. */
 export async function drawResultsCard(r: GameResults, o: CardOptions): Promise<HTMLCanvasElement> {
-  try { await document.fonts?.load(`32px ${FONT}`); } catch { /* the fallback fonts draw it */ }
+  try { await document.fonts?.load(`32px ${FONT()}`); } catch { /* the fallback fonts draw it */ }
   const many = r.players.length > 4;
   const rowH = many ? 64 : 108;
   // The figures of the player shown, each with its icon (tools/tycoon-art/stats_icons.py).

@@ -11,7 +11,7 @@ const W = 1080;
 const n = (x: number) => Math.trunc(x).toLocaleString('en-US');
 
 export async function drawFinaleCard(o: { vals: Valuation[]; chips: FinalistChips[]; human?: number; characterOf: (p: number) => number; faceSrc?: (c: number) => string | undefined; date?: string }): Promise<HTMLCanvasElement> {
-  try { await document.fonts?.load(`32px ${FONT}`); } catch { /* fallback fonts */ }
+  try { await document.fonts?.load(`32px ${FONT()}`); } catch { /* fallback fonts */ }
   const cards = o.vals.map(v => ({ v, c: o.chips.find(x => x.p === v.p), ch: o.characterOf(v.p) }));
   const lineH = 44, cardW = (W - 60 * 2 - 30) / 2;
   const cardH = Math.max(...cards.map(({ c }) => 150 + Math.ceil(((c?.lines ?? []).filter(l => l.chips > 0).length || 1) / 2) * lineH + Math.ceil((c?.badges.length ?? 0) / 2) * 52 + 90));
@@ -32,7 +32,7 @@ export async function drawFinaleCard(o: { vals: Valuation[]; chips: FinalistChip
   // The title.
   const tg = g.createLinearGradient(0, 80, 0, 220);
   tg.addColorStop(0, '#fff6c0'); tg.addColorStop(1, '#ffb52e');
-  g.font = `900 132px ${FONT}`; g.textAlign = 'center'; g.textBaseline = 'middle';
+  g.font = `900 132px ${FONT()}`; g.textAlign = 'center'; g.textBaseline = 'middle';
   g.lineWidth = 14; g.strokeStyle = '#6a1a10'; g.strokeText('最終決戰', W / 2, 160);
   g.fillStyle = tg; g.fillText('最終決戰', W / 2, 160);
   text(g, `只剩 ${cards.length} 人！全體前往 大富翁城`, W / 2, 262, 40, '#fff', 'center');
