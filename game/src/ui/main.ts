@@ -180,7 +180,7 @@ function title() {
   audio.setMusicSet(null); // the title and everything outside 激情歲月 play the original's music
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
-    <button class="title-cards" data-act="cards"><img src="${ASSETS}/maps/remake/challenge/icon.webp" alt=""><span>圖鑑</span></button>
+    <button class="title-cards" data-act="cards" aria-label="圖鑑"><img class="tc-icon" src="${ASSETS}/maps/remake/challenge/icon.webp" alt=""><img class="tc-label hant" src="${ASSETS}/maps/remake/challenge/label-hant.webp" alt=""><img class="tc-label hans" src="${ASSETS}/maps/remake/challenge/label-hans.webp" alt=""></button>
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
     <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div>
     <div class="title-ver">v${__APP_VERSION__}</div></div>`;

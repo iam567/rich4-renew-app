@@ -35,10 +35,11 @@
 /* The title's 圖鑑: the fanned cards icon (challenge_cards.py icon) over a small gold plate, like the big buttons. */
 .title-cards { position: absolute; right: 12px; top: 10px; z-index: 3; display: grid; justify-items: center; padding: 0; background: none; border: 0;
   width: clamp(64px, 11vmin, 104px); cursor: pointer; }
-.title-cards img { width: 100%; height: auto; filter: drop-shadow(0 4px 6px rgba(0, 20, 60, .45)); transition: transform .15s; }
-.title-cards:hover img, .title-cards:active img { transform: scale(1.08) rotate(-3deg); }
-.title-cards span { margin-top: -14%; padding: 2px 12px; border: 2px solid #fff; border-radius: 999px; color: #5a2d00; font-weight: 700; font-size: clamp(12px, 2.2vmin, 16px);
-  background: linear-gradient(#fff07a, #ffbf2e); box-shadow: 0 3px 0 rgba(0, 0, 0, .25); white-space: nowrap; }
+.title-cards img.tc-icon { width: 100%; height: auto; filter: drop-shadow(0 4px 6px rgba(0, 20, 60, .45)); transition: transform .15s; }
+.title-cards:hover img.tc-icon, .title-cards:active img.tc-icon { transform: scale(1.08) rotate(-3deg); }
+/* The label is a picture (challenge_cards.py label): the game's font has no 鉴 / 鑑 on iOS. One per script (ui/lang.ts sets <html lang>). */
+.title-cards img.tc-label { margin-top: -14%; width: 76%; height: auto; }
+html[lang="zh-Hans"] .title-cards .tc-label.hant, html:not([lang="zh-Hans"]) .title-cards .tc-label.hans { display: none; }
 .col-info .col-proof { color: #fff; }
 .col-info .col-proof small { opacity: .75; }
 .col-info .col-proof.none { color: #ff9a8a; }
