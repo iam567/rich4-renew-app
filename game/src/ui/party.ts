@@ -49,16 +49,17 @@ const SET_ITEMS = (k: SetKey): readonly string[] => (k === 'turnSec' ? TURN_SECO
 function rulesHtml(rules: PartyRules, host: boolean): string {
   return `<div class="pt-tiles">${SET_KEYS.map(k => {
     const v = SET_ITEMS(k)[rules[k]];
-    return `<div class="pt-tile"><span>${SET_LABEL(k)}</span>${host
+    // .pt-tin: laid out by the tile's own width (party.css): one line where it fits, else the label above.
+    return `<div class="pt-tile"><div class="pt-tin"><span>${SET_LABEL(k)}</span>${host
       ? `<div class="pt-step"><button data-rule="${k}" data-d="-1" aria-label="上一個">‹</button><b>${v}</b><button data-rule="${k}" data-d="1" aria-label="下一個">›</button></div>`
-      : `<b>${v}</b>`}</div>`;
+      : `<b>${v}</b>`}</div></div>`;
   }).join('')}</div>`;
 }
 /** A row of choices (空位, 電腦難度): chips for the host, the value for everyone else. */
 function choiceRow(label: string, items: { v: number; text: string }[], on: number, host: boolean, attr: string): string {
-  return `<div class="pt-choice"><span>${label}</span>${host
+  return `<div class="pt-choice"><div class="pt-cin"><span>${label}</span>${host
     ? `<div class="pt-seg">${items.map(x => `<button class="${x.v === on ? 'on' : ''}" data-${attr}="${x.v}">${x.text}</button>`).join('')}</div>`
-    : `<b>${items.find(x => x.v === on)?.text ?? ''}</b>`}</div>`;
+    : `<b>${items.find(x => x.v === on)?.text ?? ''}</b>`}</div></div>`;
 }
 
 /** A listed room's 等待時間 and 電腦難度 as tags (a quick room in yellow, 地獄 in red); none from an older host. */

@@ -230,21 +230,64 @@
 .pt-mapline img { width: 48px; height: 36px; object-fit: cover; border-radius: 6px; }
 .pt-mapline span { font-size: 13px; color: #ffe14a; }
 .pt-mapline b { font-weight: 700; font-size: 16px; white-space: nowrap; }
+/*
+ * The room's settings (the user 2026-11-03: the ‹ › went out of their boxes — never on any screen). Each tile and
+ * choice row lays itself out by its own width (container queries): one line where label, ‹ value › fit, else the
+ * label above and the stepper / choices under it at full width. Browsers without container queries (old Android
+ * WebViews) always get the stacked layout, which fits a 320 px phone.
+ */
 .pt-tiles { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: 100%; }
-.pt-tile { display: flex; align-items: center; justify-content: space-between; gap: 6px; min-width: 0; padding: 6px 8px 6px 12px; border-radius: 12px;
-  background: rgba(0, 0, 0, .18); color: #fff; }
-.pt-tile > span { font-size: 13px; color: #ffe14a; white-space: nowrap; }
-.pt-tile > b { font-weight: 700; font-size: 15px; white-space: nowrap; padding-right: 6px; }
-.pt-step { display: grid; grid-template-columns: 30px minmax(3.6em, auto) 30px; align-items: center; gap: 4px; }
-.pt-step b { font-weight: 700; font-size: 15px; text-align: center; white-space: nowrap; }
-.pt-step button { height: 30px; padding: 0; border: 0; border-radius: 10px; font: inherit; font-size: 18px; color: #5a2d00; cursor: pointer;
+.pt-tile { min-width: 0; border-radius: 12px; background: rgba(0, 0, 0, .18); color: #fff; container-type: inline-size; }
+.pt-tin { display: grid; grid-template-columns: minmax(0, 1fr); gap: 3px; padding: 5px 7px 6px; text-align: left; }
+.pt-tin > span { font-size: 13px; color: #ffe14a; white-space: nowrap; overflow: hidden; }
+.pt-tin > b { font-weight: 700; font-size: 15px; white-space: nowrap; text-align: center; }
+.pt-step { display: grid; grid-template-columns: 26px minmax(0, 1fr) 26px; align-items: center; gap: 3px; min-width: 0; }
+.pt-step b { font-weight: 700; font-size: 15px; text-align: center; white-space: nowrap; overflow: hidden; }
+.pt-step button { height: 28px; padding: 0; border: 0; border-radius: 9px; font: inherit; font-size: 18px; color: #5a2d00; cursor: pointer;
   background: linear-gradient(#fff6b0, #ffc93a); box-shadow: 0 2px 0 #c97a00; }
-.pt-choice { display: grid; grid-template-columns: 4.6em 1fr; align-items: center; gap: 8px; width: 100%; color: #fff; }
-.pt-choice > span { font-size: 13px; color: #ffe14a; white-space: nowrap; }
-.pt-choice > b { font-weight: 700; font-size: 15px; }
-.pt-seg { display: flex; padding: 3px; gap: 3px; border-radius: 14px; background: rgba(0, 0, 0, .22); }
-.pt-seg button { flex: 1; min-width: 0; padding: 7px 4px; border: 0; border-radius: 11px; font: inherit; font-size: 14px; white-space: nowrap; color: #dfe8ff; background: none; cursor: pointer; }
+@container (min-width: 186px) {
+  .pt-tin { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 4px; padding: 5px 6px 5px 10px; }
+  .pt-tin > span { font-size: 12.5px; }
+  .pt-tin > b { text-align: right; padding-right: 6px; }
+  .pt-step { grid-template-columns: 26px minmax(3.4em, 1fr) 26px; }
+}
+.pt-choice { width: 100%; color: #fff; container-type: inline-size; }
+.pt-cin { display: grid; grid-template-columns: minmax(0, 1fr); gap: 4px; align-items: center; }
+.pt-cin > span { font-size: 13px; color: #ffe14a; white-space: nowrap; text-align: left; }
+.pt-cin > b { font-weight: 700; font-size: 15px; }
+.pt-seg { display: flex; padding: 3px; gap: 3px; border-radius: 14px; background: rgba(0, 0, 0, .22); min-width: 0; }
+.pt-seg button { flex: 1 1 0; min-width: 0; padding: 7px 2px; border: 0; border-radius: 11px; font: inherit; font-size: 14px; white-space: nowrap; overflow: hidden; color: #dfe8ff; background: none; cursor: pointer; }
 .pt-seg button.on { color: #5a2d00; font-weight: 700; background: linear-gradient(#fff6b0, #ffc93a); box-shadow: 0 2px 0 #c97a00; }
+@container (min-width: 380px) {
+  .pt-cin { grid-template-columns: 4.6em minmax(0, 1fr); gap: 8px; }
+}
+/* The narrowest phones (320–359 px: iPhone SE 1st gen, small Androids): smaller ‹ › and words, so 1000萬 and
+   電腦補滿4人 show whole (old WebViews without container queries get this too). */
+@media (max-width: 359px) {
+  .pt-step { grid-template-columns: 22px minmax(0, 1fr) 22px; gap: 2px; }
+  .pt-step b { font-size: 13.5px; }
+  .pt-tin { padding-left: 5px; padding-right: 5px; }
+  .pt-seg button { font-size: 12px; padding-left: 0; padding-right: 0; letter-spacing: -.2px; }
+}
+/* …and any tile that narrow (the smallest landscape phones: 568 × 320), by its own width or, without container
+   queries, by the screen's height. */
+/* A landscape phone's room (two halves, little height): one line from a narrower tile, with smaller ‹ ›. */
+@container (min-width: 158px) {
+  .pt-roomv .pt-tin { grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 3px; padding: 3px 5px 3px 8px; }
+  .pt-roomv .pt-tin > span { font-size: 12px; }
+  .pt-roomv .pt-step { grid-template-columns: 22px minmax(3em, 1fr) 22px; gap: 2px; }
+  .pt-roomv .pt-step b { font-size: 14px; }
+}
+@container (max-width: 136px) {
+  .pt-step { grid-template-columns: 22px minmax(0, 1fr) 22px; gap: 2px; }
+  .pt-step b { font-size: 13.5px; }
+  .pt-tin { padding-left: 5px; padding-right: 5px; }
+}
+@media (max-height: 359px) and (orientation: landscape) {
+  .pt-step { grid-template-columns: 22px minmax(0, 1fr) 22px; gap: 2px; }
+  .pt-step b { font-size: 13.5px; }
+  .pt-tin { padding-left: 5px; padding-right: 5px; }
+}
 /* The room's two halves: one under the other; side by side on a landscape phone, the name and the chat side by side
    under them too, so the whole room fits without scrolling. */
 .pt-dyn { display: flex; flex-direction: column; gap: 10px; width: 100%; }
@@ -261,12 +304,11 @@
   .pt-roomv .pt-code b { font-size: 34px; }
   .pt-roomv .pt-seat { min-height: 78px; padding: 4px; }
   .pt-roomv .pt-seat img { width: 40px; height: 40px; }
-  .pt-roomv .pt-tile { padding: 3px 6px 3px 10px; }
+  .pt-roomv .pt-tin { padding-top: 3px; padding-bottom: 3px; }
   .pt-roomv .pt-step button { height: 26px; }
   .pt-roomv .pt-seg button { padding: 5px 2px; font-size: 13px; }
   .pt-roomv .pt-wait { font-size: 12px; }
 }
-.pt-choice > span { text-align: left; }
 /* A listed room's 等待時間 and 電腦難度 (the user 2026-11-03: know a quick room before joining it). */
 .pt-room .pt-rtags { display: flex; gap: 4px; margin-top: 2px; font-style: normal; }
 .pt-room .pt-rtag { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; color: #2a3f8f; background: rgba(42, 63, 143, .12); }
