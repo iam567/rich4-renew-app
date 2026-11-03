@@ -74,6 +74,11 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
     copy(fj);
     for (const f of json(fj)) shrink(`maps/remake/sprites/${res}/${f.file}`, f.width, f.height);
   }
+  // The 原版地圖's postcards (tools/tycoon-art/map_thumbs.py build-orig) and their list.
+  if (existsSync(join(src, 'maps/remake/orig-postcards.json'))) {
+    copy('maps/remake/orig-postcards.json');
+    for (const id of json('maps/remake/orig-postcards.json').ids) copy(`maps/remake/orig-${id}-postcard.webp`);
+  }
   // 派對模式's bar icons and the characters' reaction stickers (party-chat.ts, tools/tycoon-art/party_icons.py).
   if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
   // 挑戰模式's picture cards and star sticker (ui/collection.ts, tools/tycoon-art/challenge_cards.py).

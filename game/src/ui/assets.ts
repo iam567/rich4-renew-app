@@ -35,7 +35,11 @@ async function json<T>(url: string): Promise<T> {
 
 export async function mapList(): Promise<MapInfo[]> {
   const m = await json<{ maps: { id: number; name: string; thumbnail: string }[] }>(`${ASSETS}/maps/maps.json`);
-  const list: MapInfo[] = m.maps.map(x => ({ id: x.id, name: x.name, thumbnail: `${ASSETS}/maps/${x.thumbnail}`, custom: false, kind: 'orig' }));
+  // The 原版地圖's illustrated postcards (tools/tycoon-art/map_thumbs.py build-orig, the user 2026-11-03) where installed.
+  let postcards: number[] = [];
+  try { postcards = (await json<{ ids: number[] }>(`${ASSETS}/maps/remake/orig-postcards.json`)).ids ?? []; } catch { /* the plain board pictures */ }
+  const list: MapInfo[] = m.maps.map(x => ({ id: x.id, name: x.name, custom: false, kind: 'orig',
+    thumbnail: postcards.includes(x.id) ? `${ASSETS}/maps/remake/orig-${x.id}-postcard.webp` : `${ASSETS}/maps/${x.thumbnail}` }));
   // The remake's own maps (ids 8..999) are the 自製地圖 list (their `replaces` named the workshop map whose slot they took).
   try {
     const r = await json<{ maps: { id: number; name: string; thumbnail: string; data: string; image: string; replaces?: number[]; hidden?: boolean }[] }>(`${ASSETS}/maps/remake/index.json`);

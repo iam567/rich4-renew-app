@@ -395,7 +395,8 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
       try {
         const d = tycoon ? s.world!.date : s.game.date, y = d >>> 16, m = (d >>> 8) & 0xff, dd = d & 0xff;
         const when = new Date(s.savedAt).toLocaleString('zh-Hant', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-        const thumb = !tycoon && s.settings.mapId < 8 ? art('Data', 520, 2 + s.settings.mapId) : '';
+        // An original map's own small picture, unless it has its illustrated postcard (map_thumbs.py build-orig).
+        const thumb = !tycoon && s.settings.mapId < 8 && !mapThumb(s.settings.mapId).includes('postcard') ? art('Data', 520, 2 + s.settings.mapId) : '';
         const name = tycoon ? `大富豪模式・${mapName(s.settings.mapId)}` : mapName(s.settings.mapId);
         // 12 players in a world: the human's face first, the rest still standing, so the row stays one line.
         const faces = tycoon ? [...s.players.filter(p => p.human), ...s.players.filter(p => !p.human && !p.bankrupt)].slice(0, 6) : s.players;
