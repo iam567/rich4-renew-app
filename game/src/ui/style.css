@@ -363,7 +363,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* Portrait: the panel (200×280) and a 200×280 column beside it; the corner left under that column's 200×200 widget
    (200×80) holds the other widget at 80×80 and today's card (side.ts SideToday) — 全部 already shows both widgets,
    so its card takes the whole corner. Landscape is the original column, unchanged. */
-.game.portrait .side { position: relative; display: block; }
+.game.portrait .side { position: relative; display: block; width: calc(400px * var(--pu)); justify-self: center; }
 .game.portrait .side > * { position: absolute; left: 0; top: 0; }
 .game.portrait .cal-box, .game.portrait .mm-box { left: calc(200px * var(--pu)); }
 .game.portrait .st-box { display: block; left: calc(280px * var(--pu)); top: calc(200px * var(--pu)); width: calc(120px * var(--pu)); height: calc(80px * var(--pu)); }

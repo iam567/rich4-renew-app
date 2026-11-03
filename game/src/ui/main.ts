@@ -97,7 +97,10 @@ function fitShell(shell: HTMLElement) {
     shell.classList.toggle('portrait', portrait);
     if (portrait) {
       shell.style.setProperty('--tu', String(Math.min(1.6, w / 440)));
-      shell.style.setProperty('--pu', String(w / 400));
+      // The panels under the map are 400 × 280 original px, as wide as the screen — but never more than about a third
+      // of its height (the user 2026-11-03: on a wide portrait screen, an iPad held upright, they took half and left
+      // the map small); there they stay that size, centred (style.css .game.portrait .side).
+      shell.style.setProperty('--pu', String(Math.min(w / 400, (h * 0.34) / 280)));
       shell.classList.remove('roomy');
     } else {
       // The right column takes at most ~36 % of the width (only near-square screens reach that cap).
