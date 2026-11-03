@@ -312,7 +312,8 @@ export async function openCollection(root: HTMLElement, mapName: (id: number) =>
   };
   const ro = new ResizeObserver(fit);
   ro.observe(grid);
-  draw();
+  // sized before the first paint (the observer answers a frame later: one frame of oversized cards otherwise)
+  if (grid.clientWidth && grid.clientHeight) fit(); else draw();
   return new Promise(resolve => {
     overlay.onclick = e => {
       const t = e.target as HTMLElement, d = t.closest<HTMLElement>('[data-g],[data-p],[data-close],[data-card]')?.dataset;
