@@ -3,7 +3,10 @@
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const version = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8')).version;
+// RICH4_ELECTRON=22.3.27: the Windows 7 / 8 build (Electron 22 is the last for them; main.cjs serves the game by
+// the file protocol there).
 module.exports = {
+  ...(process.env.RICH4_ELECTRON ? { electronVersion: process.env.RICH4_ELECTRON } : {}),
   appId: 'pro.areu.rich4',
   productName: '大富翁4',
   executableName: 'Rich4',

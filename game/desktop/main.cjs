@@ -95,19 +95,34 @@ function createWindow() {
   });
 }
 
+/** The file an app:// request is served from (the update's first, then DIST), or the HTTP status when there is none. */
+function appFile(url) {
+  let path = decodeURIComponent(new URL(url).pathname);
+  if (path === '/' || path === '/index.html') { path = '/index.html'; overlay = chooseOverlay(); }
+  if (overlay) {
+    const o = normalize(join(overlay, path));
+    if (o.startsWith(overlay + sep) && fs.existsSync(o)) return { file: o };
+  }
+  const file = normalize(join(DIST, path));
+  if (!file.startsWith(DIST)) return { status: 403 };
+  if (!fs.existsSync(file)) { if (process.env.RICH4_SHOT) console.log('MISSING', path); return { status: 404 }; }
+  return { file };
+}
+
 app.whenReady().then(() => {
-  protocol.handle('app', req => {
-    let path = decodeURIComponent(new URL(req.url).pathname);
-    if (path === '/' || path === '/index.html') { path = '/index.html'; overlay = chooseOverlay(); }
-    if (overlay) {
-      const o = normalize(join(overlay, path));
-      if (o.startsWith(overlay + sep) && fs.existsSync(o)) return net.fetch(pathToFileURL(o).toString());
-    }
-    const file = normalize(join(DIST, path));
-    if (!file.startsWith(DIST)) return new Response('', { status: 403 });
-    if (!require('node:fs').existsSync(file)) { if (process.env.RICH4_SHOT) console.log('MISSING', path); return new Response('', { status: 404 }); }
-    return net.fetch(pathToFileURL(file).toString());
-  });
+  // Electron 25 and up: protocol.handle. The Windows 7 build (the user 2026-11-03) runs Electron 22, the last for
+  // Windows 7 / 8, which only has the file protocol: the same files, by path (error -6 = not found, -10 = denied).
+  if (protocol.handle) {
+    protocol.handle('app', req => {
+      const r = appFile(req.url);
+      return r.file ? net.fetch(pathToFileURL(r.file).toString()) : new Response('', { status: r.status });
+    });
+  } else {
+    protocol.registerFileProtocol('app', (req, cb) => {
+      const r = appFile(req.url);
+      cb(r.file ? { path: r.file } : { error: r.status === 404 ? -6 : -10 });
+    });
+  }
   if (process.platform === 'darwin') {
     Menu.setApplicationMenu(Menu.buildFromTemplate([
       { label: '大富翁4', submenu: [{ role: 'about', label: '關於大富翁4' }, { type: 'separator' }, { role: 'hide', label: '隱藏' }, { role: 'quit', label: '結束' }] },
