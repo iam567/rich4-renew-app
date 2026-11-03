@@ -869,8 +869,8 @@ export class BoardView {
     return Math.abs(u) <= this.W * 0.3 && v >= -this.H * 0.3 && v <= this.H * 0.25;
   }
 
-  /** Camera waits by game speed (慢 1 … 快 0.5 of the time). */
-  get pace(): number { return Math.max(0.5, Math.min(1, this.tickMs / 60)); }
+  /** Camera waits by game speed (慢 1 … 快 0.5 of the time, 極快 a quarter). */
+  get pace(): number { return Math.max(this.tickMs <= 10 ? 0.25 : 0.5, Math.min(1, this.tickMs / 60)); }
 
   /**
    * Whether all `pts` show well on the canvas (inside a margin: the top bar, the edges, the lower part where boxes

@@ -187,7 +187,7 @@ function title() {
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
     <button class="title-cards" data-act="cards" aria-label="圖鑑"><img class="tc-icon" src="${ASSETS}/maps/remake/challenge/icon.webp" alt=""><img class="tc-label hant" src="${ASSETS}/maps/remake/challenge/label-hant.webp" alt=""><img class="tc-label hans" src="${ASSETS}/maps/remake/challenge/label-hans.webp" alt=""></button>
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
-    <div class="title-note">${phrases('只需優化一下界面就是一個好遊戲，但他偏偏選擇了發售了垃圾的第五代。')}</div>
+    <div class="title-note">${phrases('這款遊戲是大家一起完成的，感謝 GitHub 回報問題的朋友和 B 站留言區的每一條意見。')}</div>
     <div class="title-ver">v${__APP_VERSION__}</div></div>`;
   buttonSounds(app.querySelector('.title-buttons')!, '.title-btn');
   watchParty(app.querySelector<HTMLElement>('.party-live')!);
@@ -310,7 +310,7 @@ function options() {
   let grounds: string[] = [];
   const rows = (): Row[] => {
     const list: Row[] = [
-      stored('速度', 'rich4.speed', ['慢', '中', '快']),
+      stored('速度', 'rich4.speed', ['慢', '中', '快', '極快']),
       stored('右側', 'rich4.layout', ['日曆', '小地圖', '全部']),
       stored('小遊戲', 'rich4.minigame', MINI_GAME_MODES),
       { label: '道具動畫', opts: TOOL_ANIM_MODES, cur: () => toolAnimMode(), pick: i => setToolAnimMode(i) },
@@ -325,7 +325,7 @@ function options() {
       { label: '語言', opts: LANGS.map(l => l.label), nozh: true, cur: () => LANGS.findIndex(l => l.id === lang()),
         pick: i => void setLang(LANGS[i].id).then(render) },
       // fonts.ts (the user 2026-11-03): 粉圓 / 文楷 / 圓體 / 系統, at once on every screen.
-      { label: '字體', opts: FONTS.map(f => f.label), cur: () => fontMode(), pick: i => setFont(i) },
+      { label: '字體', wide: true, opts: FONTS.map(f => f.label), cur: () => fontMode(), pick: i => setFont(i) },
     ];
     if (grounds.length) {
       const styles = GROUND_STYLES.filter(g => !g.id || grounds.includes(g.id));
@@ -791,10 +791,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   view.calm = cameraMode() === 1;
   // Game speed 0/1/2: the original ticks every 120/80/40 ms (docs/rules/08 §2.3); the remake runs the board
   // twice as fast (60/40/20 ms) and keeps message boxes and pauses at the original's times (`wait`), so text
-  // stays readable.
-  const speeds = [{ label: '慢', ms: 60, wait: 1 }, { label: '中', ms: 40, wait: 80 / 120 }, { label: '快', ms: 20, wait: 40 / 120 }];
+  // stays readable. 極快 (the user 2026-11-03: streamers found 快 still slow): the board twice as fast again, notices
+  // a glance long.
+  const speeds = [{ label: '慢', ms: 60, wait: 1 }, { label: '中', ms: 40, wait: 80 / 120 }, { label: '快', ms: 20, wait: 40 / 120 },
+    { label: '極快', ms: 10, wait: 0.15 }];
   let speed = 0;
-  try { speed = Math.max(0, Math.min(2, Number(localStorage.getItem('rich4.speed') ?? 0))); } catch { /* default */ }
+  try { speed = Math.max(0, Math.min(speeds.length - 1, Number(localStorage.getItem('rich4.speed') ?? 0))); } catch { /* default */ }
   view.tickMs = speeds[speed].ms;
   const scale = () => speeds[speed].wait;
   hud.scale = scale;
