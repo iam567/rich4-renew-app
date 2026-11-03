@@ -73,6 +73,7 @@ import { pickNextMap, showResults } from './results';
 import { nextSettings, recordResult, type CarriedSettings, type RunRecord } from './next-game';
 import { phrases, shrinkText } from './text';
 import { confirmStart, offerOnTitle, partyNeedsUpdate } from './update';
+import { openBackup } from './save-backup';
 
 const app = document.getElementById('app')!;
 // The orientation chosen in the settings is applied at start, before the title screen is laid out.
@@ -355,7 +356,7 @@ function options() {
   box.innerHTML = '<div class="ribbon">設定</div>';
   const buttons = document.createElement('div');
   buttons.className = 'choices sys-buttons';
-  buttons.innerHTML = '<button class="candy ghost" data-close="1">關閉</button>';
+  buttons.innerHTML = '<button class="candy ghost" data-backup="1">存檔備份</button><button class="candy ghost" data-close="1">關閉</button>';
   box.append(grid, buttons);
   overlay.append(box);
   // Styles redrawn for any map (the choice applies to the maps that have it).
@@ -363,6 +364,7 @@ function options() {
   overlay.onclick = e => {
     const t = e.target as HTMLElement, c = t.closest<HTMLElement>('[data-row]');
     if (c) { audio.ui('click'); current[Number(c.dataset.row)].pick(Number(c.dataset.v)); render(); return; }
+    if (t.closest('[data-backup]')) { audio.ui('click'); void openBackup(app); return; } // save-backup.ts
     if (t === overlay || t.closest('[data-close]')) { audio.ui('no'); ro.disconnect(); overlay.remove(); }
   };
   const ro = new ResizeObserver(fit);

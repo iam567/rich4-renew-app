@@ -278,8 +278,8 @@ export async function previewSlot(slot: number): Promise<SlotPreview | undefined
  */
 export const AUTO_KEEP = 5;
 const ringIds = (slot: number) => [slot, ...Array.from({ length: AUTO_KEEP - 1 }, (_, k) => 1000 + slot * 10 + k)];
-/** Every id a save can be stored under: the slots and the automatic rings. */
-function allIds(): number[] {
+/** Every id a save can be stored under: the slots and the automatic rings (save-backup.ts exports them all). */
+export function allIds(): number[] {
   return [...Array.from({ length: SLOTS }, (_, i) => i), ...ringIds(AUTO_SLOT).slice(1), ...ringIds(TYCOON_AUTO_SLOT).slice(1)];
 }
 const ringAt = new Map<number, { turn: string; at: number }>();

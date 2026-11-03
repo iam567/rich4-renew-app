@@ -239,7 +239,7 @@ export async function offerOnTitle(parent: HTMLElement): Promise<void> {
     if (i === 0) openDownloadPage();
     return;
   }
-  const s = sheet(parent, `有新版本 v${st.version}\n更新只下載有變動的檔案，存檔會保留。`, ['更新', '以後再說']);
+  const s = sheet(parent, `有新版本 v${st.version}\n更新只下載有變動的部分，存檔會保留。`, ['更新', '以後再說']);
   const i = await s.done; s.el.remove();
   if (i === 0) await runUpdate(parent, st.version);
 }
@@ -257,7 +257,7 @@ export async function partyNeedsUpdate(parent: HTMLElement): Promise<boolean> {
     if (i === 0) openDownloadPage();
     return false;
   }
-  const s = sheet(parent, `派對模式需要最新版本 v${st.version}\n（你的是 v${RUNNING}）更新只下載有變動的檔案，存檔會保留。`, ['更新', '返回']);
+  const s = sheet(parent, `派對模式需要最新版本 v${st.version}\n（你的是 v${RUNNING}）更新只下載有變動的部分，存檔會保留。`, ['更新', '返回']);
   const i = await s.done; s.el.remove();
   if (i === 0) await runUpdate(parent, st.version);
   return false;
