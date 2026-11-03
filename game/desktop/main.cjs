@@ -51,8 +51,11 @@ ipcMain.handle('update:rename', (_e, from, to) => { const b = inside(to); fs.rmS
 ipcMain.handle('update:list', () => { try { return fs.readdirSync(UPDATE); } catch { return []; } });
 
 function createWindow() {
+  // RICH4_SIZE=WxH (test runs, scripts/ui-sweep.mjs): that content size, phone sizes included.
+  const size = /^(\d+)x(\d+)$/.exec(process.env.RICH4_SIZE || '');
   const win = new BrowserWindow({
-    width: 1280, height: 800, minWidth: 800, minHeight: 500, backgroundColor: '#0b2427', title: '大富翁4',
+    width: size ? Number(size[1]) : 1280, height: size ? Number(size[2]) : 800, useContentSize: !!size,
+    minWidth: size ? 200 : 800, minHeight: size ? 200 : 500, backgroundColor: '#0b2427', title: '大富翁4',
     autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, preload: join(__dirname, 'preload.cjs') },
   });
   win.loadURL('app://rich4/index.html');
@@ -61,7 +64,12 @@ function createWindow() {
     const fs = require('node:fs'), steps = JSON.parse(fs.readFileSync(process.env.RICH4_STEPS, 'utf8'));
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     for (const st of steps) {
-      if (st.js) { try { await win.webContents.executeJavaScript(st.js); } catch (e) { console.log('STEP-ERR', String(e).slice(0, 200)); } }
+      if (st.js) {
+        try {
+          const v = await win.webContents.executeJavaScript(st.js);
+          if (st.out) console.log('STEP-OUT', JSON.stringify(v)); // the step's result, for the script that ran it
+        } catch (e) { console.log('STEP-ERR', String(e).slice(0, 200)); }
+      }
       await sleep(st.wait ?? 1000);
       if (st.shot) { fs.writeFileSync(st.shot, (await win.webContents.capturePage()).toPNG()); console.log('SHOT', st.shot); }
     }
