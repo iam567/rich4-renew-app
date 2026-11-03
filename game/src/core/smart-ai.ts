@@ -178,7 +178,7 @@ export class SmartAi {
       if (i < 6 * d) now = Math.max(now, f); else later = Math.max(later, f);
     });
     // 挑戰模式 (docs/rules/26): nobody goes bankrupt, so its computer keeps a third of the usual reserve.
-    return Math.max(5000 * PI, now, later * 0.7) * (g.challengeAi ? 0.35 : 1) * (this.hell(p) ? HELL.reserve : 1);
+    return Math.max(5000 * PI, now, later * 0.7) * (g.challenge ? 0.35 : 1) * (this.hell(p) ? HELL.reserve : 1);
   }
 
   // ---------------------------------------------------------------- where a roll ends

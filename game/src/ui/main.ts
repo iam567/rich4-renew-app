@@ -392,6 +392,8 @@ function newGame() {
     yearsIndex: 0,
     /** 挑戰模式's 每月任務 (docs/rules/27): 1 on (the default), 0 off. */
     monthly: 1,
+    /** 挑戰模式 (docs/rules/30, the user 2026-11-03): 關 / 每月 1 張 / 每月 2 張 / 完成就抽 (settings.monthTasks). */
+    monthTasks: 0,
     kind: 'orig' as MapInfo['kind'] | 'tycoon' | 'challenge',
     slots: [{ character: 9, human: true }, { character: 4, human: false }, { character: 3, human: false }, { character: 0, human: false }],
   };
@@ -435,9 +437,9 @@ function newGame() {
     page = Math.min(page, pages - 1);
     const shown = list.slice(page * PER_PAGE, (page + 1) * PER_PAGE);
     // One row per option: ‹ value › (tapping the value also steps it).
-    const opt = (label: string, key: keyof typeof state, items: readonly string[]) => {
+    const opt = (label: string, key: keyof typeof state, items: readonly string[], cls = '') => {
       const v = state[key] as number;
-      return `<div class="ng-opt"><span>${label}</span><div class="stepper">
+      return `<div class="ng-opt${cls}"><span>${label}</span><div class="stepper">
         <button data-step="${key}" data-n="${items.length}" data-d="-1">‹</button>
         <button class="val" data-step="${key}" data-n="${items.length}" data-d="1">${items[v]}</button>
         <button data-step="${key}" data-n="${items.length}" data-d="1">›</button></div></div>`;
@@ -449,8 +451,7 @@ function newGame() {
       <section class="ng-maps-sec"><div class="ng-head"><h3>地圖</h3><div class="chips">
           <button class="chip${state.kind === 'orig' ? ' on' : ''}" data-maps="orig">原版地圖</button>
           <button class="chip${state.kind === 'custom' ? ' on' : ''}" data-maps="custom">自製地圖 ${maps.filter(m => m.custom && !m.hidden).length}</button>
-          <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button>
-          <button class="chip${cm ? ' on' : ''}" data-maps="challenge">挑戰模式</button></div></div>
+          <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button></div></div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
           <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : `<div class="ng-maps-wrap"><div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span></button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>
           ${pages > 1 ? `<button class="ng-pg prev" data-page="-1"${page === 0 ? ' disabled' : ''} aria-label="上一頁">‹</button><button class="ng-pg next" data-page="1"${page >= pages - 1 ? ' disabled' : ''} aria-label="下一頁">›<small>${page + 1}/${pages}</small></button>` : ''}</div>`}</section>
@@ -476,7 +477,8 @@ function newGame() {
         ${opt('每月任務', 'monthly', ['關', '開'])}
         <p class="ng-date">${CHALLENGE_YEARS[state.yearsIndex] ? '期限到時星最多的人獲勝' : '先拿到 100 顆星的人獲勝'}・欠債不破產</p>` : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
         ${opt(RULE_LABELS.victoryIndex, 'victoryIndex', RULE_ITEMS.victoryIndex)}
-        ${opt('電腦難度', 'aiLevel', AI_LEVEL_NAMES)}`}
+        ${opt('電腦難度', 'aiLevel', AI_LEVEL_NAMES)}
+        ${state.mapId === FINALE_MAP ? '' : opt('挑戰模式', 'monthTasks', ['關', '每月 1 張', '每月 2 張', '完成就抽'], state.monthTasks ? ' hot on' : ' hot')}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
       </section>
       <div class="choices ng-actions"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
@@ -556,6 +558,8 @@ function newGame() {
         mapId: state.mapId, players, fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex,
         daysLimitIndex: cm ? 0 : state.daysLimitIndex, victoryIndex: cm ? 0 : state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
         ...(cm ? { challenge: true, challengeYears: CHALLENGE_YEARS[state.yearsIndex], challengeMonthly: !!state.monthly } : state.aiLevel ? { aiLevel: state.aiLevel } : {}),
+        // 大富翁城 has no 挑戰模式 (the user 2026-11-03).
+        ...(!cm && state.monthTasks && state.mapId !== FINALE_MAP ? { monthTasks: state.monthTasks as 1 | 2 | 3 } : {}),
       });
       return;
     }
@@ -1094,17 +1098,21 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   if (chat) { stage.append(chat.el); chat.onOpen = openLog; }
   // 挑戰模式 (docs/rules/26 §4): everyone's stars over the map, the task list on a tap and at the start of a new game.
   const faceOf = (c: number) => bank!.art('Data', 2, c)?.src ?? '';
-  const challenge = game.challenge && game.challengeTracker ? new ChallengeBar(game, faceOf) : null;
+  // A normal game's 挑戰模式 (docs/rules/30): the task card's pill only (no stars); a tap shows the card.
+  const tracker = game.challengeTracker, rewardCards = !!tracker?.monthly && tracker.rewards;
+  // The progress bar is this screen's player's: the room's seat here, else the first human.
+  const myProgress = () => (room ? [...room.mine][0] ?? -1 : game.players.findIndex(p => p.human));
+  const challenge = tracker && (game.challenge || rewardCards) ? new ChallengeBar(game, faceOf, myProgress) : null;
   // A normal game (and each 大富豪模式 city) measures every task of its map too, quietly: a human's achievement still
   // goes into the 圖鑑. A city shown again after a trip starts its watch from its stars now.
   const watch = challenge ?? (game.challengeTracker ? new StarWatch(game) : null);
-  const openTasks = () => hud.sheetNode('挑戰任務', taskList(game, faceOf));
+  const openTasks = () => (rewardCards ? hud.sheetNode('任務卡', monthNotice(game, faceOf, [])) : hud.sheetNode('挑戰任務', taskList(game, faceOf)));
   // 每月任務 (docs/rules/27): a card taken or decided in the log, a new month's card on its own notice.
   const months = challenge && game.challengeTracker!.monthly ? new MonthWatch(game) : null;
   if (challenge) {
     stage.append(challenge.el);
     challenge.onOpen = () => void openTasks();
-    if (!loaded) { await openTasks(); if (me !== session) return; }
+    if (!loaded && (!rewardCards || tracker!.month)) { await openTasks(); if (me !== session) return; }
   }
   /**
    * Stars just earned: a note each (the badge redrawn); a human's of this device go into the 圖鑑 (ui/collection.ts)
@@ -1126,14 +1134,15 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const mine: Record<string, { stars: number; p: number; name: string }> = {};
     for (const x of watch?.update() ?? []) {
       const own = room ? room.mine.has(x.p) : game.players[x.p].human;
-      if (challenge) hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
+      if (game.challenge) hud.note(`${nameOf(x.p)}完成「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
       else if (own) hud.note(`${nameOf(x.p)}達成成就「${x.task.name}」${'★'.repeat(x.stars)}`, colorOf(x.p));
       if (own && x.stars > (mine[x.task.id]?.stars ?? 0)) mine[x.task.id] = { stars: x.stars, p: x.p, name: x.task.name };
     }
     // 每月任務: who took a card (its card into the 圖鑑 like a task's).
     const mon = months?.update();
     for (const r of mon?.results ?? []) {
-      hud.note(r.won.length ? `${r.won.map(nameOf).join('、')}拿到本月任務「${r.task.name}」★★★` : `本月任務「${r.task.name}」沒有人拿到`);
+      if (rewardCards) hud.note(r.won.length ? `${r.won.map(nameOf).join('、')}拿下任務「${r.task.name}」，抽一張獎勵卡` : `任務「${r.task.name}」沒有人拿到`);
+      else hud.note(r.won.length ? `${r.won.map(nameOf).join('、')}拿到本月任務「${r.task.name}」★★★` : `本月任務「${r.task.name}」沒有人拿到`);
       for (const p of r.won) if ((room ? room.mine.has(p) : game.players[p].human) && !mine[r.task.id]) mine[r.task.id] = { stars: 3, p, name: r.task.name };
     }
     const ids = Object.keys(mine);
@@ -1152,7 +1161,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       if (x.stars >= 3) await shown('achievement', () => achievementScene(shell, t, x.stars, x.before, nameOf(mine[x.id].p)), undefined);
       else hud.note(`圖鑑${x.before ? '更新' : '解鎖'}「${t.name}」${'★'.repeat(x.stars)}`);
     }
-    if (mon?.drawn) await shown('month', () => hud.sheetNode('本月任務', monthNotice(game, faceOf, mon.results)), undefined, true);
+    if (mon?.drawn) await shown('month', () => hud.sheetNode(rewardCards && tracker!.perMonth !== 1 ? '新任務卡' : '本月任務', monthNotice(game, faceOf, mon.results)), undefined, true);
   };
   // What a player lost (cards, tools) in a box, a computer's in the log / chat box (ui/losses.ts).
   const losses = new LossNotices(game, () => hud.context(shell), { idle: () => director.idle(), note: (t, c) => hud.note(t, c),
@@ -1169,6 +1178,11 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     stage.append(waiting);
     // The richest player can't be voted out (the same game state on every phone, so the same answer everywhere); a
     // tie (the start) protects nobody.
+    // 途中加入: the computers' seats still in the game (a joining player may take one).
+    room.seatOpen = seat => { const q = game.players[seat]; return !!q && !q.human && !q.bankrupt; };
+    // A player who joined the game going on: their computer's seat is theirs from its next turn.
+    const waitSeat = [...room.mine].map(seat => game.players[seat]).find(q => q && !q.human);
+    if (waitSeat) void hud.flash(`你將接手電腦 ${nameOf(waitSeat.id)}\n輪到它時就換你操作`, 3200);
     room.richest = seat => {
       const me2 = game.players[seat];
       if (!me2 || me2.bankrupt || !me2.whoPlays) return false;
@@ -1306,6 +1320,17 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       if (room) {
         const seq = askSeq++;
         if (s.t === 'turn' && !room.digest(seq, digest()) && !warnedDesync) { warnedDesync = true; void hud.flash('和房主的遊戲不同步了\n請把這局截圖給開發者', 2600); void reportParty('desync', '和房主的遊戲不同步', { seq, detail: `第 ${game.daysElapsed} 天・輪到 ${nameOf(s.p)}` }); }
+        if (s.t === 'seat') {
+          // 途中加入: whether a player who joined takes this computer's seat over — the host says (from the seats, so a
+          // new host after a hand-over says the same); everyone else waits for that answer.
+          let got: { v: Answer } | null = null;
+          while (!got) {
+            if (room.host) { answer = room.seatAnswer(s.p) as Answer; sendSeq = seq; break; }
+            got = await Promise.race([room.wait(seq).then(v => ({ v: v as Answer })), room.untilHost().then(() => null), new Promise<null>(r => setTimeout(() => r(null), 1000))]);
+          }
+          if (got) answer = got.v;
+          continue;
+        }
         if (!room.mine.has(s.p)) {
           // Another phone's player decides: wait for the answer. A seat sent away (voted out) is answered by the
           // host for the computer: 托管 at its turn (then the rules play it), the safe answer otherwise.
@@ -1618,7 +1643,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
         {
           // The results screen (docs/rules/20 §4), then 「下一局」 (another map, the same settings) or the title.
           await starNotes();
-          if (challenge) await hud.sheetNode('挑戰結果', starTable(game, s.winner, faceOf));
+          if (game.challenge && challenge) await hud.sheetNode('挑戰結果', starTable(game, s.winner, faceOf));
           const results = gameResults(game, s.winner);
           run = recordResult(run, results);
           const humans = game.players.filter(p => p.human).map(p => p.character);

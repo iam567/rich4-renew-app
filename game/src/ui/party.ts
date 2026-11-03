@@ -9,7 +9,8 @@ import { today } from '../core/date';
 import type { GameSettings } from '../core/types';
 import type { MapInfo } from './assets';
 import { audio } from './audio';
-import { AI_LEVELS, cleanNick, Lobby, myRegion, NICK_MAX, PARTY_VERSION, Room, ROOM_MAX, startMsg, TURN_SECONDS, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
+import { FINALE_MAP } from '../core/casino-rules';
+import { AI_LEVELS, cleanNick, Lobby, myRegion, NICK_MAX, PARTY_CHALLENGE, PARTY_VERSION, Room, ROOM_MAX, startMsg, TURN_SECONDS, type PartyRules, type RoomInfo, type StartMsg } from './party-net';
 import { pingText, rowGrade } from './party-hud';
 import { headLine, inParty, lastHeadCount, onHeadCount, type HeadCount } from './party-presence';
 import { setReportName, watchErrors } from './party-report';
@@ -58,17 +59,20 @@ function rulesHtml(rules: PartyRules, host: boolean): string {
   }).join('')}</div>`;
 }
 /** A row of choices (空位, 電腦難度): chips for the host, the value for everyone else. */
-function choiceRow(label: string, items: { v: number; text: string }[], on: number, host: boolean, attr: string): string {
-  return `<div class="pt-choice"><div class="pt-cin"><span>${label}</span>${host
+function choiceRow(label: string, items: { v: number; text: string }[], on: number, host: boolean, attr: string, cls = ''): string {
+  return `<div class="pt-choice${cls}"><div class="pt-cin"><span>${label}</span>${host
     ? `<div class="pt-seg">${items.map(x => `<button class="${x.v === on ? 'on' : ''}" data-${attr}="${x.v}">${x.text}</button>`).join('')}</div>`
     : `<b>${items.find(x => x.v === on)?.text ?? ''}</b>`}</div></div>`;
 }
 
-/** A listed room's 等待時間 and 電腦難度 as tags (a quick room in yellow, 地獄 in red); none from an older host. */
+/**
+ * A listed room's 挑戰模式, 等待時間 and 電腦難度 as tags (挑戰模式 in blue, a quick room in yellow, 地獄 in red; the user
+ * 2026-11-03: who doesn't want 挑戰模式 sees it before joining); none from an older host.
+ */
 function roomTags(x: RoomInfo): string {
-  const t = Number.isFinite(x.turn) ? Math.trunc(x.turn as number) : 0, ai = Number.isInteger(x.ai) ? (x.ai as number) : -1;
-  if (!t && ai < 0) return '';
-  return `<i class="pt-rtags">${t ? `<i class="pt-rtag${t <= 20 ? ' quick' : ''}">每步 ${t} 秒</i>` : ''}${ai >= 0 && AI_LEVELS[ai] ? `<i class="pt-rtag${ai === 3 ? ' hell' : ''}">電腦${AI_LEVELS[ai]}</i>` : ''}</i>`;
+  const t = Number.isFinite(x.turn) ? Math.trunc(x.turn as number) : 0, ai = Number.isInteger(x.ai) ? (x.ai as number) : -1, ch = Number.isInteger(x.ch) && (x.ch as number) > 0;
+  if (!t && ai < 0 && !ch && !x.drop) return '';
+  return `<i class="pt-rtags">${x.drop ? '<i class="pt-rtag drop">可途中加入</i>' : ''}${ch ? '<i class="pt-rtag ch">挑戰模式</i>' : ''}${t ? `<i class="pt-rtag${t <= 20 ? ' quick' : ''}">每步 ${t} 秒</i>` : ''}${ai >= 0 && AI_LEVELS[ai] ? `<i class="pt-rtag${ai === 3 ? ' hell' : ''}">電腦${AI_LEVELS[ai]}</i>` : ''}</i>`;
 }
 
 /** The maps as picture cards, a page at a time (the user 2026-11-03: the name buttons were a jumble). */
@@ -152,7 +156,8 @@ export function openParty(d: PartyDeps): void {
   const token = `p-${Math.random().toString(36).slice(2, 10)}`;
   const info = (r: Room): RoomInfo => r.shared ? infoShared(r) : { ...infoShared(r), code: token, host: '', map: '', private: true };
   const infoShared = (r: Room): RoomInfo => ({ code: r.code, host: r.members[0]?.name ?? '', character: r.members[0]?.character ?? 0, map: mapName(r.map), players: r.members.length, max: ROOM_MAX, at: Date.now(), region: r.members[0]?.region, ...(r.ver ? { ver: r.ver } : {}),
-    turn: TURN_SECONDS[r.rules.turnSec], ai: r.rules.aiLevel });
+    turn: TURN_SECONDS[r.rules.turnSec], ai: r.rules.aiLevel, ...(r.rules.challenge && Number(r.map) !== FINALE_MAP ? { ch: r.rules.challenge } : {}),
+    ...(r.rules.dropIn ? { drop: true } : {}), ...(r.started ? { playing: true, free: r.freeSeats().length } : {}) });
 
   function roomView(r: Room) {
     inParty('room');
@@ -188,6 +193,7 @@ export function openParty(d: PartyDeps): void {
       const mine = r.members.find(m => m.id === r.myId);
       if (mine) nick.placeholder = CHARACTERS[mine.character].name;
       if (fill && fill <= r.members.length) fill = fill === 4 ? 0 : fill; // 補滿4人 with four players already: players only
+      if (r.rules.dropIn && !fill && r.members.length < 4) fill = 4; // 途中加入: computers keep the seats for whoever comes
       const seats = [...r.members.map(m => ({ m, cpu: false })), ...(fill ? Array.from({ length: Math.max(0, fill - r.members.length) }, () => ({ m: null, cpu: true })) : [])];
       // Two halves (side by side on a landscape phone, one under the other otherwise): who and where / the settings.
       dyn.innerHTML = `<div class="pt-half">
@@ -202,10 +208,13 @@ export function openParty(d: PartyDeps): void {
         }).join('')}</div>
         <div class="pt-mapline">${(m => m ? `<img src="${m.thumbnail}" alt="">` : '')(maps.find(m => String(m.id) === r.map))}<span>地圖</span><b>${esc(mapName(r.map))}</b></div></div>
         <div class="pt-half">${rulesHtml(r.rules, host)}
-        ${host ? choiceRow('空位', [...(r.members.length < 4 ? [{ v: 4, text: '電腦補滿4人' }] : []), { v: 8, text: '電腦補滿8人' }, { v: 0, text: '只有玩家' }], fill, true, 'fill') : ''}
+        ${host ? choiceRow('空位', [...(r.members.length < 4 ? [{ v: 4, text: '電腦補滿4人' }] : []), { v: 8, text: '電腦補滿8人' }, ...(r.rules.dropIn ? [] : [{ v: 0, text: '只有玩家' }])], fill, true, 'fill') : ''}
+        ${choiceRow('途中加入', [{ v: 0, text: '關' }, { v: 1, text: '開（可先開始）' }], r.rules.dropIn, host, 'di', r.rules.dropIn ? ' hot on' : ' hot')}
         ${choiceRow('電腦難度', AI_LEVELS.map((text, v) => ({ v, text })), r.rules.aiLevel, host, 'ai')}
-        <p class="pt-wait">${host ? (r.members.length < 2 ? '等待朋友加入…' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p></div>`;
-      acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${r.members.length < 2 ? ' disabled' : ''}>開始遊戲</button>` : ''}`;
+        ${Number(r.map) === FINALE_MAP ? '' : choiceRow('挑戰模式', PARTY_CHALLENGE.map((text, v) => ({ v, text })), r.rules.challenge, host, 'ch', r.rules.challenge ? ' hot on' : ' hot')}
+        <p class="pt-wait">${host ? (r.members.length < 2 && !r.rules.dropIn ? '等待朋友加入…' : r.members.length < 2 ? '可以先和電腦開始，朋友之後加入會接手電腦' : `${r.members.length} 位玩家，可以開始了`) : '等待房主開始遊戲…'}</p></div>`;
+      const ready = r.members.length >= 2 || !!r.rules.dropIn;
+      acts.innerHTML = `<button class="candy ghost" data-a="home">${host ? '解散房間' : '離開房間'}</button>${host ? `<button class="candy yes" data-a="go"${ready ? '' : ' disabled'}>開始遊戲</button>` : ''}`;
       shrinkText(dyn, '.pt-seat b, .pt-seat small.pt-role', 8); // one line each, smaller where the seat is narrow
     };
     /** Each seat's ping (the host's table, every heartbeat): only the small lines, so nothing else jumps. */
@@ -222,7 +231,19 @@ export function openParty(d: PartyDeps): void {
     r.onLobby = () => { render(); pings(); if (r.members[0]?.id === r.myId) lobby?.announce(info(r)); };
     r.onVotes = () => render();
     r.onStatus = t => { if (t && !r.started && (r.kicked || r.refused || /滿/.test(t))) { audio.ui('error'); home(`<p class="pt-err">${esc(t).replace(/\n/g, '<br>')}</p>`); box.onclick = menu; } };
-    r.onStart = (s: StartMsg) => { lobby?.close(); lobby = null; overlay.remove(); stopCount(); inParty('game'); d.play(s.settings, r); };
+    r.onStart = (s: StartMsg) => {
+      // 途中加入 (the user 2026-11-03): a shared room stays in 「遊戲大廳」 while it plays, with the computers' seats
+      // still to take (the host announces it); gone when none is left or the room closes.
+      if (r.host && r.shared && r.rules.dropIn && lobby) {
+        const l = lobby;
+        const tick = () => { const free = r.freeSeats().length; l.announce(free ? info(r) : null); };
+        r.onSeats = tick;
+        const timer = window.setInterval(tick, 8000);
+        r.onClose = () => { clearInterval(timer); l.close(); };
+        setTimeout(tick, 1500);
+      } else lobby?.close();
+      lobby = null; overlay.remove(); stopCount(); inParty('game'); d.play(s.settings, r);
+    };
     render(); pings();
     // Back in a game already going (issue #50): the host sent it while joining, before this screen.
     if (r.started) r.onStart(r.started);
@@ -237,6 +258,10 @@ export function openParty(d: PartyDeps): void {
       }
       const ai = t.closest<HTMLElement>('[data-ai]')?.dataset.ai;
       if (ai !== undefined && r.host) { audio.ui('click'); r.setRules({ aiLevel: Number(ai) }); return; }
+      const di = t.closest<HTMLElement>('[data-di]')?.dataset.di;
+      if (di !== undefined && r.host) { audio.ui('click'); r.setRules({ dropIn: Number(di) }); return; }
+      const ch = t.closest<HTMLElement>('[data-ch]')?.dataset.ch;
+      if (ch !== undefined && r.host) { audio.ui('click'); r.setRules({ challenge: Number(ch) }); return; }
       if (k) { if (confirm(`發起請出 ${r.nameOf(k.dataset.kick!)}？需要另外兩位玩家同意`)) { audio.ui('click'); r.vote(k.dataset.kick!); } return; }
       if (f) { audio.ui('click'); fill = Number(f.dataset.fill); render(); return; }
       if (a === 'char') {
@@ -248,7 +273,7 @@ export function openParty(d: PartyDeps): void {
         return;
       }
       if (a === 'home') { audio.ui('no'); home(); box.onclick = menu; return; }
-      if (a === 'go' && r.members[0]?.id === r.myId && r.members.length >= 2) {
+      if (a === 'go' && r.members[0]?.id === r.myId && (r.members.length >= 2 || r.rules.dropIn)) {
         audio.ui('yes');
         r.start(startMsg(r, fill, today(), (Math.random() * 2 ** 32) >>> 0));
       }
@@ -288,9 +313,10 @@ export function openParty(d: PartyDeps): void {
       const rooms = [...all.filter(x => sameVersion(x, PARTY_VERSION)), ...all.filter(x => !sameVersion(x, PARTY_VERSION))];
       show('遊戲大廳', `<p class="pt-online" hidden></p>
       ${rooms.length ? `<div class="pt-rooms">${rooms.map(x => {
-        const other = !sameVersion(x, PARTY_VERSION), full = x.players >= x.max;
+        // a game going on (途中加入): joinable while a computer's seat is left
+        const other = !sameVersion(x, PARTY_VERSION), full = x.playing ? !x.free : x.players >= x.max;
         return `<button class="pt-room${other ? ' other' : ''}"${other ? '' : ` data-code="${x.code}"`}${full || other ? ' disabled' : ''}>
-        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${esc(x.map)}・${x.players}/${x.max} 人${other ? `・${verOf(x.ver) ? `v${esc(verOf(x.ver)!)}` : '舊版'}` : ''}</small>${roomTags(x)}</span><em>${other ? '版本不同' : full ? '已滿' : '加入'}</em></button>`;
+        <img src="${face(x.character)}" alt=""><span><b>${esc(x.host)} 的房間</b><small>${esc(x.map)}・${x.playing ? `遊戲中・可接手 ${x.free ?? 0} 個電腦` : `${x.players}/${x.max} 人`}${other ? `・${verOf(x.ver) ? `v${esc(verOf(x.ver)!)}` : '舊版'}` : ''}</small>${roomTags(x)}</span><em>${other ? '版本不同' : full ? '已滿' : '加入'}</em></button>`;
       }).join('')}</div>`
         : '<p class="pt-lead">大廳裡現在沒有房間<br>可以自己建一個共享房間，等別人加入</p>'}
       <div class="choices"><button class="candy ghost" data-a="home">返回</button><button class="candy opt" data-a="create">建立共享房間</button></div>`);

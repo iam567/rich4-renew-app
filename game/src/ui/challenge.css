@@ -3,6 +3,7 @@
 .chb-badge { pointer-events: auto; max-width: 100%; overflow: hidden; display: flex; align-items: center; gap: 8px; border: 2px solid #fff; border-radius: 999px; padding: 3px 10px;
   color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); white-space: nowrap; box-shadow: 0 3px 0 rgba(0,0,0,.25), 0 4px 8px rgba(0,0,0,.25); }
 .chb-badge b { font-size: 14px; }
+.chb-badge[hidden] { display: none; }
 .chb-badge span { display: flex; align-items: center; gap: 2px; font-size: 13px; font-weight: 700; }
 .chb-badge img { width: 20px; height: 20px; border-radius: 50%; object-fit: cover; box-shadow: 0 0 0 2px var(--c); background: #fff; }
 
@@ -48,6 +49,16 @@
 .chb-month { pointer-events: auto; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; border: 2px solid #fff; border-radius: 999px;
   padding: 1px 10px; font-size: 12px; font-weight: 700; color: #fff; background: linear-gradient(#5fb0ff, #2f74d8); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
 .chb-month.done { background: linear-gradient(#b9c3d0, #8a96a8); }
+/* the pill: the card's name (cut short when long) and the countdown chip, always whole */
+.chb-month:not([hidden]) { display: inline-flex; align-items: center; gap: 6px; }
+.chb-month > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.chb-left { flex: none; font-style: normal; font-size: 10px; font-weight: 800; line-height: 1.5; padding: 0 6px; border-radius: 999px; color: #2f74d8; background: #fff; }
+/* under the pill: this screen's player's progress on the card */
+.chb-prog { display: flex; align-items: center; gap: 6px; pointer-events: none; padding: 1px 8px; border-radius: 999px; background: rgba(0, 0, 0, .45); }
+.chb-prog[hidden] { display: none; }
+.chb-prog i { position: relative; width: 70px; height: 7px; border-radius: 999px; background: rgba(255, 255, 255, .35); overflow: hidden; }
+.chb-prog u { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: linear-gradient(90deg, #7ee06a, #ffd23a); }
+.chb-prog b { font-size: 10px; font-weight: 800; color: #fff; white-space: nowrap; }
 .chl-month { flex: none; display: flex; gap: 10px; align-items: flex-start; text-align: left; margin-bottom: 8px; padding: 7px 9px; border-radius: 12px;
   background: linear-gradient(#e6f2ff, #cfe4ff); box-shadow: inset 0 0 0 2px rgba(47, 116, 216, .45); }
 .chl-month-pic { flex: none; width: 54px; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 8px; background: #fff; box-shadow: 0 0 0 2px #fff; }
@@ -82,7 +93,9 @@
 .chl-month .chl-who.many img { width: 20px !important; height: 20px !important; }
 @media (orientation: landscape) {
   .chl-month.big { flex-direction: row; gap: 18px; text-align: left; padding: 12px 18px; }
-  .chl-month.big .chl-month-art { flex: none; align-self: stretch; max-height: none; width: auto; max-width: 42%; }
+  .chl-month.big .chl-month-art { flex: none; align-self: stretch; align-items: center; max-height: none; width: auto; max-width: 42%; }
+  /* the picture at its own shape (no white bands above and below), as large as the sheet lets it be */
+  .chl-month.big .chl-month-pic { width: auto; height: auto; max-width: 100%; max-height: 100%; background: none; }
   .chl-month.big .chl-month-body { flex: 1 1 0; min-width: 0; }
   .chl-month.big .chl-who { justify-content: flex-start; }
 }
@@ -155,3 +168,68 @@
 .chb-badge.many span { flex-direction: column; gap: 0; }
 .chb-badge.many img { width: 20px; height: 20px; }
 .chb-badge.many em { font-size: 10px; line-height: 1.1; }
+
+/* 獎勵卡 (core/rewards.ts, ui/map-fx.ts reward): the card drawn, picture beside its words (under each other when narrow).
+   Its sheet is as big as the card, not the whole screen (the other wide sheets fill it). */
+.ui-layer > .msg.sheet.wide:has(> .rw-card):has(> .sheet-close), .ui-layer.full > .msg.sheet.wide:has(> .rw-card):has(> .sheet-close) { width: min(560px, 100%); height: auto; max-height: 100%; align-self: center; margin-top: auto; margin-bottom: auto; }
+.rw-card { display: flex; gap: 18px; align-items: center; justify-content: center; text-align: left; padding: 8px 8px 14px; }
+/* the result box after it: the card small under the head line */
+.er-box .rw-hero { display: flex; justify-content: center; margin: 4px 0 6px; }
+.er-box .rw-hero .rw-face { width: min(84px, 18vw, 16vh); }
+.er-box .rw-hero .rw-face em { font-size: 11px; }
+.rw-card .rw-face { flex: none; width: min(190px, 36vw, 40vh); }
+.rw-body { flex: 1; min-width: 0; }
+.rw-body small { display: block; font-size: 13px; font-weight: 700; color: #b5651d; }
+.rw-body b { display: block; font-size: 24px; margin: 2px 0 4px; }
+.rw-body p { margin: 0; font-size: 15px; line-height: 1.45; }
+@media (max-width: 420px) { .rw-card { flex-direction: column; text-align: center; } .rw-card .rw-face { width: min(130px, 40vw); } }
+
+/* A front (rewardFace): the picture in its grade's frame — N plain white, R silver with a sheen, SR gold with a moving
+   rainbow — and the grade's tag in the top right. */
+.rw-face, .rw-front { position: relative; display: block; aspect-ratio: 3 / 4; border-radius: 10px; padding: 4px; box-sizing: border-box; overflow: hidden; }
+.rw-face img, .rw-front img { width: 100%; height: 100%; object-fit: cover; display: block; border-radius: 7px; background: #fff; }
+.rw-face em, .rw-front em { position: absolute; top: 6%; right: 6%; padding: .1em .45em; border-radius: 999px; font-style: normal; font-weight: 900;
+  font-size: calc(var(--cw, 90px) * .17); line-height: 1.3; color: #fff; letter-spacing: .02em; text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.rw-face em { font-size: 15px; }
+.rw-g0 { background: #fff; box-shadow: 0 0 0 1px #c9d3df, 0 3px 8px rgba(0,0,0,.25); }
+.rw-g0 em { background: linear-gradient(#8ea1b8, #5d7189); }
+.rw-g1 { background: linear-gradient(135deg, #f4f7fb, #9fb0c6 30%, #ffffff 50%, #8a9bb3 70%, #e9eef5); box-shadow: 0 0 0 1px #7d8da3, 0 0 10px 2px rgba(120, 170, 255, .55); }
+.rw-g1 em { background: linear-gradient(#5aa8ff, #2d63d6); }
+.rw-g2 { background: conic-gradient(from var(--rw-a, 0deg), #ffd84a, #ff7ac8, #7ad8ff, #9dff7a, #ffd84a); box-shadow: 0 0 0 1px #b8860b, 0 0 16px 4px rgba(255, 200, 60, .85);
+  animation: rw-spin 2.4s linear infinite; }
+.rw-g2 em { background: linear-gradient(#ffcf3a, #e07800); }
+.rw-g1::after, .rw-g2::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.55) 50%, transparent 65%);
+  background-size: 250% 100%; animation: rw-sheen 2s ease-in-out infinite; pointer-events: none; }
+@property --rw-a { syntax: '<angle>'; inherits: false; initial-value: 0deg; }
+@keyframes rw-spin { to { --rw-a: 360deg; } }
+@keyframes rw-sheen { from { background-position: 150% 0; } to { background-position: -50% 0; } }
+
+/* The draw (map-fx.ts rewardDraw): ten backs fanned over the map, a light running across them, the drawn one forward and
+   turned over. Backs by grade: N blue, R silver-purple with a sheen, SR gold with a rainbow and a glow. */
+.rw-draw { position: absolute; inset: 0; z-index: 40; pointer-events: auto; background: rgba(10, 20, 40, .4); overflow: hidden;
+  container-type: size; }
+/* The card width: about a fifth of the map area (the user: twice the first size), the fan of ten (≈ 5 widths) always fits. */
+.rw-draw > * { --cw: clamp(56px, min(18.5vw, 26vh), 200px); }
+@supports (width: 1cqw) { .rw-draw > * { --cw: clamp(56px, min(18.5cqw, 26cqh), 200px); } }
+.rw-c { position: absolute; left: 50%; top: 54%; width: var(--cw); aspect-ratio: 3 / 4; margin: calc(var(--cw) * -2 / 3) 0 0 calc(var(--cw) / -2);
+  perspective: 600px; transform: translate(0, 40%) rotate(0deg) scale(.6); opacity: 0; transition: transform .28s cubic-bezier(.2,1.4,.4,1), opacity .2s; }
+.rw-flip { position: absolute; inset: 0; transform-style: preserve-3d; transition: transform .55s ease-in-out; }
+.rw-back, .rw-front { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 8px; }
+.rw-front { transform: rotateY(180deg); }
+.rw-back { overflow: hidden; background: #2f66c4 center / cover no-repeat; box-shadow: 0 0 0 2px #fff, 0 3px 8px rgba(0,0,0,.35); }
+/* The backs are pictures (RWBN / RWBR / RWBSR, each with the 大富翁 logo); the grade's tag in the corner, R and SR glow. */
+.rw-back i { position: absolute; top: 5%; right: 6%; padding: .05em .4em; border-radius: 999px; font-style: normal; font-weight: 900;
+  font-size: calc(var(--cw) * .15); color: #fff; text-shadow: 0 1px 1px rgba(0,0,0,.5); box-shadow: 0 1px 3px rgba(0,0,0,.4); background: linear-gradient(#8ea1b8, #5d7189); }
+.rw-back.g1 { box-shadow: 0 0 0 2px #e9ecf5, 0 0 12px 3px rgba(170, 150, 255, .75); }
+.rw-back.g1 i { background: linear-gradient(#5aa8ff, #2d63d6); }
+.rw-back.g2 { box-shadow: 0 0 0 2px #fff3a0, 0 0 18px 6px rgba(255, 200, 60, .9); }
+.rw-back.g2 i { background: linear-gradient(#ffcf3a, #e07800); }
+.rw-back.g1::after, .rw-back.g2::after { content: ''; position: absolute; inset: 0; background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,.6) 50%, transparent 65%);
+  background-size: 250% 100%; animation: rw-sheen 1.6s ease-in-out infinite; }
+.rw-draw.fan .rw-c { opacity: 1; transform: translate(calc(var(--i) * var(--cw) * .3), calc(var(--i) * var(--i) * var(--cw) * .025)) rotate(calc(var(--i) * 5deg)); }
+.rw-draw.fan .rw-c.on { z-index: 2; transform: translate(calc(var(--i) * var(--cw) * .3), calc(var(--i) * var(--i) * var(--cw) * .025 - var(--cw) * .25)) rotate(calc(var(--i) * 5deg)); }
+.rw-draw.fan .rw-c.on .rw-back { outline: 3px solid #ffd84a; outline-offset: 1px; filter: brightness(1.2); }
+.rw-draw.picked .rw-c { opacity: .15; transition: transform .5s, opacity .4s; }
+.rw-draw.picked .rw-c.pick { opacity: 1; z-index: 3; transform: translate(0, -8%) rotate(0deg) scale(1.6); }
+.rw-draw.picked .rw-c.pick .rw-flip { transform: rotateY(180deg); transition-delay: .25s; }
+.rw-skip { position: absolute; right: 10px; bottom: 8px; font-size: 12px; font-weight: 700; color: #fff; opacity: .85; text-shadow: 0 1px 2px #000; }

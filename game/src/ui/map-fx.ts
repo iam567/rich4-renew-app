@@ -7,6 +7,8 @@ import { Game, SPEED } from '../core/game';
 import { worldSize } from '../core/board';
 import { cardScene, toolScene } from './screens/card-fx';
 import { resultBox } from './screens/event-result';
+import { ASSETS } from './assets';
+import { GRADE_BACKS, GRADES } from '../core/rewards';
 import { playEventFx } from './event-fx';
 import { preloadClips, QUOTE_LEAD } from './effects';
 import { warmFireworks } from './fireworks';
@@ -82,6 +84,11 @@ const FX_CLIPS: Record<string, number[]> = {
   'robot-worker': [553], 'free-upgrade': [553], missile: [528], nuke: [530], monster: [557], demolish: [529],
   'to-hospital': [524], 'to-prison': [538], abroad: [558], alien: [533], reappear: [558, 533], mine: [525], 'bomb-explode': [525], dog: [532],
 };
+
+/** A 獎勵卡's front: the picture (the same for every grade) in its grade's frame, the grade's tag in the top right. */
+function rewardFace(id: string, grade: number, cls = 'rw-face'): string {
+  return `<span class="${cls} rw-g${grade}"><img src="${ASSETS}/maps/remake/rewards/${id}.webp" alt="" onerror="this.style.visibility='hidden'"><em>${GRADES[grade] ?? 'N'}</em></span>`;
+}
 
 export class MapDirector {
   /** Where the robot doll stepped from (its knock-away direction). */
@@ -878,6 +885,11 @@ export class MapDirector {
 
       // ---- what a news or fate entry did (the remake's result box and effect)
       case 'event-result': await this.result(s); return true;
+      // A normal game's 挑戰模式 (core/rewards.ts): the 獎勵卡 drawn, before what it does.
+      case 'reward': await this.reward(s); return true;
+      case 'reward-end': return true; // for the task tracker only
+      // 派對模式's 途中加入: a player who joined took a computer's seat over.
+      case 'seat-taken': { const d = (s.data ?? {}) as { was?: string; name?: string }; audio.sfx(Sfx.cardFlip); await this.hud.flash(`真人玩家 ${d.name ?? ''}\n接替了電腦 ${d.was ?? ''}`, 2400); return true; }
 
       // ---- fate cards (rich4_fortune.asm)
       case 'vehicle-lost':
@@ -967,10 +979,65 @@ export class MapDirector {
    * lot owner's event[3 | 4] after fate 0 / 1 (fortune.asm fcn_0044be16: lot flash, 300 ms, line) and news 5,
    * 15, 19, 21 (the clip or flash, 300 ms, line).
    */
+  /** The 獎勵卡 a task card's winner drew (core/rewards.ts): the draw, then its picture, grade, name and text; tap to go on. */
+  private async reward(s: Fx) {
+    const d = (s.data ?? {}) as { id?: string; name?: string; text?: string; grade?: number; backs?: number[]; at?: number };
+    const grade = d.grade ?? 0;
+    await this.rewardDraw(d.id ?? '', grade, d.backs ?? [...GRADE_BACKS], d.at ?? GRADE_BACKS.indexOf(grade as 0));
+    const node = document.createElement('div');
+    node.className = 'rw-card';
+    node.innerHTML = `${rewardFace(d.id ?? '', grade)}<div class="rw-body"><small></small><b></b><p></p></div>`;
+    node.querySelector('small')!.textContent = `${s.p !== undefined ? `${playerName(this.game.players[s.p])} 抽到` : ''} ${GRADES[grade]} 級`;
+    node.querySelector('b')!.textContent = d.name ?? '';
+    node.querySelector('p')!.textContent = d.text ?? '';
+    await this.hud.sheetNode('獎勵卡', node);
+  }
+
+  /**
+   * The draw (the user 2026-11-03: 「十张卡啪全这个一块，然后嘎嘎嘎抽出一张来」, 「三四秒就行，然后可以跳过」): ten backs —
+   * seven N, two R, one SR, as the game laid them out — fan out over the map at once, a light runs across them ticking,
+   * slower and slower, stops on the back the game drew, which comes forward and turns over: the picture with its
+   * grade's frame and tag. About 3.5 s; a tap skips to the card. Presentation only (core/rewards.ts drew it).
+   */
+  private async rewardDraw(id: string, grade: number, backs: number[], at: number) {
+    const n = backs.length;
+    let skip = false, wake: () => void = () => {};
+    const wait = (ms: number) => (skip ? Promise.resolve() : new Promise<void>(r => { const t = setTimeout(r, ms); wake = () => { clearTimeout(t); r(); }; }));
+    const box = document.createElement('div');
+    box.className = 'rw-draw';
+    box.innerHTML = backs.map((b, i) => `<div class="rw-c" style="--i:${i - (n - 1) / 2}"><div class="rw-flip">
+        <div class="rw-back g${b}" style="background-image:url('${ASSETS}/maps/remake/rewards/RWB${GRADES[b]}.webp')"><i>${GRADES[b]}</i></div>${i === at ? rewardFace(id, grade, 'rw-front') : ''}</div></div>`).join('')
+      + '<small class="rw-skip">點一下跳過</small>';
+    box.addEventListener('pointerdown', () => { skip = true; wake(); });
+    this.hud.area.append(box);
+    const cards = [...box.querySelectorAll<HTMLElement>('.rw-c')];
+    await wait(30);
+    box.classList.add('fan');          // 啪: all ten fanned out at once
+    audio.sfx(Sfx.cardFlip);
+    await wait(400);
+    // 嘎嘎嘎: the light goes round twice and on to the card drawn, each step slower; the steps add up to 2.1 s.
+    const steps = 2 * n + at + 1, weight = (k: number) => 1 + 5 * Math.pow(k / steps, 3);
+    const unit = 2100 / Array.from({ length: steps }, (_, k) => weight(k)).reduce((a, b) => a + b, 0);
+    for (let k = 0; k < steps && !skip; k++) {
+      cards.forEach((c, i) => c.classList.toggle('on', i === k % n));
+      audio.sfx(Sfx.key);
+      await wait(unit * weight(k));
+    }
+    cards.forEach((c, i) => c.classList.toggle('on', i === at));
+    box.classList.add('picked');
+    cards[at].classList.add('pick');
+    audio.sfx(grade >= 2 ? Sfx.fireworks : grade ? Sfx.monthlyHigh : Sfx.drawEnd);
+    skip = false;
+    await wait(1000);
+    box.remove();
+  }
+
   private async result(s: Fx) {
     this.eventOpen = false;
-    const r = s.data as unknown as EventResult, v = this.view, g = this.game;
+    const r = s.data as unknown as EventResult & { reward?: string; grade?: number; hero?: string }, v = this.view, g = this.game;
     if (!r || !Array.isArray(r.lines)) return;
+    // A 獎勵卡's result: its picture in its grade's frame under the head line.
+    if (r.src === 'reward' && r.reward) r.hero = `<div class="rw-hero">${rewardFace(r.reward, r.grade ?? 0)}</div>`;
     // Where it happened (docs/rules/11 §7.1): the lots it hit, else its square, else the hospital / prison of a
     // release or a longer stay, else the players it names (where they are, the hospital or prison included).
     const node = s.node ? g.node(s.node) : null;

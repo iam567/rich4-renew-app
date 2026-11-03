@@ -15,7 +15,8 @@
 import { Capacitor } from '@capacitor/core';
 import { CHALLENGE_MAPS, CHALLENGE_TASKS, fullStars, type ChallengeTask } from '../core/challenge';
 import { format } from '../core/date';
-import { MONTHLY_RULE, MONTHLY_TASKS, monthlyDesc, type MonthlyTask } from '../core/monthly';
+import { MONTHLY_TASKS, monthlyDesc, type MonthlyTask } from '../core/monthly';
+import { REWARD_RULE } from './challenge';
 import { ASSETS } from './assets';
 import { audio, Sfx } from './audio';
 import { saveImage, shareImage } from './share';
@@ -260,7 +261,7 @@ const whereOf = (t: ChallengeTask, mapName: (id: number) => string) => (t.map ==
 const descOf = (t: ChallengeTask) => (t.map === -2 ? monthlyDesc(t as MonthlyTask, (t as MonthlyTask).goal) : t.desc);
 
 function howHtml(t: ChallengeTask): string {
-  if (t.map === -2) return `<p>${esc(descOf(t))}</p><p class="col-how">${esc(MONTHLY_RULE[(t as MonthlyTask).kind])}</p>`;
+  if (t.map === -2) return `<p>${esc(descOf(t))}</p><p class="col-how">${esc(REWARD_RULE[(t as MonthlyTask).kind])}</p>`;
   const how = t.once ? `可獲得 ${'★'.repeat(t.stars)}` : (t.tiers ?? []).map((x, i) => `${'★'.repeat(i + 1)} ${esc(x)}`).join('・');
   return `<p>${esc(t.desc)}</p>${how ? `<p class="col-how">${how}</p>` : ''}`;
 }

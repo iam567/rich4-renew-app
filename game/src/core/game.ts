@@ -20,6 +20,7 @@ import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { SmartAi } from './smart-ai';
 import { Challenge, CHALLENGE_WIN, taskPool } from './challenge';
 import { ChallengeAi } from './challenge-ai';
+import { playReward } from './rewards';
 import { ledgerOf, observed, type Ledger } from './stats';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
@@ -368,6 +369,11 @@ export class Game {
       if (settings.challenge) this.challengeAi = new ChallengeAi(this, this.challengeTracker);
       // 每月任務 (core/monthly.ts, docs/rules/27): on unless the new game turned it off.
       if (settings.challenge && settings.challengeMonthly !== false) this.challengeTracker.startMonthly();
+      // A normal game's 挑戰模式 (docs/rules/30): 搶先 task cards and 獎勵卡; the smarter computers go for the cards too.
+      else if (!settings.challenge && settings.monthTasks && !this.rules?.chipsOnly) { // 大富翁城: none (the user 2026-11-03)
+        this.challengeTracker.startMonthly(settings.monthTasks);
+        this.challengeAi = new ChallengeAi(this, this.challengeTracker, []);
+      }
     }
   }
 
@@ -755,9 +761,13 @@ export class Game {
 
   private *loop(): Flow {
     while (!this.over) {
+      yield* this.payRewards();
+      if (this.over) break;
       if (this.current < this.npcBase) {
         const p = this.players[this.current];
         yield* this.playerTurn(p);
+        yield* this.payRewards();
+        if (this.over) break;
         // 歌舞伎町's 暴走卡 (docs/rules/21 §7.5): another whole turn at once, the day not ended in between.
         while (!this.over && p.whoPlays && this.rules?.extraTurn?.(this, p)) yield* this.playerTurn(p);
       } else yield* this.places.npcTurn(this.current);
@@ -765,6 +775,15 @@ export class Game {
       yield* this.outOfChips();
       if (this.over) break;
       yield* this.endTurn();
+    }
+  }
+
+  /** The 獎勵卡 owed (a normal game's 挑戰模式, core/rewards.ts): each winner of a task card draws one now. */
+  private *payRewards(): Flow {
+    const ch = this.challengeTracker;
+    while (ch?.rewardsDue.length && !this.over) {
+      const p = this.players[ch.rewardsDue.shift()!];
+      if (p?.whoPlays) yield* playReward(this, p, ch.rewardSeq++);
     }
   }
 
@@ -1021,6 +1040,19 @@ export class Game {
     yield { t: 'turn', p: p.id };
     // 派對模式: 取消托管 is an answer, so every phone takes it at the same point (the user 2026-10-19).
     if (this.settings.party && p.whoPlays === 1 && p.autopilot && (yield ask({ t: 'auto-turn', p: p.id })) === 1) p.autopilot = false; // 1 = 取消托管
+    // 派對模式's 途中加入 (the user 2026-11-03): a computer's turn first asks whether a player who joined the game takes
+    // the seat over (the room's host answers, so every phone switches at the same point): from now on a human's.
+    if (this.settings.party && this.settings.dropIn && !p.human && p.whoPlays) {
+      const a = (yield ask({ t: 'seat', p: p.id })) as { nick?: string } | 0 | undefined;
+      if (a && typeof a === 'object') {
+        const was = this.name(p.id);
+        p.human = true; p.autopilot = false;
+        if (p.whoPlays === 2) p.whoPlays = 1;
+        p.nick = typeof a.nick === 'string' && a.nick ? a.nick.slice(0, 14) : undefined;
+        yield { t: 'fx', kind: 'seat-taken', p: p.id, data: { was, name: this.name(p.id) } };
+        yield* this.say(p.id, `真人玩家 ${this.name(p.id)} 接替了電腦 ${was}`, `真人玩家 ${this.name(p.id)} 接替了電腦 ${was}`);
+      }
+    }
     if (!p.placed) yield* this.airdrop(p);
     if (p.leaving) {
       // Out of the hospital / prison: the door square first; sent back in by it, the turn is over (06 §9.3.1).

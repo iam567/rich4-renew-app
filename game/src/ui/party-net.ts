@@ -18,6 +18,7 @@
  * room and every phone looking at the list connects to it, and when it goes another one takes the id over and the
  * rooms announce themselves again.
  */
+import { FINALE_MAP } from '../core/casino-rules';
 import { freshId, netConfig, openNet, type NetConn, type NetPeer } from './net-peer';
 import { postChat, reportCtx, reportParty } from './party-report';
 import { CHARACTERS } from '../core/characters';
@@ -51,6 +52,10 @@ export interface RoomInfo {
   /** The host's app version (v0.7.4 on; none: older). */ ver?: string;
   /** 等待時間 in seconds and 電腦難度 (AI_LEVELS index), shown in the list (the user 2026-11-03: a quick room's players should know before they join; none: an older host). */
   turn?: number; ai?: number;
+  /** 挑戰模式 on (PARTY_CHALLENGE index; none: off or an older host), a tag in the list (the user 2026-11-03: some won't play it). */
+  ch?: number;
+  /** 途中加入: the room allows it; `playing`: its game is going on, `free` computers' seats still to take. */
+  drop?: boolean; playing?: boolean; free?: number;
 }
 /** The title button's figures (the user 2026-10-20): 私享 rooms open now, and people waiting for partners (the players
  * in shared rooms not started, plus those looking at 「尋找夥伴」). */
@@ -80,7 +85,10 @@ export function myRegion(): string {
  */
 export interface PartyRules {
   fundIndex: number; traffic: 0 | 1 | 2; landLimitIndex: number; daysLimitIndex: number; victoryIndex: number;
-  /** 挑戰模式 (docs/rules/26 §7.1): 0 a normal game, else the deadline PARTY_CHALLENGE_YEARS[i] (online: always one). */
+  /**
+   * 挑戰模式 (docs/rules/30, the user 2026-11-03: online too): 0 off, 1 a task card a month, 2 two a month, 3 the next
+   * when one is done (settings.monthTasks); none on 大富翁城. (Before: the old star mode's deadline, never started online.)
+   */
   challenge: number;
   /** 延遲上限 (the user 2026-11-03): PING_LIMITS[i] ms; a phone slower than that can't join (0: no limit). */
   maxPing: number;
@@ -88,21 +96,26 @@ export interface PartyRules {
   turnSec: number;
   /** 電腦難度 of the computers filling the seats (the user 2026-11-03): 0 簡單, 1 中等, 2 困難 (as before), 3 地獄. */
   aiLevel: number;
+  /**
+   * 途中加入 (the user 2026-11-03): 1 — the game may start with one player and the computers; whoever joins later
+   * takes a computer's seat over at its next turn (settings.dropIn, the 'seat' question); 0 off.
+   */
+  dropIn: number;
 }
 export const AI_LEVELS = ['簡單', '中等', '困難', '地獄'];
 /** 等待時間's choices: quick players 10 s, patient ones up to 60 s (the clock as it always was). */
 export const TURN_SECONDS = [10, 20, 30, 40, 50, 60];
 /** 延遲上限's choices in ms (0: 不限). */
 export const PING_LIMITS = [0, 150, 250, 400];
-/** 挑戰模式's deadlines online (the user 2026-11-02: 1 year by default, 3 / 5 to pick, no unlimited game). */
-export const PARTY_CHALLENGE_YEARS = [0, 1, 3, 5];
+/** 挑戰模式's choices (as the new game's). */
+export const PARTY_CHALLENGE = ['關', '每月1張', '每月2張', '完成就抽'];
 /** As every 派對模式 game started before the rules could be picked: 20萬, 步行, no limits. */
-export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0, maxPing: 0, turnSec: 5, aiLevel: 2 };
+export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0, maxPing: 0, turnSec: 5, aiLevel: 2, dropIn: 0 };
 /** Rules as kept: each a whole number in its range, else the default. */
 export function cleanRules(r: unknown): PartyRules {
   const o = (r ?? {}) as Record<string, unknown>;
   const at = (k: keyof PartyRules, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
-  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE_YEARS.length), maxPing: at('maxPing', PING_LIMITS.length), turnSec: at('turnSec', TURN_SECONDS.length), aiLevel: at('aiLevel', AI_LEVELS.length) };
+  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE.length), maxPing: at('maxPing', PING_LIMITS.length), turnSec: at('turnSec', TURN_SECONDS.length), aiLevel: at('aiLevel', AI_LEVELS.length), dropIn: at('dropIn', 2) };
 }
 /** What the host sends when the game starts. */
 export interface StartMsg { settings: import('../core/types').GameSettings; seats: Record<string, number> }
@@ -114,10 +127,11 @@ export function startMsg(r: Room, fill: number, startDate: number, seed: number)
   const used = new Set(r.members.map(m => m.character));
   const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
   const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
-  // Online is 大富翁 only (the user 2026-11-03: 挑戰模式 off in 派對模式); the limits are the room's, not the game's.
-  const { challenge, maxPing, turnSec, aiLevel, ...rules } = r.rules;
-  void challenge; void maxPing; void turnSec;
-  return { settings: { mapId: Number(r.map), players, ...rules, aiLevel: aiLevel as 0 | 1 | 2 | 3, startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
+  // 挑戰模式 is the task cards and 獎勵卡 (docs/rules/30; never 大富翁城); the limits are the room's, not the game's.
+  const { challenge, maxPing, turnSec, aiLevel, dropIn, ...rules } = r.rules;
+  void maxPing; void turnSec;
+  const tasks = challenge && Number(r.map) !== FINALE_MAP ? { monthTasks: challenge as 1 | 2 | 3 } : {};
+  return { settings: { mapId: Number(r.map), players, ...rules, aiLevel: aiLevel as 0 | 1 | 2 | 3, ...tasks, ...(dropIn ? { dropIn: true } : {}), startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
 }
 
 type Msg =
@@ -125,6 +139,8 @@ type Msg =
   | { t: 'char'; character: number; nick?: string }
   | { t: 'lobby'; members: Member[]; map: string; shared: boolean; /** The host's version (v0.7.4 on). */ ver?: string; /** The room's rules (issue #31; none: the defaults). */ rules?: PartyRules }
   | { t: 'start'; start: StartMsg }
+  /** 途中加入: the game's seats changed (a player joined for a computer's seat). */
+  | { t: 'seats'; seats: Record<string, number> }
   /** Back to a game after the app was closed (issue #50): the game, the newest turn's snapshot and its question number. */
   | { t: 'resume'; start: StartMsg; save?: string; seq: number }
   | { t: 'ans'; seq: number; v: unknown; u?: boolean }
@@ -315,6 +331,8 @@ export class Room {
   mine = new Set<number>();
   onLobby: () => void = () => {};
   onStart: (s: StartMsg) => void = () => {};
+  /** 途中加入: the game's seats changed (the lobby list's free seats). */
+  onSeats: () => void = () => {};
   onStatus: (text: string) => void = () => {};
   /** Chat (the user 2026-10-19: text only; a sender can be muted on this phone). */
   chat: ChatLine[] = [];
@@ -332,6 +350,30 @@ export class Room {
   protectedId(id: string): boolean {
     const seat = this.started?.seats[id];
     return seat !== undefined && this.richest(seat);
+  }
+  /**
+   * 途中加入: whether the seat `seat` is a computer's still in the game (set by the game screen: not bankrupt, not a
+   * human's); the seats a joining player may take.
+   */
+  seatOpen: (seat: number) => boolean = () => false;
+  /** The room is closed (the game over, or left). */
+  onClose: () => void = () => {};
+  /** 途中加入: the computers' seats nobody has taken yet. */
+  freeSeats(): number[] {
+    if (!this.started || !this.rules.dropIn) return [];
+    const taken = new Set(Object.values(this.started.seats));
+    return this.started.settings.players.map((_, i) => i).filter(i => !taken.has(i) && this.seatOpen(i));
+  }
+  /**
+   * The host's answer to a computer's 'seat' question (途中加入): the player who took that seat and is here, else 0.
+   * Worked out from the seats alone, so a new host (a hand-over) answers the same.
+   */
+  seatAnswer(seat: number): { nick: string } | 0 {
+    const id = this.started ? Object.keys(this.started.seats).find(k => this.started!.seats[k] === seat) : undefined;
+    if (!id) return 0;
+    const m = this.members.find(x => x.id === id);
+    const here = id === this.myId || !!this.guests.get(id)?.open;
+    return m && here && !m.away ? { nick: m.name } : 0;
   }
   /** Seats of players sent away: the host answers them for the computer (托管 at their next turn). */
   kickedSeats = new Set<number>();
@@ -578,6 +620,26 @@ export class Room {
           this.heard({ from: '', name: '系統', character: -1, text: `${this.nameOf(c.peer)} 回到遊戲`, at: Date.now() });
           return;
         }
+        if (this.started && m.have === undefined && this.rules.dropIn) {
+          // 途中加入 (the user 2026-11-03): a computer's seat for the newcomer — it takes it over at that computer's
+          // next turn (the 'seat' question); meanwhile it watches the game from the newest turn on (as issue #50).
+          const seat = this.freeSeats()[0];
+          if (seat === undefined) { c.send({ t: 'bye', why: '這局已經沒有電腦的位置可以接手了' } satisfies Msg); return; }
+          const who = named({ id: c.peer, name: m.name, character: m.character, region: m.region, nick: m.nick });
+          if (!this.members.some(x => x.id === c.peer)) this.members.push(who);
+          this.started.seats[c.peer] = seat;
+          const seats: Msg = { t: 'seats', seats: this.started.seats };
+          for (const [id, g] of this.guests) if (id !== c.peer && g.open) g.send(seats);
+          const snap = this.snap;
+          c.send({ t: 'resume', start: this.started, save: snap?.save, seq: snap?.seq ?? 0 } satisfies Msg);
+          const from = snap?.seq ?? 0;
+          c.send({ t: 'log', from, answers: this.log.slice(from), total: this.log.length } satisfies Msg);
+          this.lobbyChanged();
+          this.onSeats();
+          const line: ChatLine = { from: '', name: '系統', character: -1, text: `${who.name} 加入遊戲，將接手一位電腦`, at: Date.now() };
+          this.heard(line);
+          return;
+        }
         if (this.started && m.have === undefined) {
           // A phone with no game and no seat here (another device, or its seat forgotten): it would wait for a start
           // that never comes.
@@ -658,6 +720,7 @@ export class Room {
       this.replied?.('');
     }
     else if (m.t === 'start') { this.begin(m.start); }
+    else if (m.t === 'seats') { if (this.started) { this.started.seats = m.seats; this.onSeats(); } }
     else if (m.t === 'resume') { if (!this.started) { this.resume = m.save ? { save: m.save, seq: m.seq } : null; this.begin(m.start); } }
     else if (m.t === 'ans') this.record(m.seq, m.u ? undefined : m.v, false);
     else if (m.t === 'log') {
@@ -873,6 +936,7 @@ export class Room {
   }
 
   close() {
+    if (!this.closed) this.onClose();
     this.closed = true;
     if (this.beat) { clearInterval(this.beat); this.beat = 0; }
     for (const c of this.guests.values()) c.close();

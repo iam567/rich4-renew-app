@@ -64,7 +64,8 @@ export interface ResultLine { p?: number; text: string; amount?: number }
  * `amount`) or the lot owner's cry (event[3 | 4]).
  */
 export interface EventResult {
-  src: 'news' | 'fate';
+  /** 'reward': a 獎勵卡 (core/rewards.ts) in the same box. */
+  src: 'news' | 'fate' | 'reward';
   id: number;
   fx: string;
   /** The category (news) or 命運, and the event in a few words. */

@@ -316,3 +316,9 @@
 .pt-room .pt-rtag { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; color: #2a3f8f; background: rgba(42, 63, 143, .12); }
 .pt-room .pt-rtag.quick { color: #7a3b00; background: #ffd23a; }
 .pt-room .pt-rtag.hell { color: #fff; background: #d8432f; }
+.pt-room .pt-rtag.ch { color: #fff; background: #2f74d8; }
+.pt-room .pt-rtag.drop { color: #fff; background: #2fa84f; }
+
+/* 挑戰模式 (the user 2026-11-03: eye-catching): the label in gold, a guest's value too once it is on. */
+.pt-choice.hot .pt-cin > span { color: #ffd23a; font-weight: 900; text-shadow: 0 1px 0 #7a3b00, 0 0 6px rgba(255, 170, 0, .6); }
+.pt-choice.hot.on .pt-cin > b { color: #ffd23a; }

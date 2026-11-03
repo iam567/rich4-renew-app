@@ -48,7 +48,7 @@ export function simGame(mapId: number, seed: number, characters: number[], level
     const s = r.value as { ask?: boolean; t?: string };
     if ('ask' in s) {
       // Only 派對模式's 托管 question reaches a computer-played seat (0: the computer keeps playing).
-      if (s.t !== 'auto-turn') throw new Error(`map ${mapId} seed ${seed}: unexpected question ${JSON.stringify(s)}`);
+      if (s.t !== 'auto-turn' && s.t !== 'seat') throw new Error(`map ${mapId} seed ${seed}: unexpected question ${JSON.stringify(s)}`);
       r = flow.next(0);
     } else r = flow.next();
   }

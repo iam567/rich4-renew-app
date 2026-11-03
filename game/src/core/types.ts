@@ -26,6 +26,14 @@ export interface GameSettings {
   challengeYears?: number;
   /** 挑戰模式's 每月任務 (core/monthly.ts, docs/rules/27): false turns them off; on otherwise. */
   challengeMonthly?: boolean;
+  /** 派對模式's 途中加入 (the user 2026-11-03): players may join the game going on, each taking a computer's seat. */
+  dropIn?: boolean;
+  /**
+   * A normal game's 挑戰模式 switch (the user 2026-11-03, docs/rules/30): 1 a task card each month, 2 one each half month,
+   * 3 the next card as soon as one is done (no time limit); the first to do it draws a 獎勵卡 (core/rewards.ts). Win and
+   * loss as ever (bankruptcy). None / 0: off.
+   */
+  monthTasks?: 0 | 1 | 2 | 3;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];
@@ -130,6 +138,8 @@ export type Ask =
   | { t: 'turn'; p: number; maxDice: number; canUseCard: boolean; canUseTool: boolean }
   /** 派對模式: a human on 托管 at the start of their turn: 1 (取消托管) plays this turn by hand, anything else lets the computer. */
   | { t: 'auto-turn'; p: number }
+  /** 派對模式's 途中加入: a computer's seat at its turn — `{ nick }` a player who joined takes it over, 0 it stays the computer's. */
+  | { t: 'seat'; p: number }
   | { t: 'yesno'; p: number; kind: string; text: string; price?: number }
   | { t: 'facility-type'; p: number; price: number; title?: string; text?: string; cancellable?: boolean }
   /**
@@ -207,6 +217,8 @@ export type Answer =
   | { deposit?: number; withdraw?: number; borrow?: number; repay?: number; finance?: number; financeRepay?: number }
   /** Stock market trade, black market purchase, shop actions. */
   | { slot: number; buy: boolean; n: number }
+  /** 派對模式's 途中加入: the player who takes a computer's seat over (the 'seat' question). */
+  | { nick?: string }
   | { buy: number }
   | { buy: 'card' | 'tool'; index: number }
   | { sell: 'card'; index: number }

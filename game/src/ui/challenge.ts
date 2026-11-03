@@ -3,9 +3,9 @@
  * (at the start of a new game and from the badge) and the closing table of stars. The tracker is the game's own
  * (Game.challengeTracker); these only read it.
  */
-import { CHALLENGE_TOTAL, CHALLENGE_WIN, fullStars, starsFor, type Challenge, type ChallengeTask } from '../core/challenge';
+import { CHAIN_DAYS, CHALLENGE_TOTAL, CHALLENGE_WIN, fullStars, starsFor, type Challenge, type ChallengeTask } from '../core/challenge';
 import { CHARACTERS, playerName } from '../core/characters';
-import { month as monthOf } from '../core/date';
+import { day as dayOf, month as monthOf } from '../core/date';
 import type { Game } from '../core/game';
 import { monthlyById, monthlyDesc, MONTHLY_RULE, type MonthlyTask } from '../core/monthly';
 import { ASSETS } from './assets';
@@ -83,6 +83,27 @@ export class MonthWatch {
   }
 }
 
+/**
+ * A normal game's 挑戰模式 (docs/rules/30, tracker.rewards): what the card is for and how long it runs — a month, half a
+ * month, or until someone does it (完成就抽).
+ */
+function period(g: Game): string {
+  const c = g.challengeTracker!, m = monthOf(g.date);
+  if (!c.rewards || c.perMonth === 1) return `本月任務・到 ${m} 月底`;
+  if (c.perMonth === 2) return dayOf(g.date) <= 15 ? `上半月任務・到 ${m} 月 15 日` : `下半月任務・到 ${m} 月底`;
+  const left = Math.max(1, CHAIN_DAYS - (g.daysElapsed - (c.month?.since ?? g.daysElapsed)));
+  return c.monthTask()?.kind === 'race' ? `任務卡・有人完成就換・最多再 ${left} 天` : `任務卡・${left} 天後評選`;
+}
+/** How a card is won with 獎勵卡 (docs/rules/30). */
+export const REWARD_RULE: Record<MonthlyTask['kind'], string> = {
+  race: '搶先：第一個做到的抽一張獎勵卡',
+  most: '比拼：到期時最多的抽獎勵卡，平手都抽',
+  keep: '堅持：整期都做到的都抽獎勵卡',
+};
+const ruleOf = (g: Game, t: MonthlyTask) => (g.challengeTracker!.rewards ? REWARD_RULE[t.kind] : MONTHLY_RULE[t.kind]);
+/** Who took it: ★★★ (挑戰模式's stars) or 獎 (a 獎勵卡). */
+const wonMark = (g: Game) => (g.challengeTracker!.rewards ? '獎' : '★★★');
+
 /** Player p's progress on the month's card, as shown: 搶先 a/goal, 比拼 the figure, 堅持 ✓ / ✗. */
 function monthShown(g: Game, p: number): string {
   const c = g.challengeTracker!, t = c.monthTask()!, v = c.monthValue(g.players[p]);
@@ -95,14 +116,14 @@ function monthShown(g: Game, p: number): string {
 export function monthCard(g: Game, face: (character: number) => string, big = false): HTMLElement {
   const c = g.challengeTracker!, m = c.month, t = c.monthTask(), el = document.createElement('div');
   el.className = `chl-month${big ? ' big' : ''}`;
-  if (!m || !t) { el.innerHTML = '<p class="chl-month-none">本月任務：下個月 1 日抽第一張</p>'; return el; }
+  if (!m || !t) { el.innerHTML = `<p class="chl-month-none">${c.rewards && c.perMonth === 2 ? '任務卡：16 日或下個月 1 日抽第一張' : c.rewards ? '任務卡：下個月 1 日抽第一張' : '本月任務：下個月 1 日抽第一張'}</p>`; return el; }
   const who = g.players.map(p => {
     const won = m.won.includes(p.id);
-    return `<span class="${won ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? '<i class="chl-on">★★★</i>' : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
+    return `<span class="${won ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? `<i class="chl-on">${wonMark(g)}</i>` : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
   }).join('');
   el.innerHTML = `<span class="chl-month-art"><img class="chl-month-pic" src="${MONTH_ART}/${t.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
-    <div class="chl-month-body"><small>本月任務・到 ${monthOf(g.date)} 月底${m.done ? '・已結束' : ''}</small>
-      <b>${esc(t.name)}</b><p>${esc(monthlyDesc(t, c.monthGoal()))}</p><p class="chl-how">${esc(MONTHLY_RULE[t.kind])}</p>
+    <div class="chl-month-body"><small>${esc(period(g))}${m.done ? '・已結束' : ''}</small>
+      <b>${esc(t.name)}</b><p>${esc(monthlyDesc(t, c.monthGoal()))}</p><p class="chl-how">${esc(ruleOf(g, t))}</p>
       <div class="chl-who${g.players.length > 4 ? ' many' : ''}">${who}</div></div>`;
   return el;
 }
@@ -112,7 +133,8 @@ export function monthNotice(g: Game, face: (character: number) => string, last: 
   const root = document.createElement('div');
   root.className = 'chl chl-notice';
   const names = (ids: number[]) => ids.map(i => esc(playerName(g.players[i]))).join('、');
-  const lines = last.map(r => `<p class="chl-last">上月「${esc(r.task.name)}」${r.won.length ? `${names(r.won)} ★★★` : '沒人拿到'}</p>`).join('');
+  const prev = g.challengeTracker!.rewards ? '上一張' : '上月';
+  const lines = last.map(r => `<p class="chl-last">${prev}「${esc(r.task.name)}」${r.won.length ? `${names(r.won)} ${wonMark(g)}` : '沒人拿到'}</p>`).join('');
   root.innerHTML = lines;
   root.append(monthCard(g, face, true));
   return root;
@@ -124,9 +146,10 @@ export class ChallengeBar {
   readonly watch: StarWatch;
   onOpen: () => void = () => {};
 
-  constructor(private g: Game, private face: (character: number) => string) {
+  /** `mine`: the player this screen's progress bar is for (the human here; none: no bar). */
+  constructor(private g: Game, private face: (character: number) => string, private mine: () => number = () => -1) {
     this.el.className = 'chb';
-    this.el.innerHTML = '<button class="chb-badge"></button><button class="chb-month" hidden></button>';
+    this.el.innerHTML = '<button class="chb-badge"></button><button class="chb-month" hidden></button><div class="chb-prog" hidden><i><u></u></i><b></b></div>';
     this.el.addEventListener('click', () => { audio.ui('click'); this.onOpen(); });
     this.watch = new StarWatch(g);
     this.update();
@@ -135,12 +158,41 @@ export class ChallengeBar {
   /** Redraws the badge; returns the stars earned since the last call, for the notes. */
   update(): { p: number; task: ChallengeTask; stars: number }[] {
     const g = this.g, c = g.challengeTracker!, got = this.watch.update();
-    const b = this.el.querySelector('.chb-badge')!;
+    const b = this.el.querySelector<HTMLElement>('.chb-badge')!;
+    // A normal game's 挑戰模式: no stars, only the task card's pill.
+    b.hidden = c.rewards;
     b.classList.toggle('many', g.players.length > 4);
     b.innerHTML = `<b>★任務</b>${g.players.map(p => `<span style="--c:${color(g, p.id)}"><img src="${this.face(p.character)}" alt=""><em>${c.stars(p)}</em></span>`).join('')}`;
     const mb = this.el.querySelector<HTMLElement>('.chb-month')!, t = c.monthTask();
     mb.hidden = !t;
-    if (t) { mb.classList.toggle('done', !!c.month?.done); mb.textContent = `本月：${t.name}${c.month?.done ? ' ✓' : ''}`; }
+    if (t) {
+      mb.classList.toggle('done', !!c.month?.done);
+      // The card's name, and a small countdown to its end (to the next card once it is taken).
+      const name = `${c.rewards ? '任務' : '本月'}：${t.name}${c.month?.done ? ' ✓' : ''}`, left = `剩${c.daysLeft()}天`;
+      if (mb.dataset.k !== name + left) {
+        mb.dataset.k = name + left;
+        mb.innerHTML = '<span></span><i class="chb-left"></i>';
+        mb.querySelector('span')!.textContent = name;
+        mb.querySelector('i')!.textContent = left;
+      }
+    }
+    // Under it, how far this screen's player is on a 搶先 card (the user 2026-11-03: 「完成进度条……百分之多少」).
+    const pb = this.el.querySelector<HTMLElement>('.chb-prog')!, me = this.mine(), who = g.players[me];
+    // 比拼: mine against the most so far; 堅持: still kept or broken.
+    const show = !!t && !!c.month && !c.month.done && !!who && !who.bankrupt;
+    pb.hidden = !show;
+    if (show) {
+      let pct: number, label: string;
+      if (t.kind === 'race') { pct = Math.max(0, Math.min(100, Math.floor((c.monthValue(who) / Math.max(1, c.monthGoal())) * 100))); label = `我的進度 ${pct}%`; }
+      else if (t.kind === 'most') {
+        const f = (v: number) => (t.money ? money(v) : String(v)), mine = c.monthValue(who);
+        const top = Math.max(0, ...g.players.filter(q => !q.bankrupt).map(q => c.monthValue(q)));
+        pct = top > 0 ? Math.max(0, Math.min(100, Math.floor((mine / top) * 100))) : 0;
+        label = `我 ${f(mine)}・最多 ${f(top)}`;
+      } else { const ok = c.monthValue(who) === 0; pct = ok ? 100 : 0; label = ok ? '保持中' : '已破功'; }
+      pb.querySelector<HTMLElement>('u')!.style.width = `${pct}%`;
+      pb.querySelector('b')!.textContent = label;
+    }
     return got;
   }
 }

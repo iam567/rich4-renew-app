@@ -83,6 +83,9 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
   // 挑戰模式's picture cards and star sticker (ui/collection.ts, tools/tycoon-art/challenge_cards.py).
   if (existsSync(join(src, 'maps/remake/challenge'))) for (const f of readdirSync(join(src, 'maps/remake/challenge'))) if (f.endsWith('.webp')) copy(`maps/remake/challenge/${f}`);
+  // 獎勵卡 (core/rewards.ts): the ten cards' pictures and the three backs by grade (RWBN / RWBR / RWBSR, the user's
+  // picks); the other takes (RW01a, RW01b, RWBN1 …) stay out.
+  if (existsSync(join(src, 'maps/remake/rewards'))) for (const f of readdirSync(join(src, 'maps/remake/rewards'))) if (/^RW(\d\d|B(N|R|SR))\.webp$/.test(f)) copy(`maps/remake/rewards/${f}`);
   // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps), and the APARTMENT
   // HOTEL 11 towers (ui/ah11.ts: map/2611..2615 on 日本 and the five cities).
   for (const res of ['2604', '2605', '2611', '2612', '2613', '2614', '2615']) {

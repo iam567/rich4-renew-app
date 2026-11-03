@@ -211,7 +211,7 @@ export const monthlyById = new Map(MONTHLY_TASKS.map(t => [t.id, t]));
 export const monthlyPool = (g: Game) => MONTHLY_TASKS.filter(t => !t.when || t.when(g));
 
 /**
- * The month's card (`seq` the month's number in this game): the map's cards shuffled once from the seed (their own
+ * The month's card (`seq` the card's number in this game): the map's cards shuffled once from the seed (their own
  * random stream, as drawTasks), dealt in order — no card twice before all have come.
  */
 export function drawMonthly(g: Game, seq: number): MonthlyTask {

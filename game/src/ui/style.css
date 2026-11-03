@@ -592,6 +592,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ng-arrow { width: 22px; height: 40px; padding: 0; font-size: 18px; border-radius: 10px; color: #5a2d00; background: linear-gradient(#fff8cf, #ffd23f); box-shadow: 0 3px 0 #c98a00; }
 .ng-who { grid-column: 1 / 4; padding: 3px 14px; }
 .ng-opts { display: grid; gap: 7px; align-content: start; text-align: left; }
+/* 挑戰模式 (the user 2026-11-03: 「做成红字儿或者黄字儿那种醒目一点的」): the label in gold, the value too once it is on. */
+.ng-opt.hot > span { color: #ffd23a; font-weight: 900; text-shadow: 0 1px 0 #7a3b00, 0 0 6px rgba(255, 170, 0, .6); }
+.ng-opt.hot.on .val { color: #ffd23a; font-weight: 900; }
 .ng-opt { display: grid; grid-template-columns: 70px 1fr; align-items: center; gap: 6px; color: #fff; font-size: 15px; }
 .ng-opt .chips { gap: 4px; }
 .ng-opt .chip { padding: 3px 8px; font-size: 13.5px; }

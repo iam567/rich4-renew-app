@@ -8,7 +8,7 @@
  * stars once earned stay. Tasks without a measure yet are listed by `unmeasured` (the simulation reports them).
  */
 import { CHALLENGE_TASKS, type ChallengeTask } from './challenge-tasks';
-import { day as dayOf, month as monthOf } from './date';
+import { day as dayOf, daysInMonth, month as monthOf, year as yearOf } from './date';
 import type { Game } from './game';
 import { drawMonthly, MONTH_STATS, monthlyById, type MonthlyTask, type MonthX } from './monthly';
 import { eventTone, ledgerOf, TOLL_REASONS, type PlayerStats } from './stats';
@@ -150,6 +150,9 @@ function dec(v: unknown): unknown {
   return v;
 }
 
+/** 完成就抽: the days a card waits for someone before the next is drawn. */
+export const CHAIN_DAYS = 30;
+
 export class Challenge {
   readonly tasks: ChallengeTask[];
   readonly own: Own[];
@@ -183,8 +186,22 @@ export class Challenge {
   private bombBy = new Map<number, number>();
   /** A news of this turn: whoever it sends to hospital or prison was not sent by the player on turn. */
   private newsNow = false;
+  /** A computer's 獎勵卡 being played: its figures before (taken out of its task card's progress at 'reward-end'). */
+  private rewardSnap: { p: number; stats: Record<string, number> } | null = null;
   /** 每月任務 on (挑戰模式, core/monthly.ts); the month's card; the stars the cards gave (by player); the months done. */
   monthly = false;
+  /**
+   * Cards a month: 1 (the 1st), 2 (the 1st and the 16th: each card half the month, its goal halved), 3 the next card as
+   * soon as one is taken (no dates, the month's goals).
+   */
+  perMonth: 1 | 2 | 3 = 1;
+  /**
+   * A normal game's 挑戰模式 (settings.monthTasks, docs/rules/30): who takes a card draws a 獎勵卡 (core/rewards.ts)
+   * instead of stars; all three kinds in every mode (完成就抽: a 比拼 / 堅持 card is decided after its 30 days). The game plays the cards owed at the end of a turn (Game.payRewards).
+   */
+  rewardsDue: number[] = [];
+  /** 獎勵卡 drawn so far (the next card's number in the game's own reward stream). */
+  rewardSeq = 0;
   month: MonthState | null = null;
   monthStars: number[] = [];
   monthLog: { id: string; seq: number; won: number[] }[] = [];
@@ -407,6 +424,20 @@ export class Challenge {
         break;
       }
       case 'card-taken': if (p >= 0 && tgt >= 0) this.own[p].bday?.add(tgt); break;
+      // 獎勵卡 (core/rewards.ts, the user 2026-11-03): what a human's card does counts for them (全員住院 sends every
+      // rival to hospital: their tasks and 圖鑑); a computer's counts for nobody — no one sent anyone, and what it
+      // gained (money, lots, floors) is taken out of its task card's figures.
+      case 'reward': if (p >= 0) {
+        this.newsNow = false;
+        if (g.players[p].human) this.current = p;
+        else { this.current = -1; this.rewardSnap = { p, stats: Object.fromEntries(Object.entries(MONTH_STATS).map(([k, f]) => [k, f(g, g.players[p], this.stats(g.players[p]))])) }; }
+      } break;
+      case 'reward-end': {
+        const sn = this.rewardSnap, m = this.month;
+        this.rewardSnap = null;
+        if (sn && m?.base[sn.p]) for (const [k, f] of Object.entries(MONTH_STATS)) m.base[sn.p][k] = (m.base[sn.p][k] ?? 0) + f(g, g.players[sn.p], this.stats(g.players[sn.p])) - (sn.stats[k] ?? 0);
+        break;
+      }
       case 'magic': if (p >= 0) { this.own[p].magic.add(num('magic')); this.bump(p, 'magic'); } break;
       case 'lottery-draw': { const w = num('winner'); if (d.winner !== undefined && isP(w)) this.bump(w, 'lotto'); break; }
       case 'chest': if (p >= 0) this.bump(p, 'chest'); break;
@@ -684,8 +715,11 @@ export class Challenge {
     }
     this.dayExtras();
     this.checkAll();
-    // 每月任務: the 1st ends the month's card and draws the next.
-    if (this.monthly && dayOf(g.date) === 1) { this.endMonth(); this.drawMonth(); }
+    // 每月任務: the 1st (and with two a month the 16th) ends the card and draws the next.
+    if (this.monthly && this.perMonth !== 3 && (dayOf(g.date) === 1 || (this.perMonth === 2 && dayOf(g.date) === 16))) { this.endMonth(); this.drawMonth(); }
+    // 完成就抽: after 30 days a card gives way to the next (the user 2026-11-03: 「没人完成就一个月换一次」); a 比拼 /
+    // 堅持 card is decided then (「到三十天之后评选出一个优胜了，然后再抽一张」).
+    if (this.monthly && this.perMonth === 3 && this.month && g.daysElapsed - this.month.since >= CHAIN_DAYS) { this.endMonth(); this.drawMonth(); }
     this.raceCheck();
     const best = this.leader();
     if (best >= 0 && this.winner < 0) this.winner = best;
@@ -819,10 +853,30 @@ export class Challenge {
 
   // ---------------------------------------------------------------- 每月任務 (core/monthly.ts)
 
-  /** Turns the monthly cards on: the first now (unless the month is nearly over: then on the 1st). */
-  startMonthly(): void {
+  /**
+   * Turns the monthly cards on (`perMonth` 2: on the 1st and the 16th): the first now, unless its time is nearly over
+   * (less than about 10 days): then at the next draw.
+   */
+  startMonthly(perMonth: 1 | 2 | 3 = 1): void {
     this.monthly = true;
-    if (dayOf(this.g.date) <= 20) this.drawMonth();
+    this.perMonth = perMonth;
+    const d = dayOf(this.g.date);
+    if (perMonth === 3 || (perMonth === 1 ? d <= 20 : d <= 5 || (d >= 16 && d <= 20))) this.drawMonth();
+  }
+
+  /** A normal game's 挑戰模式 (獎勵卡, not stars). */
+  get rewards(): boolean { return !this.g.challenge; }
+
+  /**
+   * Days until the card ends and the next is drawn, today counted (the user 2026-11-03: a small countdown by the
+   * pill): a card a month — the month's days left (31 on 1 March, 28 / 29 on 1 February); two — to the 15th, then to
+   * the month's end; 完成就抽 — what is left of its 30 days (or less, when someone does it first).
+   */
+  daysLeft(): number {
+    const d = this.g.date, dd = dayOf(d), end = daysInMonth(yearOf(d), monthOf(d));
+    if (this.perMonth === 3) return Math.max(1, CHAIN_DAYS - (this.g.daysElapsed - (this.month?.since ?? this.g.daysElapsed)));
+    if (this.perMonth === 2 && dd <= 15) return 16 - dd;
+    return end - dd + 1;
   }
 
   /** The month's card, if any. */
@@ -833,7 +887,9 @@ export class Challenge {
 
   private drawMonth() {
     const g = this.g, t = (Challenge.forceMonthly && monthlyById.get(Challenge.forceMonthly)) || drawMonthly(g, this.monthSeq);
-    const goal = t.goal < 0 ? -1 : t.money && t.kind === 'race' ? Math.round((t.goal * g.priceIndex) / 1000) * 1000 : t.goal;
+    let goal = t.goal < 0 ? -1 : t.money && t.kind === 'race' ? Math.round((t.goal * g.priceIndex) / 1000) * 1000 : t.goal;
+    // Half a month: half the goal (money to the 1000, counts rounded up).
+    if (this.perMonth === 2 && goal > 1) goal = t.money ? Math.max(1000, Math.round(goal / 2000) * 1000) : Math.ceil(goal / 2);
     const base = g.players.map(p => {
       const s = this.stats(p), out: Record<string, number> = {};
       for (const [k, f] of Object.entries(MONTH_STATS)) out[k] = f(g, p, s);
@@ -864,13 +920,20 @@ export class Challenge {
   private raceCheck() {
     const m = this.month, t = this.monthTask();
     if (!m || !t || m.done || t.kind !== 'race') return;
-    const goal = this.monthGoal(), won = this.live().filter(p => p.whoPlays && this.monthValue(p) >= goal).map(p => p.id);
-    if (won.length) this.award(won);
+    // A computer's 獎勵卡 still being played: its gains are not yet taken out of its figures (reward-end).
+    const goal = this.monthGoal(), won = this.live().filter(p => p.whoPlays && p.id !== this.rewardSnap?.p && this.monthValue(p) >= goal).map(p => p.id);
+    if (won.length) this.award(won, true);
   }
 
-  private award(won: number[]) {
+  /** `taken`: a 搶先 card just done (完成就抽 draws the next at once; 比拼 / 堅持 are decided by endMonth, which goes on). */
+  private award(won: number[], taken = false) {
     const m = this.month!;
     m.won = won; m.done = true;
+    if (this.rewards) {
+      this.rewardsDue.push(...won);
+      if (taken && this.perMonth === 3) { this.endMonth(); this.drawMonth(); } // 完成就抽: the next card at once
+      return;
+    }
     for (const p of won) this.monthStars[p] = (this.monthStars[p] ?? 0) + 3;
   }
 
