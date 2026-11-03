@@ -263,6 +263,9 @@ function watchParty(el: HTMLElement) {
 }
 function stopWatchingParty() { titleLobby?.close(); titleLobby = null; clearInterval(titleCount); titleCount = 0; }
 
+/** 電腦難度's names (Game.aiLevel 0–3; 地獄: the computers play their best and all against the humans, core/smart-ai.ts). */
+const AI_LEVEL_NAMES = ['簡單', '中等', '困難', '地獄'];
+
 /** 動畫過程 (RICH4.CFG +1) as far as the remake goes: play the mini games, or take the automatic 50..69 points. */
 const MINI_GAME_MODES = ['親自玩', '自動結算'];
 /**
@@ -381,8 +384,8 @@ function newGame() {
   const b = bank!;
   const state = {
     mapId: 2, count: 4, fundIndex: 1, traffic: 0 as 0 | 1 | 2, daysLimitIndex: 0, victoryIndex: 0, landLimitIndex: 0,
-    /** 電腦難度 (core/smart-ai.ts, Game.aiLevel): 0 簡單 = the original's computer, 1 中級, 2 困難; not in 大富豪模式. */
-    aiLevel: 0 as 0 | 1 | 2,
+    /** 電腦難度 (core/smart-ai.ts, Game.aiLevel): 0 簡單 = the original's computer, 1 中級, 2 困難, 3 地獄; 大富豪模式 too. */
+    aiLevel: 0 as 0 | 1 | 2 | 3,
     /** 挑戰模式's deadline (docs/rules/26 §1): CHALLENGE_YEARS[i]. */
     yearsIndex: 0,
     /** 挑戰模式's 每月任務 (docs/rules/27): 1 on (the default), 0 off. */
@@ -467,11 +470,11 @@ function newGame() {
         ${opt(RULE_LABELS.fundIndex, 'fundIndex', RULE_ITEMS.fundIndex)}
         ${opt(RULE_LABELS.traffic, 'traffic', RULE_ITEMS.traffic)}
         ${opt(RULE_LABELS.landLimitIndex, 'landLimitIndex', RULE_ITEMS.landLimitIndex)}
-        ${ty ? '<p class="ng-date">遊戲時間：直到所有對手破產</p>' : cm ? `${opt('期限', 'yearsIndex', CHALLENGE_YEARS.map(y => (y ? `${y} 年` : '不限')))}
+        ${ty ? `${opt('電腦難度', 'aiLevel', AI_LEVEL_NAMES)}<p class="ng-date">遊戲時間：直到所有對手破產</p>` : cm ? `${opt('期限', 'yearsIndex', CHALLENGE_YEARS.map(y => (y ? `${y} 年` : '不限')))}
         ${opt('每月任務', 'monthly', ['關', '開'])}
         <p class="ng-date">${CHALLENGE_YEARS[state.yearsIndex] ? '期限到時星最多的人獲勝' : '先拿到 100 顆星的人獲勝'}・欠債不破產</p>` : `${opt(RULE_LABELS.daysLimitIndex, 'daysLimitIndex', RULE_ITEMS.daysLimitIndex)}
         ${opt(RULE_LABELS.victoryIndex, 'victoryIndex', RULE_ITEMS.victoryIndex)}
-        ${opt('電腦難度', 'aiLevel', ['簡單', '中級', '困難'])}`}
+        ${opt('電腦難度', 'aiLevel', AI_LEVEL_NAMES)}`}
         <p class="ng-date">開局日期 ${format(today())}</p>
       </section>
       <div class="choices ng-actions"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
@@ -538,6 +541,7 @@ function newGame() {
       window.removeEventListener('resize', fit);
       void startTycoon(tycoonSettings(state.slots[0].character, {
         fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
+        ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}),
       }));
       return;
     }

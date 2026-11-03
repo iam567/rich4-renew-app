@@ -400,12 +400,13 @@ export class Game {
    * dice with the original's cards, tools and shop, 2 困難 = the smarter computer in full. A normal game takes
    * `settings.aiLevel` (none: 0, as every game before it); 挑戰模式 always 2 (the user 2026-10-22; the challenge
    * computer chases stars, docs/rules/26 §5); 派對模式 the room's 電腦難度 (the user 2026-11-03; none: 2, as before);
-   * 大富豪模式 always 0. 3 地獄: 困難 playing safer (SmartAi HELL), its own share trading (hellShares: takes profits, cuts
+   * 大富豪模式 its own 電腦難度 (world settings, the user 2026-11-03; none: 0). 3 地獄: 困難 playing safer (SmartAi HELL), its own share trading (hellShares: takes profits, cuts
    * losses) and every computer against the humans (SmartAi.rival) — a human's seat on 托管 or dropped plays 困難. A human playing by hand: 0.
    */
   aiLevel(p: Player): 0 | 1 | 2 | 3 {
-    if (this.world || this.isHuman(p) || !p.whoPlays) return 0;
+    if (this.isHuman(p) || !p.whoPlays) return 0;
     if (this.testLevels) return this.testLevels[p.id] ?? 0;
+    if (this.world) { const l = this.settings.aiLevel ?? 0; return p.human && l > 2 ? 2 : l; }
     if (this.settings.challenge) return 2;
     if (this.settings.party) { const l = this.settings.aiLevel ?? 2; return p.human && l > 2 ? 2 : l; }
     return this.settings.aiLevel ?? 0;

@@ -218,6 +218,25 @@ describe.skipIf(!have)('大富豪模式 world', () => {
     expect(stops).toBeGreaterThan(0);
   }, 60_000);
 
+  it('電腦難度 reaches every city (the user 2026-11-03), and the computers play a year at 困難 and 地獄', () => {
+    const plain = new World(settings(5, 0), boards());
+    expect(plain.cities.map(g => g.settings.aiLevel ?? 0)).toEqual([0, 0, 0, 0, 0]); // none: 簡單, as before
+    for (const level of [2, 3] as const) {
+      const w = new World({ ...settings(31 + level), aiLevel: level }, boards());
+      expect(w.cities.map(g => g.settings.aiLevel)).toEqual([level, level, level, level, level]);
+      const flow = w.run();
+      flow.next();
+      const p = w.players.find(x => x.whoPlays)!;
+      expect(w.cities[p.map!].aiLevel(p)).toBe(level);
+      for (let r = flow.next(); !r.done && w.daysElapsed < 365 && !w.over; r = flow.next()) {
+        if ('ask' in r.value) throw new Error('computers never ask');
+      }
+      expect(w.daysElapsed).toBeGreaterThanOrEqual(365);
+      const back = loadWorld(saveWorld(w), boards());
+      expect(back.settings.aiLevel).toBe(level);
+    }
+  }, 120_000);
+
   it('starts no city with more than three players', () => {
     for (const seed of [1, 2, 3, 4, 5]) {
       const w = new World(settings(seed), boards());

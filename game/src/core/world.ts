@@ -146,6 +146,11 @@ export interface TycoonSettings {
   landLimitIndex: number;
   startDate: PackedDate;
   seed: number;
+  /**
+   * 電腦難度 (the user 2026-11-03; none: 0 簡單, as every world before it): the computers' level in every city
+   * (Game.aiLevel, core/smart-ai.ts), 3 地獄 included — the computers against the human.
+   */
+  aiLevel?: 0 | 1 | 2 | 3;
 }
 
 /** A computer's view of a city for travelling (17 §3.4). */
@@ -308,7 +313,7 @@ export class World implements WorldHooks {
       const s: GameSettings = {
         mapId, players: settings.players, fundIndex: settings.fundIndex, traffic: settings.traffic,
         landLimitIndex: settings.landLimitIndex, daysLimitIndex: 0, victoryIndex: 0, startDate: settings.startDate,
-        seed: this.citySeed(index),
+        seed: this.citySeed(index), ...(settings.aiLevel ? { aiLevel: settings.aiLevel } : {}),
       };
       const g = new Game(s, boards[index], { index, hooks: mapId === FINALE_MAP ? this.finale : this, players: this.players });
       track(g);
@@ -1475,6 +1480,6 @@ export function tycoonSettings(character: number, opts: Partial<Omit<TycoonSetti
     mode: 'tycoon', maps: [...TYCOON_MAPS],
     players: [{ character, human: true }, ...others.map(c => ({ character: c, human: false }))],
     fundIndex: opts.fundIndex ?? 1, traffic: opts.traffic ?? 0, landLimitIndex: opts.landLimitIndex ?? 0,
-    startDate: opts.startDate ?? 0, seed: opts.seed ?? 1,
+    startDate: opts.startDate ?? 0, seed: opts.seed ?? 1, ...(opts.aiLevel ? { aiLevel: opts.aiLevel } : {}),
   };
 }
