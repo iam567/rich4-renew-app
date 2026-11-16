@@ -41,6 +41,7 @@ import { askScreens, closeStuckScreens, fxScreens } from './screens/registry';
 import { PartyBar } from './party-chat';
 import { CheerFx, PlayerGifts, SpectatorBar, setWatchFx, WATCH_FX_KEY, WATCH_FX_MODES, watchFxOn } from './spectate';
 import { uiAlert, uiConfirm } from './dialog';
+import { DebugPanel } from './debug-panel';
 import { setOrigArt } from './maker/deck';
 import { setMapArt } from './maker/layers';
 import { afterWin, keepPlayClock, openRanks, pendingRanks, prefetchTicket, rankRecorder, startRanked, ticketSeed } from './ranks';
@@ -971,6 +972,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     const c = view.canvas.getBoundingClientRect(), a = stage.getBoundingClientRect();
     return { x: q.x + c.left - a.left, y: q.y + c.top - a.top, zoom: q.zoom };
   };
+  // Hidden debug panel: 5 fast taps on GO opens it (owner's cheat sheet).
+  const dbg = new DebugPanel(game, view, () => hud.refresh());
+  dbg.attachTap(go.el);
   // Keep the actor above an open dialog: put the camera point midway in the visible strip — only when the box would
   // cover it (issue #11: a message at the bottom slid the map up and back for every box), and a box closing with the
   // next one opening right after leaves it where it is instead of back and forth.
