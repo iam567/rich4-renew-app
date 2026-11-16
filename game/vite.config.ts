@@ -8,6 +8,8 @@ const version = (JSON.parse(readFileSync(new URL('./package.json', import.meta.u
 // linked art (public/assets, over 1 GB) for quick test builds that link it instead.
 export default defineConfig({
   base: './',
+  // RICH4_POLL=1: watch files by polling (a busy Mac's file events get lost and the dev server serves old files)
+  ...(process.env.RICH4_POLL ? { server: { watch: { usePolling: true, interval: 500, ignored: ['**/public/**', '**/node_modules/**', '**/android/**', '**/ios/**', '**/.cache/**', '**/dist*/**', '**/electron/**'] } } } : {}),
   // RICH4_UPDATE_CHANNEL=test: a build that takes its online updates from the test channel (ui/update.ts).
   define: { __APP_VERSION__: JSON.stringify(version), __UPDATE_CHANNEL__: JSON.stringify(process.env.RICH4_UPDATE_CHANNEL ?? '') },
   build: {

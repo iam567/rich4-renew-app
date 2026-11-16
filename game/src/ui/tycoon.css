@@ -324,3 +324,9 @@
 .msg.tb.overlord.small .ol-crown { width: 34px; height: 24px; }
 
 .msg.tb.overlord .dc-me, .msg.tb.summon .dc-me { width: 64px; height: 64px; margin: 0 auto; }
+
+/* 城市決戰's draw (tycoon.ts showdown-draw): the five cities lit in turn */
+.msg.tb.showdown { width: min(520px, 100%); background: radial-gradient(circle at 50% 30%, #ff8a3d, #6a1400 72%); color: #fff; }
+.msg.tb.showdown .sd-row { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 10px 0 8px; }
+.msg.tb.showdown .sd-row span { padding: 6px 10px; border-radius: 10px; background: rgba(0, 0, 0, .35); font-weight: 700; white-space: nowrap; transition: transform .08s; }
+.msg.tb.showdown .sd-row span.on { background: #ffe14d; color: #6a1400; transform: scale(1.12); box-shadow: 0 0 12px #ffe14d; }

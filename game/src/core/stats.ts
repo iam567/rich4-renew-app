@@ -21,7 +21,13 @@ import { REGIONAL_EVENTS, REGIONAL_ID_BASE } from './modules/regional-data';
 import type { Answer, GameEvent, Player, Step } from './types';
 import type { World } from './world';
 
+/** The cards that act by themselves (as core/challenge.ts): counted when they act, the others once they worked. */
+const PASSIVE_CARDS = new Set([18, 19, 20, 21, 37]);
+
 export type Tone = 'good' | 'bad' | 'neutral';
+
+/** The engine's words for a rival's card or tool landing on a player (its `target`; 洲際飛彈's victims). */
+const HOSTILE_FX = new Set(['card-result', 'frame', 'sleepwalk', 'stay', 'turn-around', 'missile-lock', 'icbm-hit']);
 
 /** Counters of one player. Money is in 元; maps of id → count use the card / tool / god / facility type ids. */
 export interface PlayerStats {
@@ -66,11 +72,13 @@ export interface PlayerStats {
   maxAssets: number; maxAssetsDay: number;
   /** Most Lv5 buildings (lots at level 5, facilities at their top level) owned at the same time (sampled daily). */
   maxLv5: number;
+  /** Times a rival's card or tool hit this player (陷害, 夢遊, 停留, 轉向, 搶奪, 查稅, 飛彈 …: an fx naming it the target). */
+  attacked: number;
   /** Set by `finish`: cash + deposit, loans, total assets, unrealized stock profit at the end. */
   finalCash: number; finalBank: number; finalLoan: number; finalAssets: number; unrealized: number;
 }
 
-export interface LedgerData { version: 1; days: number; finished: boolean; players: PlayerStats[] }
+export interface LedgerData { version: 1; days: number; finished: boolean; players: PlayerStats[]; /** 排行榜: real time played (ms), the game screen open. */ playMs?: number; /** 排行榜: the game was loaded from a save once (no board then). */ loaded?: boolean }
 
 const blank = (): PlayerStats => ({
   landsBought: 0, landSpent: 0, plotsBought: 0, plotSpent: 0, buildings: 0, buildSpent: 0, levelsAdded: 0, facilitiesBuilt: {},
@@ -80,7 +88,7 @@ const blank = (): PlayerStats => ({
   lucky: 0, unlucky: 0, neutral: 0, events: {}, gods: {},
   lotteryWins: 0, lotteryPrize: 0, miniGames: 0, miniGamePoints: 0, miniGameWins: 0, casinoGames: 0, casinoWins: 0, casinoNet: 0,
   hospitalDays: 0, prisonDays: 0, hospitalStays: 0, prisonStays: 0, rivalsBankrupted: 0, bankruptDay: -1,
-  cities: [], trips: 0, overlordCities: [], maxAssets: 0, maxAssetsDay: 0, maxLv5: 0,
+  cities: [], trips: 0, overlordCities: [], maxAssets: 0, maxAssetsDay: 0, maxLv5: 0, attacked: 0,
   finalCash: 0, finalBank: 0, finalLoan: 0, finalAssets: 0, unrealized: 0,
 });
 
@@ -140,6 +148,10 @@ export class Ledger {
   /** Days counted (new days seen). */
   days = 0;
   finished = false;
+  /** 排行榜 (the user 2026-11-16): real time played, the game on screen (ui/ranks.ts counts it). */
+  playMs = 0;
+  /** 排行榜 (the user 2026-11-16: 存讀檔一次的就不上排行榜): this game was loaded from a save at least once. */
+  loaded = false;
   /** Transient (not saved): the last payment between players and the last auctioned property. */
   private lastPay: { from: number; to: number } | null = null;
   private auctionRef = 0;
@@ -151,13 +163,15 @@ export class Ledger {
     return this.players[p];
   }
 
-  save(): LedgerData { return JSON.parse(JSON.stringify({ version: 1, days: this.days, finished: this.finished, players: this.players })); }
+  save(): LedgerData { return JSON.parse(JSON.stringify({ version: 1, days: this.days, finished: this.finished, players: this.players, playMs: this.playMs, ...(this.loaded ? { loaded: true } : {}) })); }
 
   static load(d: LedgerData | undefined, n: number): Ledger {
     const l = new Ledger(n);
     if (!d || d.version !== 1) return l;
     l.days = d.days ?? 0;
     l.finished = !!d.finished;
+    l.playMs = d.playMs ?? 0;
+    l.loaded = !!d.loaded;
     d.players.forEach((s, i) => { l.players[i] = { ...blank(), ...s }; });
     return l;
   }
@@ -211,9 +225,17 @@ export class Ledger {
   private fx(s: Extract<GameEvent, { t: 'fx' }>, g: Game, isP: (x: number | undefined) => x is number) {
     const d = (s.data ?? {}) as Record<string, unknown>, num = (k: string) => Number(d[k] ?? 0);
     const p = isP(s.p) ? s.p : -1;
+    // a rival's card or tool on a player (排行榜's 最慘榜)
+    if (HOSTILE_FX.has(s.kind) && !(s.kind === 'card-result' && num('card') === 29)) {   // (同盟卡 is no attack)
+      const hit = s.kind === 'icbm-hit' ? (Array.isArray(d.victims) ? (d.victims as unknown[]).map(Number) : []) : [Number(s.target ?? -1)];
+      for (const q of hit) if (isP(q) && q !== p) this.of(q).attacked++;
+    }
     switch (s.kind) {
-      case 'card': if (p >= 0) bump(this.of(p).cardsUsed, num('card')); break;
-      case 'card-failed': if (p >= 0) bump(this.of(p).cardsUsed, num('card'), -1); break;
+      // A played card counts once it worked ('card-done'); a passive one (免罪, 嫁禍, 免費, 抵押, 復仇…) acts at once.
+      // (Counting at 'card' and taking it back at 'card-failed' let a monthly task see the count in between: a
+      // 天使卡 picked and cancelled did 「用天使卡或惡魔卡」, issue #86.)
+      case 'card': if (p >= 0 && PASSIVE_CARDS.has(num('card'))) bump(this.of(p).cardsUsed, num('card')); break;
+      case 'card-done': if (p >= 0) bump(this.of(p).cardsUsed, num('card')); break;
       case 'black-market-buy': {
         if (p < 0) break;
         const x = this.of(p), id = num('id');

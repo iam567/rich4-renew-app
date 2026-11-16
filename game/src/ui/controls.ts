@@ -162,18 +162,23 @@ export class GoButton {
 
   private dragging = false;
 
-  private place() {
-    const w = this.el.offsetWidth, h = this.el.offsetHeight;
+  /** The button's last size (0 while hidden, so kept from when it showed). */
+  private size = { w: 72, h: 67 };
+
+  /** Where the button stands, or would while hidden: its box in the map area (即時制's cooldown takes its place). */
+  spot(): { x: number; y: number; w: number; h: number } {
+    if (this.el.offsetWidth) this.size = { w: this.el.offsetWidth, h: this.el.offsetHeight };
+    const { w, h } = this.size;
     const aw = this.area.clientWidth, ah = this.area.clientHeight;
     const at = this.anchor?.();
-    if (at) {
-      const l = at.x + this.offset.x * at.zoom, t = at.y + this.offset.y * at.zoom;
-      this.el.style.left = `${Math.max(0, Math.min(aw - w, l))}px`;
-      this.el.style.top = `${Math.max(0, Math.min(ah - h, t))}px`;
-      return;
-    }
-    this.el.style.left = `${Math.max(0, Math.min(aw - w, this.pos.x * (aw - w)))}px`;
-    this.el.style.top = `${Math.max(0, Math.min(ah - h, this.pos.y * (ah - h)))}px`;
+    const l = at ? at.x + this.offset.x * at.zoom : this.pos.x * (aw - w), t = at ? at.y + this.offset.y * at.zoom : this.pos.y * (ah - h);
+    return { x: Math.max(0, Math.min(aw - w, l)), y: Math.max(0, Math.min(ah - h, t)), w, h };
+  }
+
+  private place() {
+    const { x, y } = this.spot();
+    this.el.style.left = `${x}px`;
+    this.el.style.top = `${y}px`;
   }
 
   /** The purple frame drags the button (09 §5.4). */

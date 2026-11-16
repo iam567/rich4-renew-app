@@ -403,6 +403,9 @@ export class World implements WorldHooks {
 
   // ---------------------------------------------------------------- hooks for the cities (WorldHooks)
 
+  originalOnly(): boolean { return this.finale.city >= 0; }
+  tollBoost(): number { return this.finale.tollBoost(); }
+
   wealth(p: Player): number {
     if (this.finale.active) return this.finale.wealth(p); // 大富翁城: everything was paid out as cash (19 §2)
     // 02 §7.1 over the whole world: money, the shares of all five markets, then every city's properties.
@@ -445,7 +448,7 @@ export class World implements WorldHooks {
   destinations(from: number, via: 'station' | 'airport', p: Player): TravelOption[] {
     const fromMap = this.mapId(from);
     return this.cities.flatMap((c, i): TravelOption[] => {
-      if (i === from) return [];
+      if (i === from || !this.finale.runs(i)) return []; // 城市決戰 / 大富翁城: the other cities are closed
       const mapId = this.mapId(i);
       if (via === 'station' && (!STATION_MAPS.includes(fromMap) || !STATION_MAPS.includes(mapId))) return [];
       if (!this.travelNodes(i, via).length) return [];
@@ -465,7 +468,11 @@ export class World implements WorldHooks {
     if (!p.whoPlays || g.offRoad(p) || p.trip) return false;
     const from = g.world!.index, n = g.node(p.node), via = n.event === 17 ? 'station' : 'airport';
     const options = this.destinations(from, via, p);
-    if (!options.length) return false;
+    if (!options.length) {
+      // 城市決戰 (a player 2026-11-11 flew back to the cities left behind): nobody leaves the city drawn
+      if (this.finale.city >= 0 && g.isHuman(p)) yield* g.say(p.id, `城市決戰中，${via === 'station' ? '新幹線' : '飛機'}停駛，不能離開${this.cityName(from)}`);
+      return false;
+    }
     let dest = -1;
     if (g.isHuman(p)) {
       const a = yield ask({ t: 'travel', p: p.id, via, from: this.cityName(from), options });
@@ -507,7 +514,7 @@ export class World implements WorldHooks {
     const from = g.world!.index;
     const options = this.cardOptions(from, via, p);
     if (!options.length) {
-      if (g.isHuman(p)) yield* g.say(p.id, via === 'station' ? `${this.cityName(from)}沒有新幹線車站` : '現在不能搭飛機');
+      if (g.isHuman(p)) yield* g.say(p.id, this.finale.city >= 0 ? `城市決戰中，不能離開${this.cityName(from)}` : via === 'station' ? `${this.cityName(from)}沒有新幹線車站` : '現在不能搭飛機');
       return false;
     }
     let why = '（使用卡片）';
@@ -611,7 +618,7 @@ export class World implements WorldHooks {
 
   /** A city to send someone to: under CROWD players (else the least crowded), not `from`; even spread. */
   private sendTarget(from: number): number {
-    const open = this.cities.map((_, i) => i).filter(i => i !== from);
+    const open = this.cities.map((_, i) => i).filter(i => i !== from && this.finale.runs(i));
     if (!open.length) return -1;
     const low = Math.min(...open.map(i => this.population(i)));
     const room = open.filter(i => this.population(i) < World.CROWD);
@@ -1025,7 +1032,7 @@ export class World implements WorldHooks {
   *overflow(g: Game, p: Player, place: 'hospital' | 'prison', days: number): Flow<boolean> {
     const at = g.world!.index;
     if (this.occupancy(at, place) < PLACES_PER_HOUSE) return false;
-    const room = this.cities.map((_, i) => i).filter(i => i !== at && this.occupancy(i, place) < PLACES_PER_HOUSE);
+    const room = this.cities.map((_, i) => i).filter(i => i !== at && this.finale.runs(i) && this.occupancy(i, place) < PLACES_PER_HOUSE);
     if (!room.length) return false;
     const to = room[this.rng.below(room.length)], c = this.cities[to];
     g.objects.detachAll(p);
@@ -1463,7 +1470,7 @@ export class World implements WorldHooks {
 export function autoAnswer(s: Ask): Answer {
   switch (s.t) {
     case 'turn': return { dice: s.maxDice };
-    case 'yesno': return false;
+    case 'yesno': return s.kind === 'liquidate'; // 派對模式's 破產清算: selling beats going bankrupt
     case 'choose': return s.cancellable ? -1 : (s.options.find(o => !o.disabled)?.value ?? s.options[0]?.value ?? 0);
     case 'facility-type': return 1;
     case 'pick-node': case 'pick-city-node': return 0;

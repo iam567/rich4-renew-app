@@ -115,15 +115,23 @@ async function readOld(p: string): Promise<SaveData | null | undefined> {
   try { return JSON.parse(text) as SaveData; } catch { return null; }
 }
 
+/** The step a save on Android is at, or stopped at (a failed save's report, issue #58). */
+let step = '';
+export const saveStep = () => step;
+
 async function fileWrite(slot: number, data: SaveData): Promise<void> {
+  step = 'encode';
   const { Filesystem, Directory } = await fs();
   const dir = Directory.Data, bytes = encodeSave(data);
   const tmp = path(slot, '.tmp'), cur = path(slot), prev = path(slot, '.prev');
+  step = 'write';
   // No encoding: the bridge carries base64 and the file holds the bytes.
   await Filesystem.writeFile({ path: tmp, data: toBase64(bytes), directory: dir, recursive: true });
+  step = 'read back';
   // Read it back before it replaces anything: a slot is never left without a whole save.
   const back = await readBytes(tmp);
   if (!back || !sameBytes(back, bytes)) throw new Error('save file incomplete');
+  step = 'swap';
   if (await exists(cur)) {
     if (await exists(prev)) await Filesystem.deleteFile({ path: prev, directory: dir });
     await Filesystem.rename({ from: cur, to: prev, directory: dir, toDirectory: dir });
@@ -420,7 +428,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
         const when = new Date(s.savedAt).toLocaleString('zh-Hant', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
         // An original map's own small picture, unless it has its illustrated postcard (map_thumbs.py build-orig).
         const thumb = !tycoon && s.settings.mapId < 8 && !mapThumb(s.settings.mapId).includes('postcard') ? art('Data', 520, 2 + s.settings.mapId) : '';
-        const name = tycoon ? `大富豪模式・${mapName(s.settings.mapId)}` : mapName(s.settings.mapId);
+        const name = tycoon ? `大富豪模式・${mapName(s.settings.mapId)}` : s.settings.name || mapName(s.settings.mapId); // (我的地圖: the map's own name)
         // 12 players in a world: the human's face first, the rest still standing, so the row stays one line.
         const faces = tycoon ? [...s.players.filter(p => p.human), ...s.players.filter(p => !p.human && !p.bankrupt)].slice(0, 6) : s.players;
         return `${badge}<span class="slot-date"><small>${y}</small><b>${m}/${dd}</b></span>
@@ -429,12 +437,20 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
           <span class="slot-when">${when}</span>`;
       } catch { return `${badge}<span class="slot-empty">（存檔無法顯示）</span>`; }
     };
-    const button = (html: string, empty: boolean, pick: () => void) => {
+    const button = (html: string, empty: boolean, pick: () => void, s?: SlotPreview, id?: number) => {
       const b = document.createElement('button');
       b.className = `slot-row${empty ? ' empty' : ''}`;
       b.disabled = mode === 'load' && empty;
       b.innerHTML = html;
       b.onclick = pick;
+      // 我的地圖: a save from before its preview kept the map's name has it in the save itself (read after the list shows)
+      if (s && id !== undefined && s.kind !== 'tycoon' && s.settings.mapId >= 5000 && !s.settings.name) {
+        void loadSlot(id).then(got => {
+          const n = got.save?.settings.myMap?.name || got.save?.board?.name;
+          const el = b.querySelector('.slot-mapname');
+          if (n && el) { s.settings.name = n; el.textContent = n; }
+        }).catch(() => { /* the number stays */ });
+      }
       b.onpointerenter = e => { if (e.pointerType === 'mouse' && !b.disabled) audio.ui('hover'); };
       return b;
     };
@@ -445,7 +461,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
       audio.ui('yes');
       const all = autos.get(i) ?? [];
       list.replaceChildren(Object.assign(document.createElement('div'), { className: 'slot-note', textContent: `自動存檔：最近 ${all.length} 回合（點一個讀取）` }),
-        ...all.map(({ id, save }, k) => button(filled(save, `<span class="slot-badge auto">${k === 0 ? '最新' : `-${k}`}</span>`), false, () => done(id))));
+        ...all.map(({ id, save }, k) => button(filled(save, `<span class="slot-badge auto">${k === 0 ? '最新' : `-${k}`}</span>`), false, () => done(id), save, id)));
       cancel.textContent = '返回';
     };
     const showSlots = () => {
@@ -459,7 +475,7 @@ export async function pickSlot(parent: HTMLElement, mode: 'save' | 'load', mapNa
         const badge = `<span class="slot-badge${isAuto(i) ? ' auto' : ''}">${isAuto(i) ? 'AUTO' : i}</span>`;
         const more = ring && ring.length > 1 ? `<span class="slot-more">${ring.length} 回合 ▸</span>` : '';
         const html = s ? filled(s, badge).replace('<span class="slot-when">', `<span class="slot-when">${more}`) : `${badge}<span class="slot-empty">${mode === 'save' ? '空白檔位 · 點這裡存檔' : '（空）'}</span>`;
-        list.append(button(html, !s, () => (ring && ring.length > 1 ? showAuto(i) : done(ring?.[0]?.id ?? i))));
+        list.append(button(html, !s, () => (ring && ring.length > 1 ? showAuto(i) : done(ring?.[0]?.id ?? i)), s, ring?.[0]?.id ?? i));
       }
     };
     const row = document.createElement('div');

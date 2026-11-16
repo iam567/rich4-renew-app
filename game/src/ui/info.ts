@@ -2,6 +2,7 @@
  * 查詢 — the player information screen (docs/rules/09 §7.10) with the original's three pages: assets, property
  * (filters 全部 / 住宅區 / 商業區 / 房屋 / 連鎖店) and stocks, for any player picked by tab.
  */
+import { CQ_FAC_NAMES, CQ_MAP } from '../core/chongqing';
 import { CHARACTERS, playerName } from '../core/characters';
 import { day, month, year } from '../core/date';
 import type { Game } from '../core/game';
@@ -27,8 +28,9 @@ export class InfoScreen {
   private page = 0;
   private filter = 0;
 
-  constructor(readonly game: Game, readonly bank: SpriteBank) {
-    this.who = game.isPlayerId(game.current) ? game.current : Math.max(0, game.players.findIndex(q => q.human));
+  /** `who`: the player shown first (else the one whose turn it is). */
+  constructor(readonly game: Game, readonly bank: SpriteBank, who?: number) {
+    this.who = who ?? (game.isPlayerId(game.current) ? game.current : Math.max(0, game.players.findIndex(q => q.human)));
     this.el = document.createElement('div');
     this.el.className = 'info';
     this.el.addEventListener('click', e => {
@@ -107,7 +109,7 @@ export class InfoScreen {
     inner.style.zoom = String(Math.max(0.6, room / inner.offsetHeight));
   }
 
-  private render() {
+  render() {
     const g = this.game, p = g.players[this.who], ch = CHARACTERS[p.character];
     const face = this.bank.art('Data', 2, p.character);
     const god = g.objects.godName(p), godSlot = p.god ? g.objects.slots[p.god - 1] : undefined;
@@ -141,7 +143,7 @@ export class InfoScreen {
     // Every city's properties and the nationwide market in 大富豪模式 (one board and market otherwise).
     const boards = g.boards();
     const lands = boards.flatMap(b => b.lands.filter(l => l.owner === me)), facs = boards.flatMap(b => b.facilities.filter(f => f.owner === me));
-    const stockValue = g.markets().reduce((v, m) => m.holdingsValue(v, p), 0);
+    const stockValue = g.markets().reduce((v, m) => m.holdingsValue(v, p) + m.positionsValue(p), 0);
     const companies = boards.reduce((n, b) => n + b.companies.filter(c => c.controller === me).length, 0);
     const cell = (label: string, value: string) => `<div class="info-cell"><span>${label}</span><b>${value}</b></div>`;
     // Every tool the player holds: the original 13, 大富豪模式's 14–16, the map's own (歌舞伎町 17, 18).
@@ -193,7 +195,7 @@ export class InfoScreen {
       for (const f of board.facilities) {
         if (f.owner !== me) continue;
         rows.push({
-          name: f.name, stage: f.level ? `${FACILITY_TYPES[f.type]}${f.level > 1 ? ` ${f.level}級` : ''}` : '空　地',
+          name: f.name, stage: f.level ? `${(this.game.settings.mapId === CQ_MAP ? CQ_FAC_NAMES[f.type] : undefined) ?? FACILITY_TYPES[f.type]}${f.level > 1 ? ` ${f.level}級` : ''}` : '空　地',
           price: f.price * F, fee: (f.fees[f.level] ?? 0) * F, lease: lease(f.expire), facility: true,
         });
       }
@@ -232,6 +234,9 @@ export class InfoScreen {
       const n = h[i]?.shares ?? 0;
       return `<tr${n ? '' : ' class="dim"'}><td>${s.name}</td><td>${n.toLocaleString('en-US')}</td><td>${money(Math.trunc(n * s.price))}</td></tr>`;
     }).join('');
-    return `<table class="info-table stocks"><thead><tr><th>股票</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows}</tbody></table><div class="info-pager" hidden></div>`;
+    // 槓桿 positions: each one's multiple and what it is worth now
+    const m = this.game.stocks;
+    const pos = m.positions.filter(x => x.p === this.who).map(x => `<tr><td>${st.stocks[x.slot].name}・${x.long ? '做多' : '做空'}${x.lev}倍</td><td>${x.shares.toLocaleString('en-US')}</td><td>${money(m.positionValue(x))}</td></tr>`).join('');
+    return `<table class="info-table stocks"><thead><tr><th>股票</th><th>張數</th><th>市值</th></tr></thead><tbody>${rows}${pos}</tbody></table><div class="info-pager" hidden></div>`;
   }
 }

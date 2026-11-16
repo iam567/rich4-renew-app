@@ -107,10 +107,34 @@ export interface Board {
    * the original maps, whose names are the stock table's (03 §2.4). Only names: the table's numbers stay.
    */
   stockNames?: string[];
+  /** The stock table's group (0..7) when the map picks one (自建地圖's 股票模板); otherwise the map number's (03 §2.1). */
+  stockGroup?: number;
+  /** A map on stacked levels (重慶, docs/rules/33, core/chongqing.ts): absent on every other map. */
+  levels?: BoardLevels;
+}
+
+/**
+ * The levels of a stacked map (重慶: editor/build_chongqing.py build): every square's level (1 the lowest), the plots'
+ * levels in record order, the plates' outlines, and the links between the levels — the escalator [on level 2, on
+ * level 3] and the elevator [on level 3, 2, 1], each taken by stopping exactly on its square; the 公路's squares.
+ */
+export interface BoardLevels {
+  node: number[];
+  lands: number[];
+  facilities: number[];
+  companies: number[];
+  plates: Record<string, [number, number][]>;
+  escalator: [number, number];
+  elevator: [number, number, number];
+  ramp: number[];
 }
 
 /** One record of the extracted map JSON (only what the parser needs). */
-interface RawRecord { id: number; raw_hex: string }
+/**
+ * `name`: the record's name as written, over the Big5 one in raw_hex — 自建地圖 (issue #104: a player's names in
+ * Simplified, Japanese … lost every character Big5 lacks, 「水□广□」).
+ */
+interface RawRecord { id: number; raw_hex: string; name?: string }
 export interface RawMap {
   map_id: number;
   name: string;
@@ -123,6 +147,10 @@ export interface RawMap {
   landscapes: RawRecord[];
   /** The map's own 12 stock names by slot (remake cities). */
   stock_names?: string[];
+  /** The stock table's group the map picks (自建地圖). */
+  stock_group?: number;
+  /** A stacked map's levels (重慶). */
+  levels?: BoardLevels;
 }
 
 class Bytes {
@@ -160,7 +188,7 @@ export function parseBoard(raw: RawMap): Board {
   const lands = raw.lands.map((r): Land => {
     const b = new Bytes(r.raw_hex);
     return {
-      id: r.id, x: b.i16(0), y: b.i16(2), name: b.big5(4, 16), tmpState: b.u8(0x17), chain: b.u8(0x18) !== 0,
+      id: r.id, x: b.i16(0), y: b.i16(2), name: r.name ?? b.big5(4, 16), tmpState: b.u8(0x17), chain: b.u8(0x18) !== 0,
       owner: b.u8(0x19), level: b.u8(0x1a), facing: b.u8(0x1b), price: b.u16(0x1c), perLevel: b.u16(0x1e),
       tolls: b.u16s(0x20, 6), lastToll: b.u32(0x2c), expire: b.u32(0x30),
     };
@@ -168,7 +196,7 @@ export function parseBoard(raw: RawMap): Board {
   const facilities = raw.facilities.map((r): Facility => {
     const b = new Bytes(r.raw_hex);
     return {
-      id: r.id, x: b.i16(0), y: b.i16(2), name: b.big5(4, 16), type: b.u8(0x18), owner: b.u8(0x19), level: b.u8(0x1a),
+      id: r.id, x: b.i16(0), y: b.i16(2), name: r.name ?? b.big5(4, 16), type: b.u8(0x18), owner: b.u8(0x19), level: b.u8(0x1a),
       tmpState: b.u8(0x1c), labTool: b.u8(0x1d), labDays: b.u8(0x1e), price: b.u16(0x22), fees: b.u16s(0x24, 6),
       lastFee: b.u32(0x30), expire: b.u32(0x34),
     };
@@ -176,7 +204,7 @@ export function parseBoard(raw: RawMap): Board {
   const companies = raw.companies.map((r): Company => {
     const b = new Bytes(r.raw_hex);
     return {
-      id: r.id, x: b.i16(0), y: b.i16(2), name: b.big5(4, 16), controller: b.u8(0x18), stockSlot: b.u8(0x19),
+      id: r.id, x: b.i16(0), y: b.i16(2), name: r.name ?? b.big5(4, 16), controller: b.u8(0x18), stockSlot: b.u8(0x19),
       category: b.u8(0x1a), facing: b.u8(0x1b), resource: b.u16(0x20), baseFee: b.u16(0x22), value: b.i32(0x24),
       fundA: b.i32(0x28), fundB: b.i32(0x2c), freeShares: b.i32(0x30),
     };
@@ -187,11 +215,20 @@ export function parseBoard(raw: RawMap): Board {
   });
   const board: Board = { name: raw.name, mapId: raw.map_id, size: raw.width ?? 2304, nodes, lands, facilities, companies, landscapes };
   if (raw.stock_names?.length === 12) board.stockNames = [...raw.stock_names];
+  if (raw.stock_group != null) board.stockGroup = (((raw.stock_group | 0) % 8) + 8) % 8;
+  if (raw.levels) {
+    const l = raw.levels;
+    board.levels = { node: [...l.node], lands: [...l.lands], facilities: [...l.facilities], companies: [...l.companies],
+      plates: l.plates, escalator: [...l.escalator] as [number, number], elevator: [...l.elevator] as [number, number, number], ramp: [...l.ramp] };
+  }
   return board;
 }
 
 /** The world's side in map px (2304 unless the map says otherwise). */
 export const worldSize = (board: Board) => board.size ?? 2304;
+
+/** The level of a square on a stacked map (1 on every other map). */
+export const levelOf = (board: Board, nodeId: number) => board.levels?.node[nodeId - 1] ?? 1;
 
 /** Records are 1-based in the original; lookups go through these helpers. */
 export const nodeById = (board: Board, id: number) => board.nodes[id - 1];

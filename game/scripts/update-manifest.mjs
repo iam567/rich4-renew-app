@@ -13,7 +13,9 @@ import { join, relative, resolve, sep } from 'node:path';
 import { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-export const SHELL = 1;
+// 2 (1.2.0): the LAN room's native parts (LanInfo plugin, local-network permission, the PC's own room) — 1.1.x is told to
+// download 1.2 instead of updating to it (the user 2026-11-13).
+export const SHELL = 2;
 export const BASE_FILE = 'update-base.json';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');

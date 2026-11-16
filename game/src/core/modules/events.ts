@@ -12,7 +12,8 @@ import type { Game } from '../game';
 import type { Rng } from '../rng';
 import type { Player } from '../types';
 import { cardName, cardPrice, handStacks, isTycoonCard, stackOf } from './cards';
-import { regionalDraw } from './regional-events'; // 大富豪模式 local news / fate (docs/rules/18)
+import { eligible, regionalDraw, runEvent } from './regional-events'; // 大富豪模式 local news / fate (docs/rules/18)
+import { generalCard } from './general-cards';
 
 /** Card points and tools selling the fate entry 32 needs (04 §4.4, 05 §2.4); used when the modules provide them. */
 interface SellAllHook { sellAllForPoints(p: Player): number }
@@ -28,6 +29,9 @@ const CARD_NAMES = [
 const TOOL_PRICES = [15, 30, 25, 25, 80, 150, 100, 30, 30, 40, 95, 150, 250];
 
 type ResultFn = (fx: string, lines: ResultLine[], o?: Partial<EventResult> & { node?: number }) => Flow;
+
+/** Test hook: the original's 證交稅 × F (news #13; off in the remake, issue #87), for the golden runs from before. */
+export const STOCK_TAX_INDEX = { on: false };
 
 export const FATE_COUNT = 37;
 export const NEWS_COUNT = 36;
@@ -65,7 +69,7 @@ export interface ResultLine { p?: number; text: string; amount?: number }
  */
 export interface EventResult {
   /** 'reward': a 獎勵卡 (core/rewards.ts) in the same box. */
-  src: 'news' | 'fate' | 'reward';
+  src: 'news' | 'fate' | 'reward' | 'holiday';
   id: number;
   fx: string;
   /** The category (news) or 命運, and the event in a few words. */
@@ -123,10 +127,38 @@ export class Events {
     // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own fate events instead; never in a normal game.
     if (this.g.world && (yield* regionalDraw(this.g, p, 'fate'))) return;
     if (this.g.rules?.fate && (yield* this.g.rules.fate(this.g, p))) return; // 歌舞伎町's own deck (docs/rules/21 §6)
+    if (this.g.settings.deck?.fate.length) { yield* this.deckDraw(p, 'fate'); return; } // 自建地圖's own deck
     const t = this.drawFate(p);
     if (t < 0) return;
     yield* this.applyFate(p, t);
   }
+
+  /**
+   * 自建地圖's own deck (GameSettings.deck): a card drawn at random from the map's list until one applies — an original
+   * entry by its own check, a library card by its eligibility — and run as it always runs, its headline rewritten.
+   */
+  private *deckDraw(p: Player, kind: 'news' | 'fate'): Flow {
+    const d = this.g.settings.deck!, ids = [...(kind === 'news' ? d.news : d.fate)], rng = this.g.rng;
+    while (ids.length) {
+      const id = ids.splice(rng.below(ids.length), 1)[0];
+      const o = /^o-([nf])-(\d+)$/.exec(id);
+      if (o) {
+        const t = Number(o[2]);
+        if (kind === 'fate') { const r = this.fateCheck(p, t); if (r >= 0) { yield* this.applyFate(p, r); return; } }
+        else if (t < NEWS_COUNT && this.newsCheck(t)) { yield* this.applyNews(p, t); return; }
+        continue;
+      }
+      const c = generalCard(id);
+      if (!c || c.kind !== kind || !eligible(this.g, p, c)) continue;
+      const w = d.words?.[id];
+      const card = w ? { ...c, head: w, text: [w, ...c.text.split('\n').slice(1)].join('\n') } : c;
+      yield* runEvent(this.g, p, card, rng);
+      return;
+    }
+  }
+
+  /** A rewritten headline of an original entry (GameSettings.deck.words), else its own. */
+  private word(id: string, own: string): string { return this.g.settings.deck?.words?.[id] ?? own; }
 
   /** Read the deck until an entry passes its check (fcn_0044db81); skipped entries are consumed. Returns the entry or -1. */
   drawFate(p: Player): number {
@@ -160,11 +192,12 @@ export class Events {
   /** Text shown for a fate entry (phase 0). */
   fateText(t: number): string {
     const F = this.g.priceIndex;
-    if (t >= 33) return `${PRISON_TEXT[this.g.mapSlot & 3][t - 33]}，坐牢${PRISON_DAYS[t - 33]}天`;
-    if (t === 2) return `${FATE_TEXT[t]}${10000 * F}元`;
-    if (t in FINES) return `${FATE_TEXT[t]}${FINES[t] * 1000 * F}元`;
-    if (t in GAINS) return `${FATE_TEXT[t]}${GAINS[t] * 1000 * F}元`;
-    return FATE_TEXT[t];
+    const w = (own: string) => this.word(`o-f-${t}`, own);
+    if (t >= 33) return `${w(PRISON_TEXT[this.g.mapSlot & 3][t - 33])}，坐牢${PRISON_DAYS[t - 33]}天`;
+    if (t === 2) return `${w(FATE_TEXT[t])}${10000 * F}元`;
+    if (t in FINES) return `${w(FATE_TEXT[t])}${FINES[t] * 1000 * F}元`;
+    if (t in GAINS) return `${w(FATE_TEXT[t])}${GAINS[t] * 1000 * F}元`;
+    return w(FATE_TEXT[t]);
   }
 
   /** Show and apply one fate entry (call_table[t], or call_table[game_map × 4 + t] for 33..36), then its result. */
@@ -405,6 +438,7 @@ export class Events {
     // 大富豪模式 hook (docs/rules/18 §2): a tycoon city may draw one of its own news events instead; never in a normal game.
     if (this.g.world && (yield* regionalDraw(this.g, p, 'news'))) return;
     if (this.g.rules?.news && (yield* this.g.rules.news(this.g, p))) return; // 歌舞伎町's own deck (docs/rules/21 §6)
+    if (this.g.settings.deck?.news.length) { yield* this.deckDraw(p, 'news'); return; } // 自建地圖's own deck
     const ev = this.drawNews();
     if (ev < 0) return;
     yield* this.applyNews(p, ev);
@@ -480,7 +514,7 @@ export class Events {
         if (g.over) return;
         yield* done('alien', [
           { text: `${this.refName(center)}一帶${hit.changed.length}處房地被夷為空地` },
-          ...this.byOwner(hit.owners, n => `失去${n}處地產`),
+          ...this.byOwner(hit.owners, n => `失去${n}處地產`, hit.changed),
           ...hit.hurt.map(id => ({ p: id, text: '被外星人打傷，住院3天' })),
         ], { node: this.nodeOf(center), refs: hit.changed, focus: hit.hurt });
         return;
@@ -517,6 +551,7 @@ export class Events {
         return;
       }
       case 7: { // public auction of an ownerless property
+        if (g.rt) return; // 即時制: no auctions (the user 2026-11-08)
         const refs = [...b.lands.filter(l => !l.owner).map(l => l.id + 2000), ...b.facilities.filter(f => !f.owner).map(f => f.id + 4000)];
         const ref = refs[rng.below(refs.length)];
         yield* show(`公開拍賣公有土地：${this.refName(ref)}`, ref);
@@ -559,8 +594,9 @@ export class Events {
       case 12: // land tax: 5% of the original property values, × F
         yield* this.taxEveryone(q => Math.trunc(this.propertyValue(q) * 0.05) * F, '地價稅', '政府開徵地價稅', show, done);
         return;
-      case 13: // securities tax: 5% of the share value, × F
-        yield* this.taxEveryone(q => Math.trunc(this.shareValue(q) * 0.05) * F, '證交稅', '政府開徵證券交易稅', show, done);
+      case 13: // securities tax: 5% of the share value — not × F (issue #87, the user 2026-11-11: the prices already
+        // follow the market, so the original's × F charged a late game 17 億 on 1 億 of shares)
+        yield* this.taxEveryone(q => Math.trunc(this.shareValue(q) * 0.05) * (STOCK_TAX_INDEX.on ? F : 1), '證交稅', '政府開徵證券交易稅', show, done);
         return;
       case 15: { // gas explosion: an ordinary built lot one level down (bug #8: no candidates, nothing happens)
         const lots = b.lands.filter(l => l.level !== 0);
@@ -613,7 +649,7 @@ export class Events {
         yield* show('超級颱風過境', center);
         const hit = yield* this.area(center, function* (ref) { g.damageProperty(ref, 0); }, false);
         yield* done('typhoon', [{ text: hit.changed.length ? `${this.refName(center)}一帶${hit.changed.length}棟房屋各降一級` : `${this.refName(center)}一帶所幸沒有房屋受損` },
-          ...this.byOwner(hit.owners, n => `${n}棟房屋受損`)],
+          ...this.byOwner(hit.owners, n => `${n}棟房屋受損`, hit.changed)],
           { node: this.nodeOf(center), refs: hit.changed });
         return;
       }
@@ -702,6 +738,9 @@ export class Events {
 
   private *show(p: Player, ev: number, text: string, ref?: number, faces?: BoardFace[]): Flow {
     const node = ref ? this.nodeOf(ref) : undefined;
+    // (自建地圖's rewritten headline: the first line only; the effect's lines stay)
+    const w = this.g.settings.deck?.words?.[`o-n-${ev}`];
+    if (w) text = [w, ...text.split('\n').slice(1)].join('\n');
     yield { t: 'fx', kind: 'news', p: p.id, node, data: { id: ev, category: NEWS_CATEGORY(ev), text, ...(faces?.length ? { faces } : {}) } };
   }
 
@@ -783,8 +822,10 @@ export class Events {
   }
 
   /** One line per owner (player ids in order) with how many of their properties were hit. */
-  private byOwner(owners: number[], text: (n: number) => string): ResultLine[] {
-    return this.g.players.map((_, i) => i).map(p => [p, owners.filter(o => o === p).length] as const).filter(([, n]) => n > 0).map(([p, n]) => ({ p, text: text(n) }));
+  private byOwner(owners: number[], text: (n: number) => string, refs?: number[]): ResultLine[] {
+    // 即時制 names the lots too (the user 2026-11-08: which ones were lost); the turn-based box keeps the count
+    const named = (p: number) => (this.g.rt && refs ? `：${refs.filter((_, i) => owners[i] === p).map(r => this.refName(r)).join('、')}` : '');
+    return this.g.players.map((_, i) => i).map(p => [p, owners.filter(o => o === p).length] as const).filter(([, n]) => n > 0).map(([p, n]) => ({ p, text: text(n) + named(p) }));
   }
 
   /** The lot owner's cry event[3 | 4] after the result (none for an ownerless lot). */

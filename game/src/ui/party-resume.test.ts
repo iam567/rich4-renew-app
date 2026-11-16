@@ -52,7 +52,7 @@ describe('派對模式: back after the app closed (issue #50)', () => {
     expect(host.members.filter(m => m.character === 3).length).toBe(1);
   });
 
-  it('a stranger with the room code of a game going on is told it started, and gets no seat', async () => {
+  it('a stranger with the room code of a game going on watches it (圍觀, the user 2026-11-03), with no seat', async () => {
     const host = room(0);
     const code = await host.create('2', false);
     const g = room(3);
@@ -61,9 +61,11 @@ describe('派對模式: back after the app closed (issue #50)', () => {
     await settle();
     store.clear(); // another device
     const s = room(5);
-    await expect(s.join(code)).rejects.toThrow('已經開始');
+    await s.join(code);
     await settle();
-    expect(s.started).toBeNull();
-    expect(s.resume).toBeNull();
+    expect(s.watching).toBe(true);
+    expect(s.started).not.toBeNull();
+    expect(s.mine.size).toBe(0);
+    expect(Object.keys(host.started!.seats)).not.toContain(s.myId);
   });
 });

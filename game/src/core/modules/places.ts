@@ -4,6 +4,7 @@
  * the lottery, the three mini games, the magic house, and auctions.
  */
 import { addMonths } from '../date';
+import { ruleOn } from '../compat';
 import { companyOf, facilityOf, landOf, type BoardNode } from '../board';
 import { CHARACTERS } from '../characters';
 import { ask, type Flow } from '../flow';
@@ -264,6 +265,7 @@ export class Places {
       e = Number(yield ask({ t: 'choose', p: p.id, title: '魔法屋', text: `對象：${MAGIC_GROUPS[group]}（${names}）`, options, cancellable: false, screen: 'magic' }));
       if (!(e >= 0 && e < 12)) e = 6;
     } else if (targets.includes(p)) e = 6;
+    else if (g.hellRules() && g.aiLevel(p) === 3) e = g.smart.magicSpell(p, targets); // 地獄: what hurts the humans most
     else { e = g.rng.below(11); if (e === 6) e = 7; }
     yield { t: 'fx', kind: 'magic', p: p.id, data: { group, magic: e, targets: targets.map(q => q.id) } };
     yield* this.castMagic(p, e, targets);
@@ -310,6 +312,9 @@ export class Places {
       for (const q of [...targets].sort((a, b) => a.id - b.id)) {
         if (g.over) return;
         if (!q.whoPlays) continue;
+        // 即時制: in a shop meanwhile, or hit enough this turn (簡單 / 中等): out of reach (the user 2026-11-08)
+        if (q.id !== visitor.id && g.rt?.isShielded(q.id)) continue;
+        if (q.id !== visitor.id) g.rt?.struck(q.id);
         g.current = q.id;
         yield* this.spell(visitor, q, e);
       }
@@ -407,7 +412,7 @@ export class Places {
         break;
       case 11:
         // Proceeds go to the target standing there; an unsold lot keeps its owner.
-        if (idle && ref) yield* this.auction(q.id, ref);
+        if (idle && ref && !g.rt) yield* this.auction(q.id, ref);
         break;
     }
   }
@@ -429,9 +434,13 @@ export class Places {
     return Math.trunc(r.price * (1 + 0.5 * r.level)) * g.priceIndex;
   }
 
-  /** Computer's mental ceiling fcn_00439f0d (02 §10.5). */
+  /**
+   * Computer's mental ceiling fcn_00439f0d (02 §10.5). Its cap was 3–3.5 × the price, under a level-5 lot's reserve
+   * (3.5 ×): never a bid on one (「拍賣卡沒用，次次流拍」); from 1.2.3 (compat 'auction-cap') 3–3.5 × the reserve,
+   * the same on a bare lot. The same rng draws either way.
+   */
   aiCeiling(p: Player, ref: number, start: number): number {
-    const g = this.g, F = g.priceIndex;
+    const g = this.g, F = g.priceIndex, onReserve = ruleOn(g.settings.level, 'auction-cap');
     const r = (g.rng.rand() / 32767) * 0.3 + 0.5;
     let value: number, cap: number;
     if (ref > 4000) {
@@ -439,14 +448,14 @@ export class Places {
       const all = g.board.facilities, free = all.filter(x => x.owner === 0).length;
       const scarcity = 6 - (4 * free) / all.length;
       value = Math.trunc(((f.level >> 1) + 1) * start * F * scarcity * r);
-      cap = Math.trunc(f.price * F * (g.rng.rand() / 65536 + 3));
+      cap = Math.trunc((onReserve ? start : f.price * F) * (g.rng.rand() / 65536 + 3));
     } else {
       const l = g.board.lands[ref - 2001];
       const all = g.board.lands, free = all.filter(x => x.owner === 0).length;
       const same = all.filter(x => x.owner === p.id + 1 && x.name === l.name).length;
       const scarcity = 6 - (4 * free) / all.length;
       value = Math.trunc(((l.level >> 1) + 1 + same) * start * F * scarcity * r);
-      cap = Math.trunc(l.price * F * (g.rng.rand() / 65536 + 3));
+      cap = Math.trunc((onReserve ? start : l.price * F) * (g.rng.rand() / 65536 + 3));
     }
     return Math.min(value, cap, p.cash);
   }
@@ -458,6 +467,8 @@ export class Places {
    */
   *auction(seller: number, ref: number, worldwide = false): Flow<number> {
     const g = this.g;
+    // 即時制 (the user 2026-11-08): no auctions — everyone would be pulled into one room at once
+    if (g.rt) return -1;
     const isFacility = ref > 4000 && ref < 6000;
     if (!isFacility && !(ref > 2000 && ref < 4000)) return -1;
     const prop = isFacility ? g.board.facilities[ref - 4001] : g.board.lands[ref - 2001];
@@ -468,7 +479,7 @@ export class Places {
     // Seats (02 §10.3): later marks overwrite earlier ones.
     const seats: Seat[] = [];
     for (const p of g.players) {
-      if (!p.whoPlays || (!worldwide && !g.here(p))) continue; // 大富豪模式: who is in this city bids, everyone at a bankruptcy (17 §9)
+      if (!p.whoPlays || g.isBeggar(p) || (!worldwide && !g.here(p))) continue; // 大富豪模式: who is in this city bids, everyone at a bankruptcy (17 §9); 派對模式's 乞丐 never
       let flag = 0;
       if (p.cash <= start) flag = 8;
       if (p.hotel) flag = 1;

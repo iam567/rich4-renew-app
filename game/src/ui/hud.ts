@@ -3,6 +3,7 @@
  * cloud, news/fate boards and the choice dialogs. Drawn as crisp vector UI in the game's toy style, with the
  * redrawn portraits and art; text is real text.
  */
+import { CQ_FAC_NAMES, CQ_MAP } from '../core/chongqing';
 import { CHARACTERS, playerName } from '../core/characters';
 import type { Game } from '../core/game';
 import type { Ask } from '../core/types';
@@ -65,6 +66,7 @@ export class Hud {
       open: (node, full) => { mine = node; if (question) node.dataset.keep = '1'; this.show(node, full); },
       close: () => { if (mine) this.hide(mine); }, scale: this.scale,
       flash: (text, ms) => this.flash(text, ms),
+      question,
     };
   }
   /** Set by the controller: the game screen element, for full-screen scenes. */
@@ -376,7 +378,66 @@ export class Hud {
   }
 
   /** Ask a human player (not the turn itself: that is the GO button). */
+  /**
+   * 股市 kept up across its questions (the user 2026-11-08: taps between two trades were lost, the screen built anew each
+   * time): the same sheet and screen while the market asks again; a tap while the engine still takes the last trade
+   * is kept and sent with the next question; the sheet goes on 離開 or when no question follows.
+   */
+  private stockLive: { p: number; screen: StockScreen; sheet: HTMLElement; resolve: ((v: unknown) => void) | null; queued: unknown; timer: number; day: number } | null = null;
+
+  /** 即時制: the day the open market was opened on (null: none open). */
+  stockOpenedDay(): number | null { return this.stockLive ? this.stockLive.day : null; }
+  /** 即時制: leaves the open market (its 離開 pressed). */
+  leaveStock() { this.stockLive?.screen.done(-1); }
+
+  private closeStock() {
+    const L = this.stockLive;
+    if (!L) return;
+    this.stockLive = null;
+    clearTimeout(L.timer);
+    this.hideAny([L.sheet]);
+  }
+
+  private stockAsk(a: Extract<Ask, { t: 'stock-market' }>): Promise<unknown> {
+    let L = this.stockLive;
+    if (!L || L.p !== a.p || !L.sheet.isConnected) {
+      if (L) this.closeStock();
+      const ch = CHARACTERS[this.game.players[a.p]?.character ?? 0];
+      const screen = new StockScreen(this.game, a.p, tycoon.world);
+      // 即時制: the prices shown are those of this moment, as the trades in it go (core/modules/stocks.ts humanMarket)
+      if (this.game.rt) screen.frozen = (this.game.stocks as unknown as { stocks: object[] }).stocks.map(x => ({ ...x })) as never;
+      const sheet = el('div', 'msg sheet wide stocks ask', `<div class="ribbon"><span class="ribbon-face">${this.portrait(ch.id)}</span>股市</div>`);
+      sheet.dataset.keep = '1';
+      const exit = el('div', 'choices sheet-close');
+      const b = el('button', 'candy ghost', '離開股市');
+      b.onclick = () => { audio.ui('no'); screen.done(-1); };
+      exit.append(b);
+      sheet.append(screen.el, exit);
+      const live = { p: a.p, screen, sheet, resolve: null as ((v: unknown) => void) | null, queued: null as unknown, timer: 0, day: this.game.daysElapsed };
+      screen.done = v => {
+        if (this.stockLive !== live) return;
+        if (!live.resolve) { if (v === -1) this.closeStock(); else live.queued = v; return; }
+        const r = live.resolve;
+        live.resolve = null;
+        if (v === -1) this.closeStock();
+        else live.timer = window.setTimeout(() => { if (this.stockLive === live && !live.resolve) this.closeStock(); }, 2500);
+        r(v);
+      };
+      this.stockLive = L = live;
+      this.show(sheet, true);
+    } else {
+      clearTimeout(L.timer);
+      L.screen.render();
+    }
+    const live = L;
+    return new Promise(resolve => {
+      live.resolve = resolve;
+      if (live.queued !== null) { const v = live.queued; live.queued = null; live.screen.done(v as never); }
+    });
+  }
+
   ask(a: Exclude<Ask, { t: 'turn' }>): Promise<unknown> {
+    if (a.t === 'stock-market') return this.stockAsk(a);
     const screen = askScreens[askKey(a)];
     if (screen) return screen(this.context(this.shell ?? this.area, true), a);
     const who = this.game.players[a.p], ch = CHARACTERS[who?.character ?? 0];
@@ -409,7 +470,7 @@ export class Hud {
         box.innerHTML = `${head(a.title ?? '請選擇設施類別')}<div class="msg-text">${a.text ? esc(a.text) : a.price ? `建設費用 ${money(a.price)} 元` : '免費建設'}</div>`;
         row.className = 'choices facilities';
         const strip = this.bank.art('Data', 517, 4), ICON_X = [9, 78, 147, 215, 283];
-        ['公園', '旅館', '購物中心', '加油站', '研究所'].forEach((t, i) => {
+        (this.game.settings.mapId === CQ_MAP ? [0, 1, 2, 3, 4].map(i => CQ_FAC_NAMES[i]) : ['公園', '旅館', '購物中心', '加油站', '研究所']).forEach((t, i) => {   // 重慶's own names (docs/rules/33 §6)
           const pic = strip ? `<span class="fac-pic"><i style="background-image:url('${strip.src}');--x:${ICON_X[i]}"></i></span>` : '';
           button(`${pic}<span class="fac-name">${t}</span>`, i, 'cell fac-cell');
         });
@@ -478,17 +539,6 @@ export class Hud {
         box.append(row);
         this.show(box);
         this.fitChoices(box, row);
-        return;
-      } else if (a.t === 'stock-market') {
-        const screen = new StockScreen(this.game, a.p, tycoon.world);
-        screen.done = v => done(v);
-        const sheet = el('div', 'msg sheet wide stocks', `<div class="ribbon"><span class="ribbon-face">${this.portrait(ch.id)}</span>股市</div>`);
-        const exit = el('div', 'choices sheet-close');
-        const b = el('button', 'candy ghost', '離開股市');
-        b.onclick = () => { audio.ui('no'); done(-1); };
-        exit.append(b);
-        sheet.append(screen.el, exit);
-        this.show(sheet, true);
         return;
       } else if (a.t === 'amount') {
         box.innerHTML = `${head(a.title)}${a.text ? `<div class="msg-text small">${lines(a.text)}</div>` : ''}`;
@@ -615,6 +665,33 @@ export class Hud {
       const ro = new ResizeObserver(fit);
       ro.observe(box.parentElement ?? this.layer);
     });
+  }
+
+  /**
+   * 派對模式, while another player's turn runs (查詢, 股市): a sheet on a layer of its own, so the game's boxes come and go
+   * under it instead of closing it. `closed` runs however it goes: 關閉, or `closeWait` when this phone is asked something.
+   */
+  waitSheet(ribbon: string, node: HTMLElement, cls: string, closed: () => void = () => {}) {
+    this.closeWait();
+    if (!this.waitLayer) { this.waitLayer = el('div', 'ui-layer full wait-layer'); (this.shell ?? this.layer).append(this.waitLayer); }
+    const box = el('div', `msg sheet wide ${cls}`, `<div class="ribbon">${ribbon}</div>`);
+    const row = el('div', 'choices sheet-close');
+    const btn = el('button', 'candy ghost', '關閉');
+    btn.onclick = () => { audio.ui('no'); this.closeWait(); };
+    row.append(btn);
+    box.append(node, row);
+    this.waitLayer.replaceChildren(box);
+    this.waitLayer.classList.add('show');
+    this.waitClosed = closed;
+  }
+  private waitLayer: HTMLElement | null = null;
+  private waitClosed: (() => void) | null = null;
+  closeWait() {
+    const f = this.waitClosed;
+    this.waitClosed = null;
+    this.waitLayer?.classList.remove('show');
+    this.waitLayer?.replaceChildren();
+    f?.();
   }
 
   /** A sheet holding a live element (查詢); resolves when closed. */

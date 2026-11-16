@@ -6,6 +6,7 @@
  * map (the eight originals and the 自製地圖), three computer opponents are drawn at random (characters not beaten yet
  * first) and the game starts with the same settings. Pure logic; the screen is results.ts.
  */
+import { rtMapOk } from '../core/realtime';
 import type { GameResults } from '../core/stats';
 import type { GameSettings } from '../core/types';
 
@@ -13,7 +14,7 @@ import type { GameSettings } from '../core/types';
 export interface RunRecord { cleared: number[]; defeated: number[] }
 
 /** The settings that carry over to the next game (01 §2.1: the new-game screen's six options; the remake's 電腦難度). */
-export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex' | 'aiLevel'>;
+export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex' | 'aiLevel' | 'monthTasks' | 'realtime'>;
 
 export const OPPONENTS = 3;
 
@@ -50,5 +51,8 @@ export function nextSettings(carried: CarriedSettings, mapId: number, humans: nu
     fundIndex: carried.fundIndex, traffic: carried.traffic, landLimitIndex: carried.landLimitIndex,
     daysLimitIndex: carried.daysLimitIndex, victoryIndex: carried.victoryIndex, startDate, seed,
     ...(carried.aiLevel ? { aiLevel: carried.aiLevel } : {}),
+    // 挑戰模式 goes on into the next game (issue #68; never on 大富翁城), 即時制 too (on a standard map)
+    ...(carried.monthTasks && mapId !== 105 && !carried.realtime ? { monthTasks: carried.monthTasks } : {}),
+    ...(carried.realtime && rtMapOk(mapId) ? { realtime: carried.realtime } : {}),
   };
 }

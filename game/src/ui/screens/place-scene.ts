@@ -6,7 +6,21 @@
  */
 import { CHARACTERS, playerName } from '../../core/characters';
 import type { ScreenContext } from './registry';
+import { audio } from '../audio';
 import './place-scene.css';
+
+/** The question scenes open now (closeQuestionScenes). */
+const asking = new Set<{ close(): void }>();
+
+/**
+ * 即時制 (the user 2026-11-08): the game answered the open question by itself (time up in a shop, the lottery, the
+ * magic house …) — its scene closes, and the music it changed goes back.
+ */
+export function closeQuestionScenes() {
+  if (!asking.size) return;
+  for (const s of [...asking]) s.close();
+  audio.restore();
+}
 
 export const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: string): HTMLElementTagNameMap[K] => {
   const e = document.createElement(tag);
@@ -104,6 +118,7 @@ export function openScene(ctx: ScreenContext, cls: string, size: (portrait: bool
     close() {
       if (s.closed) return;
       s.closed = true;
+      asking.delete(s);
       ro.disconnect();
       for (const t of timers) { clearTimeout(t); clearInterval(t); }
       for (const [t, done] of sleeps) { clearTimeout(t); done(); }
@@ -140,6 +155,7 @@ export function openScene(ctx: ScreenContext, cls: string, size: (portrait: bool
     stage.style.transform = `scale(${k})`;
   };
   const ro = new ResizeObserver(fit);
+  if (ctx.question) asking.add(s);
   // A scene in the map area (the auction room) stays under the message layer, so the game's notices show on it.
   (opts.parent ?? (ctx.shell.isConnected ? ctx.shell : document.body)).append(root);
   ro.observe(root);

@@ -772,3 +772,90 @@ describe.skipIf(!have)('大富翁城 in the world (the finale)', () => {
     setFinaleBoard(null);
   });
 });
+
+describe.skipIf(!have)('城市決戰 (the user 2026-11-07)', () => {
+  it('the human picks it: a city drawn, everything elsewhere to the deposit at its worth, new cards and tools to points, all four there', () => {
+    setFinaleBoard(finaleBoard());
+    const keep = [0, 3, 6, 9];
+    const w = nearFinale(21, keep);
+    const h = w.players[0];
+    h.human = true; h.whoPlays = 1; h.autopilot = false;
+    w.players[3].cards = [31, 24]; w.players[3].tools[14] = 1;   // 飛行卡 and 紅卡, one 洲際飛彈
+    const before = keep.map(id => w.wealth(w.players[id]));
+    const points = w.players[3].points;
+    const flow = w.finale.check();
+    const q = flow.next().value as { t: string; options: { value: number }[] };
+    expect(q.t).toBe('choose');
+    expect(q.options.map(o => o.value)).toEqual([0, 1]);
+    const steps: Step[] = [];
+    for (let r = flow.next(1 as Answer); !r.done; r = flow.next()) steps.push(r.value);
+    const draw = steps.find(s => s.t === 'fx' && s.kind === 'showdown-draw') as { data: { pick: number } } | undefined;
+    expect(draw).toBeTruthy();
+    const city = w.finale.city;
+    expect(city).toBe(draw!.data.pick);
+    expect(w.finale.active).toBe(false);
+    expect(w.cities.length).toBe(5);          // no 大富翁城
+    keep.forEach((id, k) => {
+      const p = w.players[id];
+      // money, not chips: the total assets are what they were (property elsewhere and shares became deposit)
+      expect(w.wealth(p) - (id === 3 ? 0 : 0)).toBe(before[k]);
+      expect(p.map).toBe(city);
+      w.cities.forEach((c, i) => {
+        if (i === city) return;
+        expect(c.board.lands.some(l => l.owner === id + 1)).toBe(false);
+        expect(c.board.facilities.some(f => f.owner === id + 1)).toBe(false);
+        expect(c.stocks.holdings[id].every(x => x.shares === 0)).toBe(true);
+      });
+    });
+    expect(w.players[3].cards).toEqual([24]);
+    expect(w.players[3].tools[14]).toBe(0);
+    expect(w.players[3].points).toBeGreaterThan(points);
+    expect(w.cities.every(c => c.cards.remaining.every((n, i) => n === 0 || i + 1 <= 30 || i + 1 > 36 && i + 1 !== 39))).toBe(true);
+    expect(w.finale.runs(city)).toBe(true);
+    expect(w.cities.filter((_, i) => w.finale.runs(i)).length).toBe(1);
+    // nobody leaves the city drawn (a player 2026-11-11 flew back to the cities left behind): no train, plane or send-off
+    for (const via of ['station', 'airport'] as const) expect(w.destinations(city, via, h)).toEqual([]);
+    expect((w as unknown as { sendTarget(i: number): number }).sendTarget(city)).toBe(-1);
+    // every 20 days of it the tolls double (prices stay)
+    const pi = w.priceIndex;
+    expect(w.cities[city].tollBoost()).toBe(1);
+    w.daysElapsed += 20;
+    drain(w.finale.check());
+    expect(w.cities[city].tollBoost()).toBe(2);
+    expect(w.priceIndex).toBe(pi);
+    // kept by a save
+    const back = loadWorld(saveWorld(w));
+    expect(back.finale.city).toBe(city);
+    setFinaleBoard(null);
+  });
+
+  it('a computer-only world (or a human on 托管) goes to 大富翁城 as before, without asking', () => {
+    setFinaleBoard(finaleBoard());
+    const w = nearFinale(21, [0, 3, 6, 9]);
+    const steps = drain(w.finale.check());
+    expect(steps.some(s => 'ask' in s)).toBe(false);
+    expect(w.finale.active).toBe(true);
+    setFinaleBoard(null);
+  });
+
+  it('plays to the end: the last one standing wins (a few seeds; the doubling tolls keep it short)', () => {
+    setFinaleBoard(finaleBoard());
+    const days: number[] = [];
+    for (const seed of [21, 41, 47]) {
+      const w = nearFinale(seed, [0, 3, 6, 9]);
+      const h = w.players[0];
+      h.human = true; h.whoPlays = 1; h.autopilot = false;
+      const flow = w.finale.check();
+      flow.next();
+      for (let r = flow.next(1 as Answer); !r.done; r = flow.next()) { /* the draw, the move */ }
+      h.autopilot = true;   // the computer plays the human's seat from here
+      const start = w.daysElapsed;
+      play(w, w.run(), () => w.daysElapsed - start > 3000, s => (s.t === 'auto-turn' ? 0 : undefined as unknown as Answer));
+      expect(w.over).toBeTruthy();
+      expect(w.cities.length).toBe(5);
+      days.push(w.daysElapsed - start);
+    }
+    console.log('城市決戰 days', days.join(', '));
+    setFinaleBoard(null);
+  });
+});

@@ -9,4 +9,15 @@ contextBridge.exposeInMainWorld('rich4Desktop', {
     rename: (from, to) => ipcRenderer.invoke('update:rename', from, to),
     list: () => ipcRenderer.invoke('update:list'),
   },
+  // 局域網房間 (lan-relay.cjs): start this computer's server; its port and the addresses phones open
+  lan: {
+    start: () => ipcRenderer.invoke('lan:start'),
+    find: () => ipcRenderer.invoke('lan:find'),
+  },
+  // 全螢幕 / 視窗 and 結束遊戲 from the game's 系統 window (issue #72)
+  window: {
+    isFullScreen: () => ipcRenderer.invoke('win:isFullScreen'),
+    setFullScreen: on => ipcRenderer.invoke('win:setFullScreen', !!on),
+    quit: () => ipcRenderer.invoke('win:quit'),
+  },
 });

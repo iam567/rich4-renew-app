@@ -26,3 +26,5 @@ import './kb-pachislot';
 import './kb-exchange';   // 景品兌換所
 import './kb-fx';         // incident card, hospital wheel, toasts
 import './kb-dice';       // 確變骰子: tap the dice to keep
+import './cq-link';      // 重慶's 扶梯 / 直梯 scene (docs/rules/33 §2)
+import './cq-mahjong';    // 重慶's 麻將館 聽牌 puzzle (docs/rules/33 §6.1)

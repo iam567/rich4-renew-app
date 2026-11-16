@@ -53,3 +53,15 @@ export function today(): PackedDate {
 }
 
 export const format = (d: PackedDate) => `${year(d)}/${month(d)}/${day(d)}`;
+
+/**
+ * 除夕: the day before the lunar new year (the holiday table's lunar 12/31 — the last day of the lunar year, 29 or 30),
+ * through Intl's Chinese calendar.
+ */
+export function lunarNewYearEve(d: PackedDate): boolean {
+  try {
+    const f = new Intl.DateTimeFormat('en-u-ca-chinese', { month: 'numeric', day: 'numeric', timeZone: 'UTC' });
+    const t = addDays(d, 1), parts = f.formatToParts(new Date(Date.UTC(year(t), month(t) - 1, day(t))));
+    return parts.find(p => p.type === 'month')?.value === '1' && parts.find(p => p.type === 'day')?.value === '1';
+  } catch { return false; }
+}

@@ -491,6 +491,12 @@ export class Gifts implements MiniGame {
   px = 0x140; dir = 0; private pf = 0; pose = 0;
   /** The bomb's blast Data#526 (fcn_00450ced at (x − 55, 295)), one frame a tick. */
   boom: { x: number; y: number; frame: number } | null = null;
+  /**
+   * 小遊戲搗亂 (the user 2026-11-14): a bomb another player dropped (kind 5) — caught, a small blast and the catcher stands
+   * dazed for a second, the game goes on (the original's own bomb ends it).
+   */
+  pop: { x: number; y: number; frame: number } | null = null;
+  private dazed = 0;
   private end = 0;
   /** Where the pointer is (the original follows the cursor's x). */
   target = 0x140;
@@ -524,6 +530,16 @@ export class Gifts implements MiniGame {
 
   /** The pointer's x (the remake's control, 13-mini-games.md §4.4). */
   aim(x: number) { this.target = Math.max(0, Math.min(639, Math.round(x))); }
+
+  /** 小遊戲搗亂: a bomb dropped from x by someone watching (kind 5), while the game runs. */
+  heckle(x: number) {
+    if (this.phase !== 'play' || this.end) return;
+    const it = this.items.find(i => !i.x);
+    if (!it) return;
+    const bx = Math.max(40, Math.min(600, Math.round(x)));
+    this.sound.play(22);
+    Object.assign(it, { x: bx, y: 0x64, vy: -16, w: 5 });
+  }
 
   /** WM_TIMER (415051). */
   tick() {
@@ -578,7 +594,11 @@ export class Gifts implements MiniGame {
         const b = this.body[(this.dir - 1) * this.walkFrames + 5 + this.pf] ?? this.body[0];
         const left = this.px - b.ax, top = FLOOR - b.ay;
         if (xd > left && xd < left + b.w && it.y > top && it.y < top + b.h && !this.boom) {
-          if (kind === 4) {
+          if (kind === 5) {   // 搗亂's bomb: dazed, not over
+            this.sound.play(15);
+            this.pop = { x: this.px - 33, y: 0x127 + 40, frame: 0 };
+            this.dazed = 20; this.dir = 0; this.pose = 4;
+          } else if (kind === 4) {
             this.sound.stop(24);
             this.sound.play(15);
             this.boom = { x: this.px - 55, y: 0x127, frame: 0 };
@@ -588,9 +608,9 @@ export class Gifts implements MiniGame {
         }
       }
       if (it.x) {
-        s.push({ id: 95 + kind, frame: (it.w >> 4) & 7, x: xd, y: it.y, scale: scale / 65536 });
+        s.push({ id: 95 + Math.min(4, kind), frame: (it.w >> 4) & 7, x: xd, y: it.y, scale: scale / 65536 });
         it.w = (it.w & 0xff00) | ((it.w + 0x10) & 0x7f);
-        if (it.y < 0x82) { it.vy = Math.min(16, it.vy + 2); it.y += it.vy; } else it.y += GIFT_FALL[kind];
+        if (it.y < 0x82) { it.vy = Math.min(16, it.vy + 2); it.y += it.vy; } else it.y += GIFT_FALL[Math.min(4, kind)];
         if (it.y > FLOOR) {
           if (kind === 4 && --this.bombs === 0) this.sound.stop(24);
           it.x = 0;
@@ -602,7 +622,9 @@ export class Gifts implements MiniGame {
     const th = this.thrower;
     s.push({ id: 93, frame: THROWER[th.st * 6 + th.step], x: th.x, y: 0x7e });
     // The catcher runs 10 px toward the pointer when it is more than 8 px away; it keeps facing that way after.
-    if (this.end !== 2 && !this.boom) {
+    if (this.pop && ++this.pop.frame >= 8) this.pop = null;
+    if (this.dazed && --this.dazed === 0 && this.pose === 4 && !this.boom) this.pose = 0;
+    if (this.end !== 2 && !this.boom && !this.dazed) {
       const d = this.px - this.target;
       if (Math.abs(d) > 8) {
         if (d > 0) { this.dir = 1; this.px -= 10; } else { this.dir = 2; this.px += 10; }

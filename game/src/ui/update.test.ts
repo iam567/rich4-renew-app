@@ -27,7 +27,7 @@ function serve(latest: object, opts: { broken?: string } = {}) {
     const u = String(url);
     const json = (o: unknown) => new Response(JSON.stringify(o), { status: 200 });
     if (u.endsWith('/update-base.json')) return json(own);
-    if (u.endsWith('/latest.json')) return json(latest);
+    if (u.endsWith('/latest-2.json')) return json(latest);
     if (u.endsWith(`/m/${NEXT}.json`)) return json(next);
     const f = u.match(/\/f\/([0-9a-f]{32})$/)?.[1];
     if (f && served[f] !== undefined) return new Response(f === opts.broken ? 'garbage' : served[f], { status: 200 });
@@ -48,7 +48,7 @@ describe('在線更新', () => {
 
   it('a newer version: ready; the same one: nothing; one needing a newer installer: the installer', async () => {
     serve({ version: NEXT, shell: 1 });
-    expect(await (await import('./update')).checkUpdate()).toEqual({ kind: 'ready', version: NEXT });
+    expect(await (await import('./update')).checkUpdate()).toEqual({ kind: 'ready', version: NEXT, notes: [] });
     vi.resetModules(); serve({ version: RUN, shell: 1 });
     expect(await (await import('./update')).checkUpdate()).toEqual({ kind: 'none' });
     vi.resetModules(); serve({ version: NEXT, shell: 2 });
@@ -79,11 +79,109 @@ describe('在線更新', () => {
     expect(files.has('current')).toBe(false);
   });
 
+  /** A body that breaks after `n` bytes, as a cut connection does. */
+  const cut = (text: string, n: number, init: ResponseInit = { status: 200 }) => new Response(new ReadableStream({
+    start(c) { c.enqueue(new TextEncoder().encode(text.slice(0, n))); },
+    pull(c) { c.error(new TypeError('connection lost')); },
+  }), init);
+
+  it('a connection cut halfway goes on from the last byte', async () => {
+    const text = 'a file that arrives in three pieces', hash = h(text), ranges: (string | undefined)[] = [];
+    vi.stubGlobal('fetch', async (_u: string, o: RequestInit) => {
+      const range = (o.headers as Record<string, string> | undefined)?.Range;
+      ranges.push(range);
+      const from = range ? Number(/\d+/.exec(range)![0]) : 0, rest = text.slice(from);
+      return rest.length > 12 ? cut(rest, 12, { status: from ? 206 : 200 }) : new Response(rest, { status: 206 });
+    });
+    const { fetchFile } = await import('./update');
+    let moved = 0;
+    const got = await fetchFile(hash, text.length, n => { moved += n; });
+    expect(new TextDecoder().decode(got!)).toBe(text);
+    expect(ranges).toEqual([undefined, 'bytes=12-', 'bytes=24-']);
+    expect(moved).toBe(text.length);
+  });
+
+  it('a server answering a resume with the whole file: taken from the start', async () => {
+    const text = 'the whole file again', hash = h(text);
+    let n = 0;
+    vi.stubGlobal('fetch', async () => (n++ ? new Response(text, { status: 200 }) : cut(text, 7)));
+    const { fetchFile } = await import('./update');
+    let moved = 0;
+    expect(new TextDecoder().decode((await fetchFile(hash, text.length, m => { moved += m; }))!)).toBe(text);
+    expect(moved).toBe(text.length);
+  });
+
+  it('a Range header refused: the whole file again', async () => {
+    const text = 'an old webview', hash = h(text);
+    let n = 0;
+    vi.stubGlobal('fetch', async (_u: string, o: RequestInit) => {
+      n++;
+      if (o.headers) throw new TypeError('preflight refused');
+      return n === 1 ? cut(text, 5) : new Response(text, { status: 200 });
+    });
+    const { fetchFile } = await import('./update');
+    expect(new TextDecoder().decode((await fetchFile(hash, text.length, () => {}))!)).toBe(text);
+    expect(n).toBe(4);
+  }, 15000);
+
+  it('a try that failed leaves its finished files: the next one fetches only the rest', async () => {
+    serve({ version: NEXT, shell: 1 }, { broken: h('added') });
+    const { applyUpdate } = await import('./update');
+    await expect(applyUpdate(NEXT, () => {})).rejects.toThrow();
+    expect(files.has(`v${NEXT}.part/index.html`)).toBe(true);
+    asked.length = 0;
+    vi.resetModules();
+    serve({ version: NEXT, shell: 1 });
+    const seen: number[] = [];
+    await (await import('./update')).applyUpdate(NEXT, d => seen.push(d)).catch(() => {});
+    expect(asked.filter(a => a.startsWith('f/'))).toEqual([`f/${h('added')}`]);
+    expect(Math.max(...seen)).toBe(9 + 4 + 5);
+    expect(new TextDecoder().decode(files.get('current')!)).toBe(NEXT);
+    expect(files.has(`v${NEXT}/assets/a.webp`)).toBe(true);
+  });
+
+  it('a kept file that no longer matches its hash is fetched again', async () => {
+    serve({ version: NEXT, shell: 1 });
+    files.set(`v${NEXT}.part/index.html`, new TextEncoder().encode('half a fi'));
+    await (await import('./update')).applyUpdate(NEXT, () => {}).catch(() => {});
+    expect(new TextDecoder().decode(files.get(`v${NEXT}/index.html`)!)).toBe('new index');
+  });
+
+  it('the title leaves a newer version\'s unfinished download, an older one goes', async () => {
+    serve({ version: RUN, shell: 1 });
+    files.set(`v${NEXT}.part/a`, new Uint8Array(1));
+    files.set('v0.1.part/a', new Uint8Array(1));
+    await (await import('./update')).confirmStart();
+    expect(files.has(`v${NEXT}.part/a`)).toBe(true);
+    expect(files.has('v0.1.part/a')).toBe(false);
+  });
+
+  it('issue #65: the installed version started over a complete newer download — reloads into it once, never deletes it', async () => {
+    serve({ version: RUN, shell: 1 });
+    files.set('current', new TextEncoder().encode(NEXT));
+    files.set(`v${NEXT}/index.html`, new Uint8Array([1]));
+    files.set('v0.1.0/index.html', new Uint8Array([1]));
+    const reload = vi.fn();
+    const store = new Map<string, string>();
+    vi.stubGlobal('location', { reload });
+    vi.stubGlobal('sessionStorage', { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } });
+    const { confirmStart } = await import('./update');
+    await confirmStart();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(files.has(`v${NEXT}/index.html`)).toBe(true);
+    // the same session again (it did not take): no second reload, the download still kept, the old folder gone
+    await confirmStart();
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(files.has(`v${NEXT}/index.html`)).toBe(true);
+    expect(files.has('v0.1.0/index.html')).toBe(false);
+    vi.unstubAllGlobals();
+  });
+
   it('the title confirms the start and drops other versions\' folders', async () => {
     serve({ version: RUN, shell: 1 });
     files.set('boot', new TextEncoder().encode(`${NEXT} 1`));
     files.set('v0.1.0/index.html', new Uint8Array([1]));
-    files.set('v9.9.9.part/index.html', new Uint8Array([1]));
+    files.set('v0.0.1.part/index.html', new Uint8Array([1]));
     const { confirmStart } = await import('./update');
     await confirmStart();
     expect([...files.keys()]).toEqual([]);

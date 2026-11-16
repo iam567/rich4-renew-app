@@ -5,6 +5,9 @@
  * Shown or hidden from the party bar; kept on the phone.
  */
 import type { NetRow, Room } from './party-net';
+import { showContact } from './party-card';
+import { flagHtml } from './region-flag';
+import { titleHtml, type TitleDef } from './titles';
 
 const KEY = 'rich4.party.netHud';
 export const hudShown = () => { try { return localStorage.getItem(KEY) !== '0'; } catch { return true; } };
@@ -40,6 +43,13 @@ export class NetHud {
   constructor(stage: HTMLElement, private room: Room, private face: (c: number) => string) {
     this.el.className = 'net-hud';
     stage.append(this.el);
+    // a player's face: their card with 聯絡方式 (the user 2026-11-08)
+    this.el.addEventListener('pointerdown', e => { if ((e.target as HTMLElement).closest('[data-who]')) e.stopPropagation(); });
+    this.el.onclick = e => {
+      const id = (e.target as HTMLElement).closest<HTMLElement>('[data-who]')?.dataset.who;
+      const m = id ? this.room.members.find(x => x.id === id) : undefined;
+      if (m) { e.stopPropagation(); showContact(stage, m, this.face(m.character)); }
+    };
     this.draw();
   }
 
@@ -53,7 +63,7 @@ export class NetHud {
       const m = r.members.find(x => x.id === row.id);
       if (!m) return '';
       const g = rowGrade(row);
-      return `<div class="nh-row ${g}${row.id === r.myId ? ' me' : ''}"><img src="${this.face(m.character)}" alt=""><b>${esc(m.name)}</b>${bars(g)}<span>${pingText(row)}</span></div>`;
+      return `<div class="nh-row ${g}${row.id === r.myId ? ' me' : ''}" data-who="${esc(m.id)}"><img src="${this.face(m.character)}" alt=""><b>${flagHtml(m)}${esc(m.name)}${m.contact ? '<i class="nh-c">☎</i>' : ''}</b>${bars(g)}<span>${pingText(row)}</span></div>`;
     }).join('');
   }
 
@@ -76,7 +86,11 @@ export class PingTags {
   private raf = 0;
   private tags = new Map<string, HTMLElement>();
 
-  constructor(private stage: HTMLElement, private room: Room, private view: { screenOf(id: number): { x: number; y: number; zoom: number } | null; canvas: HTMLElement }, private shown: () => boolean) {
+  /**
+   * `lift`: how much higher a seat's tag goes at a zoom (a sign over the head on the map, as 派對模式's 「乞丐」, stays
+   * under it); `title`: the 稱號 a seat wears (titles.ts), under its ms (the user 2026-11-08), shown with the ms or not.
+   */
+  constructor(private stage: HTMLElement, private room: Room, private view: { screenOf(id: number): { x: number; y: number; zoom: number } | null; canvas: HTMLElement }, private shown: () => boolean, private lift: (seat: number, zoom: number) => number = () => 0, private title: (seat: number) => TitleDef | null = () => null) {
     this.el.className = 'net-tags';
     stage.append(this.el);
     // Stops by itself once the game screen is gone.
@@ -85,9 +99,9 @@ export class PingTags {
   }
 
   private place() {
-    const seats = this.room.started?.seats;
-    this.el.hidden = !this.shown() || !seats;
-    if (this.el.hidden || !seats) return;
+    const seats = this.room.started?.seats, ms = this.shown();
+    this.el.hidden = !seats;
+    if (!seats) return;
     const c = this.view.canvas.getBoundingClientRect(), a = this.stage.getBoundingClientRect();
     // The 「等待 … 操作（45 ms）」 line wins where they meet: a tag under it is hidden (that line carries the ms).
     const wait = this.stage.querySelector<HTMLElement>('.pt-waiting:not([hidden])')?.getBoundingClientRect();
@@ -96,16 +110,31 @@ export class PingTags {
       const at = this.view.screenOf(seat);
       if (!at) continue;
       const row = this.room.net.find(x => x.id === id) ?? { id, rtt: null, via: 'p2p' as const };
-      let tag = this.tags.get(id);
-      if (!tag) { tag = document.createElement('div'); this.tags.set(id, tag); this.el.append(tag); }
+      let box = this.tags.get(id);
+      if (!box) {
+        box = document.createElement('div'); box.className = 'net-who';
+        box.innerHTML = '<div class="net-tag"></div><div class="net-title" hidden></div>';
+        this.tags.set(id, box); this.el.append(box);
+      }
       seen.add(id);
+      const tag = box.firstElementChild as HTMLElement, tt = box.lastElementChild as HTMLElement;
       const text = pingText(row), cls = `net-tag ${rowGrade(row)}${id === this.room.myId ? ' me' : ''}`;
       if (tag.textContent !== text) tag.textContent = text;
       if (tag.className !== cls) tag.className = cls;
+      tag.hidden = !ms;
+      // the 稱號: a new one bounces in
+      const t = this.title(seat), key = t?.key ?? '';
+      if (tt.dataset.key !== key) {
+        tt.dataset.key = key; tt.hidden = !t;
+        tt.innerHTML = t ? titleHtml(t) : '';
+        if (t) { tt.classList.remove('new'); void tt.offsetWidth; tt.classList.add('new'); }
+      }
+      box.hidden = !ms && !t;
+      if (box.hidden) continue;
       // Above the figure's head (the figures are about 60 original pixels tall).
-      tag.style.transform = `translate(${Math.round(at.x + c.left - a.left)}px, ${Math.round(at.y + c.top - a.top - 64 * at.zoom)}px) translate(-50%, -100%)`;
-      const r = wait && tag.getBoundingClientRect();
-      tag.style.visibility = r && wait && r.left < wait.right && r.right > wait.left && r.top < wait.bottom && r.bottom > wait.top ? 'hidden' : '';
+      box.style.transform = `translate(${Math.round(at.x + c.left - a.left)}px, ${Math.round(at.y + c.top - a.top - 64 * at.zoom - this.lift(seat, at.zoom))}px) translate(-50%, -100%)`;
+      const r = wait && box.getBoundingClientRect();
+      box.style.visibility = r && wait && r.left < wait.right && r.right > wait.left && r.top < wait.bottom && r.bottom > wait.top ? 'hidden' : '';
     }
     for (const [id, tag] of this.tags) if (!seen.has(id)) { tag.remove(); this.tags.delete(id); }
   }

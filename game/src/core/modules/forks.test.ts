@@ -328,7 +328,7 @@ describe.skipIf(!have(100) || !have(7) || !have(5))('fork choices on maps', () =
       for (let r = flow.next(); !r.done && g.daysElapsed < days && !g.over; ) {
         h.update(JSON.stringify(r.value));
         const s = r.value as { t?: string };
-        if ('ask' in s) { expect(s.t).toBe('auto-turn'); r = flow.next(0); } else r = flow.next();
+        if ('ask' in s) { expect(['auto-turn', 'orders']).toContain(s.t); r = flow.next(0); } else r = flow.next();
       }
       return h.update(forkState(g)).digest('hex');
     };

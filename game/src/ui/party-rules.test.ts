@@ -20,14 +20,14 @@ import { RULE_ITEMS } from './rule-options';
 const settle = async (ms = 0) => { for (let k = 0; k < 20; k++) await Promise.resolve(); if (ms) await new Promise(r => setTimeout(r, ms)); for (let k = 0; k < 20; k++) await Promise.resolve(); };
 const open: Room[] = [];
 const room = (character: number) => { const r = new Room({ name: `p${character}`, character }, '0.8.0'); open.push(r); return r; };
-const PICKED: PartyRules = { fundIndex: 3, traffic: 2, landLimitIndex: 4, daysLimitIndex: 2, victoryIndex: 5, challenge: 0, maxPing: 0, turnSec: 2, aiLevel: 3, dropIn: 0 };
+const PICKED: PartyRules = { fundIndex: 3, traffic: 2, landLimitIndex: 4, daysLimitIndex: 2, victoryIndex: 5, challenge: 0, maxPing: 0, turnSec: 2, aiLevel: 3, dropIn: 0, realtime: 0, rtLen: 0, extras: 1 };
 
 beforeAll(() => { vi.stubGlobal('window', globalThis); });
 afterEach(() => { for (const r of open.splice(0)) r.close(); });
 
 describe('rule values', () => {
   it('the defaults are what every party game started with before', () => {
-    expect(DEFAULT_RULES).toEqual({ fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0, maxPing: 0, turnSec: 5, aiLevel: 2, dropIn: 0 });
+    expect(DEFAULT_RULES).toEqual({ fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, challenge: 0, maxPing: 0, turnSec: 5, aiLevel: 2, dropIn: 0, realtime: 0, rtLen: 0, extras: 15 });
   });
   it('the options match the game tables', () => {
     expect(RULE_ITEMS.fundIndex.length).toBe(FUNDS.length);
@@ -54,8 +54,11 @@ describe('the rules in a room (mocked PeerJS)', () => {
     g.onStart = s => { got = s; };
     host.start(startMsg(host, 4, pack(2026, 10, 29), 1234));
     await settle();
-    const { challenge: _, maxPing: _p, turnSec: _t, dropIn: _d, ...plainRules } = DEFAULT_RULES; // aiLevel goes into the game as it is
+    const { challenge: _, maxPing: _p, turnSec: _t, dropIn: _d, realtime: _r, rtLen: _l, extras: _x, ...plainRules } = DEFAULT_RULES; // aiLevel goes into the game as it is
     expect(got!.settings).toMatchObject({ ...plainRules, mapId: 2, party: true, seed: 1234 });
+    // 追加玩法 all on: nothing turned off
+    expect(got!.settings.noLeverage).toBeUndefined();
+    expect(got!.settings.noBeggar).toBeUndefined();
     expect(got!.settings.challenge).toBeUndefined();
     expect(got!.settings.players.length).toBe(4);
   });
@@ -141,9 +144,12 @@ describe('the rules in a room (mocked PeerJS)', () => {
     const [sh, sa, sb] = [host, a, b].map(r => got.get(r)!);
     expect(sa).toEqual(sh);
     expect(sb).toEqual(sh);
-    const { challenge: _c, maxPing: _m, turnSec: _s, dropIn: _d, ...picked } = PICKED; // aiLevel goes into the game as it is
+    const { challenge: _c, maxPing: _m, turnSec: _s, dropIn: _d, realtime: _r, rtLen: _l, extras: _x, ...picked } = PICKED; // aiLevel goes into the game as it is
     expect(sh).not.toHaveProperty("maxPing"); // the room's limit, not the game's
     expect(sh).toMatchObject(picked);
+    // 追加玩法 1: 槓桿 on, 乞丐 off
+    expect(sh.noLeverage).toBeUndefined();
+    expect(sh.noBeggar).toBe(true);
     // The same game on each phone: the rules applied, and (every seat played by the computer here) the same days.
     const games = [sh, sa, sb].map(s => new Game({ ...s, players: s.players.map(p => ({ ...p, human: false })) }, parseBoard(JSON.parse(readFileSync(mapFile, 'utf8')) as RawMap)));
     for (const g of games) {

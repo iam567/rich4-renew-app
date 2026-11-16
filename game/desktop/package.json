@@ -13,5 +13,8 @@
     "electron": "38.8.6",
     "electron-builder": "26.0.12",
     "resedit": "2.0.3"
+  },
+  "dependencies": {
+    "ws": "8.18.3"
   }
 }

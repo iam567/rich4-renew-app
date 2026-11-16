@@ -1,0 +1,18 @@
+/* 更新日誌 (changelog.ts): the link at the top left of the title, and its sheet (pages, never scrolling). */
+.title-log { position: absolute; left: max(10px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); z-index: 3; padding: 4px 12px;
+  border: 2px solid rgba(255, 255, 255, .7); border-radius: 999px; font: inherit; font-size: 13px; font-weight: 700; color: #fff; background: rgba(0, 20, 80, .55);
+  text-shadow: 0 1px 2px #003; box-shadow: 0 2px 4px rgba(0,0,0,.3); cursor: pointer; white-space: nowrap; }
+.title-log:active { background: rgba(0, 20, 80, .8); }
+
+.cl-sheet { width: min(620px, 100%); height: min(560px, 100%); max-height: 100%; display: flex; flex-direction: column; }
+/* (release check 2026-11-15: in a phone's landscape the 100% did not hold — the parent's height is not set — and 檢查更新
+   / 關閉 were below the screen; the screen's own height does, the pages fill what is left) */
+.cl-sheet { height: min(560px, calc(100vh - 36px)); height: min(560px, calc(100dvh - 36px)); }
+.cl-head { flex: none; display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 4px 0 8px; }
+.cl-head b { flex: 1; min-width: 0; text-align: center; font-size: 20px; line-height: 1.2; color: #ffe14a; text-shadow: 0 2px 0 #0b2160; white-space: nowrap; }
+.cl-head b small { display: block; font-size: 12px; font-weight: 600; color: #c8d4f0; text-shadow: none; overflow: hidden; text-overflow: ellipsis; }
+.cl-head .chip { flex: none; min-width: 40px; font-size: 18px; }
+.cl-head .chip:disabled { opacity: .35; }
+.cl-list { flex: 1 1 auto; min-height: 0; overflow: hidden; margin: 0; padding: 10px 14px 10px 30px; border-radius: 12px; background: rgba(255, 255, 255, .92); color: #2a2a2a; text-align: left; }
+.cl-list li { font-size: 14px; line-height: 1.55; margin: 0 0 6px; }
+.cl-foot { flex: none; min-height: 18px; text-align: center; font-size: 12px; color: #c8d4f0; margin-top: 4px; }

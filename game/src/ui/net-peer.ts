@@ -7,6 +7,10 @@
  *   phone that cannot reach the VPS still finds it;
  * - a connection tries the relay first and, when nobody has that id there (a host without the VPS), PeerJS.
  *
+ * 線路二 (the user 2026-11-04, players stuttering through the VPS): this phone's own choice on 派對模式's first screen.
+ * A room it opens is on PeerJS alone, a room it joins is tried phone to phone first; either way the relay stays the
+ * fallback, and the other players need not choose it too (a dial finds a room that is on PeerJS only).
+ *
  * Where the relay is: RELAYS in the app, replaced by relay.json in the app's GitHub repo when that answers (a new
  * server needs no new version; an empty list there turns the relay off) and remembered for the next start.
  */
@@ -17,6 +21,11 @@ import { openRelay, RelayPeer, type RelayConn } from './relay-peer';
 export const RELAYS = ['wss://rich.areu.pro'];
 const LIST_URL = 'https://raw.githubusercontent.com/iam567/rich4-renew-app/main/game/relay.json';
 const LIST_KEY = 'rich4.party.relays';
+
+const LINE_KEY = 'rich4.party.line';
+/** 線路二 is chosen on this device. */
+export const directLine = (): boolean => { try { return localStorage.getItem(LINE_KEY) === '2'; } catch { return false; } };
+export const setDirectLine = (on: boolean) => { try { localStorage.setItem(LINE_KEY, on ? '2' : '1'); } catch { /* not kept */ } };
 
 /** A connection either way: PeerJS's DataConnection or a RelayConn (`via`: which). */
 export interface NetConn {
@@ -33,11 +42,23 @@ const asConn = (c: DataConnection | RelayConn) => c as unknown as NetConn;
 
 type Handler = (...a: any[]) => void; // eslint-disable-line @typescript-eslint/no-explicit-any
 
-/** Settings the tests change: no relay at all (PeerJS only), PeerJS's options. */
-export const netConfig: { relays: string[] | null; peerOpts: Record<string, unknown> } = {
+/**
+ * Settings the tests change: no relay at all (PeerJS only), PeerJS's options. `lan`: 局域網房間 (the PC version's
+ * server, desktop/lan-relay.cjs): its relay only, never PeerJS or the internet's relays.
+ */
+export const netConfig: { relays: string[] | null; peerOpts: Record<string, unknown>; lan: boolean } = {
   relays: typeof process !== 'undefined' && process.env?.VITEST ? [] : null,
   peerOpts: { debug: 0 },
+  lan: false,
 };
+
+/** 局域網房間 on the PC: its server's addresses for the phones (shown with the room, and its QR code), set when it starts. */
+export const lanHost: { urls: string[] } = { urls: [] };
+/** 局域網房間: from now on only that PC's relay (`addr` 「192.168.1.5:8848」), or back to the internet's (''). */
+export function useLan(addr: string) {
+  netConfig.lan = !!addr;
+  netConfig.relays = addr ? [`ws://${addr}`] : null;
+}
 
 let listed: Promise<string[]> | null = null;
 /** The relays to try: the tests' setting, else GitHub's list (3 s), else the last one seen, else the app's. */
@@ -72,7 +93,7 @@ let goodRelay = '';
 let downUntil = 0;
 
 async function relayFor(id: string): Promise<RelayPeer | null | 'down'> {
-  if (Date.now() < downUntil) return 'down';
+  if (Date.now() < downUntil && !netConfig.lan) return 'down';
   const list = await relays();
   const order = goodRelay && list.includes(goodRelay) ? [goodRelay, ...list.filter(u => u !== goodRelay)] : list;
   for (const url of order) {
@@ -102,6 +123,8 @@ export class NetPeer {
   private h = new Map<string, Handler[]>();
   private opening: Promise<Peer | null> | null = null;
   destroyed = false;
+  /** 線路二: dial phone to phone first. */
+  direct = false;
 
   constructor(readonly id: string, public relay: RelayPeer | null, public p2p: Peer | null, private readonly peerOpts: Record<string, unknown>) {
     if (relay) this.hook(relay, 'vps');
@@ -144,12 +167,21 @@ export class NetPeer {
     return this.opening;
   }
 
-  /** A connection to `to`: the relay first, PeerJS when nobody has that id on the relay (or there is no relay). */
+  /** A connection to `to`: the relay first, PeerJS when nobody has that id on the relay (or there is no relay); 線路二 the other way round. */
   async dial(to: string): Promise<NetConn | null> {
-    if (this.relay?.open) {
-      const c = await waitOpen(asConn(this.relay.connect(to)), 8000);
-      if (c) { (c as { via?: string }).via = 'vps'; return c; }
-    }
+    if (this.direct) return await this.dialP2P(to) ?? this.dialRelay(to);
+    return await this.dialRelay(to) ?? this.dialP2P(to);
+  }
+
+  private async dialRelay(to: string): Promise<NetConn | null> {
+    if (!this.relay?.open) return null;
+    const c = await waitOpen(asConn(this.relay.connect(to)), 8000);
+    if (c) (c as { via?: string }).via = 'vps';
+    return c;
+  }
+
+  private async dialP2P(to: string): Promise<NetConn | null> {
+    if (netConfig.lan) return null;
     const p = this.p2p ?? await this.attachP2P();
     if (!p || this.destroyed) return null;
     const c = await waitOpen(asConn(p.connect(to, { reliable: true })), 10000, p);
@@ -175,13 +207,24 @@ function waitOpen(c: NetConn, ms: number, peer?: Peer): Promise<NetConn | null> 
 
 /**
  * This phone on the network under `id` (a room's, the list's) or a fresh one: null when the id is taken. On the relay
- * when it answers (a named id also on PeerJS, in the background), else PeerJS alone.
+ * when it answers (a named id also on PeerJS, in the background), else PeerJS alone. `direct` (線路二): a named id on
+ * PeerJS alone while PeerJS answers, a fresh one dialling phone to phone first.
  */
-export async function openNet(id: string, named: boolean, peerOpts: Record<string, unknown> = netConfig.peerOpts): Promise<NetPeer | null> {
+export async function openNet(id: string, named: boolean, peerOpts: Record<string, unknown> = netConfig.peerOpts, direct = false): Promise<NetPeer | null> {
+  if (netConfig.lan) {
+    // 局域網房間: the PC's relay or nothing
+    const r = await relayFor(id);
+    return r === null || r === 'down' ? null : new NetPeer(id, r, null, peerOpts);
+  }
+  if (direct && named) {
+    const p = await openP2P(id, peerOpts);
+    if (p) return new NetPeer(id, null, p, peerOpts);
+  }
   const r = await relayFor(id);
   if (r === null) return null;            // taken on the relay
   if (r !== 'down') {
     const n = new NetPeer(id, r, null, peerOpts);
+    n.direct = direct;
     if (named) void n.attachP2P();
     return n;
   }

@@ -2,6 +2,8 @@
  * The small map of the right column (docs/rules/09 §3.5): the board seen from above (never rotated), owned
  * property marks in the owner's colour, every player's head, a white frame on the current actor, and the two
  * rotate buttons. Tapping looks at that spot; tapping it again (or the frame) goes back to following.
+ * 重慶 (docs/rules/33 §1): 一層 / 二層 / 三層 buttons top right pick the level the board shows; the small map shows
+ * that level too (the ones under it darker, nothing above it).
  */
 import { CHARACTERS } from '../core/characters';
 import type { Game } from '../core/game';
@@ -19,6 +21,9 @@ export class Minimap {
   private heads: HTMLImageElement[] = [];
   /** Canvas pixels per map pixel at 1 dpr (raised for the large map). */
   res = 2;
+  /** 重慶: the picture of a level looked at (main.ts), used over `ground`. */
+  groundFor: ((level: number) => CanvasImageSource) | null = null;
+  private levelBtns: HTMLButtonElement[] = [];
 
   /** `ground`: the picture under the marks (the original ground, or the 1× preview of a redrawn style). */
   constructor(readonly game: Game, readonly bank: SpriteBank, readonly view: BoardView, public ground: CanvasImageSource) {
@@ -38,6 +43,18 @@ export class Minimap {
       return b;
     };
     this.el.append(this.canvas, rot(-1, 3), rot(1, 28));
+    if (game.board.levels) {
+      this.levelBtns = ['一層', '二層', '三層'].map((name, i) => {
+        const b = document.createElement('button');
+        b.className = 'mm-lv';
+        b.style.right = `${3 + (2 - i) * 34}px`;
+        b.textContent = name;
+        b.onclick = e => { e.stopPropagation(); view.showLevel(i + 1); };
+        return b;
+      });
+      this.el.append(...this.levelBtns);
+      view.levelListeners.add(() => this.update());
+    }
     this.heads = CHARACTERS.map(c => {
       const im = new Image();
       const a = bank.art('Data', 2, c.id);
@@ -64,12 +81,17 @@ export class Minimap {
     const ctx = this.canvas.getContext('2d')!, g = this.game, b = g.board, K = SIZE / worldSize(b);
     ctx.setTransform(px / SIZE, 0, 0, px / SIZE, 0, 0);
     ctx.imageSmoothingQuality = 'high';
-    ctx.drawImage(this.ground, 0, 0, SIZE, SIZE);
+    // 重慶: only the level looked at (and what is under it); marks and heads above it left out, under it faded.
+    const lv = b.levels, seen = lv ? this.view.levelShown || this.view.viewLevel() : 0;
+    for (const [i, btn] of this.levelBtns.entries()) btn.classList.toggle('on', i + 1 === seen);
+    const levelOf = (ref: number) => !lv ? 0 : ref > 6000 ? lv.companies[ref - 6001] : ref > 4000 ? lv.facilities[ref - 4001] : ref > 2000 ? lv.lands[ref - 2001] : lv.ramp.includes(ref) ? 1 : lv.node[ref - 1] ?? 1;
+    const shade = (ref: number) => { const k = levelOf(ref); ctx.globalAlpha = !lv || k === seen ? 1 : k < seen ? 0.45 : 0; return ctx.globalAlpha > 0; };
+    ctx.drawImage(seen && this.groundFor ? this.groundFor(seen) : this.ground, 0, 0, SIZE, SIZE);
     // Owned property in the owner's colour, drawn as the plot itself: a lot is a 48 px square (big plots of
     // facilities and companies 96 px) turned to face its road, like the outlines in the ground picture.
     const mark = (ref: number, x: number, y: number, owner: number, big: boolean) => {
       const p = g.players[owner - 1];
-      if (!p) return;
+      if (!p || !shade(ref)) return;
       // The plot faces the road squares that belong to it (as the map compiler draws the outlines).
       const own = b.nodes.filter(n => n.ref === ref);
       let tx = 0, ty = 0;
@@ -93,6 +115,7 @@ export class Minimap {
       if (!p.placed || p.bankrupt || g.offRoad(p)) continue;
       const n = g.node(p.node);
       if (!n) continue; // 大富豪模式: still on another city's square (summoned, arriving)
+      if (!shade(p.node)) continue;
       const cx = n.x * K, cy = n.y * K, r = 7;
       ctx.save();
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.closePath();
@@ -104,6 +127,7 @@ export class Minimap {
       ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2);
       ctx.strokeStyle = hex(CHARACTERS[p.character].color); ctx.lineWidth = 1.6; ctx.stroke();
     }
+    ctx.globalAlpha = 1;
     // The current actor: a white 30×30 frame; the spot being looked at: red.
     const cur = g.isPlayerId(g.current) ? g.players[g.current] : null;
     const curNode = cur?.placed ? g.node(cur.node) : undefined;

@@ -7,7 +7,7 @@
  */
 import type { Board } from './board';
 import { Game } from './game';
-import { STOCK_TABLE } from './modules/stocks';
+import { STOCK_TABLE, stockGroup } from './modules/stocks';
 import { daySeed } from './rng';
 import type { GameSettings, Player } from './types';
 import type { FinaleState } from './finale';
@@ -30,6 +30,8 @@ export interface SaveData {
   game: {
     date: number; daysElapsed: number; monthsElapsed: number; priceIndex: number; current: number;
     diceTotal: number; lotteryPool: number; rng: number; rngSalt?: number;
+    /** 即時制: the clock (ms) when saved; a loaded game goes on from there (its turns start anew). */
+    rtNow?: number;
   };
   modules: Record<string, Record<string, unknown>>;
   /** The statistics ledger (core/stats.ts), when the game kept one; older saves have none. */
@@ -65,6 +67,7 @@ export function saveGame(g: Game): SaveData {
       date: g.date, daysElapsed: g.daysElapsed, monthsElapsed: g.monthsElapsed, priceIndex: g.priceIndex,
       current: g.current, diceTotal: g.diceTotal, lotteryPool: g.lotteryPool, rng: g.rng.seed,
       ...(g.rngSalt ? { rngSalt: g.rngSalt } : {}),
+      ...(g.rtNow ? { rtNow: g.rtNow } : {}),
     },
     modules,
     ...(g.stats ? { stats: g.stats.save() } : {}),
@@ -84,10 +87,10 @@ export function adoptMapNames(g: Game, map: Board): void {
   if (map.mapId !== b.mapId || map.companies.length !== b.companies.length) return;
   if (map.companies.some((c, i) => c.stockSlot !== b.companies[i].stockSlot || c.category !== b.companies[i].category)) return;
   map.companies.forEach((c, i) => { b.companies[i].name = c.name; });
-  const group = (((b.mapId | 0) % 8) + 8) % 8;
+  const group = stockGroup(b);
   if (map.stockNames) b.stockNames = [...map.stockNames];
   else delete b.stockNames;
-  g.stocks.stocks.forEach((s, i) => { s.name = map.stockNames?.[i] || STOCK_TABLE[group][i]?.name || s.name; });
+  g.stocks.stocks.forEach((s, i) => { if (i !== g.stocks.hotelSlot) s.name = map.stockNames?.[i] || STOCK_TABLE[group][i]?.name || s.name; });
 }
 
 /**
@@ -106,6 +109,7 @@ export function loadGame(s: SaveData, map?: Board): Game {
   });
   g.rng.reseed(s.game.rng);
   g.rngSalt = s.game.rngSalt ?? 0;
+  g.rtNow = s.game.rtNow ?? 0;
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
   repairCardPool(g);
   g.forks.afterLoad(s.modules.forks);
@@ -179,7 +183,7 @@ export function saveWorld(w: World): WorldSaveData {
       date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex,
       current: w.current, rng: w.rng.seed, ...(w.rngSalt ? { rngSalt: w.rngSalt } : {}), landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
       history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords], sharedPool: true,
-      ...(w.finale.active ? { finale: w.finale.save() } : {}),
+      ...(w.finale.active || w.finale.city >= 0 ? { finale: w.finale.save() } : {}),
     },
     ...(ledgerOf(w.players) ? { stats: ledgerOf(w.players)!.save() } : {}),
   };

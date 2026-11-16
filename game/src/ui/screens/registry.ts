@@ -25,6 +25,8 @@ export interface ScreenContext {
   scale(): number;
   /** Message box / speech cloud, for screens that want to show a line on their own. */
   flash(text: string, ms?: number): Promise<void>;
+  /** A question's screen (hud.ask): closed from outside when the game answered it by itself (即時制's time limits). */
+  question?: boolean;
 }
 
 /** Answers the question with the value the rules expect for that ask type. */

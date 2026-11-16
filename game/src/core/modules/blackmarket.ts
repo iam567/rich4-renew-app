@@ -82,7 +82,7 @@ export class BlackMarket {
     b.lands.forEach((l, i) => { this.unsold[i] = l.owner ? 0 : this.unsold[i] + 1; });
     this.listings = this.listings.filter(l => l.kind !== 'land' || !b.lands[l.id - 1]?.owner);
     const rng = this.rng(1), added: Listing[] = [];
-    const deck = g.world ? TYCOON_DECK : CARDS, months = g.world ? TYCOON_UNSOLD_MONTHS : UNSOLD_MONTHS;
+    const deck = g.world && !g.world.hooks.originalOnly?.() ? TYCOON_DECK : CARDS, months = g.world ? TYCOON_UNSOLD_MONTHS : UNSOLD_MONTHS;
     const tool = TOOLS[rng.below(TOOLS.length)], card = deck[rng.below(deck.length)];
     added.push({ kind: 'tool', id: tool.id, base: TOOL_PRICES[tool.id - 1], since: g.date });
     added.push({ kind: 'card', id: card.id, base: card.price * CARD_PRICE_FACTOR, since: g.date });

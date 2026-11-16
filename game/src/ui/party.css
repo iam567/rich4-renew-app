@@ -12,6 +12,7 @@
 .pt-code { display: flex; flex-direction: column; align-items: center; color: #fff; }
 .pt-code small { font-size: 13px; opacity: .85; }
 .pt-code b { font-size: 46px; letter-spacing: .25em; color: #ffe14a; text-shadow: 0 3px 0 #0b2160; line-height: 1.1; }
+.pt-code b.long { font-size: 34px; letter-spacing: .12em; } /* 5–6 digits when the codes get crowded */
 .pt-code em { font-style: normal; font-size: 12px; opacity: .8; }
 .pt-seats { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: 100%; }
 .pt-seat { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 4px; border-radius: 14px; background: rgba(255,255,255,.14); color: #fff; min-height: 104px; justify-content: center; }
@@ -21,13 +22,13 @@
 .pt-seat.me { background: rgba(255, 225, 74, .3); cursor: pointer; box-shadow: inset 0 0 0 2px #ffe14a; }
 .pt-seat.cpu span { font-size: 14px; opacity: .7; }
 .pt-wait { font-size: 14px; color: #fff; opacity: .9; margin: 0; }
-.pt-input { width: 6.5em; font: inherit; font-size: 40px; letter-spacing: .3em; text-align: center; padding: 6px 4px 6px 14px; border-radius: 14px; border: 3px solid #ffbf2e; color: #5a2d00; }
+.pt-input { width: min(8.6em, 100%); box-sizing: border-box; font: inherit; font-size: 40px; letter-spacing: .3em; text-align: center; padding: 6px 4px 6px 14px; border-radius: 14px; border: 3px solid #ffbf2e; color: #5a2d00; }
 .pt-rooms { display: grid; gap: 8px; width: 100%; max-height: 50vh; overflow: auto; }
-.pt-room { display: grid; grid-template-columns: 48px 1fr auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; font: inherit; text-align: left;
+.pt-room { display: grid; grid-template-columns: 48px minmax(0, 1fr) auto; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; font: inherit; text-align: left;
   color: #4a2a00; background: linear-gradient(#fffbe8, #ffe39a); border: 2px solid #fff; }
 .pt-room img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #fff; }
 .pt-room b { display: block; font-weight: 400; font-size: 16px; } .pt-room small { font-size: 12px; opacity: .8; }
-.pt-room em { font-style: normal; padding: 4px 12px; border-radius: 999px; color: #fff; background: #2fae4a; }
+.pt-room em { flex: none; white-space: nowrap; font-style: normal; padding: 4px 12px; border-radius: 999px; color: #fff; background: #2fae4a; }
 .pt-room:disabled { opacity: .55; } .pt-room:disabled em { background: #999; }
 .pt-room.other:disabled em { background: #c27a2c; } /* another version (party-version.ts) */
 /* while another phone's player decides */
@@ -67,6 +68,19 @@
 .pc-person b { font-weight: 400; } .pc-person small { margin-left: 6px; font-size: 11px; opacity: .75; }
 .pc-person .chip { font-size: 12px; padding: 3px 8px; }
 .pc-host { font-size: 12px; opacity: .7; padding: 0 8px; }
+.pc-watch { display: flex; gap: 6px; justify-content: center; margin-top: 6px; }
+.pc-watch .chip { font-size: 12px; padding: 3px 10px; }
+.pc-watchers { display: grid; gap: 3px; margin-top: 5px; color: #fff; font-size: 13px; }
+.pc-watchers div { display: flex; align-items: center; justify-content: space-between; gap: 6px; }
+.pc-watchers b { min-width: 0; font-weight: 400; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pc-watchers small { margin-left: 6px; font-size: 11px; opacity: .75; }
+.pc-watchers .chip { flex: none; font-size: 12px; padding: 3px 8px; }
+.rflag { display: inline-block; width: 1.04em; height: .78em; margin-right: .22em; vertical-align: -.03em; border-radius: 2px; box-shadow: 0 0 0 1px rgba(0, 0, 0, .25); }
+.pc-mapvote { position: absolute; left: 50%; top: 96px; transform: translateX(-50%); z-index: 17; width: min(420px, calc(100% - 16px)); display: grid; gap: 4px; padding: 8px 12px; text-align: center; border-radius: 14px;
+  color: #fff; font-size: 13px; background: rgba(16, 24, 56, .92); box-shadow: 0 0 0 2px #ffe14a, 0 4px 12px rgba(0, 0, 0, .4); }
+.pc-mapvote b { font-weight: 700; color: #ffe14a; } .pc-mapvote span { font-size: 12px; opacity: .9; }
+.pc-mapvote div { display: flex; gap: 8px; justify-content: center; } .pc-mapvote em { font-style: normal; font-size: 12px; opacity: .8; }
+.pt-mapnote { margin: 2px 0 0; font-size: 12px; color: #c8d4f0; text-align: center; }
 .pc-note { margin: 0; font-size: 11px; color: #fff; opacity: .7; text-align: center; }
 .pt-seat .pt-region, .pt-room .pt-region { font-size: 10px; opacity: .8; }
 .pt-kick { margin-top: 2px; font-size: 10px !important; padding: 1px 6px !important; }
@@ -76,6 +90,9 @@
 .pt-clock[hidden], .pt-unauto[hidden] { display: none; }
 .pt-unauto { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 15; font-size: 15px; padding: 6px 18px; }
 .pt-out { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(0, 0, 0, .55); }
+.pt-line { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; font-size: 14px; color: #fff; }
+.pt-line .chip { padding: 2px 10px; font-size: 14px; }
+.pt-line small { flex-basis: 100%; text-align: center; font-size: 12px; opacity: .8; }
 .pt-note { font-size: 13px; color: #fff3b0; text-align: center; margin: 0; }
 .pt-spin { width: 34px; height: 34px; margin: 10px auto; border-radius: 50%; border: 4px solid rgba(255, 255, 255, .3); border-top-color: #ffe14a; animation: pt-spin .9s linear infinite; }
 @keyframes pt-spin { to { transform: rotate(360deg); } }
@@ -104,6 +121,7 @@
 .party-bar button em { position: absolute; right: -2px; bottom: 0; z-index: 1; font-style: normal; font-size: 10px; line-height: 13px; padding: 0 4px;
   border-radius: 7px; color: #fff; background: rgba(20, 30, 80, .85); }
 .party-bar button em:empty { display: none; }
+.party-bar .pb-gift:is(:hover, :active, .lit) img { transform: scale(1.08); }
 .party-bar button .pb-tag { background: #e8402a; }
 .pc-panel.small { bottom: auto; }
 .pc-phrases.big .chip { font-size: 15px; padding: 6px 12px; }
@@ -199,11 +217,23 @@
 .pt-seat small.pt-ping { white-space: nowrap; word-break: normal; overflow: hidden; }
 .pt-seats.many small.pt-ping { font-size: 9px; letter-spacing: -.02em; }
 /* 派對模式's head count (party-presence.ts): one line under the lead. */
-.pt-online { margin: -4px 0 2px; font-size: 13px; color: #7dff8a; text-align: center; white-space: nowrap; }
+.pt-online { margin: -4px 0 2px; font-size: 13px; color: #7dff8a; text-align: center; }
+.pt-online span { display: inline-block; white-space: nowrap; }
 .pt-online[hidden] { display: none; }
 /* The ping over each human player's head (party-hud.ts PingTags): follows the figure, never takes a tap. */
 .net-tags { position: absolute; inset: 0; z-index: 12; pointer-events: none; overflow: hidden; }
 .net-tags[hidden] { display: none; }
+.net-who { position: absolute; left: 0; top: 0; display: flex; flex-direction: column; align-items: center; gap: 1px; }
+.net-who[hidden], .net-who > [hidden] { display: none; }
+.net-who > .net-tag { position: static; }
+/* 稱號 (titles.ts): the tag's picture, its name over the empty band */
+.net-title { position: relative; width: 104px; line-height: 0; filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .5)); }
+.net-title img { width: 100%; height: auto; display: block; }
+.net-title b { position: absolute; right: 4%; display: flex; align-items: center; justify-content: center; font-size: 11.5px; line-height: 1; font-weight: 900; color: #fff;
+  white-space: nowrap; letter-spacing: -.02em; text-shadow: 0 0 2px rgba(0, 0, 0, .9), 0 1px 1px rgba(0, 0, 0, .9); }
+.net-title b.long { font-size: 10.2px; letter-spacing: -.06em; }
+.net-title.new { animation: net-title-in 1.4s ease-out; }
+@keyframes net-title-in { 0% { transform: scale(.2); opacity: 0; } 30% { transform: scale(1.35); opacity: 1; } 50% { transform: scale(.95); } 70% { transform: scale(1.08); } 100% { transform: scale(1); } }
 .net-tag { position: absolute; left: 0; top: 0; padding: 1px 7px; border-radius: 999px; font-size: 11px; line-height: 16px; font-weight: 700;
   white-space: nowrap; font-variant-numeric: tabular-nums; color: #fff; background: rgba(20, 24, 60, .72); border: 1.5px solid currentColor; }
 .net-tag.good { color: #7dff8a; } .net-tag.fair { color: #ffe14a; } .net-tag.poor { color: #ff7a6a; } .net-tag.none { color: #c9c9d9; }
@@ -297,13 +327,18 @@
 @media (max-height: 560px) and (orientation: landscape) {
   .pt-mgrid { grid-template-columns: repeat(6, minmax(0, 1fr)); }
   .msg.sheet.pt.pt-roomv { width: min(940px, 96vw); max-width: min(940px, 96vw); display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; row-gap: 6px; align-items: start; }
-  .pt-roomv > .ribbon, .pt-roomv > .pt-dyn, .pt-roomv > .pt-acts { grid-column: 1 / -1; }
+  /* the two halves straight into the sheet's grid: left the code, seats, map, then the name and the chat under them
+     (where the left half had room to spare); right the settings, as tall as all of that */
+  .pt-roomv > .ribbon, .pt-roomv > .pt-acts { grid-column: 1 / -1; }
   .pt-roomv > .pt-hint { display: none; }
-  .pt-roomv > .pt-me { grid-column: 1; }
-  .pt-roomv > .pt-chat { grid-column: 2; grid-row: span 2; }
-  .pt-roomv .pt-dyn { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); column-gap: 14px; align-items: start; }
+  .pt-roomv .pt-dyn { display: contents; }
+  .pt-roomv .pt-half:first-child { grid-column: 1; grid-row: 2; }
+  .pt-roomv .pt-half:last-child { grid-column: 2; grid-row: 2 / span 3; }
+  .pt-roomv > .pt-me { grid-column: 1; grid-row: 3; }
+  .pt-roomv > .pt-chat { grid-column: 1; grid-row: 4; }
   .pt-roomv .pt-half { gap: 6px; }
   .pt-roomv .pt-code b { font-size: 34px; }
+  .pt-roomv .pt-code b.long { font-size: 27px; letter-spacing: .1em; }
   .pt-roomv .pt-seat { min-height: 78px; padding: 4px; }
   .pt-roomv .pt-seat img { width: 40px; height: 40px; }
   .pt-roomv .pt-tin { padding-top: 3px; padding-bottom: 3px; }
@@ -312,13 +347,93 @@
   .pt-roomv .pt-wait { font-size: 12px; }
 }
 /* A listed room's 等待時間 and 電腦難度 (the user 2026-11-03: know a quick room before joining it). */
-.pt-room .pt-rtags { display: flex; gap: 4px; margin-top: 2px; font-style: normal; }
+.pt-room .pt-rtags { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 2px; font-style: normal; }
 .pt-room .pt-rtag { font-style: normal; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; color: #2a3f8f; background: rgba(42, 63, 143, .12); }
 .pt-room .pt-rtag.quick { color: #7a3b00; background: #ffd23a; }
 .pt-room .pt-rtag.hell { color: #fff; background: #d8432f; }
 .pt-room .pt-rtag.ch { color: #fff; background: #2f74d8; }
 .pt-room .pt-rtag.drop { color: #fff; background: #2fa84f; }
+.pt-room .pt-rtag.rt { color: #fff; background: #e0512a; }
 
 /* 挑戰模式 (the user 2026-11-03: eye-catching): the label in gold, a guest's value too once it is on. */
 .pt-choice.hot .pt-cin > span { color: #ffd23a; font-weight: 900; text-shadow: 0 1px 0 #7a3b00, 0 0 6px rgba(255, 170, 0, .6); }
 .pt-choice.hot.on .pt-cin > b { color: #ffd23a; }
+
+/* 圍觀 / 加入: one column at the card's right, one above the other (the user 2026-11-16: with both, 加入 fell under the
+   face and 圍觀 was pushed out of the card by the tags) */
+.pt-room .pt-roomgo { display: flex; flex-direction: column; align-items: stretch; gap: 6px; font-style: normal; }
+.pt-room .pt-roomgo > * { margin: 0; text-align: center; }
+/* 圍觀: a playing room's button in 遊戲大廳 */
+.pt-room .pt-watchbtn { flex: none; white-space: nowrap; font-style: normal; font-weight: 800; font-size: 13px; padding: 4px 12px; margin-right: 6px; border-radius: 999px; color: #fff;
+  background: linear-gradient(#ff9f43, #e8590c); box-shadow: 0 2px 0 rgba(0,0,0,.25); cursor: pointer; }
+/* 暫離 (保留席位): a text button at the end of the party bar */
+.party-bar .pb-away { display: flex; flex-direction: column; align-items: center; justify-content: center; min-width: 46px; font-size: 12px; font-weight: 800; color: #fff;
+  border-radius: 10px; background: rgba(0, 0, 0, .25); }
+.party-bar .pb-away.lit { background: #e8590c; }
+.party-bar .pb-away em { font-style: normal; font-size: 10px; }
+
+/* 聯絡方式 (the user 2026-11-08): the button by the name, its sheet, the faces that open a player's card, the card */
+.pt-cin2 { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 6px; min-width: 0; }
+.pt-cbtn { white-space: nowrap; }
+.pt-kinds { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; }
+.pt-card .pt-cv { width: 100%; box-sizing: border-box; min-width: 0; font: inherit; font-size: 16px; padding: 7px 10px; border-radius: 10px; border: 2px solid #ffe14a; background: #fff; color: #333; }
+.pt-card .pt-cv:disabled { opacity: .45; }
+.pt-seat[data-who] { cursor: pointer; }
+.net-hud .nh-row { pointer-events: auto; cursor: pointer; }
+.nh-c { font-style: normal; margin-left: 3px; color: #8fffb0; }
+.pc-person img[data-who], .pc-contact { cursor: pointer; }
+.pc-person small.pc-contact { display: block; margin: 2px 0 0; opacity: 1; color: #8fffb0; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pt-card-ov { z-index: 60; }
+.msg.sheet.pt-card { width: min(320px, 92vw); align-items: center; text-align: center; gap: 8px; padding: 18px 16px 14px; }
+.pt-card img { width: 64px; height: 64px; border-radius: 50%; background: #fff; }
+.pt-card b { font-size: 18px; font-weight: 400; color: #ffe14a; }
+.pt-card-c { margin: 0; font-size: 17px; color: #fff; word-break: break-all; user-select: text; -webkit-user-select: text; }
+.pt-card-c.none { opacity: .7; font-size: 14px; }
+
+/* 即時制 chosen in a room: the call for testers (ui/party.ts rtTesters) */
+.pt-rt-note { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); z-index: 9000; width: min(92vw, 460px); box-sizing: border-box;
+  padding: 8px 14px; border-radius: 14px; background: rgba(20, 30, 90, .95); border: 2px solid #ffe14a; color: #fff; font-size: 13px; line-height: 1.5; text-align: left;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .4); animation: pt-rt-in .25s ease-out both; transition: opacity .4s; padding-right: 34px; }
+.pt-rt-x { position: absolute; right: 6px; top: 6px; width: 24px; height: 24px; padding: 0; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .18); color: #fff; font-size: 17px; line-height: 24px; cursor: pointer; }
+.pt-rt-note b { display: block; color: #ffe14a; font-size: 14px; margin-bottom: 2px; }
+.pt-rt-note.out { opacity: 0; }
+@keyframes pt-rt-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+
+/* 追加玩法's window (party.ts extrasSheet) */
+.msg.sheet.pt-ex { width: min(380px, 94vw); gap: 8px; padding: 16px 14px 12px; }
+.pt-ex-t { font-size: 18px; text-align: center; }
+.pt-ex-s { text-align: center; opacity: .75; font-size: 12px; }
+.pt-ex-row { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 12px; background: rgba(0, 0, 0, .18); }
+.pt-ex-row > div { flex: 1; min-width: 0; display: grid; gap: 2px; text-align: left; }
+.pt-ex-row b { font-size: 15px; }
+.pt-ex-row small { font-size: 12px; opacity: .8; line-height: 1.35; }
+.pt-ex-row em { font-style: normal; font-weight: 700; opacity: .6; }
+.pt-ex-row.on em { opacity: 1; color: #ffd84a; }
+.pt-ex-sw { flex: none; width: 50px; height: 28px; padding: 0; border: 0; border-radius: 14px; background: rgba(255, 255, 255, .25); position: relative; cursor: pointer; transition: background .2s; }
+.pt-ex-sw i { position: absolute; left: 3px; top: 3px; width: 22px; height: 22px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0, 0, 0, .4); transition: transform .2s; }
+.pt-ex-sw.on { background: #3fc45a; }
+.pt-ex-sw.on i { transform: translateX(22px); }
+
+/* 局域網房間 (party.ts): the PC's line for the phones, the rooms found, the code / address */
+.pt-lanqr { text-align: center; margin: 2px 0 4px; }
+.pt-lanqr small { color: #fff; font-size: 12px; line-height: 1.4; }
+.pt-lanqr small span { color: #ffe14a; font-weight: 700; font-variant-numeric: tabular-nums; }
+.pt-lanqr small em { font-style: normal; font-size: 11px; opacity: .8; }
+.pt-lanlist { display: grid; gap: 6px; margin: 4px 0 8px; }
+.pt-lanroom { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; padding: 10px 14px; border: 0; border-radius: 12px; font: inherit; color: #fff; background: rgba(0, 0, 0, .22); cursor: pointer; }
+.pt-lanroom b { color: #ffe14a; font-size: 17px; }
+.pt-lanroom small { opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-lanjoin { display: grid; grid-template-columns: 1fr auto; gap: 8px; margin: 4px 0 6px; align-items: center; }
+.pt-lanjoin .pt-input, .pt-lanman .pt-input { width: 100%; box-sizing: border-box; font-size: 17px; letter-spacing: .02em; text-align: left; padding: 9px 12px; }
+.pt-lanjoin .pt-input::placeholder, .pt-lanman .pt-input::placeholder { font-size: 15px; letter-spacing: 0; }
+.pt-lanman { margin: 2px 0 6px; font-size: 13px; color: #dfe8ff; }
+.pt-lanman summary { cursor: pointer; opacity: .85; }
+.pt-lanman .pt-input { width: 100%; box-sizing: border-box; margin-top: 6px; }
+/* issue #99: what another player just bought or sold, under the waiting line */
+.pt-bought { position: absolute; left: 50%; top: 92px; transform: translateX(-50%); z-index: 15; display: flex; flex-direction: column; align-items: center; gap: 4px; pointer-events: none; max-width: calc(100% - 24px); }
+.pt-bought[hidden] { display: none; }
+.pt-bought > div { padding: 3px 12px; border-radius: 999px; font-size: 13px; color: #fff; background: rgba(20, 30, 80, .78); border: 2px solid #ffe14a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; animation: pt-bought-in .25s ease-out; }
+@keyframes pt-bought-in { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+/* 局域網房間 on a phone: only the PC versions open the room */
+.pt-lanwho { margin: 4px 0 8px; padding: 6px 10px; border-radius: 10px; background: rgba(255, 225, 74, .14); color: #ffe9a8; }
+.pt-lanwho b { color: #ffd84a; }

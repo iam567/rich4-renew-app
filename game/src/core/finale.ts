@@ -12,10 +12,10 @@
  */
 import type { Board, BoardNode } from './board';
 import { CasinoRules, CAPS, DENY, emptyStats, FINALE_MAP, FINALE_NAME, type CasinoStats } from './casino-rules';
-import { type Flow } from './flow';
+import { ask, type Flow } from './flow';
 import type { Rng } from './rng';
 import { Game, type WorldHooks } from './game';
-import { cardName, cardPrice } from './modules/cards';
+import { cardName, cardPrice, isTycoonCard } from './modules/cards';
 import { sellPrice, toolDef } from './modules/tools';
 import { chipScore, FINALE_CHIP, type ChipScore } from './chips';
 import { attachLedger, ledgerOf } from './stats';
@@ -58,6 +58,8 @@ export type FinalistChips = ChipScore & { p: number };
 export interface FinaleState {
   active: boolean; startDay: number; finalists: number[]; valuations: Valuation[]; chips?: FinalistChips[]; visits: number;
   stats: CasinoStats[]; scaleMode?: ScaleMode; wealthScale?: number;
+  /** 城市決戰 instead (the user 2026-11-07): the city drawn, the day it began, the price index's doublings shown. */
+  city?: number; cityStart?: number; cityShown?: number;
 }
 
 /** The board of 大富翁城 (the screen and the tests load it; the finale cannot start without it). */
@@ -81,8 +83,17 @@ export class Finale extends CasinoRules implements WorldHooks {
   static enabled = true;
   /** 盲注遞增 (19 §5.5): every this many finale days the caps, the minimum bets, 門票 and the slot double. */
   static blindDays = 20;
+  /** 城市決戰: the tolls double at most this many times. */
+  static cityDoublings = 6;
   /** The blinds last announced (the multiplier). */
   private blindShown = 1;
+  /**
+   * 城市決戰 (the user 2026-11-07: instead of 大富翁城, the human may have the four fight on in one of the five cities,
+   * drawn at random, with money): its index (-1 none), the day it began, the price index's doublings announced.
+   */
+  city = -1;
+  cityStart = 0;
+  private cityShown = 1;
 
   constructor(readonly w: World) {
     super();
@@ -92,8 +103,8 @@ export class Finale extends CasinoRules implements WorldHooks {
   /** The city's index in the world (always the sixth). */
   get index(): number { return this.w.settings.maps.indexOf(FINALE_MAP); }
   game(): Game | undefined { const i = this.index; return i >= 0 ? this.w.cities[i] : undefined; }
-  /** Whether a city still plays: during the finale only 大富翁城 (the five are frozen). */
-  runs(i: number): boolean { return !this.active || i === this.index; }
+  /** Whether a city still plays: during the finale only 大富翁城 (the five are frozen); in 城市決戰 the city drawn. */
+  runs(i: number): boolean { return this.city >= 0 ? i === this.city : !this.active || i === this.index; }
 
   scale(): number { return (this.scaleMode === 'index' ? Math.max(1, this.w.priceIndex) : this.scaleMode === 'wealth' ? this.wealthScale : 1) * this.blind(); }
   /** Days since the finale started (0 on the first day). */
@@ -218,10 +229,105 @@ export class Finale extends CasinoRules implements WorldHooks {
       yield* this.raiseBlinds();
       return;
     }
+    if (this.city >= 0) { yield* this.cityBlinds(); return; }
     if (!Finale.enabled || this.w.over || !finaleBoard || this.index >= 0) return;
     const left = this.w.players.filter(p => !p.bankrupt);
     if (left.length > FINALE_PLAYERS || left.length < 2) return;
-    yield* this.start(left);
+    // the human chooses (the user 2026-11-07): 大富翁城 in chips, or a city drawn at random with money; a computer
+    // world (the simulations), or a human on 托管, goes to 大富翁城 as before
+    const h = this.w.human();
+    const pick = h && !h.bankrupt && h.whoPlays === 1 && !h.autopilot
+      ? Number(yield ask({ t: 'choose', p: h.id, title: '最終決戰', text: `只剩 ${left.length} 位了！選擇決戰的方式`, cancellable: false, options: [
+        { label: `去${FINALE_NAME}`, value: 0, detail: '全部資產換成籌碼，在賭場決勝負' },
+        { label: '城市決戰', value: 1, detail: '用現金決勝負：五座城市隨機抽一座，那裡的地產保留；只用原版卡片、道具（新的換成點券）' }] }))
+      : 0;
+    if (pick === 1) yield* this.startCity(left);
+    else yield* this.start(left);
+  }
+
+  /**
+   * 城市決戰 begins (the user 2026-11-07): one of the five cities drawn at random; the four keep what they have there.
+   * Everything they hold elsewhere goes for the worth the total assets count (lots and floors at their price, shares
+   * at today's): into the deposit, the lots back to the bank. Everyone comes to the city (out of hospitals, prisons,
+   * hotels and trips); the other four cities stop. Money as before — no chips.
+   */
+  *startCity(left: Player[]): Flow {
+    const w = this.w;
+    const pick = w.rng.below(w.cities.length);
+    const c = w.cities[pick], name = w.cityName(pick);
+    yield { t: 'fx', kind: 'showdown-draw', p: w.human()?.id, data: { cities: w.cities.map((_, i) => w.cityName(i)), pick, city: name } };
+    this.city = pick; this.cityStart = w.daysElapsed; this.cityShown = 1;
+    const lines: string[] = [`城市決戰！${left.map(p => w.name(p.id)).join('、')}在${name}決一勝負`];
+    for (const p of left) {
+      const owner = p.id + 1;
+      let got = 0;
+      for (const [i, o] of w.cities.entries()) {
+        if (i === pick) continue;
+        let worth = 0;
+        for (const l of o.board.lands) if (l.owner === owner) { worth += l.price + (l.chain ? l.perLevel : l.level * l.perLevel); l.owner = 0; l.expire = 0; }
+        for (const f of o.board.facilities) if (f.owner === owner) { worth += f.price + f.level * f.fees[0]; f.owner = 0; f.expire = 0; }
+        for (const co of o.board.companies) if (co.controller === owner) co.controller = 0;
+        got += worth;
+        // the shares: sold at today's price (Stocks.sell pays into the deposit; taken out again below)
+        for (let slot = 0; slot < o.stocks.stocks.length; slot++) {
+          const n = o.stocks.holdings[p.id]?.[slot]?.shares ?? 0;
+          if (n > 0) { const paid = o.stocks.sell(p, slot, n, true); p.bank -= paid; got += paid; }
+        }
+      }
+      // only the original's cards and tools from now on (the user 2026-11-07): 大富豪模式's own sold for points
+      let pts = 0;
+      p.cards = p.cards.filter(id => { if (!isTycoonCard(id)) return true; pts += sellPrice(cardPrice(id)); return false; });
+      for (const id of [14, 15, 16]) { const n = p.tools[id - 1] ?? 0; if (n) { pts += sellPrice(toolDef(id)?.price ?? 0, n); p.tools[id - 1] = 0; } }
+      if (pts) { p.points = Math.min(0xffff, p.points + pts); lines.push(`${w.name(p.id)}的新卡片、新道具換成 ${fmt(pts)} 點券`); }
+      const from = w.cityOf(p);
+      from?.objects.detachAll(p);
+      for (const x of w.cities) x.places.returnNpcsOf(p);
+      Object.assign(p, { hotel: 0, vanish: 0, prison: 0, hospital: 0, sleep: 0, sleepwalk: 0, stay: 0, turtle: 0, facility: 0 });
+      delete p.leaving;
+      p.trip = undefined;
+      // as cash, ready to build with in the city (in the deposit the computers would hardly ever spend it)
+      p.cash += got;
+      if (got) lines.push(`${w.name(p.id)}把其他城市的地產和股票換成 ${fmt(got)} 元現金`);
+    }
+    // none of 大富豪模式's own cards left to draw, buy or find on the black market
+    for (const x of w.cities) {
+      x.cards.remaining.forEach((_, i) => { if (isTycoonCard(i + 1)) x.cards.remaining[i] = 0; });
+      x.blackMarket.listings = x.blackMarket.listings.filter(l => !(l.kind === 'card' && isTycoonCard(l.id)) && !(l.kind === 'tool' && l.id > 13));
+    }
+    // Four squares round the city for the four (plain road, evenly spread), facing the way on.
+    const spots = c.board.nodes.filter(n => n.event === 0 && n.ref === 0 && !n.noDrop && n.adjacent.filter(Boolean).length === 2);
+    left.forEach((p, k) => {
+      const n = spots[Math.floor((k * spots.length) / left.length)] ?? c.board.nodes[0];
+      p.map = pick; p.node = n.id;
+      const ways = n.adjacent.filter(Boolean);
+      p.lastNode = ways[0] ?? n.id;
+      const from = c.node(p.lastNode);
+      p.dir = from ? Game.direction(n.x - from.x, n.y - from.y) : 0;
+      w.landed[p.id] = true;
+      if (!w.visited[p.id].includes(pick)) w.visited[p.id].push(pick);
+    });
+    w.mask(w.view());
+    for (const [k, text] of lines.entries()) w.ticker(pick, text, 'finale', undefined, { important: k === 0 });
+    yield { t: 'fx', kind: 'tycoon-notice', data: { text: `${lines[0]}\n其他城市的地產、股票都已換成現金\n每 ${Finale.blindDays} 天過路費翻倍`, icon: 'travel' } };
+    for (const text of lines) yield { t: 'ticker', day: w.daysElapsed, map: pick, text, kind: 'finale', important: true };
+    yield { t: 'board' };
+    yield { t: 'world-sync' };
+    if (w.human() && !w.human()!.bankrupt) yield { t: 'world-view', map: pick };
+  }
+
+  /** 城市決戰's pace (as 大富翁城's blinds): tolls and facility fees ×2 every 20 days of it (prices stay). */
+  tollBoost(): number {
+    return this.city >= 0 ? 2 ** Math.min(Finale.cityDoublings, Math.floor(Math.max(0, this.w.daysElapsed - this.cityStart) / Finale.blindDays)) : 1;
+  }
+
+  /** Announces each doubling of 城市決戰's tolls once. */
+  private *cityBlinds(): Flow {
+    const mult = this.tollBoost();
+    if (mult <= this.cityShown) return;
+    this.cityShown = mult;
+    const text = `決戰加溫！過路費、設施費 ×${mult}`;
+    this.w.ticker(this.city, text, 'finale', undefined, { important: true });
+    yield { t: 'fx', kind: 'tycoon-notice', data: { text, icon: 'travel' } };
   }
 
   /** The valuation of one finalist (19 §2): the same sums as the world's total assets, city by city. */
@@ -366,11 +472,13 @@ export class Finale extends CasinoRules implements WorldHooks {
   // ---------------------------------------------------------------- save
 
   save(): FinaleState | undefined {
+    if (this.city >= 0) return { active: false, startDay: 0, finalists: [], valuations: [], visits: 0, stats: [], city: this.city, cityStart: this.cityStart, cityShown: this.cityShown };
     if (!this.active) return undefined;
     return { active: true, startDay: this.startDay, finalists: [...this.finalists], valuations: structuredClone(this.valuations), chips: structuredClone(this.chips), visits: this.visits, stats: structuredClone(this.stats), scaleMode: this.scaleMode, wealthScale: this.wealthScale };
   }
 
   restore(s: FinaleState | undefined): void {
+    if (s?.city !== undefined && s.city >= 0) { this.city = s.city; this.cityStart = s.cityStart ?? 0; this.cityShown = s.cityShown ?? 1; return; }
     if (!s?.active) return;
     Object.assign(this, { active: true, startDay: s.startDay, finalists: [...s.finalists], valuations: structuredClone(s.valuations), chips: structuredClone(s.chips ?? []), visits: s.visits, stats: structuredClone(s.stats), scaleMode: s.scaleMode ?? 'flat', wealthScale: s.wealthScale ?? 1 });
     this.blindShown = this.blind();

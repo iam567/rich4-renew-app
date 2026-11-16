@@ -11,6 +11,8 @@ import { Fireworks, FIREWORKS_MS } from './fireworks';
 import { watch } from './watchdog';
 import { BUBBLE_BODY } from './bubble-text';
 import { uiFont } from './fonts';
+import { faceImage } from './faces';
+import { ORIG_FACE } from './reactions';
 
 /** The speech cloud's body (Data #517.6). */
 /** How long a quotation shows alone before the line (激情歲月, docs/rules/24 §7.1). */
@@ -242,6 +244,7 @@ export class Effects {
    * (220, 260)), so here everything is placed relative to the speaker's feet. A tap ends it early.
    * The remake centres the face and the words (or the icon) as one row on the cloud's body (bubble-text.ts),
    * not the original's fixed spots that leave a short line at the body's left and sit low over the tail.
+   * `face` is one of the remake's eight expressions (reactions.ts `Expr`), drawn redrawn (faces.ts) when loaded.
    */
   /**
    * `quote` (激情歲月, docs/rules/24 §7): a red strip with a quotation above the cloud, shown at once; the line itself
@@ -273,7 +276,8 @@ export class Effects {
           // The body's centre (the picture's anchor is at (127, 92) of 271×199), the face 40×34 at 1.35×, then a
           // gap and the words (at most 150 wide) or the icon.
           const bx = cx + (CLOUD_BODY.cx * 271 - 127) * z, by = cy + (CLOUD_BODY.cy * 199 - 92) * z;
-          const faceW = 54 * z, gap = 8 * z;
+          // The redrawn face (faces.ts) is a little larger than the original's 40 × 34 at 1.35×.
+          const hd = faceImage(character, face), faceW = (hd ? 60 : 54) * z, gap = 8 * z;
           const size = 17 * z;
           let w: number;
           const ic = icon ? this.host.bank.board('Data', 519)?.[Number(icon[1]) - 1] : null;
@@ -284,7 +288,10 @@ export class Effects {
             w = Math.max(...lines.map(l => ctx.measureText(l).width));
           }
           const left = bx - (faceW + gap + w) / 2;
-          this.sprite('map', 27 + character, face + 1, left + faceW / 2, by, 1, 1.35);
+          if (hd) {
+            const fh = Math.min(64 * z, faceW * hd.height / hd.width), fw = fh * hd.width / hd.height;
+            ctx.drawImage(hd, left + (faceW - fw) / 2, by - fh / 2, fw, fh);
+          } else this.sprite('map', 27 + character, (ORIG_FACE[face] ?? 0) + 1, left + faceW / 2, by, 1, 1.35);
           if (wait) { /* the quotation first */ }
           else if (icon) { if (ic) this.frame(ic, left + faceW + gap + w / 2 - (ic.w / 2 - ic.ax) * ic.scale * 1.4 * z, by - (ic.h / 2 - ic.ay) * ic.scale * 1.4 * z, 1, 1.4); }
           else if (lines) {
@@ -351,6 +358,8 @@ export class Effects {
     at?: Record<number, () => void>; caption?: string; skippable?: boolean;
     /** Drawn this much larger around the clip's bottom centre (small clips on a high-resolution screen). */
     grow?: number;
+    /** Played this many times faster (即時制: the board's clips kept short). */
+    speed?: number;
   } = {}): Promise<void> {
     // Starts as soon as the first frames are decoded; the rest decode while it plays (a frame not ready yet is
     // held on the last one, the clock waiting for it).
@@ -359,7 +368,7 @@ export class Effects {
     const lead = Math.min(n, CLIP_LEAD);
     const ok = await withTimeout(Promise.race([L.done.then(() => true), until(() => L.head() >= lead)]), 6000).catch(() => false);
     if (!ok || !n || !L.head()) { fire(1e9); return; }
-    const host = this.host, delay = o.delay ?? flcDelay(res);
+    const host = this.host, delay = (o.delay ?? flcDelay(res)) / (o.speed ?? 1);
     let start = -1, skip = false, pos = 0, last = 0, stalled = 0;
     const e: Effect = {
       done: false,

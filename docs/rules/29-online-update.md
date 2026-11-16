@@ -13,8 +13,9 @@
 ## 2 做法
 
 - **文件清单**：每次打包（`scripts/bundle-assets.mjs` 最后调用 `scripts/update-manifest.mjs`）写出 `dist/update-base.json`：版本号、`shell`、每个文件的 SHA-256（前 32 位）和大小。装好的 App 里就带着这份清单。
-- **只下载变动的文件**：新版本的清单和装好的 App 的清单比对，内容不同的文件才下载（每个都核对 hash，不对重下，三次都不对就放弃，旧版本照常可玩）；正在跑的若已是下载来的版本，它已有的文件直接拿来用。平常一次更新几 MB（程序约 2 MB），整个 App 1.4 GB。
+- **只下载变动的文件**：新版本的清单和装好的 App 的清单比对，内容不同的文件才下载（每个都核对 hash，不对重下，两次都不对就放弃，旧版本照常可玩）；正在跑的若已是下载来的版本，它已有的文件直接拿来用。平常一次更新几 MB（程序约 2 MB），整个 App 1.4 GB。
 - **放在哪里**：App 自己的资料夹 `rich4-update/v<版本>/`（iPhone：Library；安卓：files；电脑版：userData）。先写进 `v<版本>.part/`，全部下载完才改名并写入 `current`，所以中途断掉不会留下半个版本。
+- **断了接着下**：一个文件传到一半断线，从收到的最后一个字节接着下（Range），只要有新进度就一直试，连续 4 次没有新字节才放弃；20 秒没收到数据算断线。已下完的文件留在 `.part` 里，下次重试（包括关掉游戏再开）只下剩下的，留下的文件照样核对 hash。不支持 Range 的旧 WebView 每次下整个文件。
 - **App 怎么用它**：原生部分每次载入页面（`index.html`）时看 `current`，比装好的 App 新就从那个资料夹先找文件，找不到再用 App 自己的（iPhone：`AppDelegate.swift` 的 `UpdateRouter`；安卓：`UpdateClient.java`；电脑版：`desktop/main.cjs`）。新装的安装包比下载的版本新时，用安装包的。
 - **开不起来就退回**：原生部分每次用下载的版本启动就在 `boot` 记一次；页面到了标题画面就删掉 `boot`（`update.ts confirmStart`），同时清掉其他旧版本的资料夹。连续三次没到标题，就放弃那个版本（记在 `bad`，之后只提示下载安装包），回到 App 自己的版本。
 - **`shell`**：App 原生部分的能力编号（`update-manifest.mjs SHELL`）。改了 ios/、android/、desktop/main.cjs 或 Capacitor 插件就加一；需要更高 `shell` 的更新不会装到旧安装包上，改为提示下载安装包。

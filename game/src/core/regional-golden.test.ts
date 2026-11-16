@@ -1,12 +1,13 @@
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
-import { DOOR_STEP, Game, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
+import { DOOR_STEP, Game, HOLIDAY_GIFT, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
 import { REMAKE_CARD_SUPPLY } from './modules/cards';
+import { STOCK_TAX_INDEX } from './modules/events';
 import { FORK_LRU, Forks } from './modules/forks';
 import { REMAKE_AI_ONE_CARD } from './modules/tools';
 import type { GameSettings } from './types';
@@ -41,11 +42,17 @@ const mapFile = (id: number) => fileURLToPath(new URL(id >= 100 ? `../../../edit
 const MAPS = [0, 1, 2, 3, 4, 5, 6, 7, 100, 101, 102, 103, 104];
 const have = MAPS.every(id => existsSync(mapFile(id)));
 
+/**
+ * The rules level the runs play at (core/compat.ts): 1.2.2, before the auction ceiling on the reserve (1.2.3, the
+ * user 2026-11-15) — so every hash below stays; AUCTION holds the runs with it (level none: all on).
+ */
+let goldenLevel: string | undefined = '1.2.2';
 export function goldenRun(mapId: number, days: number): string {
   const board = parseBoard(JSON.parse(readFileSync(mapFile(mapId), 'utf8')) as RawMap);
   const settings: GameSettings = {
     mapId, players: [0, 4, 9, 11].map(character => ({ character, human: false })),
     fundIndex: 1, traffic: 0, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 14), seed: 9000 + mapId,
+    ...(goldenLevel ? { level: goldenLevel } : {}),
   };
   const game = new Game(settings, board);
   const h = createHash('sha256');
@@ -69,11 +76,35 @@ export function goldenRun(mapId: number, days: number): string {
   if (process.env.RICH4_PRINT_GOLDEN) console.log(mapId, game.daysElapsed, boards, !!game.over);
   const save = saveGame(game) as unknown as Record<string, unknown>;
   delete save.savedAt;
+  // (the level is the harness's, not the run's)
+  delete (save.settings as Record<string, unknown>).level;
   // The task tracker (core/challenge.ts, in every game since 2026-11-02 for the 圖鑑) only watches: left out, like savedAt.
   delete save.challenge;
+  // 槓桿 (2026-11-07): the stock module's positions, none in a computer game; left out, so the hash proves nothing else changed.
+  const stocks = (save.modules as Record<string, Record<string, unknown>>).stocks;
+  if (Array.isArray(stocks.positions) && !stocks.positions.length && stocks.nextPosition === 1) { delete stocks.positions; delete stocks.nextPosition; }
+  // ＨＯＴＥＬ１１ (2026-11-07): 派對模式 only, so none here.
+  if (stocks.hotelSlot === -1 && stocks.hotelBoss === 0) { delete stocks.hotelSlot; delete stocks.hotelBoss; }
   h.update(JSON.stringify(save));
   return h.digest('hex').slice(0, 16);
 }
+
+/**
+ * 2026-11-03 the holiday gift cards came back (the original's holiday table effect bit 8, docs/rules/01 §4.4; the user:
+ * 「原版聖誕節每人送一張卡」): every run here crosses 12/25, so every hash changed. HOLIDAY is the runs with them; with
+ * HOLIDAY_GIFT off every map gives GOLDEN below — the proof that nothing else changed.
+ */
+const HOLIDAY: Record<number, string> = {
+  0: 'e9fb15e954d6c89d', 1: '772c600bf47f435c', 2: '369ce5d1cf3d97ae', 3: '69dadee7f72921cd', 4: 'd70913c499ea1a28',
+  5: '67a8f3452223b673', 6: 'ed85651f3b874db9', 7: 'aaa1e9dfda8b63f2', 100: 'f72ffe5f0b4bba62', 101: '49d2bb692ec6e0d9',
+  102: 'deeaab5ac74681bc', 103: '6a25ee6b91881ea0', 104: '00746d3be2dee08b',
+};
+
+/** The runs as the game plays now: HOLIDAY with 證交稅 not × F (issue #87, 2026-11-11). */
+const TAX: Record<number, string> = { ...HOLIDAY, 4: '4419de6945338937' };
+
+/** The runs as the game plays now: TAX with a computer's auction ceiling on the reserve (1.2.3, compat 'auction-cap'). */
+const AUCTION: Record<number, string> = { ...TAX, 6: 'a395d6d52a753c2d', 7: '987496a163a69af4', 102: '43cd0d0c5ea97696' };
 
 /** Hashes with the least recently taken way out of every fork (FORK_LRU, 2026-10-23; docs/rules/14 §2). */
 const GOLDEN: Record<number, string> = {
@@ -167,6 +198,40 @@ const LEGACY: Record<number, string> = {
 };
 
 describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events', () => {
+  // (the holiday gift cards of 2026-11-03 change every map's run at 12/25: the hashes below are all from before them,
+  // so they are off here; HOLIDAY below holds the runs with them, and the proof that nothing else changed is that with
+  // them off every map gives GOLDEN.)
+  // (likewise 證交稅 without × F, issue #87 of 2026-11-11: on, as the original, every run below plays as before; TAX
+  // holds the runs as the game plays now — only map 4 meets that news with shares held.)
+  beforeAll(() => { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; });
+  afterAll(() => { HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; });
+  it('as the game plays now (the 1.2.3 auction ceiling on the reserve, holiday gifts, 證交稅 without × F) every map plays as AUCTION', () => {
+    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; goldenLevel = undefined;
+    try {
+      const got: Record<number, string> = {};
+      for (const id of MAPS) got[id] = goldenRun(id, 200);
+      if (process.env.RICH4_PRINT_GOLDEN) console.log('AUCTION', JSON.stringify(got));
+      expect(got).toEqual(AUCTION);
+    } finally { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; goldenLevel = '1.2.2'; }
+  });
+  it('at 1.2.2 (the auction ceiling on the price, holiday gifts, 證交稅 without × F) every map plays as TAX', () => {
+    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false;
+    try {
+      const got: Record<number, string> = {};
+      for (const id of MAPS) got[id] = goldenRun(id, 200);
+      if (process.env.RICH4_PRINT_GOLDEN) console.log(JSON.stringify(got));
+      expect(got).toEqual(TAX);
+    } finally { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; }
+  });
+  it('with the holiday gift cards (12/25) every map plays as HOLIDAY', () => {
+    HOLIDAY_GIFT.on = true;
+    try {
+      const got: Record<number, string> = {};
+      for (const id of MAPS) got[id] = goldenRun(id, 200);
+      if (process.env.RICH4_PRINT_GOLDEN) console.log(JSON.stringify(got));
+      expect(got).toEqual(HOLIDAY);
+    } finally { HOLIDAY_GIFT.on = false; }
+  });
   it('every map plays bit for bit as before', () => {
     const got = Object.fromEntries(MAPS.map(id => [id, goldenRun(id, 200)]));
     if (process.env.RICH4_PRINT_GOLDEN) console.log(JSON.stringify(got));

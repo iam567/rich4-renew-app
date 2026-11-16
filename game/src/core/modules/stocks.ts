@@ -6,11 +6,21 @@
  * every stored value goes through Math.fround, intermediate maths is double.
  */
 import type { Company } from '../board';
+import { ruleOn } from '../compat';
 import { day as dayOf, daysBetween, weekday } from '../date';
 import { CHARACTERS } from '../characters';
 import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
-import type { Player } from '../types';
+import type { Player, StockOrder } from '../types';
+
+/** 槓桿 (the user 2026-11-07): the multiples a position may have. */
+export const LEVERAGE = [2, 3, 5];
+
+/**
+ * A 槓桿 position: `shares` bought (long) or sold short at `entry`, held with `margin` of the player's money (shares ×
+ * entry / lev). Losing the whole margin closes it (爆倉).
+ */
+export interface Position { id: number; p: number; slot: number; long: boolean; lev: number; shares: number; entry: number; margin: number }
 import { WheelKind } from './wheel';
 
 const f32 = Math.fround;
@@ -30,6 +40,9 @@ export interface StockDef {
 
 const d = (name: string, price: number, vol: number, float = 10000, linked = false): StockDef => ({ name, linked, float, price, vol });
 const L = (name: string, price: number, vol: number, float: number): StockDef => d(name, price, vol, float, true);
+
+/** The table group a map uses: its own pick (自建地圖), else its map number's (03 §2.1). */
+export const stockGroup = (b: { mapId: number; stockGroup?: number }) => b.stockGroup ?? (((b.mapId | 0) % 8) + 8) % 8;
 
 /** The eight stock groups, group = map number (03 §2.1, §2.2). */
 export const STOCK_TABLE: readonly (readonly StockDef[])[] = [
@@ -74,6 +87,12 @@ export const STOCK_TABLE: readonly (readonly StockDef[])[] = [
     d('狄士尼', 55, 1.4), d('可口可樂', 30, 0.8), d('麥當勞', 44, 1), d('愛迪達', 30, 1.2),
   ],
 ];
+
+/**
+ * ＨＯＴＥＬ１１ (the user 2026-11-07, 派對模式 only): the hotels' alliance. It takes the place of a stock no company of
+ * the map points to; its 董事長 (the largest holder) stays at every hotel of the others for free (Game.hotelBossFree).
+ */
+export const HOTEL_STOCK: StockDef = d('ＨＯＴＥＬ１１', 110, 1.2);
 
 /** One stock of the current map, `stocks_on_map` (03 §1.1). */
 export interface Stock {
@@ -150,6 +169,16 @@ export class Stocks {
   index = 0;
   baseIndex = 0;
 
+  /** 槓桿 positions (the user 2026-11-07), every player's; saved with the module. */
+  positions: Position[] = [];
+  /** The next position's id. */
+  nextPosition = 1;
+
+  /** The slot ＨＯＴＥＬ１１ took (派對模式), -1 none. */
+  hotelSlot = -1;
+  /** Its 董事長, player id + 1 (0 none): the largest holder; a tie keeps the one already there. */
+  hotelBoss = 0;
+
   constructor(readonly g: Game) {}
 
   // ---------------------------------------------------------------- setup
@@ -157,15 +186,23 @@ export class Stocks {
   /** New game: stock table for the map and company links (03 §2-§3), then the first price update (03 §4.1). */
   init(): void {
     const g = this.g;
-    const group = (((g.board.mapId | 0) % 8) + 8) % 8;
+    const group = stockGroup(g.board);
     // A remake city names the slots itself (its local firms, 03 §2.4); the numbers are the table's.
     const names = g.board.stockNames;
+    // a player's map's own companies (企業大樓) may stand on a stock the table does not flag: theirs too
+    const own = g.board.mapId >= 5000 && ruleOn(g.settings.level, 'maker-companies') ? new Set(g.board.companies.map(c => c.stockSlot)) : new Set<number>();
     this.stocks = STOCK_TABLE[group].map((t, i): Stock => ({
-      name: names?.[i] || t.name, companyId: t.linked ? 1 : 0, suspendDays: 0, forced: 0, floatPool: t.float, turnQuota: 0,
+      name: names?.[i] || t.name, companyId: t.linked || own.has(i) ? 1 : 0, suspendDays: 0, forced: 0, floatPool: t.float, turnQuota: 0,
       basePrice: f32(t.price), prevClose: f32(t.price), price: f32(t.price), volatility: f32(t.vol),
       momentum: 0, lastImpulse: 0, history: new Array(144).fill(0),
     }));
     this.holdings = g.players.map(() => Array.from({ length: 12 }, () => ({ shares: 0, avgCost: 0 })));
+    this.hotelSlot = g.settings.party && !g.world ? this.freeSlot(group) : -1;
+    this.hotelBoss = 0;
+    if (this.hotelSlot >= 0) {
+      const h = HOTEL_STOCK;
+      Object.assign(this.stocks[this.hotelSlot], { name: h.name, companyId: 0, floatPool: h.float, basePrice: f32(h.price), prevClose: f32(h.price), price: f32(h.price), volatility: f32(h.vol) });
+    }
     this.restDays = 0;
     this.cursor = 0;
     this.baseIndex = Math.trunc(this.stocks.reduce((s, x) => f32(s + x.basePrice), 0) * 10);
@@ -178,6 +215,29 @@ export class Stocks {
     this.ranks = g.board.companies.map(c => [c.controller, 0, 0, 0]);
     this.refreshQuotas();
     this.update();
+  }
+
+  /** A slot no company of the map points to, the last one, one the table does not mean for a company first; -1 none. */
+  private freeSlot(group: number): number {
+    const used = new Set(this.g.board.companies.map(c => c.stockSlot));
+    const free = [11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1, 0].filter(i => !used.has(i));
+    return free.find(i => !STOCK_TABLE[group][i].linked) ?? free[0] ?? -1;
+  }
+
+  /** ＨＯＴＥＬ１１'s 董事長 again: someone holding more than the one there now takes it; none left with shares, nobody. */
+  private rankHotel(): void {
+    const slot = this.hotelSlot, n = (k: number) => this.holdings[k]?.[slot]?.shares ?? 0;
+    const ps = this.g.players;
+    let boss = this.hotelBoss && !ps[this.hotelBoss - 1]?.bankrupt && n(this.hotelBoss - 1) > 0 ? this.hotelBoss : 0;
+    ps.forEach((q, k) => { if (!q.bankrupt && n(k) > (boss ? n(boss - 1) : 0)) boss = k + 1; });
+    this.hotelBoss = boss;
+  }
+
+  /** Whether p is ＨＯＴＥＬ１１'s 董事長 (派對模式). */
+  isHotelBoss(p: Player): boolean {
+    if (this.hotelSlot < 0) return false;
+    this.rankHotel();
+    return this.hotelBoss === p.id + 1;
   }
 
   // ---------------------------------------------------------------- queries
@@ -203,6 +263,69 @@ export class Stocks {
     if (!h) return w;
     for (let i = 0; i < 12; i++) w = Math.trunc(f32(f32(w) + h[i].shares * this.stocks[i].price));
     return w;
+  }
+
+  // ---------------------------------------------------------------- 槓桿 (the user 2026-11-07)
+
+  /** What a position is worth now: its margin plus the gain (less the loss), never below 0. */
+  positionValue(x: Position): number {
+    const price = this.stocks[x.slot]?.price ?? x.entry;
+    return Math.max(0, x.margin + Math.trunc((price - x.entry) * x.shares * (x.long ? 1 : -1)));
+  }
+  /** The price at which a position loses its whole margin (爆倉). */
+  liquidationPrice(x: Position): number { return x.entry * (x.long ? 1 - 1 / x.lev : 1 + 1 / x.lev); }
+  /** All of a player's positions at what they are worth now. */
+  positionsValue(p: Player): number {
+    return this.positions.reduce((v, x) => (x.p === p.id ? v + this.positionValue(x) : v), 0);
+  }
+
+  /**
+   * Opens a position: `shares` at today's price, `lev` times the margin, which comes from the deposit. It owns no
+   * shares (no dividends, no say in a company) and moves no price; it only gains or loses with the price. Refused like
+   * a trade: a closed market, a suspended stock, 做多 at 漲停, 做空 at 跌停.
+   */
+  *openPosition(p: Player, slot: number, long: boolean, lev: number, count: number): Flow<string> {
+    if (this.g.settings.noLeverage) return '這一局沒有開放槓桿'; // (派對模式's 追加玩法)
+    const g = this.g, s = this.stocks[slot];
+    // 派對模式 only (the user 2026-11-07)
+    if (!s || !LEVERAGE.includes(lev) || g.world || !g.settings.party || !(count > 0)) return '無法開倉';
+    if (!this.open()) return '本日休市';
+    if (s.suspendDays) return '暫停交易';
+    if (long && trendOf(s) === Trend.LimitUp) return '漲停無法做多';
+    if (!long && trendOf(s) === Trend.LimitDown) return '跌停無法做空';
+    const shares = Math.min(Math.trunc(count), Math.trunc((p.bank * lev) / s.price));
+    if (!(shares > 0)) return '存款不足';
+    const margin = Math.ceil((shares * s.price) / lev);
+    p.bank -= margin;
+    const x: Position = { id: this.nextPosition++, p: p.id, slot, long, lev, shares, entry: s.price, margin };
+    this.positions.push(x);
+    yield { t: 'fx', kind: 'position-open', p: p.id, data: { ...x } };
+    return '';
+  }
+
+  /** Closes a position of `p`: what it is worth goes into the deposit. */
+  *closePosition(p: Player, id: number): Flow<number> {
+    const x = this.positions.find(y => y.id === id && y.p === p.id);
+    if (!x) return -1;
+    const v = this.positionValue(x);
+    this.positions = this.positions.filter(y => y !== x);
+    p.bank += v;
+    yield { t: 'fx', kind: 'position-close', p: p.id, data: { ...x, value: v } };
+    return v;
+  }
+
+  /** Every position that lost its whole margin is gone (爆倉); a bankrupt player's go with the rest. */
+  *liquidate(): Flow {
+    const g = this.g;
+    for (const x of [...this.positions]) {
+      const p = g.players[x.p];
+      if (!p || p.bankrupt) { this.positions = this.positions.filter(y => y !== x); continue; }
+      if (this.positionValue(x) > 0) continue;
+      this.positions = this.positions.filter(y => y !== x);
+      yield { t: 'fx', kind: 'position-liquidated', p: p.id, data: { ...x } };
+      yield* g.say(p.id, `${g.name(p.id)}的${this.stocks[x.slot].name}${x.long ? '做多' : '做空'}${x.lev}倍爆倉！\n保證金${x.margin.toLocaleString('en-US')}元全部賠光`);
+      if (g.over) return;
+    }
   }
 
   /** Is the market open today (03 §4.2)? Sundays close it; holidays join once the holiday table is remade. */
@@ -260,6 +383,7 @@ export class Stocks {
       if (s.forced & 0x0f) s.forced -= 1;
     }
     if (this.update()) yield { t: 'fx', kind: 'stocks-updated' };
+    yield* this.liquidate();
   }
 
   /** Daily price update fcn_004291d6 (03 §4.3). Returns false when the market is closed. */
@@ -276,7 +400,9 @@ export class Stocks {
       else {
         const r = (rng.rand() - 16384) / 1171;
         s.lastImpulse = f32(r);
-        let mom = f32(f32(s.momentum + r * s.volatility) + m);
+        // 地獄 (the user 2026-11-16: 「要不就連漲，要不就連跌」 — one could read where a share was going): yesterday's
+        // move counts a quarter, today's draw more — a share wanders day by day like a real one; the same numbers drawn
+        let mom = this.g.hellRules() ? f32(f32(s.momentum * 0.25 + r * s.volatility * 1.6) + m) : f32(f32(s.momentum + r * s.volatility) + m);
         const c = this.companyOf(i);
         const ref = c ? c.value / 10000 : s.basePrice;
         const hi = c ? 3 : 8, lo = c ? 0.85 : 0.5;
@@ -401,6 +527,7 @@ export class Stocks {
    * player ahead. Returns true when the controller changed.
    */
   rerank(pid: number, slot: number): boolean {
+    if (slot === this.hotelSlot) { this.rankHotel(); return false; }
     const c = this.companyOf(slot);
     if (!c) return false;
     const ci = this.g.board.companies.indexOf(c);
@@ -485,6 +612,7 @@ export class Stocks {
 
   /** Computer's stock trading at the start of its turn (03 §9.2-§9.3). */
   *aiTrade(p: Player): Flow {
+    if (this.g.settings.mapRules?.noStocks) return; // 自建地圖's 不能炒股
     yield* this.aiBuy(p);
     if (this.g.over || !p.whoPlays) return;
     yield* this.aiSell(p);
@@ -670,35 +798,107 @@ export class Stocks {
     const g = this.g;
     // 大富豪模式: one screen for the five cities' 60 stocks (docs/rules/17 §5).
     if (g.world) { yield* g.world.hooks.humanMarket(p, g); return; }
+    if (g.settings.mapRules?.noStocks) { yield* g.say(undefined, '這張地圖不能炒股'); return; }
     if (!this.open()) { yield* g.say(undefined, '本日休市'); return; }
+    // 即時制 (the user 2026-11-08): the prices of the moment the market was opened hold for every trade in it, however the
+    // days go on meanwhile (the screen leaves by itself after three days)
+    const lock = g.rt ? this.stocks.map(s => s.price) : undefined;
+    // 即時制: once between two rolls (the user 2026-11-08: no sitting in the market instead of playing the board)
+    // and a day after leaving it (the user: rolling alone is not enough)
+    if (g.rt && !g.rt.marketIn(p.id)) { yield* g.say(p.id, '要擲一次骰子、再過一天，才能再進股市'); return; }
+    try { yield* this.market(p, lock); } finally { g.rt?.marketOut(p.id); }
+  }
+
+  /** The market's trades, one question each (humanMarket). */
+  private *market(p: Player, lock?: number[]): Flow {
+    const g = this.g;
     for (;;) {
       if (g.over || !p.whoPlays) return;
       // The screen shows the tables and the company pages; each trade it asks for is checked here (03 §5.2-5.3).
-      const a = (yield ask({ t: 'stock-market', p: p.id })) as { slot: number; buy: boolean; n: number } | number | undefined;
+      const a = (yield ask({ t: 'stock-market', p: p.id })) as { slot: number; buy: boolean; n: number; lev?: number } | { close: number } | number | undefined;
       if (!a || typeof a !== 'object') return;
+      if ('close' in a) { yield* this.closePosition(p, a.close); continue; }
       const slot = a.slot;
+      if (a.lev && a.lev > 1) {
+        if (Number.isInteger(slot) && slot >= 0 && slot < 12) { const why = yield* this.openPosition(p, slot, !!a.buy, a.lev, a.n); if (why) yield* g.say(p.id, why); }
+        continue;
+      }
       if (!Number.isInteger(slot) || slot < 0 || slot >= 12) return;
-      yield* this.trade(p, slot, a.buy, a.n);
+      yield* this.trade(p, slot, a.buy, a.n, slot, lock);
     }
   }
 
   /** One trade the market screen asked for, checked as the original does (03 §5.2-5.3); `shown`: the slot the screen knows it by. */
-  *trade(p: Player, slot: number, buy: boolean, count: number, shown = slot): Flow {
+  *trade(p: Player, slot: number, buy: boolean, count: number, shown = slot, lock?: number[]): Flow {
     const g = this.g, s = this.stocks[slot], h = this.holdings[p.id][slot];
-    if (s.suspendDays) return;
+    if (s.suspendDays || g.settings.mapRules?.noStocks) return;
+    // `lock`: 即時制's prices of the moment the market was opened, used for this one trade (put back at once)
+    const at = <T>(f: () => T): T => { const real = s.price; if (lock?.[slot]) s.price = lock[slot]; try { return f(); } finally { s.price = real; } };
     if (buy) {
       if (trendOf(s) === Trend.LimitUp) { yield* g.say(p.id, '漲停無法買進！'); return; }
-      const n = Math.min(s.turnQuota, Math.trunc(p.bank / s.price), Math.trunc(count));
+      const n = Math.min(s.turnQuota, Math.trunc(p.bank / (lock?.[slot] || s.price)), Math.trunc(count));
       if (!(n > 0)) return;
-      this.buyMarket(p, slot, n);
+      at(() => this.buyMarket(p, slot, n));
       yield { t: 'fx', kind: 'stock-trade', p: p.id, data: { slot: shown, n, buy: true } };
     } else {
       if (trendOf(s) === Trend.LimitDown) { yield* g.say(p.id, '跌停無法賣出！'); return; }
       const n = Math.min(h.shares, Math.trunc(count));
       if (!(n > 0)) return;
-      this.sell(p, slot, n, true);
+      at(() => this.sell(p, slot, n, true));
       yield { t: 'fx', kind: 'stock-trade', p: p.id, data: { slot: shown, n, buy: false } };
     }
+  }
+
+  /**
+   * 派對模式's 等待中下單 (the user 2026-11-07): the orders placed during the turn that just ended, oldest first, under the
+   * rules of the market screen (the deposit, the volume, 漲停 / 跌停) at the price of this moment. In step on every
+   * phone: all come in one answer, between two turns, so no toll, no controller and no bankruptcy changes halfway.
+   * Each order says how it went ('stock-order'; `why` when nothing was traded, the owner's phone tells them).
+   */
+  *fillOrders(orders: unknown): Flow {
+    if (!Array.isArray(orders)) return;
+    const g = this.g;
+    let traded = false;
+    for (const o of orders as Partial<StockOrder>[]) {
+      const p = g.players[o?.seat ?? -1], slot = o?.slot ?? -1, s = this.stocks[slot];
+      // (not `whoPlays`: it is 0 too for a player not landed yet, in the first round)
+      if (!p || p.bankrupt) continue;
+      if (Number.isInteger(o.close)) {
+        const v = yield* this.closePosition(p, o.close!);
+        if (v < 0) yield { t: 'fx', kind: 'stock-order', p: p.id, data: { close: o.close, n: 0, why: '已經爆倉或平倉', id: o.id } };
+        continue;
+      }
+      if (!s || !Number.isInteger(o.n)) continue;
+      if (o.lev && o.lev > 1) {
+        const why = yield* this.openPosition(p, slot, !!o.buy, o.lev, o.n!);
+        if (why) yield { t: 'fx', kind: 'stock-order', p: p.id, data: { slot, n: 0, buy: !!o.buy, lev: o.lev, why, id: o.id } };
+        continue;
+      }
+      const buy = !!o.buy, r = this.orderSize(p, slot, buy, o.n!);
+      if (r.n > 0) {
+        const price = s.price;
+        if (buy) this.buyMarket(p, slot, r.n); else this.sell(p, slot, r.n, true);
+        traded = true;
+        yield { t: 'fx', kind: 'stock-trade', p: p.id, data: { slot, n: r.n, buy } };
+        yield { t: 'fx', kind: 'stock-order', p: p.id, data: { slot, n: r.n, buy, price, id: o.id } };
+      } else yield { t: 'fx', kind: 'stock-order', p: p.id, data: { slot, n: 0, buy, why: r.why, id: o.id } };
+    }
+    if (traded && !g.over) yield* g.financeRecall();
+  }
+
+  /** How much of an order can be traded now (`trade`'s checks); nothing: why not. */
+  private orderSize(p: Player, slot: number, buy: boolean, count: number): { n: number; why?: string } {
+    const s = this.stocks[slot], h = this.holdings[p.id][slot];
+    if (!this.open()) return { n: 0, why: '本日休市' };
+    if (s.suspendDays) return { n: 0, why: '暫停交易' };
+    if (buy) {
+      if (trendOf(s) === Trend.LimitUp) return { n: 0, why: '漲停' };
+      const n = Math.min(s.turnQuota, Math.trunc(p.bank / s.price), Math.trunc(count));
+      return n > 0 ? { n } : { n: 0, why: '存款或交易量不足' };
+    }
+    if (trendOf(s) === Trend.LimitDown) return { n: 0, why: '跌停' };
+    const n = Math.min(h.shares, Math.trunc(count));
+    return n > 0 ? { n } : { n: 0, why: '持股不足' };
   }
 
   // ---------------------------------------------------------------- company tiles (02 §5, 03 §5.5, §7)
@@ -848,7 +1048,7 @@ export class Stocks {
   /** Share subscription fcn_0041d1a9 (03 §5.5): cash, trunc(valuation / 10000) each, at most 1000 per visit. */
   private *subscribe(p: Player, c: Company): Flow {
     const g = this.g;
-    if (p.sleepwalk || !p.whoPlays || c.freeShares <= 0 || this.slotOf(c) < 0) return;
+    if (p.sleepwalk || !p.whoPlays || c.freeShares <= 0 || this.slotOf(c) < 0 || g.settings.mapRules?.noStocks) return;
     const unit = Math.trunc(c.value / 10000);
     if (unit <= 0) return;
     const max = Math.min(Math.trunc(p.cash / unit), 1000, c.freeShares);

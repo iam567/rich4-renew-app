@@ -1,0 +1,183 @@
+/* 圍觀's gifts (spectate.ts): over the whole window, a layer clicks pass through; transparent — the game always shows.
+   Every piece is centred on its spot (translate below) and moved by its animation; --u is 1 vmin. */
+.sp-fx { position: fixed; inset: 0; z-index: 9000; pointer-events: none; overflow: hidden; }
+.sp-fx > img, .sp-fx > i { position: absolute; left: var(--x); top: var(--y); width: var(--s, 40px); height: auto; translate: -50% -50%; font-style: normal; }
+.sp-fx img { display: block; filter: drop-shadow(0 calc(var(--u) * .6) calc(var(--u) * 1.2) rgba(0, 0, 0, .35)); }
+
+/* the banner, like a live stream's: who sends what; gold and shining for the big ones */
+.sp-banner { position: absolute; left: 50%; top: calc(var(--u) * 17); translate: -50% 0; display: flex; align-items: center; gap: calc(var(--u) * 1.4);
+  padding: calc(var(--u) * .8) calc(var(--u) * 3) calc(var(--u) * .8) calc(var(--u) * .8); border-radius: 999px; white-space: nowrap; color: #fff;
+  background: linear-gradient(90deg, rgba(255, 92, 138, .92), rgba(255, 159, 67, .92)); box-shadow: 0 calc(var(--u) * .5) calc(var(--u) * 2) rgba(0,0,0,.35);
+  animation: sp-banner 2.2s cubic-bezier(.2, 1.3, .4, 1) forwards; }
+.sp-banner img { width: calc(var(--u) * 8); height: calc(var(--u) * 8); object-fit: contain; }
+.sp-banner b { display: block; font-size: calc(var(--u) * 3.4); }
+.sp-banner small { display: block; font-size: calc(var(--u) * 3); font-weight: 800; color: #fff3a0; }
+.sp-banner.big, .sp-banner.top { background: linear-gradient(90deg, #b8860b, #ffd84a 40%, #fff3a0 50%, #ffd84a 60%, #b8860b); background-size: 300% 100%; color: #5a2d00;
+  animation: sp-banner 3.2s cubic-bezier(.2, 1.3, .4, 1) forwards, sp-shimmer 1.2s linear infinite; box-shadow: 0 0 calc(var(--u) * 3) rgba(255, 216, 74, .9); }
+.sp-banner.big small, .sp-banner.top small { color: #8a1c00; }
+.sp-banner.top { scale: 1.2; }
+.sp-t-top .sp-banner { animation-duration: 4s, 1s; }
+@keyframes sp-banner { 0% { opacity: 0; transform: translateX(-60vw); } 12% { opacity: 1; transform: translateX(0); } 85% { opacity: 1; transform: translateX(0); } 100% { opacity: 0; transform: translateX(10vw); } }
+@keyframes sp-shimmer { to { background-position: -300% 0; } }
+
+/* ---- shared moves */
+/* falling (petals, roses, coins, ingots, stars) from above the middle */
+.sp-fall { top: calc(var(--y) - 45vh) !important; opacity: 0; animation: sp-fall 2s cubic-bezier(.35, .1, .6, 1) var(--d) forwards; left: calc(var(--x) + var(--sx)) !important; }
+@keyframes sp-fall { 0% { opacity: 0; transform: translate(0, 0) rotate(0); } 10% { opacity: 1; } 50% { transform: translate(calc(var(--dx) * -1), 40vh) rotate(calc(var(--r) * .5)); }
+  85% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), 80vh) rotate(var(--r)); } }
+/* rising (hearts, balloons) from below the middle */
+.sp-rise { left: calc(var(--x) + var(--sx)) !important; top: calc(var(--y) + 30vh) !important; opacity: 0; animation: sp-rise 2.4s ease-out var(--d) forwards; }
+@keyframes sp-rise { 0% { opacity: 0; transform: translate(0, 0) scale(.6); } 15% { opacity: 1; } 100% { opacity: 0; transform: translate(var(--dx), -60vh) scale(1.1); } }
+/* popping in at the middle */
+.sp-pop { animation: sp-popin 1.8s cubic-bezier(.2, 1.6, .4, 1) forwards; }
+@keyframes sp-popin { 0% { opacity: 0; transform: scale(.1) rotate(-20deg); } 20% { opacity: 1; transform: scale(1.15) rotate(5deg); } 30% { transform: scale(1) rotate(0); } 80% { opacity: 1; } 100% { opacity: 0; transform: scale(1.3); } }
+.sp-clapping { animation: sp-popin 1.8s cubic-bezier(.2, 1.6, .4, 1) forwards, sp-clap .18s ease-in-out .35s 6 alternate; }
+@keyframes sp-clap { to { scale: 1.12 .92; } }
+.sp-beat { animation: sp-popin 1.8s ease forwards, sp-beat .45s ease-in-out .3s 3; }
+@keyframes sp-beat { 30% { scale: 1.2; } 60% { scale: .95; } }
+/* big words */
+.sp-word { top: calc(var(--y) - var(--s) * 1.4) !important; font-size: var(--s); font-weight: 900; color: #ffd84a; width: auto !important; white-space: nowrap;
+  -webkit-text-stroke: calc(var(--u) * .5) #8a3b00; paint-order: stroke fill; text-shadow: 0 calc(var(--u) * .6) 0 rgba(0,0,0,.35); animation: sp-popin 1.8s cubic-bezier(.2, 1.6, .4, 1) .1s both; }
+.sp-late { animation-delay: .5s !important; }
+/* a ring bursting out (stars, diamonds) */
+.sp-burst { opacity: 0; animation: sp-burst 1s ease-out var(--d) forwards; }
+.sp-burst.sp-late { animation-delay: .55s; } .sp-burst.sp-mid { animation-delay: 1.2s; }
+@keyframes sp-burst { 0% { opacity: 1; transform: translate(0, 0) scale(.3) rotate(0); } 100% { opacity: 0; transform: translate(var(--tx), var(--ty)) scale(1.2) rotate(200deg); } }
+
+/* ---- small gifts */
+.sp-drop { animation: sp-drop 2.2s cubic-bezier(.3, 1.4, .5, 1) forwards; }
+@keyframes sp-drop { 0% { opacity: 0; transform: translateY(-50vh) rotate(-30deg) scale(1.6); } 25% { opacity: 1; transform: translateY(0) rotate(0) scale(1); } 32% { transform: scale(1.08, .92); }
+  40% { transform: scale(1); filter: brightness(1.6); } 50% { filter: brightness(1); } 85% { opacity: 1; } 100% { opacity: 0; } }
+.sp-spin-in { animation: sp-spinin 2.2s cubic-bezier(.2, 1.3, .4, 1) forwards; }
+@keyframes sp-spinin { 0% { opacity: 0; transform: scale(.1) rotate(-540deg); } 30% { opacity: 1; transform: scale(1.1) rotate(10deg); } 40% { transform: scale(1) rotate(0); } 85% { opacity: 1; } 100% { opacity: 0; transform: scale(1.2); } }
+.sp-firework { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) + var(--fy)) !important; opacity: 0; animation: sp-boom 1.3s cubic-bezier(.1, .8, .3, 1) var(--d) forwards; }
+@keyframes sp-boom { 0% { opacity: 1; transform: scale(.05); filter: brightness(2.5); } 40% { opacity: 1; transform: scale(1); filter: brightness(1.3); } 100% { opacity: 0; transform: scale(1.15) translateY(calc(var(--u) * 4)); } }
+.sp-swing { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) - var(--u) * 12) !important; transform-origin: 50% 0; animation: sp-swing 2.2s ease-in-out var(--d) both; }
+@keyframes sp-swing { 0% { opacity: 0; transform: translateY(-30vh); } 15% { opacity: 1; transform: translateY(0) rotate(12deg); } 35% { transform: rotate(-12deg); } 55% { transform: rotate(9deg); } 75% { transform: rotate(-6deg); opacity: 1; } 100% { opacity: 0; transform: rotate(0); } }
+.sp-bang { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) + var(--fy)) !important; opacity: 0; animation: sp-bang .45s ease-out var(--d) forwards; }
+@keyframes sp-bang { 0% { opacity: 1; transform: scale(.1) rotate(0); } 50% { opacity: 1; transform: scale(1.1) rotate(25deg); } 100% { opacity: 0; transform: scale(1.4) rotate(40deg); } }
+.sp-shake { animation: sp-shake .5s linear .2s 3; }
+@keyframes sp-shake { 0%, 100% { transform: translate(0, 0); } 25% { transform: translate(calc(var(--u) * -1), calc(var(--u) * .6)); } 50% { transform: translate(calc(var(--u) * .8), calc(var(--u) * -.8)); } 75% { transform: translate(calc(var(--u) * -.5), calc(var(--u) * .4)); } }
+.sp-throw-in { animation: sp-throwin .75s cubic-bezier(.3, .2, .6, 1) forwards, sp-open .55s ease-out .75s forwards; }
+@keyframes sp-throwin { 0% { transform: translate(0, 60vh) rotate(-200deg) scale(.4); } 100% { transform: translate(0, 0) rotate(0) scale(1); } }
+@keyframes sp-open { 0% { transform: scale(1); filter: brightness(1); } 40% { transform: scale(1.35) rotate(-6deg); filter: brightness(1.8); } 100% { transform: scale(1.8); opacity: 0; } }
+.sp-fountain { opacity: 0; animation: sp-fountain 1.4s cubic-bezier(.2, .8, .4, 1) var(--d) forwards; }
+@keyframes sp-fountain { 0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(.5); } 50% { opacity: 1; transform: translate(var(--tx), var(--ty)) rotate(var(--r)) scale(1); }
+  100% { opacity: 0; transform: translate(var(--tx), calc(var(--ty) + 35vh)) rotate(var(--r)) scale(1); } }
+/* 雞蛋 / 番茄: grows toward the screen, then the splat (about half the screen) sliding down */
+.sp-hurl { animation: sp-hurl .58s cubic-bezier(.5, 0, .8, .6) forwards; }
+@keyframes sp-hurl { 0% { transform: translate(var(--sx), 60vh) scale(.5) rotate(0); } 100% { transform: translate(0, 0) scale(2.6) rotate(400deg); opacity: 1; } }
+.sp-fx .sp-hurl { animation: sp-hurl .58s cubic-bezier(.5, 0, .8, .6) forwards, sp-gone 0s .58s forwards; }
+@keyframes sp-gone { to { opacity: 0; } }
+.sp-splat { rotate: var(--r); opacity: 0; animation: sp-splat 2s ease-out .56s forwards; }
+.sp-splat.sp-small { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) + var(--fy)) !important; animation-delay: .62s; }
+@keyframes sp-splat { 0% { opacity: 1; transform: scale(.3); } 8% { transform: scale(1.12, .9); } 14% { transform: scale(.96, 1.04); } 20% { transform: scale(1); } 70% { opacity: 1; transform: translateY(calc(var(--u) * 5)) scaleY(1.06); }
+  100% { opacity: 0; transform: translateY(calc(var(--u) * 14)) scaleY(1.2); } }
+
+/* ---- big gifts: they may cross the screen, in a band around the middle */
+.sp-drive { animation: sp-drive 3s cubic-bezier(.3, .6, .5, 1) forwards; }
+@keyframes sp-drive { 0% { transform: translateX(-75vw) skewX(-8deg); } 35% { transform: translateX(0) skewX(-6deg); } 42% { transform: translateX(0) rotate(-3deg); filter: brightness(1.4); }
+  70% { transform: translateX(3vw) rotate(0); filter: brightness(1); } 100% { transform: translateX(80vw) skewX(-10deg); } }
+.sp-puff { top: calc(var(--y) + var(--u) * 10) !important; opacity: 0; animation: sp-puff 1s ease-out var(--d) forwards; }
+@keyframes sp-puff { 0% { opacity: .9; transform: translateX(calc(-60vw + var(--d) * 22vw)) scale(.4); } 100% { opacity: 0; transform: translateX(calc(-66vw + var(--d) * 22vw)) scale(1.4) translateY(calc(var(--u) * -6)); } }
+.sp-speed { top: calc(var(--y) + var(--fy)) !important; width: 30vw !important; height: calc(var(--u) * .6); border-radius: 999px; background: linear-gradient(90deg, transparent, rgba(255,255,255,.9));
+  opacity: 0; animation: sp-speed .7s linear var(--d) 3; }
+@keyframes sp-speed { 0% { opacity: 0; transform: translateX(-60vw); } 30% { opacity: 1; } 100% { opacity: 0; transform: translateX(40vw); } }
+.sp-sail { animation: sp-sail 3.2s ease-in-out forwards; }
+@keyframes sp-sail { 0% { opacity: 0; transform: translateX(-70vw) rotate(-3deg); } 15% { opacity: 1; } 30% { transform: translateX(-25vw) rotate(2deg) translateY(-1vh); } 50% { transform: translateX(0) rotate(-2deg); }
+  70% { transform: translateX(15vw) rotate(2deg) translateY(-1vh); } 100% { opacity: 0; transform: translateX(70vw) rotate(-2deg); } }
+.sp-wave { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) + var(--u) * 20) !important; opacity: 0; animation: sp-wave 3s ease-in-out var(--d) forwards; }
+@keyframes sp-wave { 0% { opacity: 0; transform: translateY(10vh) scale(.6); } 20% { opacity: 1; transform: translateY(0) scale(1); } 50% { transform: translateY(-1vh) scale(1.05) rotate(-4deg); }
+  80% { opacity: 1; transform: translateY(0) scale(1) rotate(3deg); } 100% { opacity: 0; transform: translateY(8vh) scale(.8); } }
+.sp-fly { animation: sp-fly 3.1s cubic-bezier(.4, .1, .6, .9) forwards; }
+@keyframes sp-fly { 0% { opacity: 0; transform: translate(-70vw, 30vh) rotate(-14deg) scale(.6); } 15% { opacity: 1; } 50% { transform: translate(0, 0) rotate(-10deg) scale(1); } 100% { opacity: 1; transform: translate(75vw, -40vh) rotate(-14deg) scale(1.2); } }
+.sp-trail { top: calc(var(--y) + var(--fy)) !important; width: 150vw !important; height: calc(var(--u) * 1.2); rotate: -10deg; border-radius: 999px;
+  background: linear-gradient(90deg, transparent 0%, rgba(255,255,255,.85) 50%, transparent 50.5%); background-size: 200% 100%; opacity: 0; animation: sp-trail 3.1s linear var(--d) forwards; }
+@keyframes sp-trail { 0% { opacity: .9; background-position: 100% 0; } 85% { opacity: .9; } 100% { opacity: 0; background-position: -60% 0; } }
+.sp-ride { animation: sp-ride 3.2s ease-in-out forwards; }
+@keyframes sp-ride { 0% { opacity: 0; transform: translateX(-70vw); } 15% { opacity: 1; } 40% { transform: translateX(0) translateY(-1vh); } 45% { transform: translateX(0) translateY(0); filter: brightness(1.5) drop-shadow(0 0 3vmin #ffd84a); }
+  60% { transform: translateX(4vw); filter: brightness(1); } 100% { opacity: 0; transform: translateX(75vw); } }
+.sp-dust { top: calc(var(--y) + var(--fy)) !important; opacity: 0; animation: sp-dust 1.1s ease-out var(--d) forwards; }
+@keyframes sp-dust { 0% { opacity: 1; transform: translateX(calc(-62vw + var(--d) * 32vw)) scale(.4); } 100% { opacity: 0; transform: translateX(calc(-68vw + var(--d) * 32vw)) translateY(calc(var(--u) * -8)) scale(1.3) rotate(180deg); } }
+.sp-rise-up { animation: sp-riseup 3.2s cubic-bezier(.2, 1.1, .4, 1) forwards; }
+@keyframes sp-riseup { 0% { opacity: 0; transform: translateY(55vh) scale(.7); } 30% { opacity: 1; transform: translateY(0) scale(1); } 40% { filter: brightness(1.4) drop-shadow(0 0 3vmin #fff3a0); } 55% { filter: brightness(1); }
+  85% { opacity: 1; transform: translateY(0) scale(1); } 100% { opacity: 0; transform: translateY(0) scale(1.08); } }
+.sp-turn { animation: sp-riseup 3.2s cubic-bezier(.2, 1.1, .4, 1) forwards, sp-glow 1s ease-in-out .9s 2 alternate; }
+@keyframes sp-glow { to { filter: brightness(1.35) drop-shadow(0 0 2.5vmin #ff8fb8); } }
+.sp-float { left: calc(var(--x) + var(--fx)) !important; opacity: 0; animation: sp-rise 2.8s ease-out var(--d) forwards; top: calc(var(--y) + 10vh) !important; }
+.sp-dragon { animation: sp-dragon 3.3s ease-in-out forwards; }
+@keyframes sp-dragon { 0% { opacity: 0; transform: translate(-70vw, 6vh) rotate(8deg); } 15% { opacity: 1; } 30% { transform: translate(-30vw, -6vh) rotate(-8deg); } 50% { transform: translate(0, 4vh) rotate(6deg) scale(1.1); }
+  70% { transform: translate(30vw, -5vh) rotate(-6deg); } 100% { opacity: 0; transform: translate(75vw, 4vh) rotate(8deg); } }
+.sp-billow { left: calc(var(--x) + var(--fx)) !important; top: calc(var(--y) + var(--u) * 26) !important; opacity: 0; animation: sp-billow 2.6s ease-out var(--d) forwards; }
+@keyframes sp-billow { 0% { opacity: .95; transform: scale(.3); } 60% { opacity: .9; transform: scale(1.3) translateX(calc(var(--fx) * .6)); } 100% { opacity: 0; transform: scale(1.7) translateX(var(--fx)) translateY(calc(var(--u) * -6)); } }
+.sp-launch { top: calc(var(--y) + var(--u) * 14) !important; animation: sp-launch 3.2s cubic-bezier(.6, 0, .9, .6) forwards; }
+.sp-launch .sp-rocket { position: relative; width: 100%; z-index: 1; }
+.sp-launch .sp-flame { position: absolute; left: 50%; top: 82%; width: 70%; translate: -50% 0; animation: sp-flicker .08s linear infinite alternate; }
+@keyframes sp-flicker { to { scale: 1.08 1.18; filter: brightness(1.3); } }
+@keyframes sp-launch { 0% { transform: translateY(0); } 25% { transform: translateY(calc(var(--u) * -2)); } 30% { transform: translateY(calc(var(--u) * -1)); } 100% { transform: translateY(-110vh); } }
+.sp-rumble { animation: sp-shake .3s linear 0s 8; }
+.sp-arc { top: calc(var(--y) - var(--u) * 6) !important; opacity: 0; animation: sp-arc 2.8s ease-out var(--d) forwards; }
+@keyframes sp-arc { 0% { opacity: 0; clip-path: inset(0 100% 0 0); } 30% { opacity: 1; clip-path: inset(0 0 0 0); } 80% { opacity: .95; } 100% { opacity: 0; } }
+/* 嘉年華: the crown dropping and shining, 「嘉年華」 in gold, confetti */
+.sp-crown { top: calc(var(--y) - var(--u) * 10) !important; animation: sp-crown 4s cubic-bezier(.3, 1.4, .5, 1) forwards; }
+@keyframes sp-crown { 0% { opacity: 0; transform: translateY(-50vh) rotate(-30deg) scale(2); } 20% { opacity: 1; transform: translateY(0) rotate(0) scale(1); } 25% { transform: scale(1.1, .9); }
+  30% { transform: scale(1); filter: brightness(1.8) drop-shadow(0 0 4vmin #ffd84a); } 45% { filter: brightness(1.1) drop-shadow(0 0 2vmin #ffd84a); } 85% { opacity: 1; } 100% { opacity: 0; transform: scale(1.15); } }
+.sp-title { top: calc(var(--y) + var(--u) * 12) !important; width: auto !important; white-space: nowrap; font-size: var(--s); font-weight: 900; letter-spacing: .08em;
+  background: linear-gradient(180deg, #fff9c4, #ffd84a 45%, #e8a200 55%, #fff3a0); -webkit-background-clip: text; background-clip: text; color: transparent;
+  -webkit-text-stroke: calc(var(--u) * .4) #8a3b00; filter: drop-shadow(0 calc(var(--u) * .8) 0 rgba(0,0,0,.35)) drop-shadow(0 0 calc(var(--u) * 3) rgba(255, 216, 74, .9));
+  animation: sp-popin 4s cubic-bezier(.2, 1.6, .4, 1) .7s both; }
+.sp-confetti { left: calc(var(--x) + var(--sx)) !important; top: calc(var(--y) - 45vh) !important; width: calc(var(--u) * 1.4) !important; height: calc(var(--u) * 2.6); background: var(--c);
+  border-radius: 2px; opacity: 0; animation: sp-fall 2.6s linear var(--d) forwards; }
+
+/* The spectator's bar: at the bottom over the map (the toolbar and panels stay the game's). */
+.sp-bar { position: absolute; left: 50%; bottom: 8px; transform: translateX(-50%); z-index: 25; width: min(560px, calc(100% - 16px)); padding: 6px 8px 8px; border-radius: 16px;
+  background: rgba(16, 24, 56, .82); box-shadow: 0 0 0 2px rgba(255,255,255,.6), 0 4px 12px rgba(0,0,0,.4); color: #fff; }
+.sp-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 12px; white-space: nowrap; }
+.sp-head b { color: #ffd84a; font-size: 13px; }
+.sp-head span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; opacity: .9; }
+.sp-leave { flex: none; font-size: 12px; font-weight: 800; padding: 3px 10px; border-radius: 999px; border: 0; color: #fff; background: #d8432f; }
+.sp-fold { flex: none; width: 30px; height: 24px; padding: 0; font-size: 12px; line-height: 1; border: 0; border-radius: 8px; color: #fff; background: rgba(255, 255, 255, .22); }
+.sp-bar.folded { width: min(330px, calc(100% - 16px)); padding-bottom: 6px; }
+.sp-bar.folded .sp-head { margin-bottom: 0; }
+.sp-bar.folded .sp-take { margin: 6px 0 0; }
+.sp-btns { display: grid; grid-template-columns: repeat(10, 1fr); gap: 4px; }
+.sp-btns button img { width: 26px; height: 26px; object-fit: contain; }
+.sp-btns button.big, .sp-btns button.top { background: linear-gradient(#ffd84a, #e8a200); color: #5a2d00; box-shadow: 0 0 8px rgba(255, 216, 74, .8); }
+@media (orientation: portrait) { .sp-btns { grid-template-columns: repeat(5, 1fr); } }
+.sp-btns button { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 0 3px; border: 0; border-radius: 10px;
+  background: rgba(255,255,255,.14); color: #fff; }
+.sp-btns button.off { opacity: .4; }
+.sp-btns.shut button { opacity: .4; }
+.sp-btns button.off, .sp-big button.off { opacity: .4; }
+/* every big gift in one row (scrolls sideways): locked and grey until won, tapping one says how to get it */
+.sp-big { display: flex; align-items: stretch; gap: 4px; margin-top: 4px; overflow-x: auto; scrollbar-width: none; }
+.sp-big::-webkit-scrollbar { display: none; }
+.sp-big > b { flex: none; writing-mode: vertical-rl; font-size: 10px; letter-spacing: 1px; color: #ffd84a; align-self: center; }
+.sp-big button { flex: 0 0 calc((100% - 52px) / 10); position: relative; display: flex; flex-direction: column; align-items: center; gap: 1px; min-width: 0; padding: 4px 0 3px; border: 0;
+  border-radius: 10px; background: linear-gradient(#ffd84a, #e8a200); color: #5a2d00; box-shadow: 0 0 8px rgba(255, 216, 74, .8); }
+@media (orientation: portrait) { .sp-big button { flex-basis: calc((100% - 40px) / 5.5); } } /* half of the 6th shows: the row scrolls */
+.sp-big button img { width: 26px; height: 26px; object-fit: contain; }
+.sp-big small { font-size: 10px; white-space: nowrap; }
+.sp-big em { position: absolute; top: 1px; right: 3px; font-style: normal; font-size: 10px; font-weight: 800; color: #5a2d00; }
+.sp-big button.locked { background: rgba(255,255,255,.14); color: #ddd; box-shadow: none; }
+.sp-big button.locked img { filter: grayscale(1) brightness(.85); opacity: .7; }
+/* a player's gifts (等待時送禮物): above the map's lower edge, the party bar stays free */
+.sp-bar[hidden] { display: none; }
+.sp-ic { width: 24px; height: 24px; display: grid; place-items: center; }
+.sp-ic svg { width: 22px; height: 22px; }
+.sp-ic-t { font-size: 16px; font-weight: 900; color: #ffd84a; }
+.sp-ic-fw { width: 18px; height: 18px; border-radius: 50%; background: radial-gradient(circle, #fff 0 15%, #ffd84a 20%, transparent 25%), conic-gradient(#ff5c8a, #ffd84a, #5cd6ff, #9dff7a, #ff5c8a);
+  -webkit-mask: radial-gradient(circle, #000 0 22%, transparent 24% 30%, #000 32%); mask: radial-gradient(circle, #000 0 22%, transparent 24% 30%, #000 32%); }
+.sp-btns small { font-size: 10px; white-space: nowrap; }
+.sp-btns em { position: absolute; top: 1px; right: 3px; font-style: normal; font-size: 10px; font-weight: 800; color: #ffd84a; }
+/* players: how many watch (by the party bar) */
+.sp-count { position: absolute; right: 8px; top: 6px; z-index: 6; pointer-events: none; font-size: 12px; font-weight: 800; color: #fff; padding: 2px 9px; border-radius: 999px;
+  background: rgba(232, 89, 12, .85); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
+.sp-take { display: flex; gap: 6px; justify-content: center; margin-bottom: 6px; flex-wrap: wrap; }
+.sp-take button { font-size: 13px; font-weight: 800; padding: 4px 14px; border: 0; border-radius: 999px; color: #fff; background: linear-gradient(#5cd65c, #2f9e44); box-shadow: 0 2px 0 rgba(0,0,0,.3);
+  animation: sp-pulse 1.2s ease-in-out infinite; }
+@keyframes sp-pulse { 50% { transform: scale(1.06); } }
+/* 即時制 圍觀: whom the camera follows */
+.sp-cam { display: flex; align-items: center; justify-content: center; gap: 8px; margin: 4px 0; font-size: 13px; color: #fff; }
+.sp-cam button { min-width: 30px; height: 26px; border-radius: 13px; border: 2px solid #ffe14a; background: rgba(20, 30, 80, .85); color: #ffe14a; font-size: 12px; cursor: pointer; }
+.sp-cam span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 12em; }

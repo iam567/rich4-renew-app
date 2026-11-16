@@ -51,6 +51,32 @@ describe('每月任務 cards', () => {
 });
 
 describe.skipIf(!existsSync(mapFile(2)))('每月任務 measures', () => {
+  it('請神 (issue #86): the god 請神符 brings — 小財神, 小福神, 土地公 … — does it; a bad god does not', () => {
+    for (const [type, done] of [[1, true], [3, true], [12, true], [9, true], [5, false]] as const) {
+      const g = game('M060'), c = g.challengeTracker!, p = g.players[0];
+      g.objects.detachAll(p);
+      for (const s of g.objects.slots) if (s.node && !s.owner && s.type <= 15) s.node = 0;
+      const at = g.node(p.node);
+      const near = g.board.nodes.filter(n => n.id !== p.node && !g.objects.idAt(n.id) && n.event === 0).sort((a, b) => Math.hypot(a.x - at.x, a.y - at.y) - Math.hypot(b.x - at.x, b.y - at.y))[0];
+      expect(g.objects.place(type, near.id)).toBe(true);
+      p.cards = [23];
+      const f = (g.cards as unknown as { play(p: unknown, id: number, h: boolean): Generator })['play'](p, 23, true);
+      for (let r = f.next(); !r.done; r = f.next(undefined)) c.see(r.value as GameEvent);
+      expect(g.objects.godType(p)).toBe(type);
+      expect(c.month!.done).toBe(done);
+    }
+  });
+
+  it('天使與惡魔 (issue #86): a 天使卡 picked and then cancelled does not count; one that worked does', () => {
+    const g = game('M036'), c = g.challengeTracker!;
+    // as Game.run: the ledger sees each event first, then the tracker (which checks the card after each one)
+    const play = (...es: GameEvent[]) => es.forEach(e => { g.stats!.observe(e, g); c.see(e); });
+    play(fx('card', 0, { card: 9 }), fx('card-failed', 0, { card: 9 }));
+    expect(c.month!.done).toBe(false);
+    play(fx('card', 0, { card: 10 }), fx('card-done', 0, { card: 10 }));
+    expect(c.month!.done).toBe(true);
+  });
+
   it('全員收押: every rival sent to prison by the player on turn; a news sending someone in does not count', () => {
     const g = game('M026'), c = g.challengeTracker!;
     see(g, { t: 'turn', p: 0 }, fx('to-prison', 1), fx('to-prison', 2));

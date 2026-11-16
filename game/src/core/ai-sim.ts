@@ -12,9 +12,10 @@ import { Game } from './game';
 import './casino-rules'; // 大富翁城's map rules (MAP_RULES[105])
 import './kabukicho'; // 歌舞伎町's map rules (MAP_RULES[106])
 import './jiqing'; // 激情歲月's map rules (MAP_RULES[107])
+import './chongqing'; // 重慶's map rules (MAP_RULES[109])
 import type { GameSettings } from './types';
 
-const FILES: Record<number, string> = { 100: 'remake/tokyo', 101: 'remake/osaka', 102: 'remake/sapporo', 103: 'remake/kyushu', 104: 'remake/okinawa', 105: 'remake/finale', 106: 'remake/kabukicho', 107: 'remake/jiqing' };
+const FILES: Record<number, string> = { 100: 'remake/tokyo', 101: 'remake/osaka', 102: 'remake/sapporo', 103: 'remake/kyushu', 104: 'remake/okinawa', 105: 'remake/finale', 106: 'remake/kabukicho', 107: 'remake/jiqing', 109: 'remake/chongqing' };
 export const simMapFile = (id: number) => fileURLToPath(new URL(`../../../editor/site/assets/${FILES[id] ?? `map-${id}`}.json`, import.meta.url));
 export const haveSimMaps = (ids: number[]) => ids.every(id => existsSync(simMapFile(id)));
 
@@ -48,7 +49,7 @@ export function simGame(mapId: number, seed: number, characters: number[], level
     const s = r.value as { ask?: boolean; t?: string };
     if ('ask' in s) {
       // Only 派對模式's 托管 question reaches a computer-played seat (0: the computer keeps playing).
-      if (s.t !== 'auto-turn' && s.t !== 'seat') throw new Error(`map ${mapId} seed ${seed}: unexpected question ${JSON.stringify(s)}`);
+      if (s.t !== 'auto-turn' && s.t !== 'seat' && s.t !== 'orders') throw new Error(`map ${mapId} seed ${seed}: unexpected question ${JSON.stringify(s)}`);
       r = flow.next(0);
     } else r = flow.next();
   }

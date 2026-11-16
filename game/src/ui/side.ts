@@ -30,6 +30,8 @@ const BANDS = [97, 155, 213];
 const WEEKDAYS = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
 
 /** A long name (派對模式's own names, up to 7 characters) gets smaller to stay on its line; the characters' are unchanged. */
+/** 派對模式: the flag beside a player's name (main.ts sets it for the game's room). */
+export const sideFlag = { of: (_player: number) => '' };
 const fit = (name: string, width: number, size: number) => { const n = [...name].length, px = Math.min(size, Math.floor(width / Math.max(1, n))); return px < size ? ` style="font-size:${px}px"` : ''; };
 
 export class PlayerPanel {
@@ -64,7 +66,7 @@ export class PlayerPanel {
       const bg = this.bank.art('Panel', 0, 4), face = this.bank.art('Data', 2, p.character);
       this.el.innerHTML = `${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
         <div class="pp-face small" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-        <div class="pp-cname"${fit(playerName(p), 116, 18)}>${playerName(p)}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
+        <div class="pp-cname"${fit(`${playerName(p)}${sideFlag.of(p.id) ? '旗' : ''}`, 116, 18)}>${sideFlag.of(p.id)}${playerName(p)}</div><div class="pp-cbar" style="--c:${hex(ch.color)}"></div>
         ${chipMode() ? `<div class="pp-cl" style="top:46px">籌碼</div><div class="pp-cv" style="top:44px">${money(p.cash)}</div>`
           : `<div class="pp-cl" style="top:36px">現金</div><div class="pp-cv" style="top:34px">${money(p.cash)}</div>
         <div class="pp-cl" style="top:56px">存款</div><div class="pp-cv" style="top:54px">${money(p.bank)}</div>`}`;
@@ -77,7 +79,7 @@ export class PlayerPanel {
     this.el.innerHTML = `
       ${bg ? `<img class="pp-bg" src="${bg.src}" alt="">` : ''}
       <div class="pp-face" style="--c:${hex(ch.color)}">${face ? `<img src="${face.src}" alt="">` : ''}</div>
-      <div class="pp-name"${fit(playerName(p), 96, 21)}>${playerName(p)}</div>
+      <div class="pp-name"${fit(`${playerName(p)}${sideFlag.of(p.id) ? '旗' : ''}`, 96, 21)}>${sideFlag.of(p.id)}${playerName(p)}</div>
       <div class="pp-bar" style="--c:${hex(ch.color)}"></div>
       ${p.ally ? `<div class="pp-ally" title="同盟">${this.mini(g.players[p.ally - 1]?.character ?? 0)}</div>` : ''}
       ${p.autopilot ? '<div class="pp-auto">托管中</div>' : ''}
@@ -216,5 +218,41 @@ export class SideToday {
     this.last = html;
     this.el.classList.toggle('nowx', !wx);
     this.el.innerHTML = html;
+  }
+}
+
+/**
+ * 玩家一覽 (issue #91, 2026-11-12): a portrait screen wider than the panels under the map (an iPad held upright: the
+ * panels stay about a third of its height, main.ts fitShell) shows the players in the room left and right of them —
+ * face, name, total assets and cash, the one whose turn it is lit, the bankrupt greyed; the first half on the left,
+ * the rest on the right. Rewritten only when something shown changes.
+ */
+export class PlayerStrip {
+  readonly left: HTMLElement;
+  readonly right: HTMLElement;
+  private last = '';
+
+  constructor(readonly game: Game, readonly bank: SpriteBank) {
+    this.left = document.createElement('div'); this.left.className = 'ps ps-l';
+    this.right = document.createElement('div'); this.right.className = 'ps ps-r';
+  }
+
+  update() {
+    const g = this.game, ps = g.players.filter(Boolean);
+    let cur = g.current;
+    if (cur === g.dollId) cur = (g.places as unknown as { dollOwner?: number }).dollOwner ?? -1;
+    const many = ps.length > 4;
+    const card = (p: (typeof ps)[number]) => {
+      const ch = CHARACTERS[p.character], face = this.bank.art('Data', 2, p.character), name = `${sideFlag.of(p.id)}${playerName(p)}`;
+      return `<div class="ps-card${p.id === cur ? ' on' : ''}${p.bankrupt ? ' out' : ''}" style="--c:${hex(ch.color)}">
+        <div class="ps-face">${face ? `<img src="${face.src}" alt="">` : ''}</div><b class="ps-name">${name}</b>
+        ${p.bankrupt ? '<span class="ps-out">破產</span>' : `<span class="ps-k">總資產</span><em>${money(g.wealth(p))}</em>${many ? '' : `<span class="ps-k">現金</span><em>${money(p.cash)}</em>`}`}</div>`;
+    };
+    const half = Math.ceil(ps.length / 2);
+    const l = ps.slice(0, half).map(card).join(''), r = ps.slice(half).map(card).join('');
+    if (l + r === this.last) return;
+    this.last = l + r;
+    this.left.innerHTML = l; this.right.innerHTML = r;
+    this.left.classList.toggle('many', many); this.right.classList.toggle('many', many);
   }
 }

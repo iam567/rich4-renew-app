@@ -212,6 +212,12 @@ export class JiqingRules implements MapRules {
     if (f.tmpState) rate *= 2;
     rate = this.mod('chuanlian') ? 0 : rate * (this.mod('nixon') ? 2 : 1);
     const days = yield* g.spin(WheelKind.hotel, g.name(owner.id));
+    // ＨＯＴＥＬ１１'s 董事長 stays free (派對模式)
+    if (rate && g.hotelBossFree(p)) {
+      yield* g.say(undefined, g.hotelBossLine(days));
+      if (days && p.whoPlays && !g.over) yield* g.checkIn(p, p, f, days, false);
+      return;
+    }
     const amount = rate * days;
     yield* g.say(undefined, this.mod('chuanlian') ? `大串聯，休息${days}天\n\n免費！` : `休息${days}天\n\n費用${amount}元！`);
     const stayer = amount ? yield* g.hotelPay(p, owner, f, amount, '住宿費') : p;

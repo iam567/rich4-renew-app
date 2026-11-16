@@ -35,6 +35,8 @@ export class SpriteBank {
   private outline = new Map<string, [number, number, number]>();
   private cache = new Map<string, Frame[] | 'loading' | 'missing'>();
   private tinted = new Map<string, HTMLCanvasElement>();
+  /** Redrawn pictures with no palette outline that still show their owner's colour as a ring (the 旅館s, ui/hotels.ts). */
+  readonly ringed = new Set<string>();
   /** Frames for the board, decoded off the main thread at the board's density (see `board`). */
   private boardCache = new Map<string, BoardEntry | Promise<Frame[] | null>>();
   /** Decoded bytes of the board's map sprites (`map/…`), which are released over the tier's budget (see `trimBoard`). */
@@ -302,8 +304,8 @@ export class SpriteBank {
   /** A frame with the resource's outline colour (palette entry 255) replaced by an owner colour, as the original does. */
   tint(archive: Archive, id: number, frame: Frame, index: number, rgb: number): CanvasImageSource {
     const outline = this.outline.get(this.key(archive, id));
-    if (!outline) return frame.img;
-    if (frame.scale !== 1) return rgb ? this.ring(archive, id, frame, index, rgb) : frame.img;
+    if (!outline && !this.ringed.has(this.key(archive, id))) return frame.img;
+    if (frame.scale !== 1 || !outline) return rgb ? this.ring(archive, id, frame, index, rgb) : frame.img;
     const [r, g, b] = [rgb >> 16 & 255, rgb >> 8 & 255, rgb & 255];
     return this.recolor(`${this.key(archive, id)}/${index}/${rgb}`, frame, px => {
       for (let i = 0; i < px.length; i += 4) {

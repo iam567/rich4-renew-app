@@ -259,7 +259,7 @@ describe.skipIf(!haveMaps)('places', () => {
     const free = g.board.lands.filter(l => l.owner === 0).length;
     const scarcity = 6 - (4 * free) / g.board.lands.length;
     const value = Math.trunc(((land.level >> 1) + 1) * start * scarcity * r);
-    const cap = Math.trunc(land.price * (m.rand() / 65536 + 3));
+    const cap = Math.trunc(start * (m.rand() / 65536 + 3)); // (1.2.3 'auction-cap': on the reserve)
     const max = Math.min(value, cap, a.cash);
     const step = [10000, 5000, 1000, 500, 100].find(v => start + v <= max)!;
     const { value: buyer } = drive(g.places.auction(-1, ref));
@@ -267,6 +267,24 @@ describe.skipIf(!haveMaps)('places', () => {
     expect(land.owner).toBe(1);
     expect(a.cash).toBe(100000 - start - step);
     expect(g.lotteryPool).toBe(start + step);
+  });
+
+  it('auction: a computer bids on a level-5 lot (1.2.3); a room at 1.2.2 keeps the old cap, under the reserve', () => {
+    const sold = (level?: string) => {
+      let n = 0;
+      for (let seed = 1; seed <= 20; seed++) {
+        const g = newGame([{ character: 0, human: false }, { character: 4, human: false }, { character: 9, human: false }]);
+        if (level) g.settings.level = level;
+        const land = g.board.lands[0];
+        land.owner = 0; land.level = 5;
+        for (const p of g.players) p.cash = 10_000_000;
+        g.rng.reseed(seed);
+        if (drive(g.places.auction(-1, land.id + 2000)).value >= 0) n++;
+      }
+      return n;
+    };
+    expect(sold()).toBeGreaterThan(10);
+    expect(sold('1.2.2')).toBe(0);
   });
 
   it('auction AI bidding is deterministic for a seed and stays within cash', () => {

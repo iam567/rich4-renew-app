@@ -1,5 +1,6 @@
 /** Loads the locally linked game data and art (see scripts/link-assets.mjs). */
 import { parseBoard, type Board, type RawMap } from '../core/board';
+import type { CqLevels } from './chongqing';
 
 export const ASSETS = `${import.meta.env.BASE_URL}assets`;
 
@@ -78,17 +79,57 @@ export interface MapArt {
   stepMarks: boolean;
   /** Sidewalk paths of the decorative passers-by, each a list of [x, y] map points (歌舞伎町, docs/rules/21 §8.1). */
   walkers?: [number, number][][];
+  /**
+   * A stacked map's levels (重慶, ui/chongqing.ts): `ground` is then the river island under every plate, and `plates`
+   * the pictures of the plates (by level, transparent round each plate), drawn by the board in level order.
+   */
+  levels?: CqLevels;
+  plates?: Record<number, HTMLImageElement>;
+  /** 重慶: each plate's side wall, a strip repeated along its edge (remake/chongqing/wall-<level>.webp; none if missing). */
+  walls?: Record<number, HTMLImageElement>;
+  /** 自建地圖: each landscape's size (1 when missing). */
+  landscapeScale?: number[];
+  /** 自建地圖: the event pads' size against the originals' (1 when missing). */
+  padScale?: number;
 }
 
-export interface MapDecor { x: number; y: number; res: number }
+/** A decoration; `s` its size (自建地圖's pieces may be scaled; 1 when missing). */
+export interface MapDecor { x: number; y: number; res: number; s?: number }
+
+/**
+ * 自建地圖's 試玩 (ui/maker/compile.ts): a map made in the editor, its records and its ground picture, known by its id
+ * for this run of the app (never saved with a game list).
+ */
+type MakerRaw = RawMap & { sprites?: MapSprites; decorations?: MapDecor[]; step_marks?: boolean; landscape_scale?: number[]; pad_scale?: number };
+const makerMaps = new Map<number, { raw: MakerRaw; ground: HTMLImageElement; won?: () => void; name?: string }>();
+/**
+ * `won`: called when a human wins a game alone on it (自建地圖: only a map its maker has won may go to the 地圖庫);
+ * `name`: the map's own (the boot screen, the results; a 地圖庫 map's as the library has it).
+ */
+export function registerMakerMap(id: number, raw: MakerRaw, ground: HTMLImageElement, won?: () => void, name?: string) {
+  makerMaps.set(id, { raw, ground, won, name });
+}
+/** A player's map's name, when the id is one (none: not a player's map). */
+export const makerName = (id: number) => makerMaps.get(id)?.name;
+export function makerWon(id: number) { makerMaps.get(id)?.won?.(); }
 
 export async function loadMap(id: number): Promise<MapArt> {
+  const mk = makerMaps.get(id);
+  if (mk) return { board: parseBoard(mk.raw), ground: mk.ground, sprites: mk.raw.sprites ?? {}, decor: mk.raw.decorations ?? [], stepMarks: !!mk.raw.step_marks, ...(mk.raw.landscape_scale?.length ? { landscapeScale: mk.raw.landscape_scale } : {}), ...(mk.raw.pad_scale ? { padScale: mk.raw.pad_scale } : {}) };
   let entry = known.find(m => m.id === id);
   if (!entry && id >= 8 && id < 1000) { await mapList().catch(() => []); entry = known.find(m => m.id === id); }
   const base = id >= 1000 ? `${ASSETS}/maps/custom/${id}` : `${ASSETS}/maps/map-${id}`;
   const data = entry?.data ? `${ASSETS}/maps/${entry.data}` : `${base}.json`;
   const pic = entry?.image ? `${ASSETS}/maps/${entry.image}` : `${base}.png`;
-  const raw = await json<RawMap & { sprites?: MapSprites; decorations?: MapDecor[]; step_marks?: boolean; walkers?: [number, number][][] }>(data);
+  const raw = await json<RawMap & { sprites?: MapSprites; decorations?: MapDecor[]; step_marks?: boolean; walkers?: [number, number][][]; levels?: CqLevels }>(data);
+  const lv = raw.levels;
+  if (lv) {   // 重慶: the river island and the three plates
+    const [ground, ...plates] = await Promise.all(['base', '1', '2', '3'].map(k => image(`${ASSETS}/maps/${lv.layers[k]}`)));
+    const walls = await Promise.all([1, 2, 3].map(k => image(`${ASSETS}/maps/remake/chongqing/wall-${k}.webp`).catch(() => null)));
+    return { board: parseBoard(raw), ground, sprites: raw.sprites ?? {}, decor: raw.decorations ?? [], stepMarks: !!raw.step_marks,
+      levels: lv, plates: { 1: plates[0], 2: plates[1], 3: plates[2] },
+      walls: Object.fromEntries(walls.flatMap((w, i) => (w ? [[i + 1, w]] : []))) };
+  }
   return { board: parseBoard(raw), ground: await image(pic), sprites: raw.sprites ?? {}, decor: raw.decorations ?? [], stepMarks: !!raw.step_marks,
     ...(raw.walkers?.length ? { walkers: raw.walkers } : {}) };
 }
@@ -98,6 +139,8 @@ export async function loadMap(id: number): Promise<MapArt> {
  * of the city on screen only (docs/rules/17 §12). Includes the JSON's optional `tycoon` overlay.
  */
 export async function loadMapData(id: number): Promise<RawMap & { tycoon?: unknown }> {
+  const mk = makerMaps.get(id);
+  if (mk) return mk.raw;
   let entry = known.find(m => m.id === id);
   if (!entry && id >= 8 && id < 1000) { await mapList().catch(() => []); entry = known.find(m => m.id === id); }
   const base = id >= 1000 ? `${ASSETS}/maps/custom/${id}` : `${ASSETS}/maps/map-${id}`;

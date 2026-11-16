@@ -4,10 +4,14 @@
  * the map opens the panel (history, quick phrases, input, the players with 靜音 and 請出); new lines pop up at the
  * top for a few seconds (not from someone muted).
  */
+import { flagHtml, placeName } from './region-flag';
+import type { MapInfo } from './assets';
+import { openMapSheet } from './party-maps';
 import { bars, grade, NetHud } from './party-hud';
 import { ASSETS } from './assets';
 import { audio } from './audio';
-import type { ChatLine, Room } from './party-net';
+import { contactLabel, type ChatLine, type Room } from './party-net';
+import { showContact } from './party-card';
 import './party.css';
 
 const esc = (s: string) => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
@@ -86,13 +90,16 @@ export class PartyBar {
   private tauntTarget = '';
   private hud: NetHud;
 
-  constructor(private stage: HTMLElement, private room: Room, private face: (c: number) => string, private auto: AutoControl) {
+  constructor(private stage: HTMLElement, private room: Room, private face: (c: number) => string, private maps: MapInfo[], private auto: AutoControl) {
     this.el.className = 'party-bar';
     // The icons drawn like the toolbar's (party_icons.py): normal, and lit (-h) when pressed, open or on.
     const icon = (k: string, title: string, extra = '') => `<button data-v="${k}" title="${title}"><img class="pb-n" src="${PARTY_ART}/icon-${k}.webp" alt=""><img class="pb-h" src="${PARTY_ART}/icon-${k}-h.webp" alt="">${extra}</button>`;
     this.el.innerHTML = icon('chat', '聊天', '<i hidden></i>') + icon('quick', '快捷語') + icon('emoji', '表情') + icon('taunt', '嘲諷') +
       icon('people', '玩家', '<em></em>') + icon('votes', '投票', '<i hidden></i>') + icon('auto', '托管', '<em class="pb-tag"></em>') +
-      '<button data-v="net" title="延遲面板"><span class="pb-net"></span><em></em></button>';
+      `<button data-v="gift" class="pb-gift" title="送禮物"><img src="${PARTY_ART}/cheer-redpack.webp" alt=""></button>` +
+      '<button data-v="net" title="延遲面板"><span class="pb-net"></span><em></em></button>' +
+      // 暫離 (保留席位, the user 2026-11-03): the seat kept 10 minutes, spectators can't take it meanwhile
+      '<button data-v="away" class="pb-away" title="暫離（保留席位 10 分鐘）"><b>暫離</b><em></em></button>';
     this.hud = new NetHud(stage, room, face);
     this.el.addEventListener('click', e => {
       e.stopPropagation();
@@ -100,7 +107,15 @@ export class PartyBar {
       if (!v) return;
       audio.ui('click');
       if (v === 'auto') { this.auto.toggle(); this.refresh(); return; }
+      if (v === 'gift') { this.onGift(); return; }
       if (v === 'net') { this.hud.toggle(); this.refresh(); return; }
+      if (v === 'away') {
+        const on = this.room.reservedTill <= Date.now();
+        this.room.reserve(on);
+        // 暫離 also puts this phone's seat on 托管 (the computer plays it while you are gone)
+        if (on && this.auto.state() === 'manual') this.auto.toggle();
+        this.refresh(); return;
+      }
       this.toggle(v as View);
     });
     this.pops.className = 'pc-pops';
@@ -109,8 +124,50 @@ export class PartyBar {
     room.onVotes = () => { this.refresh(); if (this.panel) this.draw(); };
     room.onLobby = () => { this.refresh(); if (this.panel) this.draw(); };
     room.onNet = () => { this.hud.draw(); this.refresh(); };
+    room.onMapVote = () => this.drawMapVote();
     this.refresh();
-    window.setInterval(() => this.refresh(), 1000);
+    this.timer = window.setInterval(() => this.refresh(), 1000);
+    this.drawMapVote();
+  }
+  private timer = 0;
+  /** The 送禮物 button (spectate.ts PlayerGifts). */
+  onGift: () => void = () => {};
+  /** The banner of a 換地圖 vote going on, and what closes the sheet picking one. */
+  private voteBox: HTMLElement | null = null;
+  private closeSheet: () => void = () => {};
+
+  /** The vote going on: who proposed what, and 同意 / 不同意 for a player who has not answered. */
+  private drawMapVote() {
+    const v = this.room.mapVote;
+    if (!v) { this.voteBox?.remove(); this.voteBox = null; return; }
+    if (!this.voteBox) {
+      const b = document.createElement('div');
+      b.className = 'pc-mapvote';
+      b.addEventListener('pointerdown', e => e.stopPropagation());
+      b.addEventListener('click', e => {
+        e.stopPropagation();
+        const y = (e.target as HTMLElement).closest<HTMLElement>('[data-yes]');
+        if (!y) return;
+        audio.ui(y.dataset.yes === '1' ? 'yes' : 'no');
+        this.room.voteMap(y.dataset.yes === '1');
+        y.parentElement!.innerHTML = '<em>等待其他人…</em>';
+      });
+      this.voteBox = b;
+      this.stage.append(b);
+    }
+    const name = this.maps.find(m => m.id === v.map)?.name ?? '';
+    this.voteBox.innerHTML = `<b>${esc(this.room.nameOf(v.by))} 提議換到「${esc(name)}」</b><span>${v.keep ? '保留現在的錢（土地、股票、卡片、道具清零）' : '重新開局'}・同意 ${v.yes.length}/${v.need}</span>
+      <div>${v.yes.includes(this.room.myId) ? '<em>等待其他人…</em>' : '<button class="chip on" data-yes="1">同意</button><button class="chip" data-yes="0">不同意</button>'}</div>`;
+  }
+
+  /** A line of this phone's own at the top of the map for a few seconds (how a share order went). */
+  pop(text: string) {
+    const pop = document.createElement('div');
+    pop.className = 'pc-pop';
+    pop.textContent = text;
+    this.pops.append(pop);
+    while (this.pops.children.length > 3) this.pops.firstElementChild!.remove();
+    setTimeout(() => { pop.classList.add('out'); setTimeout(() => pop.remove(), 400); }, 5000);
   }
 
   /** The buttons' counts and states. */
@@ -133,6 +190,13 @@ export class PartyBar {
     nb.querySelector('.pb-net')!.innerHTML = bars(link.via === 'host' && !link.relay ? 'good' : g);
     nb.querySelector('em')!.textContent = !r.connected() ? '斷線' : link.via === 'host' ? '房主' : link.rtt === null ? '' : `${link.rtt}`;
     nb.classList.toggle('lit', this.hud.shown);
+    const left = this.room.reservedTill - Date.now(), aw = q('away');
+    aw.classList.toggle('lit', left > 0);
+    aw.querySelector('em')!.textContent = left > 0 ? `${Math.floor(left / 60000)}:${String(Math.floor((left % 60000) / 1000)).padStart(2, '0')}` : '';
+    aw.querySelector('b')!.textContent = left > 0 ? '保留中' : '暫離';
+    // the 玩家 panel follows who watches and the switches
+    const sig = `${r.allowWatch}${r.allowTake}${r.watcherList.map(w => w.id).join()}`;
+    if (sig !== this.watchSig) { this.watchSig = sig; if (this.view === 'people') this.draw(); }
   }
 
   private arrive(l: ChatLine) {
@@ -181,6 +245,7 @@ export class PartyBar {
     this.refresh();
   }
 
+  private watchSig = '';
   private close() { this.panel?.remove(); this.panel = null; this.view = null; this.refresh(); }
 
   private draw() {
@@ -213,17 +278,19 @@ export class PartyBar {
     } else if (v === 'people') {
       p.innerHTML = `${head(`玩家（${r.members.filter(m => !m.away).length}/${r.members.length} 在線）`)}<div class="pc-people">${r.members.map(m => {
         const me = m.id === r.myId, votes = r.votes.get(m.id)?.size ?? 0, isHost = m.id === r.members[0]?.id, voted = r.votes.get(m.id)?.has(r.myId);
-        return `<div class="pc-person${m.away ? ' away' : ''}"><img src="${this.face(m.character)}" alt=""><b><i class="pc-dot${m.away ? ' off' : ''}"></i>${esc(m.name)}${me ? '<small>你</small>' : ''}${isHost ? '<small>房主</small>' : ''}${m.region ? `<small>${esc(m.region)}</small>` : ''}${m.away ? '<small>斷線中</small>' : ''}</b>
+        return `<div class="pc-person${m.away ? ' away' : ''}"><img src="${this.face(m.character)}" alt="" data-who="${esc(m.id)}"><b><i class="pc-dot${m.away ? ' off' : ''}"></i>${flagHtml(m)}${esc(m.name)}${me ? '<small>你</small>' : ''}${isHost ? '<small>房主</small>' : ''}${placeName(m) ? `<small>${esc(placeName(m))}</small>` : ''}${m.away ? '<small>斷線中</small>' : ''}${m.contact ? `<small class="pc-contact" data-who="${esc(m.id)}">${esc(contactLabel(m.contact))}</small>` : ''}</b>
           ${me ? '<span></span><span></span>' : `<button class="chip${r.muted.has(m.id) ? ' on' : ''}" data-mute="${m.id}">${r.muted.has(m.id) ? '已靜音' : '靜音'}</button>
           ${r.protectedId(m.id) ? '<button class="chip" disabled>首富・不能請出</button>' : `<button class="chip${voted ? ' on' : ''}" data-kick="${m.id}"${voted ? ' disabled' : ''}>請出 ${votes}/2</button>`}`}</div>`;
-      }).join('')}</div><p class="pc-note">請出某人（房主也可以）需要另外兩位玩家同意；總資產最多的玩家不能被請出。被請出的人由電腦接手繼續玩（土地不拍賣），房主走了由下一位接任</p>`;
+      }).join('')}</div><p class="pc-note">請出某人（房主也可以）需要另外兩位玩家同意；總資產最多的玩家不能被請出。被請出的人由電腦接手繼續玩（土地不拍賣），房主走了由下一位接任</p>
+      <div class="pc-watch"><button class="chip${r.allowWatch ? ' on' : ''}" data-ws="watch">圍觀：${r.allowWatch ? '開放' : '關閉'}</button><button class="chip${r.allowTake ? ' on' : ''}" data-ws="take">接手：${r.allowTake ? '允許' : '不允許'}</button></div>
+      ${r.watcherList.length ? `<div class="pc-watchers">${r.watcherList.map(w => `<div><b>${flagHtml(w)}${esc(w.name)}<small>觀眾</small></b><button class="chip" data-out="${esc(w.id)}">請離開</button></div>`).join('')}</div>` : ''}`;
     } else {
       const list = [...r.votes.entries()].filter(([, s]) => s.size);
       p.innerHTML = `${head('投票')}${list.length ? `<div class="pc-votes">${list.map(([target, s]) => {
         const voted = s.has(r.myId), mine = target === r.myId;
         return `<div class="pc-vote"><b>請出 ${esc(r.nameOf(target))}</b><span>${s.size}/2 票・${[...s].map(id => esc(r.nameOf(id))).join('、')}</span>
           ${mine ? '<em>大家在投你</em>' : r.protectedId(target) ? '<em>首富・不能請出</em>' : `<button class="chip${voted ? ' on' : ''}" data-kick="${target}"${voted ? ' disabled' : ''}>${voted ? '已投票' : '我也同意'}</button>`}</div>`;
-      }).join('')}</div>` : '<p class="pc-note">現在沒有進行中的投票</p>'}<p class="pc-note">要發起請出，請到「玩家」按「請出」</p>`;
+      }).join('')}</div>` : '<p class="pc-note">現在沒有進行中的投票</p>'}<p class="pc-note">要發起請出，請到「玩家」按「請出」</p><div class="pc-watch"><button class="chip" data-a="mappick">提議換地圖</button></div>`;
       void others;
     }
     p.onclick = e => {
@@ -231,6 +298,16 @@ export class PartyBar {
       const t = e.target as HTMLElement;
       const say = t.closest<HTMLElement>('[data-say]'), mute = t.closest<HTMLElement>('[data-mute]'), kick = t.closest<HTMLElement>('[data-kick]');
       if (t.closest('[data-a=close]')) { audio.ui('no'); this.close(); return; }
+      const who = t.closest<HTMLElement>('[data-who]')?.dataset.who;
+      if (who) { const m = r.members.find(x => x.id === who); if (m) { audio.ui('click'); showContact(this.stage, m, this.face(m.character)); } return; }
+      if (t.closest('[data-a=mappick]')) {
+        audio.ui('click'); this.close();
+        this.closeSheet = openMapSheet(document.body, this.maps, Number(r.map), (map, keep) => r.proposeMap(map, keep));
+        return;
+      }
+      const ws = t.closest<HTMLElement>('[data-ws]'), out = t.closest<HTMLElement>('[data-out]');
+      if (ws) { audio.ui('click'); r.setWatch(ws.dataset.ws === 'watch' ? { watch: !r.allowWatch } : { take: !r.allowTake }); return; }
+      if (out && confirm('請這位觀眾離開？這局他不能再回來圍觀')) { audio.ui('click'); r.sendAway(out.dataset.out!); return; }
       if (say) { audio.ui('click'); r.say(say.dataset.say!); if (v === 'quick' || v === 'emoji') this.close(); return; }
       if (mute) { audio.ui('click'); r.toggleMute(mute.dataset.mute!); this.draw(); return; }
       const tt = t.closest<HTMLElement>('[data-tt]'), taunt = t.closest<HTMLButtonElement>('[data-taunt]');
@@ -246,5 +323,5 @@ export class PartyBar {
   /** The 延遲 panel is shown (the heads' ping tags go with it). */
   get netShown(): boolean { return this.hud.shown; }
 
-  destroy() { this.el.remove(); this.pops.remove(); this.panel?.remove(); this.hud.destroy(); }
+  destroy() { this.closeSheet(); clearInterval(this.timer); this.el.remove(); this.pops.remove(); this.panel?.remove(); this.voteBox?.remove(); this.hud.destroy(); }
 }

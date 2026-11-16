@@ -4,7 +4,7 @@ import type { PackedDate } from './date';
 export interface GameSettings {
   mapId: number;
   /** `nick`: 派對模式's own name for the player (the user 2026-10-19), shown instead of the character's. */
-  players: { character: number; human: boolean; nick?: string }[];
+  players: { character: number; human: boolean; nick?: string; /** 派對模式's 換地圖 with the money kept: this player starts with it instead of the fund. */ keep?: { cash: number; bank: number } }[];
   fundIndex: number;
   traffic: 0 | 1 | 2;
   landLimitIndex: number;
@@ -14,6 +14,10 @@ export interface GameSettings {
   seed: number;
   /** 派對模式 (ui/party-net.ts): a 托管 player's turn starts with the 'auto-turn' question, so 取消托管 reaches every phone. */
   party?: boolean;
+  /** 派對模式 of phones of different versions (core/compat.ts): the oldest one's version; the rules play as on it. */
+  level?: string;
+  /** 即時制 (測試版, core/realtime.ts, docs/rules/31): everyone plays at once; `length` the game's ms, 0 無限制. */
+  realtime?: { length: number };
   /**
    * A normal game's computer level (core/smart-ai.ts, Game.aiLevel): 0 簡單 (the original's computer; none = 0, as every
    * game and save before it), 1 中級, 2 困難, 3 地獄 (safer money, share trading, the computers ganging up on the humans: SmartAi HELL / rival). 派對模式: the room's
@@ -26,14 +30,67 @@ export interface GameSettings {
   challengeYears?: number;
   /** 挑戰模式's 每月任務 (core/monthly.ts, docs/rules/27): false turns them off; on otherwise. */
   challengeMonthly?: boolean;
+  /**
+   * 自建地圖's own deck (ui/maker): the news and fate cards a player's map draws from — library ids (`o-n-N` / `o-f-N`
+   * the original entries, `g-…` modules/general-cards.ts) — and its rewritten headlines (`words`: the first line only;
+   * the effect's lines and amounts stay the game's, the user: 「效果不改，只改字兒」). None: the original decks.
+   */
+  deck?: { news: string[]; fate: string[]; words?: Record<string, string> };
   /** 派對模式's 途中加入 (the user 2026-11-03): players may join the game going on, each taking a computer's seat. */
   dropIn?: boolean;
+  /** 派對模式's 追加玩法 turned off by the host (ui/party-net.ts EXTRAS; none: all on, as every game before): no 槓桿, no 乞丐, no 破產清算. */
+  noLeverage?: boolean;
+  noBeggar?: boolean;
+  noLiquidate?: boolean;
+  /** 派對模式 追加玩法 off: no 小遊戲搗亂 (ui only: the game itself never reads it). */
+  noHeckle?: boolean;
   /**
    * A normal game's 挑戰模式 switch (the user 2026-11-03, docs/rules/30): 1 a task card each month, 2 one each half month,
    * 3 the next card as soon as one is done (no time limit); the first to do it draws a 獎勵卡 (core/rewards.ts). Win and
    * loss as ever (bankruptcy). None / 0: off.
    */
   monthTasks?: 0 | 1 | 2 | 3;
+  /** 自建地圖's own rules (the map's maker switches them on, ui/maker/rules.ts; none: the game's as ever). */
+  mapRules?: MapSwitches;
+  /**
+   * 自建地圖's 試玩 (the user 2026-11-12): played to try a map out — no saving; the first bankruptcy lets the map be
+   * published (ui/main.ts). The rules play as in any game.
+   */
+  trial?: boolean;
+  /**
+   * A game on a player's own map (我的地圖, ui/maker): the map itself in its saved form (ui/maker/model.ts savedForm),
+   * so a save can build it again — its map id is this run of the app's only (the user 2026-11-15: an autosave on one
+   * gave 「讀取存檔失敗：Load failed」). Not on 試玩 (never saved) nor 派對模式 (libMap).
+   */
+  myMap?: { name: string } & Record<string, unknown>;
+  /** 派對模式 on a map from the 地圖庫 (ui/maker/party-lib.ts): its library id; every phone builds it before the game. */
+  libMap?: string;
+  /** (this phone has built it: party.ts, never sent) */
+  libReady?: boolean;
+}
+
+/** 自建地圖's rule switches (the user 2026-11-12: a map's maker chooses its rules). */
+export interface MapSwitches {
+  /** no gods on the map (財神 … 死神: modules/objects.ts GODS); none placed, none called */
+  noGods?: boolean;
+  /** no 禮物 and 寶箱 lying on the road */
+  noChests?: boolean;
+  /**
+   * 道具禮物箱 (the user 2026-11-16: a map all of picking up tools, 踩卡片點, no shop — 全部道具戰): 1..3 = 5, 10, 15 gift
+   * boxes on the road (15 at most, the user), all put on new squares at every month's start, the taken ones too
+   * (modules/objects.ts GIFT_COUNTS). None: the original's one, moved each month.
+   */
+  gifts?: 1 | 2 | 3;
+  /** the stock market closed for good: no buying or selling, by anyone */
+  noStocks?: boolean;
+  /** the 道具店 does no business: no buying or selling tools and cards there */
+  noShop?: boolean;
+  /** the bank closed on Saturdays and Sundays: no deposits, withdrawals or loans those days */
+  bankHoliday?: boolean;
+  /** the bank lends no money */
+  noLoans?: boolean;
+  /** no 黑市 (the land trade board) */
+  noBlackMarket?: boolean;
 }
 
 export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];
@@ -51,6 +108,8 @@ export interface Player {
   nick?: string;
   /** 0 out (bankrupt or not yet landed), 1 human, 2 computer. Autopilot (托管) is `autopilot`. */
   whoPlays: 0 | 1 | 2;
+  /** 派對模式's 乞丐 (Game.beg): the day + 1 each player last gave this beggar (once a week each). */
+  begAt?: number[];
   autopilot: boolean;
   bankrupt: boolean;
   placed: boolean;
@@ -133,6 +192,18 @@ export interface Option { label: string; value: number; disabled?: boolean; deta
  */
 export interface PickSpot { at: 'node' | 'plot' | 'actor'; id: number; label: string }
 
+/**
+ * 派對模式's 等待中下單 (the user 2026-11-07): a share order placed while another player's turn runs, filled by the rules
+ * at the end of that turn. `id`: rising per seat, so an order sent again is not filled twice.
+ */
+export interface StockOrder {
+  id: number; seat: number; slot: number; buy: boolean; n: number;
+  /** 槓桿 2 / 3 / 5: a position opened (buy: 做多, else 做空) instead of shares traded. */
+  lev?: number;
+  /** A position closed (its id; slot, buy and n then say nothing). */
+  close?: number;
+}
+
 /** Questions the engine asks a human player; computer players are answered by the AI rules. */
 export type Ask =
   | { t: 'turn'; p: number; maxDice: number; canUseCard: boolean; canUseTool: boolean }
@@ -140,6 +211,8 @@ export type Ask =
   | { t: 'auto-turn'; p: number }
   /** 派對模式's 途中加入: a computer's seat at its turn — `{ nick }` a player who joined takes it over, 0 it stays the computer's. */
   | { t: 'seat'; p: number }
+  /** 派對模式's 等待中下單: the end of a turn — the orders the others placed meanwhile (`StockOrder[]`, the room's host says). */
+  | { t: 'orders'; p: number }
   | { t: 'yesno'; p: number; kind: string; text: string; price?: number }
   | { t: 'facility-type'; p: number; price: number; title?: string; text?: string; cancellable?: boolean }
   /**
@@ -194,7 +267,7 @@ export type Ask =
    */
   | { t: 'pick-map'; p: number; title: string; spots: PickSpot[]; cancellable: boolean; onScreen?: boolean }
   /** Pick a player; answer: player id, or -1 to cancel. */
-  | { t: 'pick-player'; p: number; title: string; players: number[]; cancellable: boolean }
+  | { t: 'pick-player'; p: number; title: string; players: number[]; cancellable: boolean; /** any of them, not only those on screen (即時制's missile) */ anywhere?: boolean }
   /**
    * 大富豪模式 travel (docs/rules/17 §3): a station or airport square offers the trip. Answer: the destination's city
    * index, or -1 to stay.
@@ -215,10 +288,14 @@ export type Answer =
   | number
   | TurnAnswer
   | { deposit?: number; withdraw?: number; borrow?: number; repay?: number; finance?: number; financeRepay?: number }
-  /** Stock market trade, black market purchase, shop actions. */
-  | { slot: number; buy: boolean; n: number }
+  /** Stock market trade (with `lev`: a 槓桿 position opened), black market purchase, shop actions. */
+  | { slot: number; buy: boolean; n: number; lev?: number }
+  /** Stock market: a 槓桿 position closed. */
+  | { close: number }
   /** 派對模式's 途中加入: the player who takes a computer's seat over (the 'seat' question). */
   | { nick?: string }
+  /** 派對模式's 等待中下單 (the 'orders' question). */
+  | StockOrder[]
   | { buy: number }
   | { buy: 'card' | 'tool'; index: number }
   | { sell: 'card'; index: number }

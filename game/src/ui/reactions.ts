@@ -69,8 +69,8 @@ export function stuckLament(what: string, coin: boolean): number | null {
  */
 export const isWaivedNotice = (text: string) => /免收.+！$/.test(text);
 
-/** Fees paid to another player that make both speak like a toll (tolls core:908-966, facilities core:1533-1549). */
-export const OWNER_FEES = new Set(['過路費', '住宿費', '購物費', '加油費']);
+/** Fees paid to another player that make both speak like a toll (tolls core:908-966, facilities core:1533-1549; 消費 and 遊樂場費用: 歌舞伎町's shops). */
+export const OWNER_FEES = new Set(['過路費', '住宿費', '購物費', '加油費', '消費', '遊樂場費用']);
 
 /**
  * Who speaks after a payment: 'toll' = the payer (event[18] at the most hated owner for big sums, else
@@ -101,4 +101,65 @@ export class LastLine {
     this.key = key;
     return !repeat;
   }
+}
+
+/**
+ * The remake's eight expressions (docs/rules/15 §6; the user 2026-11-09: 「表情做豐富一點」): the original's four and
+ * four more, drawn only in the redrawn faces (maps/remake/faces/<character>-<face>.webp, tools/tycoon-art/face_art.py).
+ */
+export const Expr = { normal: 0, frown: 1, cry: 2, laugh: 3, surprised: 4, smug: 5, nervous: 6, overjoyed: 7 } as const;
+/** The original face standing in for each expression while the redrawn ones are not there. */
+export const ORIG_FACE = [0, 1, 2, 3, 0, 3, 2, 3] as const;
+
+const E = Expr;
+/** event[s] by slot (eventOccasion in jq-quotes.ts names them): what the words of most characters say. */
+export const EVENT_EXPR: readonly number[] = [
+  E.overjoyed, E.laugh, E.laugh, // lucky
+  E.surprised, E.cry, E.frown, // bad
+  E.overjoyed, E.smug, E.normal, // receive
+  E.cry, E.frown, E.nervous, // pay
+  E.nervous, E.nervous, E.nervous, // spared
+  E.smug, E.smug, E.smug, // build
+  E.frown, E.cry, E.cry, // attacked, prison, hospital
+  E.normal, E.surprised, E.nervous, // sleep, woken, the bad luck gone
+  E.overjoyed, E.cry, E.frown, // win, lose, try again
+];
+/** tool_strings[s]: using a tool (mostly a trick on the others), riding, and being caught by one. */
+export const TOOL_EXPR: readonly number[] = [
+  E.smug, E.smug, E.smug, E.smug, E.laugh, E.laugh, E.smug, E.smug, E.smug, E.normal, E.laugh, E.smug, E.smug,
+  E.normal, E.frown, E.surprised, E.nervous,
+];
+/** Cards used on a rival: the user grins slyly rather than laughs. */
+const CARD_SLY = new Set([2, 3, 4, 5, 6, 8, 11, 12, 13, 14, 16, 17, 18, 19, 26, 30]);
+/** Cards that hit hard and out of nowhere: the one they hit is shocked. */
+const CARD_SHOCK = new Set([11, 12, 17, 19]);
+
+/** The words themselves, when they say it plainly (the remake's own lines and the tables alike). */
+export function textExpr(text: string): number | null {
+  if (/[？?][！!]|[！!][？?]|天啊|我的天|媽媽咪呀|不可能|嚇/.test(text)) return E.surprised;
+  if (/可恨|混帳|豈有此理|沒良心|記住|沒完|缺德/.test(text)) return E.frown;
+  if (/好險|冷汗|撿回一條命|呼…|家在/.test(text)) return E.nervous;
+  if (/哈哈|萬歲|中大獎|賺翻|大豐收|太棒|酷斃|帥呆/.test(text)) return E.overjoyed;
+  if (/嘿嘿|嘻嘻|別忌妒/.test(text)) return E.smug;
+  if (/慘|死了吧|倒楣|倒霉|嗚/.test(text)) return E.cry;
+  return null;
+}
+
+/** Where a line comes from, for its expression. */
+export type LineSource = { kind: 'event' | 'tool'; slot: number } | { kind: 'card'; card: number; role: 0 | 1 | 2 } | { kind: 'text' };
+
+/**
+ * The expression shown with a line: what the words say plainly, else what the occasion calls for, else the
+ * original's face (`face`, 0–3).
+ */
+export function lineExpr(face: number, text: string, src: LineSource): number {
+  const said = textExpr(text);
+  if (said !== null) return said;
+  if (src.kind === 'event') return EVENT_EXPR[src.slot] ?? face;
+  if (src.kind === 'tool') return TOOL_EXPR[src.slot] ?? face;
+  if (src.kind === 'card') {
+    if (src.role === 0 && CARD_SLY.has(src.card)) return E.smug;
+    if (src.role === 2 && CARD_SHOCK.has(src.card)) return E.surprised;
+  }
+  return face;
 }

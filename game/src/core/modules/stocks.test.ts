@@ -7,6 +7,7 @@ import type { Flow } from '../flow';
 import { Game, REMAKE_FREE_BUILD } from '../game';
 import type { Answer, GameSettings, Step } from '../types';
 import { adjustPrice, formatPrice, STOCK_TABLE, Trend, trendOf } from './stocks';
+import { loadGame, saveGame } from '../save';
 
 const mapFile = (id: number) => fileURLToPath(new URL(`../../../../editor/site/assets/map-${id}.json`, import.meta.url));
 const haveMaps = existsSync(mapFile(2));
@@ -437,5 +438,170 @@ describe.skipIf(!haveMaps)('stocks on the original maps', () => {
     expect(st.holding(0, 8).shares + st.holding(0, 9).shares).toBe(0);
     expect(st.holding(0, 10).shares).toBe(5);
     expect(p.bank).toBeGreaterThan(0);
+  });
+});
+
+describe('等待中下單 (派對模式, fillOrders)', () => {
+  const order = (seat: number, slot: number, buy: boolean, n: number, id = 1) => ({ id, seat, slot, buy, n });
+  const said = (steps: Step[]) => steps.filter(s => !('ask' in s) && s.t === 'fx' && s.kind === 'stock-order').map(s => (s as { data: Record<string, unknown> }).data);
+  const openSlot = (g: Game) => {
+    const st = (g.stocks as unknown as { stocks: { price: number; prevClose: number; turnQuota: number; suspendDays: number }[] }).stocks;
+    st[0].prevClose = st[0].price; st[0].turnQuota = 1000; st[0].suspendDays = 0;
+    return st[0];
+  };
+
+  it.skipIf(!haveMaps)('buys from the deposit at the price of the moment, and sells back into it', () => {
+    const g = makeGame(), s = openSlot(g), p = g.players[1];
+    p.bank = 1_000_000;
+    const before = p.bank, cost = Math.trunc(100 * s.price);
+    const a = drive(g.stocks.fillOrders([order(1, 0, true, 100)]));
+    expect(p.bank).toBe(before - cost);
+    expect(said(a.steps)[0]).toMatchObject({ n: 100, buy: true, price: s.price });
+    drive(g.stocks.fillOrders([order(1, 0, false, 100, 2)]));
+    expect(p.bank).toBe(before);
+  });
+
+  it.skipIf(!haveMaps)('caps an order by the deposit and the volume, like the market screen', () => {
+    const g = makeGame(), s = openSlot(g), p = g.players[1];
+    p.bank = Math.trunc(s.price * 10.5);
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, true, 500)])).steps)[0]).toMatchObject({ n: 10 });
+    s.turnQuota = 3; p.bank = 1_000_000;
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, true, 500, 2)])).steps)[0]).toMatchObject({ n: 3 });
+  });
+
+  it.skipIf(!haveMaps)('says why nothing was traded, and takes no money', () => {
+    const g = makeGame(), s = openSlot(g), p = g.players[1];
+    p.bank = 0;
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, true, 10)])).steps)[0]).toMatchObject({ n: 0, why: '存款或交易量不足' });
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, false, 10, 2)])).steps)[0]).toMatchObject({ n: 0, why: '持股不足' });
+    s.suspendDays = 2; p.bank = 1_000_000;
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, true, 10, 3)])).steps)[0]).toMatchObject({ n: 0, why: '暫停交易' });
+    expect(p.bank).toBe(1_000_000);
+  });
+
+  it.skipIf(!haveMaps)('ignores nonsense, a bankrupt seat and a seat that does not exist', () => {
+    const g = makeGame(); openSlot(g);
+    g.players[2].bankrupt = true; g.players[2].bank = 1_000_000;
+    for (const bad of [0, null, 'x', [null], [order(9, 0, true, 10)], [order(1, 99, true, 10)], [order(2, 0, true, 10)]]) expect(said(drive(g.stocks.fillOrders(bad)).steps)).toEqual([]);
+    expect(g.players[2].bank).toBe(1_000_000);
+  });
+
+  it.skipIf(!haveMaps)('a player still waiting for the first turn (not landed) can order too', () => {
+    const g = makeGame(), s = openSlot(g), p = g.players[1];
+    p.whoPlays = 0; p.bank = 1_000_000;
+    expect(said(drive(g.stocks.fillOrders([order(1, 0, true, 10)])).steps)[0]).toMatchObject({ n: 10 });
+    expect(p.bank).toBe(1_000_000 - Math.trunc(10 * s.price));
+  });
+
+  it.skipIf(!haveMaps)('two phones given the same answer end up the same', () => {
+    const a = makeGame(), b = makeGame(), list = [order(0, 0, true, 50, 1), order(1, 0, true, 2000, 2), order(0, 0, false, 20, 3)];
+    for (const g of [a, b]) { openSlot(g); for (const p of g.players) p.bank = 500_000; drive(g.stocks.fillOrders(list)); }
+    expect(a.players.map(p => p.bank)).toEqual(b.players.map(p => p.bank));
+  });
+});
+
+describe('槓桿 (positions, 爆倉)', () => {
+  const ready = () => {
+    const g = makeGame(), p = g.players[1];
+    g.settings.party = true; // 派對模式 only (the user 2026-11-07)
+    const st = (g.stocks as unknown as { stocks: { price: number; prevClose: number; suspendDays: number; forced: number }[] }).stocks;
+    st[0].prevClose = st[0].price; st[0].suspendDays = 0;
+    p.bank = 1_000_000;
+    return { g, p, s: st[0] };
+  };
+  const events = (steps: Step[], kind: string) => steps.filter(x => !('ask' in x) && x.t === 'fx' && x.kind === kind);
+
+  it.skipIf(!haveMaps)('not in a game alone (派對模式 only)', () => {
+    const { g, p } = ready();
+    g.settings.party = undefined;
+    expect(drive(g.stocks.openPosition(p, 0, true, 5, 1000)).result).toBe('無法開倉');
+    expect(g.stocks.positions).toEqual([]);
+  });
+
+  it.skipIf(!haveMaps)('opens with a margin of shares × price / lev from the deposit, and closes for what it is worth', () => {
+    const { g, p, s } = ready();
+    const r = drive(g.stocks.openPosition(p, 0, true, 5, 1000));
+    expect(r.result).toBe('');
+    const x = g.stocks.positions[0], margin = Math.ceil(1000 * s.price / 5);
+    expect(x).toMatchObject({ p: 1, slot: 0, long: true, lev: 5, shares: 1000, margin });
+    expect(p.bank).toBe(1_000_000 - margin);
+    s.price = s.price * 1.1; // +10%: a 5× long gains half its margin
+    expect(g.stocks.positionValue(x)).toBe(margin + Math.trunc((s.price - x.entry) * 1000));
+    const v = drive(g.stocks.closePosition(p, x.id)).result;
+    expect(p.bank).toBe(1_000_000 - margin + v);
+    expect(g.stocks.positions).toEqual([]);
+  });
+
+  it.skipIf(!haveMaps)('a short gains when the price falls', () => {
+    const { g, p, s } = ready();
+    drive(g.stocks.openPosition(p, 0, false, 2, 100));
+    const x = g.stocks.positions[0];
+    s.price = x.entry * 0.9;
+    expect(g.stocks.positionValue(x)).toBeGreaterThan(x.margin);
+  });
+
+  it.skipIf(!haveMaps)('爆倉: the whole margin is lost once the price passes 1 / lev, and it is said', () => {
+    const { g, p, s } = ready();
+    drive(g.stocks.openPosition(p, 0, true, 5, 1000));
+    const x = g.stocks.positions[0], bank = p.bank;
+    s.price = g.stocks.liquidationPrice(x) * 0.999;
+    expect(g.stocks.positionValue(x)).toBe(0);
+    const r = drive(g.stocks.liquidate());
+    expect(g.stocks.positions).toEqual([]);
+    expect(p.bank).toBe(bank);
+    expect(events(r.steps, 'position-liquidated').length).toBe(1);
+    expect(r.steps.some(x2 => !('ask' in x2) && x2.t === 'say' && /爆倉/.test(JSON.stringify(x2)))).toBe(true);
+  });
+
+  it.skipIf(!haveMaps)('a position above water is kept; a bankrupt player\'s go', () => {
+    const { g, p } = ready();
+    drive(g.stocks.openPosition(p, 0, true, 3, 100));
+    drive(g.stocks.liquidate());
+    expect(g.stocks.positions.length).toBe(1);
+    p.bankrupt = true;
+    drive(g.stocks.liquidate());
+    expect(g.stocks.positions).toEqual([]);
+  });
+
+  it.skipIf(!haveMaps)('refused: a multiple not offered, no deposit, 漲停 for a long, a suspended stock', () => {
+    const { g, p, s } = ready();
+    expect(drive(g.stocks.openPosition(p, 0, true, 4, 10)).result).not.toBe('');
+    p.bank = 0;
+    expect(drive(g.stocks.openPosition(p, 0, true, 2, 10)).result).toBe('存款不足');
+    p.bank = 1_000_000;
+    s.price = adjustPrice(s.prevClose, 10);
+    expect(drive(g.stocks.openPosition(p, 0, true, 2, 10)).result).toBe('漲停無法做多');
+    expect(drive(g.stocks.openPosition(p, 0, false, 2, 10)).result).toBe('');
+    s.suspendDays = 3;
+    expect(drive(g.stocks.openPosition(p, 0, false, 2, 10)).result).toBe('暫停交易');
+  });
+
+  it.skipIf(!haveMaps)('counts in the total assets, and is kept by a save', () => {
+    const { g, p } = ready();
+    const before = g.wealth(p);
+    drive(g.stocks.openPosition(p, 0, true, 5, 1000));
+    expect(g.wealth(p)).toBe(before);
+    const back = loadGame(saveGame(g));
+    expect(back.stocks.positions).toEqual(g.stocks.positions);
+    expect(back.stocks.nextPosition).toBe(g.stocks.nextPosition);
+  });
+
+  it.skipIf(!haveMaps)('orders placed while waiting open and close positions too', () => {
+    const { g, p } = ready();
+    drive(g.stocks.fillOrders([{ id: 1, seat: 1, slot: 0, buy: false, n: 500, lev: 3 }]));
+    const x = g.stocks.positions[0];
+    expect(x).toMatchObject({ long: false, lev: 3, shares: 500 });
+    const r = drive(g.stocks.fillOrders([{ id: 2, seat: 1, slot: -1, buy: false, n: 1, close: x.id }, { id: 3, seat: 1, slot: -1, buy: false, n: 1, close: x.id }]));
+    expect(g.stocks.positions).toEqual([]);
+    expect(events(r.steps, 'position-close').length).toBe(1);
+    expect(events(r.steps, 'stock-order').map(e => (e as { data: { why?: string } }).data.why)).toEqual(['已經爆倉或平倉']);
+    expect(p.bank).toBeGreaterThan(0);
+  });
+
+  it.skipIf(!haveMaps)('another player cannot close it', () => {
+    const { g, p } = ready();
+    drive(g.stocks.openPosition(p, 0, true, 2, 10));
+    expect(drive(g.stocks.closePosition(g.players[0], g.stocks.positions[0].id)).result).toBe(-1);
+    expect(g.stocks.positions.length).toBe(1);
   });
 });

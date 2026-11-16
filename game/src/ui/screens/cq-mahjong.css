@@ -1,0 +1,30 @@
+/* 重慶's 麻將館 puzzle (cq-mahjong.ts): a green felt table, the hand on top, 8 candidates to tap, the 5 s bar. */
+.cqm-ov { background: rgba(4, 18, 10, .55); }
+.cqm-scene img { position: static; }
+.cqm-scene { font-family: var(--ui-font), "PingFang SC", "PingFang TC", "Noto Sans TC", sans-serif; }
+.cqm-card { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: space-evenly; padding: 10px 12px; border-radius: 22px; color: #fff;
+  background: radial-gradient(120% 90% at 50% 0%, #2f8f5a, #11502e); box-shadow: 0 0 0 4px #f4e3b0, 0 0 0 8px #b8322a, 0 14px 30px rgba(0,0,0,.5);
+  animation: cqm-pop .3s cubic-bezier(.3, 1.5, .5, 1) both; }
+@keyframes cqm-pop { from { transform: scale(.7); opacity: 0; } }
+.cqm-title { font-size: 26px; text-shadow: 0 3px 0 #0b3a20; }
+.cqm-hint { font-size: 19px; padding: 2px 14px; border-radius: 14px; background: rgba(255,255,255,.16); }
+.cqm-hand { display: flex; justify-content: center; gap: 2px; width: 100%; }
+.cqm-hand img { width: calc((100% - 30px) / 13); max-width: 46px; height: auto; filter: drop-shadow(0 3px 2px rgba(0,0,0,.4)); }
+.cqm-scene.tall .cqm-hand { flex-wrap: wrap; }
+.cqm-scene.tall .cqm-hand img { width: 13%; max-width: 50px; }
+.cqm-choices { display: grid; grid-template-columns: repeat(8, 1fr); gap: 8px; width: 100%; }
+.cqm-scene.tall .cqm-choices { grid-template-columns: repeat(4, 1fr); }
+.cqm-scene .cqm-pick { position: relative; margin: 0; padding: 6px !important; border-radius: 12px !important; border: 3px solid rgba(255,255,255,.55) !important; background: rgba(255,255,255,.12) !important;
+  cursor: pointer; min-height: 44px; transition: transform .12s, background .15s; -webkit-tap-highlight-color: transparent; }
+.cqm-pick img { width: 100%; height: auto; display: block; pointer-events: none; filter: drop-shadow(0 3px 2px rgba(0,0,0,.35)); }
+.cqm-scene .cqm-pick.on { background: rgba(255, 225, 90, .35) !important; border-color: #ffe14a !important; transform: translateY(-4px); box-shadow: 0 0 18px 4px rgba(255,225,74,.6); }
+.cqm-pick i { position: absolute; right: -8px; top: -8px; width: 28px; height: 28px; border-radius: 50%; background: #5ad07a; border: 3px solid #fff; font-style: normal; font-size: 16px; line-height: 22px; text-align: center; transform: scale(0); transition: transform .15s; }
+.cqm-pick.on i { transform: scale(1); }
+.cqm-foot { display: flex; align-items: center; gap: 14px; width: 100%; }
+.cqm-time { flex: 1; height: 14px; border-radius: 7px; background: rgba(0,0,0,.35); overflow: hidden; }
+.cqm-time b { display: block; height: 100%; width: 100%; background: #ffe14a; border-radius: 7px; }
+.cqm-time b.low { background: #ff5a4a; }
+.cqm-scene .cqm-ok { font: inherit; font-size: 20px; padding: 8px 22px !important; border-radius: 14px !important; border: 3px solid #fff !important; background: #b8322a !important; color: #fff; cursor: pointer; min-height: 44px; }
+.cqm-card.done { pointer-events: none; }
+.cqm-res.right .cqm-title { color: #ffe14a; }
+.cqm-res.wrong .cqm-title { color: #ff8a7a; }

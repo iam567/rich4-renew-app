@@ -22,7 +22,7 @@ import { nearestTo, pickInDirection, readingOrder, type Dir, type Rect } from '.
 import { audio } from './audio';
 import './pad.css';
 
-type Action = Dir | 'confirm' | 'back' | 'next' | 'prev' | 'lb' | 'rb' | 'lt' | 'rt' | 'x' | 'y' | 'start' | 'select' | 'recentre';
+type Action = Dir | 'confirm' | 'back' | 'next' | 'prev' | 'lb' | 'rb' | 'lt' | 'rt' | 'x' | 'y' | 'start' | 'select' | 'recentre' | 'top' | 'panel' | 'roll' | 'look';
 type Source = 'pad' | 'key' | 'native';
 
 // ---------------------------------------------------------------- what can take the focus
@@ -152,6 +152,14 @@ let lastRoot: Element | null | undefined, lastKey = '';
 let goShown = false, wantGo = false;
 /** The focus was moved there by the player (a direction, the shoulders), not put there by a screen opening. */
 let chosen = false;
+/**
+ * 看地圖 (the user 2026-11-08): the right stick pressed (R3) — the arrows and the left stick move the map around instead
+ * of the focus; R3, ○ or ✕ again ends it and the camera comes back to the player. Ended by any box opening.
+ */
+let looking = false;
+/** 手把測試 (pad-test.ts): the controllers only lit there, nothing played meanwhile. */
+let suspended = false;
+export function padSuspend(on: boolean) { suspended = on; held.clear(); }
 /** Last focus per screen (key: the layer's class and title) as a signature. */
 const memory = new Map<string, string>();
 
@@ -405,6 +413,29 @@ function tapThrough(ctx: Ctx): boolean {
   return !!ctx.view?.padSkip();
 }
 
+/**
+ * The board's three places for the arrows (the user 2026-11-08: no special button needed): from GO ↑ goes to the
+ * toolbar and ↓ to the panel's tabs (資金 / 地產 / 股票 / 其他); from the toolbar ↓ comes back to GO (or the tabs when
+ * GO is not up); leaving the tabs upward / leftward comes back to GO (or the toolbar). Other moves go by position.
+ */
+function boardHop(ctx: Ctx, focus: HTMLElement, dir: Dir | 'out', go2: (el: HTMLElement | null | undefined) => boolean): boolean {
+  const has = (e: HTMLElement) => ctx.cands.some(c => c.el === e);
+  const go = document.querySelector<HTMLElement>('.go:not([hidden]) .go-hit');
+  const goIn = go && has(go) ? go : null;
+  const tabs = [...document.querySelectorAll<HTMLElement>('.pp-tab')].filter(has);
+  const tab = tabs.find(e => e.classList.contains('on')) ?? tabs[0];
+  const bar = [...document.querySelectorAll<HTMLElement>('.toolbar .tb')].filter(has);
+  const nearestBar = () => { const x = focus.getBoundingClientRect().left; return bar.reduce<HTMLElement | null>((a, b) => (!a || Math.abs(b.getBoundingClientRect().left - x) < Math.abs(a.getBoundingClientRect().left - x) ? b : a), null); };
+  if (dir === 'out') return go2(goIn ?? nearestBar());
+  if (focus.closest('.go')) {
+    if (dir === 'down') return go2(tab);
+    if (dir === 'up') return go2(nearestBar());
+    return false;
+  }
+  if (focus.closest('.toolbar') && dir === 'down') return go2(goIn ?? tab);
+  return false;
+}
+
 function toolbarButton(key: string): HTMLElement | null {
   const b = document.querySelector<HTMLElement>(`.toolbar .tb[data-key="${key}"]`);
   return b && onTop(b) ? b : null;
@@ -479,6 +510,22 @@ function act(a: Action, src: Source) {
   }
   cursor = null;
 
+  // 看地圖: the arrows move the map; R3 / ○ / ✕ / B end it (and a box opening ends it)
+  if (looking) {
+    const v = ctx.root ? null : ctx.view;
+    if (!v) looking = false;
+    else if (a === 'up' || a === 'down' || a === 'left' || a === 'right') {
+      const d = 110;
+      v.padPan(a === 'left' ? -d : a === 'right' ? d : 0, a === 'up' ? -d : a === 'down' ? d : 0);
+      draw(); return;
+    } else if (a === 'look' || a === 'confirm' || a === 'back' || a === 'panel') { looking = false; v.padRecentre(); draw(); return; }
+    else if (a === 'lt' || a === 'rt') { /* turning the map is fine while looking */ }
+    else looking = false;
+  } else if (a === 'look') {
+    if (!ctx.root && ctx.view) { looking = true; draw(); }
+    return;
+  }
+
   const f = ensureFocus(ctx);
   if (f !== focus) setFocus(f, ctx);
   else draw();
@@ -492,8 +539,12 @@ function act(a: Action, src: Source) {
     if ((dir === 'left' || dir === 'right') && step(focus, dir === 'left' ? -1 : 1)) return;
     const from = toRect(focus.getBoundingClientRect());
     const list = ctx.cands;
+    const go2 = (el: HTMLElement | null | undefined) => { if (!el) return false; setFocus(el, ctx); chosen = true; audio.ui('hover'); return true; };
+    if (!ctx.root && boardHop(ctx, focus, dir, go2)) return;
     const j = pickInDirection(from, dir, list.map(c => c.r), list.findIndex(c => c.el === focus));
-    if (j >= 0) { setFocus(list[j].el, ctx); chosen = true; audio.ui('hover'); }
+    // leaving the panel's tabs upward / leftward: back to GO (or the toolbar)
+    if (!ctx.root && focus.matches('.pp-tab') && (j < 0 || !list[j].el.matches('.pp-tab')) && (dir === 'up' || dir === 'left') && boardHop(ctx, focus, 'out', go2)) return;
+    if (j >= 0) go2(list[j].el);
     return;
   }
   switch (a) {
@@ -526,6 +577,28 @@ function act(a: Action, src: Source) {
       const j = i < 0 ? (a === 'rb' ? 0 : list.length - 1) : (i + (a === 'rb' ? 1 : -1) + list.length) % list.length;
       setFocus(list[j], ctx);
       chosen = true; audio.ui('hover');
+      return;
+    }
+    case 'top': {
+      // △: the toolbar's first button (← → go along it), from anywhere on the board
+      if (ctx.root) return;
+      const b = [...document.querySelectorAll<HTMLElement>('.toolbar .tb')].find(e => ctx.cands.some(c => c.el === e));
+      if (b) { setFocus(b, ctx); chosen = true; audio.ui('hover'); }
+      return;
+    }
+    case 'panel': {
+      // ✕: 返回 in a box; on the board the player panel's tabs (資金 / 地產 / 股票 / 其他)
+      if (ctx.root) { act('back', source); return; }
+      const tabs = [...document.querySelectorAll<HTMLElement>('.pp-tab')].filter(e => ctx.cands.some(c => c.el === e));
+      const b = tabs.find(e => e.classList.contains('on')) ?? tabs[0];
+      if (b) { setFocus(b, ctx); chosen = true; audio.ui('hover'); }
+      return;
+    }
+    case 'roll': {
+      // □: GO at once, when it is up (the dice count as set)
+      if (ctx.root) return;
+      const go = document.querySelector<HTMLElement>('.go:not([hidden]) .go-hit');
+      if (go && onTop(go)) { setFocus(go, ctx); activate(go); }
       return;
     }
     case 'lt': ctx.view?.rotate(-1); return;
@@ -595,14 +668,19 @@ function hide() {
 }
 
 const PAD_NAMES = { a: 'A', b: 'B', x: 'X', y: 'Y', lb: 'LB', rb: 'RB', lt: 'LT', rt: 'RT', start: 'START', rs: '右搖桿' };
+const PS_NAMES = { a: '○', b: '✕', x: '□', y: '△', lb: 'L1', rb: 'R1', lt: 'L1', rt: 'R1', start: 'OPTIONS', rs: '右搖桿' };
 const KEY_NAMES = { a: 'Enter', b: 'Esc', x: 'C', y: 'M', lb: 'PgUp', rb: 'PgDn', lt: 'Q', rt: 'E', start: 'F10', rs: 'Shift+方向' };
 
 function hintText(): string {
-  const n = source === 'key' ? KEY_NAMES : PAD_NAMES;
+  const ps = source !== 'key' && buttons() === PS;
+  const n = source === 'key' ? KEY_NAMES : ps ? PS_NAMES : PAD_NAMES;
   const k = (s: string) => `<kbd>${s}</kbd>`;
+  if (looking) return `<b>看地圖</b> ${k('方向')}／左搖桿 移動地圖 ${k(ps ? 'R3' : n.rs)}${k(n.a)}結束`;
   if (spot !== null) return `${k('方向')}選目標 ${k(n.a)}確定 ${k(n.b)}取消${source === 'pad' ? ` ${k(n.rs)}看地圖` : ''}`;
   if (cursor) return `${k('方向')}移動 ${k(n.a)}點擊`;
   if (!focus) return `${k(n.a)}繼續 ${k(n.b)}跳過`;
+  if (ps && focus?.closest('.go')) return `${k('←→')}骰子數 ${k('○')}${k('□')}出發 ${k('△')}工具列 ${k('✕')}資產欄 ${k('L1')}${k('R1')}旋轉 ${k('R3')}看地圖`;
+  if (ps && (focus?.closest('.toolbar') || focus?.matches('.pp-tab'))) return `${k('←→')}選 ${k('○')}開啟 ${k('△')}工具列 ${k('✕')}資產欄 ${k('□')}擲骰`;
   if (focus?.closest('.go')) return `${k('←→')}骰子數 ${k(n.a)}出發 ${k(n.lb)}${k(n.rb)}工具列 ${k(n.lt)}${k(n.rt)}旋轉 ${k(n.rs)}看地圖 ${k(n.x)}回到角色`;
   if (focus?.closest('.toolbar')) return `${k(n.a)}開啟 ${k(n.lb)}${k(n.rb)}工具列 ${k(n.start)}系統`;
   return `${k(n.a)}確定 ${k(n.b)}返回`;
@@ -642,8 +720,16 @@ function draw() {
 // ---------------------------------------------------------------- gamepads
 
 const REPEAT_FIRST = 360, REPEAT_EVERY = 110;
-/** Standard mapping: buttons by index. */
-const BUTTONS: [number, Action][] = [[0, 'confirm'], [1, 'back'], [2, 'x'], [3, 'y'], [4, 'lb'], [5, 'rb'], [6, 'lt'], [7, 'rt'], [8, 'select'], [9, 'start'], [10, 'recentre'], [11, 'recentre'], [12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']];
+/** Standard mapping: buttons by index (0 bottom, 1 right, 2 left, 3 top; 4 / 5 L1 / R1, 6 / 7 L2 / R2). */
+const XBOX: [number, Action][] = [[0, 'confirm'], [1, 'back'], [2, 'x'], [3, 'y'], [4, 'lb'], [5, 'rb'], [6, 'lt'], [7, 'rt'], [8, 'select'], [9, 'start'], [10, 'recentre'], [11, 'look'], [12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']];
+/**
+ * The PlayStation way (the user 2026-11-08, the default): ○ 確定; ✕ 返回 in a box, on the board the panel's tabs
+ * (資金 / 地產 / 股票 / 其他); △ the toolbar (← → along it); □ rolls at once; L1 / L2 turn the map one way, R1 / R2 the other.
+ */
+const PS: [number, Action][] = [[1, 'confirm'], [0, 'panel'], [2, 'roll'], [3, 'top'], [4, 'lt'], [6, 'lt'], [5, 'rt'], [7, 'rt'], [8, 'select'], [9, 'start'], [10, 'recentre'], [11, 'look'], [12, 'up'], [13, 'down'], [14, 'left'], [15, 'right']];
+/** 遊戲設定's 手把按鍵 (rich4.pad.layout): 0 the PlayStation way, 1 the Xbox / handheld way (A 確定, B 返回). */
+export const PAD_LAYOUT_KEY = 'rich4.pad.layout';
+const buttons = () => { try { return localStorage.getItem(PAD_LAYOUT_KEY) === '1' ? XBOX : PS; } catch { return PS; } };
 const held = new Map<Action, number>();  // action → next repeat time
 let lastBack = 0;
 let raf = 0, lastT = 0, lastCheck = 0, padsSeen = false;
@@ -652,16 +738,30 @@ function pads(): Gamepad[] {
   try { return [...(navigator.getGamepads?.() ?? [])].filter((g): g is Gamepad => !!g && g.connected); } catch { return []; }
 }
 
+/**
+ * 1P–4P on one screen with a controller each (Android TV, the user 2026-11-08): the controllers in the order the
+ * system numbers them are 1號 … 4號, and the k-th plays the k-th human seat. While the game waits on a human seat
+ * (padFor) only that seat's controller acts; the others act for anybody (the menus, a computer's turn), and so does any
+ * controller when that seat has none. The keyboard and the TV remote always act.
+ */
+let wantSeat: number | null = null;
+export function padFor(k: number | null) { wantSeat = k; }
+/** How many controllers are connected. */
+export function padCount(): number { return pads().length; }
+
 function poll(t: number) {
+  if (suspended) return;
   const list = pads();
   const dt = Math.min(0.05, Math.max(0, (t - lastT) / 1000));
   lastT = t;
   if (!list.length) { held.clear(); release(); return; }
   padsSeen = true;
   const now = new Set<Action>();
+  const map = buttons();
   let rx = 0, ry = 0, lx = 0, ly = 0;
-  for (const g of list) {
-    for (const [i, a] of BUTTONS) {
+  for (const [n, g] of list.entries()) {
+    if (wantSeat !== null && wantSeat < list.length && n !== wantSeat) continue; // another seat's controller
+    for (const [i, a] of map) {
       const b = g.buttons[i];
       if (b && (b.pressed || b.value > 0.5)) now.add(a);
     }
@@ -673,7 +773,10 @@ function poll(t: number) {
   }
   // The left stick as the D-pad (on its main axis); in a canvas pointer it moves the pointer smoothly instead.
   const mag = Math.hypot(lx, ly);
-  if (cursor && shown && mag > 0.2) {
+  if (looking && mag > 0.2) {
+    const k = Math.min(1, (mag - 0.2) / 0.8), sp = 900 * dt * k * k;
+    topView()?.padPan(lx / mag * sp, ly / mag * sp);
+  } else if (cursor && shown && mag > 0.2) {
     const sp = 700 * dt * Math.min(1, (mag - 0.2) / 0.8);
     moveCursor(lx / mag * sp * mag, ly / mag * sp * mag);
   } else if (mag > 0.55) {

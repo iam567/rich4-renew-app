@@ -41,7 +41,7 @@ function run(mapId: number, seed: number, opts: RunOpts): string {
   for (let r = flow.next(); !r.done && game.daysElapsed < (opts.days ?? 200); ) {
     h.update(JSON.stringify(r.value));
     const s = r.value as { ask?: boolean; t?: string };
-    if ('ask' in s) { expect(s.t).toBe('auto-turn'); r = flow.next(0); } else r = flow.next();
+    if ('ask' in s) { expect(['auto-turn', 'orders']).toContain(s.t); r = flow.next(0); } else r = flow.next();
   }
   const save = saveGame(game) as unknown as Record<string, unknown>;
   delete save.savedAt;

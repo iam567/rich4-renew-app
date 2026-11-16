@@ -15,6 +15,7 @@ import { CHARACTERS } from '../characters';
 import type { Option, PickSpot, Player } from '../types';
 import { COPY_CARD, deckSupply, TYCOON_SHOP_ALWAYS } from './cards';
 import { OBJECT_NAMES } from './objects';
+import { RT } from '../realtime';
 
 export interface ToolDef {
   id: number;
@@ -196,14 +197,20 @@ export class Tools {
 
   /** New game: shop stock, each player's starting tools 1,2,3,4,8,9 and vehicle (01 §2.3, 05 §2.1). */
   init(): void {
-    this.shopStock = TOOLS.slice(0, 8).map(t => t.supply);
+    // 地獄 (the user 2026-11-16, Game.hellRules): of each of tools 1-8 as many in the whole game as there are players —
+    // the starting ones taken from them, used ones back in (a 4-player game: 4 遙控骰子, 4 路障 … in all)
+    const hell = this.g.hellRules();
+    this.shopStock = TOOLS.slice(0, 8).map(t => (hell ? this.g.players.length : t.supply));
     this.snapshots = [null, null, null, null];
     for (const p of this.g.players) {
       for (const t of STARTING_TOOLS) this.receive(p, t);
       const v = p.traffic & 3;
-      if (v === 1 || v === 2) this.shopStock[v + 3] -= 1;
+      if (v === 1 || v === 2) this.shopStock[v + 3] = Math.max(0, this.shopStock[v + 3] - 1);
     }
   }
+
+  /** 地獄: a lab's tool (9-13 and the like) is not sold back to the shop (the user 2026-11-16). */
+  unsellable(tool: number): boolean { return tool > 8 && this.g.hellRules(); }
 
   /** Give a tool if under the cap of 9 and in stock for tools 1-8 (05 §2.1, fcn_00445a4d). */
   receive(p: Player, tool: number): boolean {
@@ -384,7 +391,7 @@ export class Tools {
   // ---------------------------------------------------------------- lab (02 §4.5, 05 §7)
 
   /** The lab's five tools (05 §7; a tycoon city's own list, 17 §3.6). */
-  labOptions(): number[] { return (this.g.world && TYCOON_LABS[this.g.settings.mapId]) || LAB_OPTIONS; }
+  labOptions(): number[] { return (this.g.world && !this.g.world.hooks.originalOnly?.() && TYCOON_LABS[this.g.settings.mapId]) || LAB_OPTIONS; }
   /** The tool a lab order (1..5) delivers: 9..13 in a normal game. */
   labToolId(choice: number): number { return this.labOptions()[choice - 1] ?? choice + 8; }
 
@@ -422,10 +429,10 @@ export class Tools {
   // ---------------------------------------------------------------- using tools (05 §2.5, §3)
 
   /** Human picks and uses a tool from the turn menu (05 §2.5-§2.6): one success per opening of the panel. */
-  *humanUse(p: Player): Flow {
+  *humanUse(p: Player, without: number[] = []): Flow {
     for (;;) {
       // The held tools packed in tool order, each with its icon Panel#11.(id+1) and count (09 §7.3).
-      const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : []), ...(this.g.rules?.extraTools ?? [])].filter(t => p.tools[t.id - 1] > 0)
+      const options: Option[] = [...TOOLS, ...(this.g.world ? TYCOON_TOOLS : []), ...(this.g.rules?.extraTools ?? [])].filter(t => p.tools[t.id - 1] > 0 && !without.includes(t.id))
         .map(t => ({ label: t.name, value: t.id, detail: `×${p.tools[t.id - 1]}`, icon: toolIcon(t.id), ...((t as { short?: string }).short ? { hint: (t as { short?: string }).short } : {}) }));
       const v = p.traffic;
       if (v === 1 || v === 2) options.push({ label: '下車', value: 99, icon: { archive: 'Panel', id: 11, frame: v === 1 ? 15 : 16 } });
@@ -593,6 +600,24 @@ export class Tools {
   /** Missile (7) and nuclear missile (13), 05 §3.6 / §3.12. Param: node id, or a lot ref 2001.. / 4001.. */
   private *missile(p: Player, tool: number, param?: number): Flow<boolean> {
     const g = this.g;
+    if (g.rt) {
+      // 即時制 (the user 2026-11-08): a spot on the road (the buildings around it) or a player locked on; a computer's
+      // spot with a player standing on it locks on them
+      const lockable = this.lockable(p);
+      if (param === undefined && lockable.length) {
+        const how = Number(yield ask({ t: 'choose', p: p.id, title: `使用${TOOLS[tool - 1].name}`, options: [
+          { label: '炸路上一點', value: 0, detail: '選路上發光的點，炸掉附近的建築' },
+          { label: '鎖定玩家', value: 1, detail: `${RT.missile / 1000} 秒後落在他站的地方，他可以跑` },
+        ], cancellable: true }));
+        if (how === 1) return yield* this.lockedMissile(p, tool);
+        if (how !== 0) return false;
+      } else if (param !== undefined) {
+        const on = lockable.find(q => q.node === param);
+        if (on) return yield* this.lockedMissile(p, tool, on.id);
+        // a human in a shop there (out of reach meanwhile): not now
+        if (g.players.some(q => q.node === param && g.rt!.isShielded(q.id))) return false;
+      }
+    }
     const target = param ?? Number(yield ask({ t: 'pick-node', p: p.id, title: `使用${TOOLS[tool - 1].name}`, nodes: g.board.nodes.filter(n => n.adjacent.some(Boolean)).map(n => n.id), cancellable: true }));
     const at = this.position(target);
     if (!at) return false;
@@ -602,17 +627,48 @@ export class Tools {
     return true;
   }
 
+  /** Who a missile may lock on (即時制): on the board, not in a shop (the bank, the magic house, the lottery) nor 保護中. */
+  private lockable(p: Player): Player[] {
+    const g = this.g;
+    return g.players.filter(q => q.id !== p.id && q.placed && !q.bankrupt && q.whoPlays && !g.offRoad(q) && !g.rt?.isShielded(q.id));
+  }
+
+  /**
+   * 即時制's missile locked on a player (the user 2026-11-07): picked by face, anywhere on the map; their screen warns
+   * and beeps; it falls RT.missile ms later wherever they stand then — they may stay, or run onto a rival's lot and take
+   * it down with them. `target`: a computer's choice.
+   */
+  private *lockedMissile(p: Player, tool: number, target?: number): Flow<boolean> {
+    const g = this.g;
+    const targets = this.lockable(p);
+    if (!targets.length) { if (target === undefined) yield* g.say(p.id, '沒有可以鎖定的對象'); return false; }
+    const t = target ?? Number(yield ask({ t: 'pick-player', p: p.id, title: `${TOOLS[tool - 1].name}要鎖定誰？`, players: targets.map(q => q.id), cancellable: true, anywhere: true }));
+    if (!targets.some(q => q.id === t)) return false;
+    this.consume(p, tool);
+    g.rt?.struck(t); // (the lock is the hit; its fall is not another)
+    yield { t: 'fx', kind: 'missile-lock', p: p.id, target: t, data: { tool, ms: RT.missile } };
+    for (let w = 0; w < RT.missile; w += 250) yield { t: 'fx', kind: 'rt-wait', p: p.id };
+    const at = this.position(g.players[t].node);
+    if (!at) return true;
+    yield { t: 'fx', kind: tool === 7 ? 'missile' : 'nuke', p: p.id, data: { x: at.x, y: at.y } };
+    yield* this.blast(p, at.x, at.y, tool === 7 ? MISSILE_HALF : VIEW_HALF, tool === 13, t);
+    return true;
+  }
+
   /** Damage fcn_0040ac7b (05 §3.6 step 4-5, §3.12). */
-  private *blast(p: Player, cx: number, cy: number, half: number, nuke: boolean): Flow {
+  private *blast(p: Player, cx: number, cy: number, half: number, nuke: boolean, locked = -1): Flow {
     const g = this.g, PI = g.priceIndex;
     const hit = (x: number, y: number) => Math.abs(x - cx) <= half && Math.abs(y - cy) <= half;
+    const lost: [number, number][] = []; // [owner, ref] of the lots it took down (即時制 tells each owner)
     for (const l of g.board.lands) {
       if (!hit(l.x, l.y)) continue;
+      if (l.owner && (nuke || l.level > 0)) lost.push([l.owner - 1, l.id + 2000]);
       if (l.owner) g.addHostility(l.owner - 1, p.id, nuke ? 30 * l.level * PI : 30 * PI);
       g.damageProperty(l.id + 2000, nuke ? 1 : 0);
     }
     for (const f of g.board.facilities) {
       if (!hit(f.x, f.y)) continue;
+      if (f.owner && (nuke || f.level > 0)) lost.push([f.owner - 1, f.id + 4000]);
       if (f.owner) g.addHostility(f.owner - 1, p.id, nuke ? 30 * f.level * PI : 30 * PI);
       g.damageProperty(f.id + 4000, g.rules?.blastMode?.(nuke) ?? (nuke ? 1 : 0)); // 大富翁城 (19 §3.6)
     }
@@ -623,10 +679,12 @@ export class Tools {
       if (!hit(n.x, n.y)) continue;
       if (!q.whoPlays) {
         // A beggar's remains move to a distant random node (fcn_0040cc56).
-        if (q.bankrupt) { const to = g.randomFreeNode(n); q.node = to.id; yield { t: 'teleport', p: q.id, node: to.id }; }
+        if (g.isOut(q)) { const to = g.randomFreeNode(n); q.node = to.id; yield { t: 'teleport', p: q.id, node: to.id }; }
         continue;
       }
-      if (g.offRoad(q)) continue;
+      // (即時制: in a shop, or 保護中 — the locked player only in a shop: the lock was their hit)
+      if (g.offRoad(q) || (q.id !== p.id && (q.id === locked ? g.rt?.isIndoors(q.id) : g.rt?.isShielded(q.id)))) continue;
+      if (q.id !== p.id && q.id !== locked) g.rt?.struck(q.id);
       // 推测: the attached god and carried bomb are drawn on the player and are hit with them (05 §4.3).
       g.objects.detachAll(q);
       if (this.destroyVehicle(q)) hurt.push(q);
@@ -641,6 +699,7 @@ export class Tools {
       if (n && hit(n.x, n.y)) g.objects.removeAt(o.node);
     }
     yield { t: 'board' };
+    if (g.rt && lost.length) yield { t: 'fx', kind: 'blast-lots', p: p.id, data: { lots: lost, nuke } };
     for (const q of hurt) {
       g.addHostility(q.id, p.id, 90 * PI);
       yield* g.sendTo(q, 'hospital', 3);
@@ -1112,6 +1171,8 @@ export class Tools {
   /** Shop tile, t = 15 (05 §8): owner's gift, then the human shelves or the computer's shopping. */
   *shop(p: Player): Flow {
     const g = this.g, ref = g.node(p.node).ref;
+    // 自建地圖's 道具店不營業
+    if (g.settings.mapRules?.noShop) { if (g.isHuman(p)) yield* g.say(p.id, '這張地圖的道具店不營業'); return; }
     const company = ref > 6000 && ref < 8000 ? g.board.companies[ref - 6001] : undefined;
     if (company && company.controller === p.id + 1) {
       // Owner's gift (05 §8.5): rand() & 1 → a random tool, else a random card.
@@ -1188,7 +1249,7 @@ export class Tools {
   /** Sell n of a tool at 90% (05 §8.4): tools 1-8 return to the stock, 9-13 vanish. Returns the points. */
   sellTool(p: Player, tool: number, n = 1): number {
     n = Math.min(n, p.tools[tool - 1]);
-    if (n <= 0) return 0;
+    if (n <= 0 || this.unsellable(tool)) return 0;
     p.tools[tool - 1] -= n;
     if (tool <= 8) this.shopStock[tool - 1] += n;
     const pts = sellPrice(TOOLS[tool - 1].price, n);
@@ -1243,6 +1304,7 @@ export class Tools {
         this.sellCard(p, a.index);
       } else if ('sell' in a && a.sell === 'tool') {
         if (!(a.id >= 1 && a.id <= TOOLS.length) || !(p.tools[a.id - 1] > 0)) continue;
+        if (this.unsellable(a.id)) { yield* g.say(p.id, '研究所的道具不能賣回商店'); continue; }
         turnover.sell += TOOLS[a.id - 1].price;
         this.sellTool(p, a.id);
       } else break;
@@ -1255,7 +1317,7 @@ export class Tools {
     const g = this.g, A = this.temper(p);
     const hated = (f7: number) => f7 - A === 2;
     const sellCard = (slot: number) => { turnover.sell += cardPrice(p.cards[slot]); this.sellCard(p, slot); };
-    const sellTool = (t: number, n: number) => { n = Math.min(n, p.tools[t - 1]); if (n > 0) { turnover.sell += TOOLS[t - 1].price * n; this.sellTool(p, t, n); } };
+    const sellTool = (t: number, n: number) => { n = Math.min(n, p.tools[t - 1]); if (n > 0 && !this.unsellable(t)) { turnover.sell += TOOLS[t - 1].price * n; this.sellTool(p, t, n); } };
     // 1. Hated cards.
     for (let i = p.cards.length - 1; i >= 0; i--) if (hated(CARD_INFO[p.cards[i] - 1]?.[2] ?? 0)) sellCard(i);
     // 2. Hated tools.

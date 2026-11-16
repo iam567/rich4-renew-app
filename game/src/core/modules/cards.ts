@@ -98,6 +98,17 @@ export const REMAKE_SUPPLY: Readonly<Record<number, number>> = { 1: 2, 3: 5, 4: 
 export const REMAKE_CARD_SUPPLY = { on: true };
 
 /**
+ * 地獄's card pool (the user 2026-11-16, Game.hellRules: a posted recipe beat 地獄 with handfuls of the same cards):
+ * the rare cards one each in the whole game — 均富, 均貧, 惡魔, 冬眠, 紅卡, 黑卡; the cards that hit another player and
+ * the ones that shield from a hit as many as there are players; one of each of those in a hand at most. The other
+ * cards (改建, 天使, 送神符, 請神符, 漲價, 同盟) keep the remake's copies.
+ */
+export const HELL_RARE: ReadonlySet<number> = new Set([1, 2, 10, 15, 24, 25]);
+export const HELL_PER_HEAD: ReadonlySet<number> = new Set([3, 4, 5, 6, 8, 11, 12, 13, 14, 16, 17, 18, 19, 20, 21, 26, 28, 30]);
+export const hellSupply = (players: number): number[] =>
+  CARDS.map(c => (HELL_RARE.has(c.id) ? 1 : HELL_PER_HEAD.has(c.id) ? players : REMAKE_SUPPLY[c.id] ?? c.supply));
+
+/**
  * 複製卡 (大富豪模式, the user 2026-10-19): copies any card or tool once, then it is gone. 4 a map (20 in the
  * nationwide pool), worth 100; never on the shop's shelf — only the owner's gift at their own shop may be one.
  */
@@ -174,6 +185,9 @@ type Seen =
 /** Anything that walks: a player or an NPC (same node / lastNode / dir fields). */
 interface Walker { node: number; lastNode: number; dir: number }
 
+/** The cards played at one player or NPC (pickPlayer): 均貧, 轉向, 搶奪, 停留, 夢遊, 陷害, 查稅, 同盟, 烏龜, 遣返 (all but 同盟 count as a hit). */
+const PICKS_PLAYER = new Set([2, 6, 13, 14, 16, 17, 26, 29, 30, 33]);
+
 export class Cards {
   /** Copies left in the pool by card id - 1 (04 §2.1). */
   remaining: number[] = [];
@@ -190,13 +204,14 @@ export class Cards {
 
   /** New game: fill the pool from the card table (04 §1). */
   init(): void {
-    this.remaining = deckSupply(!!this.g.world);
+    this.remaining = this.g.hellRules() ? hellSupply(this.g.players.length) : deckSupply(!!this.g.world);
     for (const p of this.g.players) p.cards = [];
   }
 
   // ---------------------------------------------------------------- hand rules (04 §2.1, §4.1)
 
-  has(p: Player, id: number): boolean { return p.cards.includes(id); }
+  /** (派對模式's 乞丐 keeps cards but uses none, the passive ones neither, till back in the game) */
+  has(p: Player, id: number): boolean { return p.cards.includes(id) && !this.g.isBeggar(p); }
 
   /** _rich4_find_player_cheapest_card: lowest price, the first one on ties; -1 for an empty hand. */
   cheapestSlot(p: Player): number {
@@ -205,8 +220,13 @@ export class Cards {
     return best;
   }
 
-  /** Room in p's hand for one more `id` (大富豪模式: 3 of a card to a slot, HAND_LIMIT slots). */
-  room(p: Player, id: number): boolean { return handRoom(p.cards, id, stackOf(this.g)); }
+  /** Room in p's hand for one more `id` (大富豪模式: 3 of a card to a slot, HAND_LIMIT slots; 地獄: one of a kind). */
+  room(p: Player, id: number): boolean { return !this.hellHeld(p, id) && handRoom(p.cards, id, stackOf(this.g)); }
+
+  /** 地獄 (HELL_RARE / HELL_PER_HEAD): p holds its one copy of `id` already. */
+  hellHeld(p: Player, id: number): boolean {
+    return (HELL_RARE.has(id) || HELL_PER_HEAD.has(id)) && p.cards.includes(id) && this.g.hellRules();
+  }
 
   /**
    * Add a card to a hand: a full hand of 15 first drops its cheapest card (04 §2.1). No pool check. 大富豪模式: until
@@ -216,6 +236,8 @@ export class Cards {
     // A map's own card (歌舞伎町 37) has no pool: it is in no `remaining` slot.
     const own = id > this.remaining.length && this.g.rules?.ownCards?.includes(id);
     if (id < 1 || (id > this.remaining.length && !own)) return false;
+    // 地獄: never more copies than the pool holds, never a second one in a hand (a gift of it is lost)
+    if (!own && this.g.hellRules() && (this.remaining[id - 1] <= 0 || this.hellHeld(p, id))) return false;
     const stack = stackOf(this.g);
     while (p.cards.length && !this.room(p, id)) {
       let slot = this.cheapestSlot(p);
@@ -251,18 +273,18 @@ export class Cards {
   }
 
   /** One card drawn weighted by the pool (04 §4.1); returns 0 without drawing when the pool is empty. */
-  drawId(withCopy = false): number {
+  drawId(withCopy = false, skip?: (id: number) => boolean): number {
     // The original's 128-entry pool; 大富豪模式's nationwide pool (×5) would only ever give the first few cards in it,
     // so there every copy counts. `withCopy`: the owner's gift at their shop may also be a 複製卡.
     const cap = this.g.world ? Infinity : 128, pool: number[] = [];
     const ids = [...Array.from({ length: CARDS.length }, (_, i) => i + 1), ...(withCopy && this.g.world ? [COPY_CARD] : [])];
-    for (const id of ids) for (let k = 0; k < (this.remaining[id - 1] ?? 0) && pool.length < cap; k++) pool.push(id);
+    for (const id of ids) if (!skip?.(id)) for (let k = 0; k < (this.remaining[id - 1] ?? 0) && pool.length < cap; k++) pool.push(id);
     return pool.length ? pool[this.g.rng.below(pool.length)] : 0;
   }
 
   /** Card tile, holidays, lab …: one card drawn weighted by the pool (06 §1 t=13). Returns the id or 0. */
   *receiveRandom(p: Player, withCopy = false): Flow<number> {
-    const id = this.drawId(withCopy);
+    const id = this.drawId(withCopy, this.g.hellRules() ? c => this.hellHeld(p, c) : undefined);
     if (id && !(yield* this.take(p, id))) return 0;
     return id;
   }
@@ -274,6 +296,7 @@ export class Cards {
    */
   *take(p: Player, id: number): Flow<boolean> {
     const g = this.g;
+    if (this.hellHeld(p, id)) return false; // 地獄: one of a kind in a hand
     if (this.room(p, id) || !g.isHuman(p) || !p.cards.length) return this.receive(p, id);
     let asked = 0;
     while (!this.room(p, id) && p.cards.length) {
@@ -347,6 +370,7 @@ export class Cards {
   *playAs(p: Player, id: number, arg0: number, arg1 = 0): Flow<boolean> {
     if (!this.has(p, id)) return false;
     this.aiArg0 = arg0; this.aiArg1 = arg1;
+    if (this.aimedIndoors(id)) return false;
     yield { t: 'fx', kind: 'card', p: p.id, data: { card: id } };
     yield* this.say(p, `使用${cardName(id)}`);
     const ok = yield* this.play(p, id, false);
@@ -405,6 +429,7 @@ export class Cards {
         return true;
       }
       case 3: { // 購地卡 §3.3
+        if (g.isBeggar(p)) { if (human) yield* g.say(me, '乞丐不能買地'); return false; } // 派對模式's 乞丐
         const ref = g.node(p.node).ref, plot = this.plot(ref);
         if (!plot || plot.owner === 0 || plot.owner === me + 1) return false;
         const level = plot.level;
@@ -432,6 +457,9 @@ export class Cards {
         const big = ref > 4000;
         const other = yield* this.pickRef(p, human, '請選擇另一塊土地', this.plotRefs(r => r !== ref && (r > 4000) === big));
         if (other <= 0) return false;
+        // 換屋卡 swaps buildings of one kind only: a computer's pick of a facility from a lot (or the reverse) did
+        // nothing but crash (found 2026-11-08 by the 即時制 simulations); kept as it was for 換地卡's owners
+        if (id === 5 && (other > 4000) !== big) return false;
         // Owners and levels before the swap decide who gloats and who complains (huandika / huanwuka.asm).
         const pa = this.plot(ref)!, pb = this.plot(other)!;
         const before = { ownerA: pa.owner, ownerB: pb.owner, levelA: pa.level, levelB: pb.level };
@@ -480,6 +508,7 @@ export class Cards {
         return true;
       }
       case 8: { // 拍賣卡 §3.8
+        if (g.rt) { if (human) yield* this.say(p, '即時制沒有拍賣'); return false; } // (the user 2026-11-08)
         const ref = g.node(p.node).ref, plot = this.plot(ref);
         if (!plot) return false;
         if (plot.owner) g.addHostility(plot.owner - 1, me, Math.trunc((plot.price * pi * (plot.level + 2)) / 5));
@@ -747,7 +776,7 @@ export class Cards {
         return true;
       }
       case 29: { // 同盟卡 §3.29
-        const t = yield* this.pickPlayer(p, human, '請選擇同盟對象', this.opponents(p).map(q => q.id));
+        const t = yield* this.pickPlayer(p, human, '請選擇同盟對象', this.opponents(p).map(q => q.id), false);
         if (t < 0) return false;
         this.consume(p, 29);
         const q = g.players[t];
@@ -974,11 +1003,11 @@ export class Cards {
     const d = card.f7 - CHARACTERS[p.character].personality;
     if (d >= 2) return false;
     if (d === 1 && this.g.rng.rand() % 3 !== 0) return false;
-    return this.aiJudge(p, id);
+    return this.aiJudge(p, id) && !this.aimedIndoors(id);
   }
 
   /** The original computer's own rule for card `id` without the personality limit (core/smart-ai.ts); sets aiArg0 / aiArg1. */
-  judgeFor(p: Player, id: number): boolean { return this.aiJudge(p, id); }
+  judgeFor(p: Player, id: number): boolean { return this.aiJudge(p, id) && !this.aimedIndoors(id); }
 
   private aiJudge(p: Player, id: number): boolean {
     const g = this.g, pi = g.priceIndex, me = p.id + 1;
@@ -1413,6 +1442,15 @@ export class Cards {
     return !!n && n.where === 0 && n.node > 0;
   }
 
+  /**
+   * 即時制: a human player in a shop, the bank, the magic house or the lottery, or hit enough since their last roll
+   * (簡單 / 中等, RT_HITS) — no card picks them (the user 2026-11-08).
+   */
+  private indoors(actor: number): boolean { return actor < this.g.npcBase && !!this.g.rt?.isShielded(actor); }
+
+  /** A computer's card aimed at a player who is indoors (即時制): not played now, kept. */
+  private aimedIndoors(id: number): boolean { return PICKS_PLAYER.has(id) && this.indoors(this.aiArg0); }
+
   private actorName(actor: number): string { return actor < this.g.npcBase ? this.g.name(actor) : NPC_NAMES[actor - this.g.npcBase] ?? ''; }
 
   /**
@@ -1456,7 +1494,15 @@ export class Cards {
    * A player or NPC target (selector type 0x10): picked on the map like the original, among those drawn on the
    * player's screen; the computer's choice is aiArg0.
    */
-  private *pickPlayer(p: Player, human: boolean, title: string, list: number[]): Flow<number> {
+  private *pickPlayer(p: Player, human: boolean, title: string, list: number[], harm = true): Flow<number> {
+    list = list.filter(id => !this.indoors(id));
+    const t = yield* this.pickOne(p, human, title, list);
+    // 即時制: someone else hit by it (RtHooks.struck: 簡單 / 中等 count the hits till their next roll)
+    if (harm && t >= 0 && t < this.g.npcBase && t !== p.id) this.g.rt?.struck(t);
+    return t;
+  }
+
+  private *pickOne(p: Player, human: boolean, title: string, list: number[]): Flow<number> {
     if (!human) return list.includes(this.aiArg0) ? this.aiArg0 : -1;
     const ids = list.filter(id => this.onMap(id));
     if (!ids.length) return -1;

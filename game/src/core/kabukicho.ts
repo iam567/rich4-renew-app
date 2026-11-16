@@ -626,6 +626,12 @@ export class KabukichoRules implements MapRules {
     const vip = this.s.vip[p.id] > 0;
     if (vip) this.s.vip[p.id] = 0;
     const days = vip ? 1 : yield* g.spin(WheelKind.hotel, this.wheelName(g, owner, f, p));
+    // ＨＯＴＥＬ１１'s 董事長 stays free (派對模式; not a child's amusement park)
+    if (!park && g.hotelBossFree(p)) {
+      yield* g.say(undefined, g.hotelBossLine(days), `${g.name(p.id)}在${this.wheelName(g, owner, f, p)}休息${days}天，董事長免單`);
+      if (days && !g.over && p.whoPlays) yield* g.checkIn(p, p, f, days, false);
+      return;
+    }
     const amount = rate * days;
     if (park) yield { t: 'fx', kind: 'kb-park', p: p.id, target: owner.id, node: p.node, data: { facility: f.id, days, amount } };
     yield* g.say(undefined, `${park ? `遊樂場${days}天` : `休息${days}天`}\n−${fmt(amount)}元`, `${g.name(p.id)}${park ? `在遊樂場玩${days}天` : `在${this.wheelName(g, owner, f, p)}休息${days}天`}，費用${fmt(amount)}元`);

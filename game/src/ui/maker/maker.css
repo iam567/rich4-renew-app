@@ -1,0 +1,317 @@
+/* 自建地圖 (ui/maker/editor.ts): the game's own look — the gold candy bar, the purple side, the blue board with the
+   orange rim, candy buttons and gold chips — in portrait and landscape (docs/prototypes/maker-ui.html). */
+
+/* ---------- the start sheet and the new map */
+.mk-ov { z-index: 30; }
+.mk-home, .mk-new, .mk-menu { width: min(520px, 100%); }
+.mk-home-acts { flex-direction: column; align-items: stretch; }
+.mk-mine { width: 100%; margin: 10px 0; }
+.mk-mine h4 { margin: 4px 0 8px; font-weight: 400; color: #ffe27a; text-align: left; }
+.mk-map { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.mk-map .candy { flex: 1; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; text-align: left; }
+.mk-map small { font-size: 13px; opacity: .75; }
+.mk-del { position: absolute; right: -6px; top: -6px; z-index: 1; width: 28px; height: 28px; padding: 0; border-radius: 50%; border: 2px solid #fff; color: #fff; font-size: 14px; line-height: 1; background: linear-gradient(#ffaaaa, #f04848); box-shadow: 0 2px 0 #a01d1d; }
+.mk-none { opacity: .85; }
+.mk-row { display: flex; align-items: center; gap: 10px; width: 100%; margin: 6px 0; text-align: left; }
+.mk-row > span { flex: none; width: 4.4em; white-space: nowrap; color: #ffe27a; }
+.mk-row b { flex: none; width: 4em; text-align: right; font-weight: 400; }
+.mk-name { flex: 1; min-width: 0; font: inherit; font-size: 17px; padding: 6px 10px; border-radius: 12px; border: 2px solid #fff; color: #24408a; }
+.mk-row input[type=range] { flex: 1; accent-color: #ffd23f; height: 28px; }
+.mk-size { display: flex; gap: 12px; width: 100%; align-items: center; }
+.mk-sliders { flex: 1; min-width: 0; }
+.mk-hint { margin: 2px 0 0; font-size: 13px; opacity: .85; text-align: left; }
+.mk-preview { position: relative; flex: none; width: 96px; height: 96px; border-radius: 10px; background: rgba(0, 0, 0, .25); }
+.mk-preview i { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
+.mk-box { background: linear-gradient(#9af5a4, #2dbb48); border: 2px solid #fff; border-radius: 4px; }
+.mk-ref { border: 2px dashed #ffe27a; border-radius: 4px; z-index: 1; }
+.mk-new .chips .chip { display: inline-flex; align-items: center; gap: 4px; }
+.mk-new .chips img { width: 22px; height: 22px; border-radius: 5px; }
+
+/* ---------- the editor */
+.mk-ed { position: absolute; inset: 0; z-index: 25; display: grid; overflow: hidden; background: #0b2427;
+  font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; user-select: none; -webkit-user-select: none; }
+.mk-top { display: flex; align-items: center; gap: 6px; padding: 0 8px; padding-left: max(8px, env(safe-area-inset-left)); padding-right: max(8px, env(safe-area-inset-right));
+  z-index: 3; background: linear-gradient(#fff3c4, #ffd25a 55%, #f5ac2a); border-bottom: 3px solid #b86a12; box-shadow: 0 3px 8px rgba(80, 40, 0, .35); }
+.mk-top .mk-name { flex: 1 1 auto; min-width: 0; border: 0; padding: 0; text-align: center; color: #5a2d00; background: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-top .mk-name small { font-size: 12px; opacity: .75; margin-left: 6px; }
+.mk-tb { flex: none; height: 34px; min-width: 34px; padding: 0 9px; border-radius: 12px; border: 2px solid #fff; display: flex; align-items: center; gap: 4px;
+  font: inherit; font-size: 14px; color: #5a2d00; background: linear-gradient(#fff8cf, #ffd23f); box-shadow: 0 3px 0 #c98a00; }
+.mk-tb:active { transform: translateY(2px); box-shadow: 0 1px 0 #c98a00; }
+.mk-tb svg { width: 18px; height: 18px; }
+.mk-tb.play { color: #fff; background: linear-gradient(#9af5a4, #2dbb48); box-shadow: 0 3px 0 #157a2a; text-shadow: 0 1px 0 #157a2a; }
+.mk-tools { display: flex; gap: 6px; padding: 6px; z-index: 2; background: linear-gradient(#5b3b8c, #2b1d4a); }
+.mk-tool { flex: none; width: 52px; display: flex; flex-direction: column; align-items: center; gap: 2px; color: #fff; font-size: 11px; background: none; border: 0; padding: 0; font-family: inherit; }
+.mk-tool i { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; color: #5a2d00;
+  background: linear-gradient(#fff6c2, #ffd23f); border: 3px solid #fff; box-shadow: 0 3px 0 #c98a00, 0 5px 8px rgba(0, 0, 0, .3); }
+.mk-tool i svg { width: 22px; height: 22px; }
+.mk-tool.on i { background: linear-gradient(#9af5a4, #2dbb48); color: #fff; box-shadow: 0 3px 0 #157a2a, 0 0 0 3px #fff36b, 0 5px 10px rgba(0, 0, 0, .35); }
+.mk-tool.on { color: #fff36b; font-weight: 700; }
+.mk-tool.soon { opacity: .45; }
+.mk-mats { z-index: 2; display: flex; color: #fff; background: radial-gradient(130% 110% at 50% 0%, #4b95f5 0%, #2160cf 55%, #17469e 100%); border: 4px solid #ffa21f; }
+.mk-tabs { display: flex; gap: 4px; flex: none; }
+.mk-tab { flex: none; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; border: 2px solid rgba(255, 255, 255, .35); color: #c8d4f0; background: rgba(255, 255, 255, .12); }
+.mk-tab.on { color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); border-color: #fff; box-shadow: 0 2px 0 #c97a00; }
+.mk-tab.soon { opacity: .6; }
+.mk-grid { display: grid; gap: 6px; }
+.mk-sw { display: flex; flex-direction: column; align-items: center; gap: 2px; font: inherit; font-size: 11px; color: #fff; text-shadow: 0 1px 0 #0b2160; background: none; border: 0; padding: 0; }
+.mk-sw img { width: 52px; height: 52px; border-radius: 10px; object-fit: cover; border: 2px solid rgba(255, 255, 255, .6); display: block; background: #2160cf; }
+.mk-sw.on img { border: 3px solid #fff36b; box-shadow: 0 0 0 2px #c97a00, 0 0 10px #fff36b; }
+.mk-sw.on { color: #fff36b; font-weight: 700; }
+.mk-opts { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 13px; }
+.mk-dim { opacity: .8; }
+.mk-ed .chips { display: flex; flex-wrap: wrap; gap: 5px; }
+.mk-ed .chip { white-space: nowrap; font: inherit; font-size: 13px; padding: 4px 10px; border-radius: 999px; color: #c8d4f0; background: rgba(255, 255, 255, .14); border: 2px solid rgba(255, 255, 255, .25); }
+.mk-ed .chip.on { color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); border-color: #fff; box-shadow: 0 2px 0 #c97a00; }
+.mk-stage { position: relative; overflow: hidden; min-height: 0; min-width: 0; touch-action: none; background: #1a5fc0; }
+.mk-gl, .mk-over { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+.mk-over { pointer-events: none; }
+.mk-float { position: absolute; z-index: 4; display: flex; align-items: center; gap: 6px; padding: 6px 10px; border-radius: 18px; color: #fff; font-size: 13px; white-space: nowrap;
+  background: radial-gradient(130% 110% at 50% 0%, #4b95f5 0%, #2160cf 60%, #17469e 100%); border: 3px solid #ffa21f; box-shadow: 0 0 0 3px #8a3bd1, 0 6px 14px rgba(0, 0, 0, .4); }
+.mk-float:empty { display: none; }
+.mk-zoom { position: absolute; z-index: 4; right: 10px; bottom: 12px; display: flex; flex-direction: column; gap: 6px; align-items: center; }
+.mk-zoom button { width: 36px; height: 36px; border-radius: 50%; font-size: 20px; line-height: 1; color: #5a2d00; background: linear-gradient(#fff6c2, #ffd23f); border: 3px solid #fff; box-shadow: 0 3px 0 #c98a00; font-family: inherit; padding: 0; }
+.mk-zoom span { font-size: 11px; color: #fff; text-shadow: 0 1px 2px #000; }
+.mk-toast { position: absolute; z-index: 5; left: 50%; bottom: 14px; transform: translateX(-50%); padding: 6px 14px; border-radius: 999px; font-size: 13px; color: #fff; background: rgba(10, 30, 80, .85); white-space: nowrap; }
+.mk-toast[hidden] { display: none; }
+
+/* landscape: tools on the left (two columns), materials on the right */
+@media (orientation: landscape) {
+  .mk-ed { grid-template-columns: 100px minmax(0, 1fr) 236px; grid-template-rows: 44px minmax(0, 1fr); }
+  .mk-top { grid-column: 1 / 4; }
+  .mk-tools { grid-column: 1; grid-row: 2; display: grid; grid-template-columns: 1fr 1fr; align-content: start; justify-items: center; gap: 6px 2px; overflow: auto; padding: 8px 4px;
+    padding-left: max(4px, env(safe-area-inset-left)); }
+  .mk-tool { width: 46px; font-size: 10.5px; }
+  .mk-tool i { width: 34px; height: 34px; border-width: 2px; }
+  .mk-tool i svg { width: 18px; height: 18px; }
+  .mk-stage { grid-column: 2; grid-row: 2; }
+  .mk-mats { grid-column: 3; grid-row: 2; flex-direction: column; gap: 8px; padding: 10px 8px; padding-right: max(8px, env(safe-area-inset-right)); border-width: 0 0 0 4px; overflow: auto; }
+  .mk-tabs { flex-wrap: wrap; }
+  .mk-grid { grid-template-columns: repeat(3, 1fr); }
+  .mk-float { left: 50%; transform: translateX(-50%); top: 10px; max-width: calc(100% - 20px); overflow: hidden; }
+  .mk-float .chips { flex-wrap: nowrap; }
+  .mk-opts { display: none; }
+}
+/* portrait: the bar, a row of tools, a row of materials, then the map */
+@media (orientation: portrait) {
+  .mk-ed { grid-template-columns: minmax(0, 1fr); grid-template-rows: calc(44px + env(safe-area-inset-top)) 74px 128px minmax(0, 1fr); }
+  .mk-top { padding-top: env(safe-area-inset-top); }
+  .mk-top .mk-tb .lbl { display: none; }
+  .mk-top .mk-tb.play .lbl { display: inline; }
+  .mk-top .mk-name small { display: none; }
+  .mk-tools { overflow-x: auto; align-items: center; }
+  .mk-mats { flex-direction: column; gap: 6px; padding: 6px 8px; border-width: 4px 0; overflow: hidden; }
+  .mk-tabs { overflow-x: auto; }
+  .mk-grid { grid-auto-flow: column; overflow-x: auto; padding-bottom: 2px; }
+  .mk-opts { display: none; }
+  .mk-float { left: 8px; right: 8px; top: 8px; flex-wrap: wrap; justify-content: center; white-space: normal; }
+  .mk-float .chip { padding: 3px 8px; font-size: 12px; }
+  .mk-zoom { bottom: calc(14px + env(safe-area-inset-bottom)); }
+}
+
+/* the materials of the other layers: road looks, events and lots, pieces */
+.mk-road { display: block; width: 52px; height: 52px; border-radius: 10px; border: 2px solid rgba(255, 255, 255, .6); background: linear-gradient(90deg, var(--v) 0 14%, var(--s) 14% 47%, var(--m) 47% 53%, var(--s) 53% 86%, var(--v) 86%); }
+.mk-sw.on .mk-road { border: 3px solid #fff36b; box-shadow: 0 0 0 2px #c97a00, 0 0 10px #fff36b; }
+.mk-sw img.pad { object-fit: contain; border: 0; background: none; }
+.mk-sw.on img.pad { border: 0; box-shadow: none; filter: drop-shadow(0 0 6px #fff36b); }
+.mk-dot, .mk-lot { display: grid; place-items: center; width: 52px; height: 52px; }
+.mk-dot::after { content: ''; width: 16px; height: 16px; border-radius: 50%; background: #fff6dc; border: 2px solid #6b5230; }
+.mk-lot::after { content: ''; width: 26px; height: 26px; border: 2px dashed #ecf8de; outline: 2px solid rgba(24, 20, 16, .35); }
+.mk-lot.big::after { width: 40px; height: 40px; }
+.mk-sw.on .mk-dot, .mk-sw.on .mk-lot { filter: drop-shadow(0 0 6px #fff36b); }
+.mk-grid.pieces .mk-sw img.piece { object-fit: contain; background: rgba(255, 255, 255, .12); }
+@media (orientation: landscape) { .mk-grid.pieces { grid-template-columns: repeat(3, 1fr); } }
+/* 光影設定: the sheet sits low so the map above it shows the change */
+.mk-light-ov { align-items: flex-end; background: rgba(10, 20, 60, .2); backdrop-filter: none; -webkit-backdrop-filter: none; }
+.mk-light-ov .mk-row b { width: 3em; }
+.mk-light-ov .msg { width: min(340px, 94%); padding: 14px 12px 10px; }
+.mk-light-ov .mk-row { margin: 2px 0; font-size: 14px; }
+.mk-light-ov .mk-row input[type=range] { height: 22px; }
+.mk-light-ov .candy { padding: 6px 14px; font-size: 15px; }
+@media (orientation: landscape) { .mk-light-ov { justify-content: flex-end; align-items: center; padding-right: 8px; } }
+/* 街名 / 底價 in the options */
+.mk-in { font: inherit; font-size: 14px; width: 6.5em; padding: 3px 8px; border-radius: 10px; border: 2px solid #fff; color: #24408a; background: #fff; }
+.mk-in.num { width: 5em; }
+
+/* 新聞命運卡 */
+.mk-deck { width: min(720px, 100%); max-height: 94vh; }
+.mk-deck-top { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; width: 100%; }
+.mk-deck-count { margin-left: auto; font-size: 14px; color: #ffe27a; }
+.mk-deck-count.warn { color: #ffb0b0; }
+.mk-deck-hint { margin: 6px 0; font-size: 12px; opacity: .85; text-align: left; }
+.mk-deck-list { width: 100%; flex: 1 1 auto; min-height: 120px; max-height: 58vh; overflow: auto; display: flex; flex-direction: column; gap: 4px; padding-right: 4px; }
+.mk-deck-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px; border-radius: 10px; background: rgba(255, 255, 255, .08); text-align: left; }
+.mk-deck-row.on { background: rgba(255, 228, 120, .22); box-shadow: inset 0 0 0 2px #ffd23f; }
+.mk-deck-row.bad .mk-deck-name { color: #ffd0d0; }
+.mk-deck-row input[type=checkbox] { width: 22px; height: 22px; accent-color: #2dbb48; flex: none; }
+.mk-deck-row img, .mk-deck-orig { width: 64px; height: 42px; border-radius: 6px; object-fit: cover; flex: none; background: #17469e; }
+.mk-deck-orig { display: grid; place-items: center; font-style: normal; font-size: 12px; color: #c8d4f0; }
+.mk-deck-main { flex: 1; min-width: 0; display: flex; flex-wrap: wrap; align-items: center; gap: 2px 6px; }
+.mk-deck-name { font: inherit; font-size: 14px; color: #fff; background: transparent; border: 0; border-bottom: 1px dashed rgba(255, 255, 255, .4); padding: 1px 2px; width: 11em; }
+.mk-deck-main small { flex-basis: 100%; font-size: 11px; opacity: .75; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-tag { font-size: 11px; padding: 0 6px; border-radius: 999px; color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); }
+.mk-off { opacity: .4; pointer-events: none; }
+.mk-deck-main .mk-tag { flex: none; display: inline-block; width: auto; }
+.mk-deck-main .mk-deck-name { width: 9em; }
+.mk-stock-no { flex: none; width: 1.6em; text-align: center; font-size: 18px; color: #ffe27a; }
+.mk-deck-name::placeholder { color: rgba(255, 255, 255, .55); }
+.mk-tag { font-style: normal; color: #ffe27a; }
+.mk-lib-q { display: flex; gap: 8px; width: 100%; margin-bottom: 8px; }
+.mk-lib-q input { flex: 1; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 10px; border: 0; }
+.mk-lib-row { flex: 1; display: flex; justify-content: space-between; align-items: baseline; gap: 10px; text-align: left; cursor: default; }
+.mk-range { width: 7.5em; accent-color: #ffd23f; height: 26px; flex: none; }
+/* 檢查's list over the map (editor.ts showProblems) */
+.mk-probs { position: absolute; z-index: 6; left: 8px; right: 8px; bottom: 8px; max-height: 46%; display: flex; flex-direction: column; gap: 6px; padding: 10px; border-radius: 16px;
+  background: rgba(60, 8, 12, .92); border: 3px solid #ff5a4a; color: #fff; box-shadow: 0 6px 18px rgba(0,0,0,.45); }
+.mk-probs-head { font-size: 15px; color: #ffd8d0; }
+.mk-probs-list { display: flex; flex-direction: column; gap: 4px; overflow-y: auto; min-height: 0; }
+.mk-prob { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 10px; border-radius: 10px; border: 0; color: #fff; font-size: 14px; background: rgba(255, 255, 255, .1); }
+.mk-prob span { flex: 1; }
+.mk-prob i { font-style: normal; font-size: 12px; color: #ffe27a; white-space: nowrap; }
+.mk-prob.hard { background: rgba(255, 60, 40, .35); }
+.mk-probs-acts { display: flex; justify-content: flex-end; align-items: center; gap: 8px; flex-wrap: wrap; }
+/* the menu (editor.ts menu): groups of three equal buttons */
+.mk-menu h4 { align-self: stretch; margin: 4px 4px 4px; font-weight: 400; font-size: 13px; color: #ffe27a; text-align: left; }
+.mk-menu-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px 8px; margin-bottom: 6px; width: 100%; align-self: stretch; box-sizing: border-box; }
+.mk-menu-grid.two { grid-template-columns: 1fr 1fr; margin-top: 8px; }
+.mk-menu-grid.one { grid-template-columns: 1fr; }
+.mk-menu-grid .candy { width: 100%; min-width: 0; margin: 0; padding-left: 4px; padding-right: 4px; font-size: 15px; white-space: nowrap; }
+/* 隨機創建's themes */
+.mk-themes { width: min(560px, 100%); }
+.mk-theme-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin: 6px 0 10px; }
+.mk-theme { position: relative; display: flex; flex-direction: column; justify-content: flex-end; gap: 2px; min-height: 104px; padding: 10px; border-radius: 16px; border: 3px solid #fff;
+  background: var(--bg) center / 140px; color: #fff; text-align: left; box-shadow: 0 4px 0 rgba(0,0,0,.3); overflow: hidden; }
+.mk-theme::before { content: ''; position: absolute; inset: 0; background: linear-gradient(transparent 20%, rgba(0, 0, 0, .65)); }
+.mk-theme b, .mk-theme small { position: relative; text-shadow: 0 1px 2px #000; }
+.mk-theme b { font-weight: 400; font-size: 20px; }
+.mk-theme small { font-size: 12px; line-height: 1.3; opacity: .95; }
+/* 建築 / 裝飾's kinds (pieces.ts): the first thing in the pieces' grid — slim tabs, a row over the pieces (a column of
+   them) or a column kept at the left of a strip of them scrolled sideways */
+.mk-cats { display: flex; gap: 4px; grid-column: 1 / -1; position: sticky; top: 0; z-index: 2; padding: 2px 0 6px; background: #1f57c4; }
+.mk-cats .chip { flex: 1; min-width: 0; padding: 4px 4px; border-radius: 10px; font-size: 13px; white-space: nowrap; }
+@media (orientation: portrait) {
+  .mk-cats { display: grid; grid-template-columns: 40px 40px; grid-auto-rows: 28px; align-content: center; gap: 4px; grid-column: auto; grid-row: 1 / -1; left: 0; top: auto;
+    padding: 0 6px 0 0; box-shadow: 6px 0 6px -4px rgba(0, 0, 0, .35); }
+  .mk-grid .mk-cats .chip { width: 40px; height: 28px; min-height: 0; padding: 0; border-radius: 8px; font-size: 12px; line-height: 24px; text-align: center; }
+}
+/* 發布到地圖庫's form */
+.mk-pub { width: min(520px, 100%); }
+.mk-pub-row { display: flex; align-items: center; gap: 8px; width: 100%; margin: 4px 0; }
+.mk-pub-row.top { align-items: flex-start; }
+.mk-pub-row > span { flex: none; width: 4.6em; text-align: right; font-size: 14px; color: #ffe27a; }
+.mk-pub-row input, .mk-pub-row textarea, .mk-pub-row select { flex: 1; min-width: 0; font: inherit; font-size: 15px; padding: 6px 10px; border-radius: 10px; border: 0; box-sizing: border-box; }
+.mk-pub-row select { flex: none; width: 6.5em; }
+.mk-pub-row textarea { resize: vertical; }
+/* 地圖庫 (the hall) */
+.mk-hall { width: min(640px, 100%); max-height: 100%; }
+.mk-hall-sort { justify-content: center; margin-bottom: 8px; }
+.mk-hall-list { width: 100%; overflow-y: auto; min-height: 120px; max-height: 60vh; }
+.mk-hall-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(132px, 1fr)); gap: 10px; padding: 2px 2px 6px; }
+.mk-card { display: flex; flex-direction: column; padding: 0; border-radius: 16px; overflow: hidden; border: 3px solid #fff; background: linear-gradient(#fffaf0, #ffe9b8); color: #4a2a00; text-align: left; box-shadow: 0 4px 0 rgba(0,0,0,.28); }
+.mk-card img, .mk-card .mk-noimg { width: 100%; aspect-ratio: 1.35; object-fit: cover; display: block; background: #1d4fae; }
+.mk-noimg { background: linear-gradient(135deg, #2e74e6, #17469e); }
+.mk-card-txt { display: flex; flex-direction: column; gap: 2px; padding: 6px 8px 8px; }
+.mk-card-txt b { font-weight: 400; font-size: 16px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-card-txt small { font-size: 12px; color: #8a6a3a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.mk-stats { display: flex; gap: 10px; font-size: 13px; font-variant-numeric: tabular-nums; }
+.mk-stats i { display: inline-flex; align-items: center; gap: 2px; font-style: normal; }
+.mk-stats svg { width: 14px; height: 14px; }
+.mk-stats .fl { color: #e0457a; }
+/* a map's page */
+.mk-page { width: min(560px, 100%); }
+.mk-page-top { display: flex; gap: 12px; width: 100%; align-items: center; }
+.mk-page-top img, .mk-page-top .mk-noimg { width: 46%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; border: 3px solid #fff; flex: none; }
+.mk-page-info { display: flex; flex-direction: column; gap: 6px; text-align: left; }
+.mk-page-info p { margin: 0; }
+.mk-page-info .mk-dim { font-size: 13px; }
+.mk-page-info .mk-stats { color: #fff; font-size: 15px; }
+.mk-page-info .mk-stats .fl { color: #ff9ec0; }
+.mk-note { width: 100%; box-sizing: border-box; margin: 10px 0 4px; padding: 10px 14px; border-radius: 14px; background: rgba(255, 255, 255, .14); border-left: 5px solid #ffd23f; font-size: 16px; text-align: left; }
+.mk-note cite { display: block; margin-top: 4px; font-style: normal; font-size: 12px; color: #ffe27a; text-align: right; }
+.mk-page-sec { width: 100%; text-align: left; margin-top: 8px; }
+.mk-page-sec h4 { margin: 0 0 4px; font-weight: 400; font-size: 13px; color: #ffe27a; }
+.mk-desc { margin: 0; white-space: pre-wrap; font-size: 14px; line-height: 1.5; }
+.mk-contact { display: flex; align-items: baseline; gap: 10px; width: 100%; margin: 4px 0; padding: 7px 12px; border-radius: 12px; border: 0; background: rgba(255, 255, 255, .92); color: #24408a; font: inherit; text-align: left; }
+.mk-contact span { font-size: 13px; color: #6b7fb8; width: 5em; flex: none; }
+.mk-contact b { flex: 1; font-weight: 400; font-size: 15px; word-break: break-all; }
+.mk-contact small { font-size: 11px; color: #8a9cc9; }
+.mk-page .candy svg { width: 18px; height: 18px; vertical-align: -3px; margin-right: 3px; }
+/* the hall's bar: the sorts, and 卡片 / 列表 */
+.mk-hall-bar { display: flex; align-items: center; justify-content: space-between; gap: 8px; width: 100%; margin-bottom: 8px; }
+.mk-hall-bar .mk-hall-sort { margin: 0; justify-content: flex-start; flex-wrap: nowrap; min-width: 0; }
+/* (release check 2026-11-16: on a 320 px phone the three sorts broke into one character a line) */
+.mk-hall-bar .mk-hall-sort .chip { flex: none; white-space: nowrap; }
+@media (max-width: 380px) { .mk-hall-bar { gap: 4px; } .mk-hall-bar .mk-hall-sort { gap: 3px; } .mk-hall-bar .mk-hall-sort .chip { padding: 4px 7px; font-size: 12px; } .mk-hall-view button { width: 30px; } }
+.mk-hall-view { display: flex; flex: none; border-radius: 12px; overflow: hidden; border: 2px solid rgba(255, 255, 255, .6); }
+.mk-hall-view button { width: 36px; height: 30px; padding: 4px; border: 0; background: rgba(255, 255, 255, .12); color: #fff; }
+.mk-hall-view button.on { background: #ffd23f; color: #5a2d00; }
+.mk-hall-view svg { width: 100%; height: 100%; display: block; }
+/* 列表: one map a row, its picture at the head */
+.mk-hall-rows { display: flex; flex-direction: column; gap: 8px; padding: 2px 2px 6px; }
+.mk-lrow { display: flex; align-items: center; gap: 10px; padding: 6px; border-radius: 14px; border: 3px solid #fff; background: linear-gradient(#fffaf0, #ffe9b8); color: #4a2a00; text-align: left; box-shadow: 0 3px 0 rgba(0,0,0,.25); }
+.mk-lrow img, .mk-lrow .mk-noimg { width: 64px; height: 64px; flex: none; border-radius: 10px; object-fit: cover; background: #1d4fae; }
+.mk-lrow .mk-card-txt { flex: 1; min-width: 0; padding: 0; }
+/* 特殊規則 */
+.mk-rules { width: min(520px, 100%); }
+.mk-rule-list { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.mk-rule { display: flex; align-items: center; gap: 10px; padding: 8px 12px; border-radius: 14px; border: 2px solid rgba(255, 255, 255, .5); background: rgba(255, 255, 255, .1); color: #fff; font: inherit; text-align: left; }
+.mk-rule span { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.mk-rule b { font-weight: 400; font-size: 16px; }
+.mk-rule small { font-size: 12px; opacity: .85; line-height: 1.35; }
+.mk-rule.on { background: rgba(255, 210, 63, .22); border-color: #ffd23f; }
+.mk-tog { flex: none; width: 44px; height: 24px; border-radius: 12px; background: rgba(0, 0, 0, .35); position: relative; transition: background .15s; }
+.mk-tog::after { content: ''; position: absolute; left: 3px; top: 3px; width: 18px; height: 18px; border-radius: 50%; background: #fff; transition: left .15s; }
+.mk-rule.on .mk-tog { background: #2dbb48; }
+.mk-rule.on .mk-tog::after { left: 23px; }
+/* 試玩's setup */
+.mk-trial { width: min(460px, 100%); }
+.mk-trial ul { margin: 4px 0 8px; padding-left: 1.2em; text-align: left; font-size: 14px; line-height: 1.6; }
+/* a hall map added to 派對模式 */
+.mk-ptag { display: inline-block; margin-right: 4px; padding: 0 6px; border-radius: 8px; font-style: normal; font-size: 11px; line-height: 17px; vertical-align: 2px; color: #fff; background: #8a4cf0; }
+.mk-page .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; width: 100%; }
+.mk-page .choices .candy { width: 100%; min-width: 0; margin: 0; padding-left: 6px; padding-right: 6px; font-size: 16px; white-space: nowrap; }
+/* a map's state (model.ts mapStatus): 已發布 / 試玩通過・可發布 / 未試玩 */
+.mk-st { display: inline-block; flex: none; padding: 1px 8px; border-radius: 999px; font-style: normal; font-size: 12px; line-height: 18px; white-space: nowrap; color: #fff; }
+.mk-st.pub { background: #8a4cf0; }
+.mk-st.won { background: #2dbb48; }
+.mk-st.new { background: rgba(0, 0, 0, .28); color: #dfe8ff; }
+.mk-map .candy .mk-st { margin-top: 3px; }
+/* 我的地圖 rows: the name and its state on top, the size and date under it */
+.mk-map .candy.mk-map-row { flex-direction: column; align-items: stretch; justify-content: center; gap: 2px; }
+.mk-map-top { display: flex; align-items: center; justify-content: space-between; gap: 8px; min-width: 0; }
+.mk-map-top b { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mk-map-row small { font-size: 13px; }
+.mk-map .candy .mk-st { margin-top: 0; }
+
+/* 我的地圖's pages and the ✕ on each map's corner (the user 2026-11-13) */
+.mk-map { position: relative; }
+.mk-map .candy.mk-map-row { width: 100%; }
+.mk-mine-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.mk-mine-head h4 { margin: 0; }
+.mk-pager { display: flex; align-items: center; gap: 8px; color: #fff; font-size: 14px; }
+.mk-pager button { width: 34px; height: 30px; padding: 0; border-radius: 10px; border: 2px solid #fff; font-size: 20px; line-height: 1; color: #5a2d00; background: linear-gradient(#fff6c2, #ffd23f); box-shadow: 0 2px 0 #c98a00; }
+.mk-pager button:disabled { opacity: .35; }
+.mk-map .candy.mk-map-row { padding-right: 30px; }
+/* 創作樂園's button: its own colour, apart from the yellow ones (the user 2026-11-13) */
+.candy.mk-lib-btn { color: #fff; background: linear-gradient(#c79bff, #8a4cf0); text-shadow: 0 2px 0 #4b1f9e; box-shadow: 0 5px 0 #4b1f9e, 0 8px 12px rgba(0,0,0,.28); }
+.mk-stock-role { display: block; color: #ffe27a; margin-top: 2px; }
+.mk-stock-role { white-space: normal; line-height: 1.35; }
+.mk-deck-main small.mk-stock-role { white-space: normal; overflow: visible; text-overflow: clip; opacity: 1; }
+
+/* 我的地圖 rows: the map's picture at the head */
+.mk-map .candy.mk-map-row { display: grid; grid-template-columns: auto 1fr; grid-template-rows: auto auto; column-gap: 10px; align-items: center; }
+.mk-map-row .mk-map-pic { grid-row: 1 / span 2; width: 52px; height: 52px; border-radius: 10px; object-fit: cover; }
+.mk-map-row i.mk-map-pic { display: block; background: linear-gradient(135deg, #5fb84a, #2e74e6); opacity: .6; }
+.mk-map-row .mk-map-top, .mk-map-row small { grid-column: 2; min-width: 0; }
+/* 強制修復 */
+.mk-probs-acts .mk-fix { background: linear-gradient(#ffb84d, #f08a1c); color: #3a1d00; border-color: #fff3c4; }
+.mk-prob.done { background: rgba(80, 200, 120, .18); }
+.mk-prob.done::before { content: '✔'; color: #7dff9e; }
+/* 企業大樓 (the user 2026-11-16): the building as the item's picture, its looks as chips with a small picture */
+.mk-sw img.co { object-fit: contain; border: 0; background: rgba(255, 255, 255, .12); }
+.mk-styles { flex-wrap: nowrap; }
+.mk-style { display: inline-flex; align-items: center; flex: none; padding: 2px 6px; }
+.mk-style img { height: 28px; width: 28px; object-fit: contain; display: block; }
+/* 道具禮物箱 (rules.ts GIFT_OPTIONS): its levels under the words */
+.mk-rule.mk-rule-gifts { flex-wrap: wrap; }
+.mk-rule-gifts .chips { width: 100%; display: flex; flex-wrap: wrap; gap: 6px; }
+.mk-rule-gifts.off { opacity: .55; }

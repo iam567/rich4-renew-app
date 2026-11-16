@@ -66,10 +66,36 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
 
 }
 
+/// The app's one window as a scene (UIScene life cycle): iOS 27 with the 27.2 SDK no longer starts an app without it
+/// (it stopped at launch, 2026-11-08). Main.storyboard makes the window; links and the sound go on as before.
+class SceneDelegate: UIResponder, UIWindowSceneDelegate {
+    var window: UIWindow?
+
+    func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options connectionOptions: UIScene.ConnectionOptions) {
+        // code that still looks for the app delegate's window finds this one
+        (UIApplication.shared.delegate as? AppDelegate)?.window = window
+        for context in connectionOptions.urlContexts { _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: context.url, options: [:]) }
+        if let activity = connectionOptions.userActivities.first { _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: activity, restorationHandler: { _ in }) }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts URLContexts: Set<UIOpenURLContext>) {
+        for context in URLContexts { _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, open: context.url, options: [:]) }
+    }
+
+    func scene(_ scene: UIScene, continue userActivity: NSUserActivity) {
+        _ = ApplicationDelegateProxy.shared.application(UIApplication.shared, continue: userActivity, restorationHandler: { _ in })
+    }
+
+    // (with scenes these come here, not to the app delegate) the sound back when the game is in front again
+    func sceneDidBecomeActive(_ scene: UIScene) { AppDelegate.playSound() }
+    func sceneWillEnterForeground(_ scene: UIScene) { AppDelegate.playSound() }
+}
+
 /// The game's web view controller (Main.storyboard): Capacitor's, with the app's own plugins registered.
 class GameViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
         bridge?.registerPluginInstance(PhotoSaverPlugin())
+        bridge?.registerPluginInstance(LanInfoPlugin()) // 局域網房間: this phone's address on the Wi-Fi
     }
 
     override func router() -> Router { UpdateRouter() }
@@ -124,6 +150,70 @@ struct UpdateRouter: Router {
         if tries >= 3 { remove("current"); remove("boot"); write("bad", ver); return nil }
         write("boot", "\(ver) \(tries + 1)")
         return dir
+    }
+}
+
+/// 局域網房間 (game/src/ui/lan-find.ts): the rooms PCs host on this phone's Wi-Fi (game/desktop/lan-relay.cjs). Every
+/// address of this phone's /24 is asked for /lan on the given ports, each giving up quickly — from here, since a web
+/// view allows too few connections at once for that. The first time iOS asks for 本地網路 (NSLocalNetworkUsageDescription).
+@objc(LanInfoPlugin)
+public class LanInfoPlugin: CAPPlugin, CAPBridgedPlugin {
+    public let identifier = "LanInfoPlugin"
+    public let jsName = "LanInfo"
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "find", returnType: CAPPluginReturnPromise)]
+
+    /// This phone's IPv4 addresses on the local network, Wi-Fi (en0) first.
+    static func mine() -> [String] {
+        var wifi: [String] = [], other: [String] = []
+        var list: UnsafeMutablePointer<ifaddrs>?
+        if getifaddrs(&list) == 0, let first = list {
+            var p: UnsafeMutablePointer<ifaddrs>? = first
+            while let i = p {
+                let flags = Int32(i.pointee.ifa_flags)
+                if let sa = i.pointee.ifa_addr, sa.pointee.sa_family == UInt8(AF_INET), flags & IFF_UP != 0, flags & IFF_LOOPBACK == 0 {
+                    var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
+                    if getnameinfo(sa, socklen_t(sa.pointee.sa_len), &host, socklen_t(host.count), nil, 0, NI_NUMERICHOST) == 0 {
+                        let ip = String(cString: host), name = String(cString: i.pointee.ifa_name)
+                        let parts = ip.split(separator: ".")
+                        let local = ip.hasPrefix("10.") || ip.hasPrefix("192.168.") || (ip.hasPrefix("172.") && parts.count > 1 && (16...31).contains(Int(parts[1]) ?? 0))
+                        if local { if name == "en0" || name == "en1" { wifi.append(ip) } else { other.append(ip) } }
+                    }
+                }
+                p = i.pointee.ifa_next
+            }
+            freeifaddrs(first)
+        }
+        return wifi + other
+    }
+
+    @objc func find(_ call: CAPPluginCall) {
+        let ports = (call.getArray("ports", Int.self) ?? []).isEmpty ? [8842] : call.getArray("ports", Int.self)!
+        let mine = LanInfoPlugin.mine()
+        var hosts = mine
+        for ip in mine.prefix(3) {
+            let net = ip.split(separator: ".").dropLast().joined(separator: ".")
+            for i in 1...254 where !hosts.contains("\(net).\(i)") { hosts.append("\(net).\(i)") }
+        }
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = 0.9
+        cfg.httpMaximumConnectionsPerHost = 1
+        let session = URLSession(configuration: cfg)
+        let group = DispatchGroup(), lock = NSLock()
+        var found: [[String: String]] = []
+        for port in ports { for ip in hosts {
+            guard let url = URL(string: "http://\(ip):\(port)/lan") else { continue }
+            group.enter()
+            session.dataTask(with: url) { data, response, _ in
+                defer { group.leave() }
+                guard (response as? HTTPURLResponse)?.statusCode == 200, let data = data, data.count < 4096,
+                      let body = String(data: data, encoding: .utf8), body.contains("\"rich4\":\"lan\"") else { return }
+                lock.lock(); found.append(["addr": "\(ip):\(port)", "body": body]); lock.unlock()
+            }.resume()
+        } }
+        group.notify(queue: .main) {
+            session.finishTasksAndInvalidate()
+            call.resolve(["found": found])
+        }
     }
 }
 

@@ -233,3 +233,28 @@
 .rw-draw.picked .rw-c.pick { opacity: 1; z-index: 3; transform: translate(0, -8%) rotate(0deg) scale(1.6); }
 .rw-draw.picked .rw-c.pick .rw-flip { transform: rotateY(180deg); transition-delay: .25s; }
 .rw-skip { position: absolute; right: 10px; bottom: 8px; font-size: 12px; font-weight: 700; color: #fff; opacity: .85; text-shadow: 0 1px 2px #000; }
+
+/* 任務達成 (map-fx.ts taskWon): who won the task card — before the 獎勵卡 are drawn */
+.tw-ov { position: fixed; inset: 0; z-index: 8500; display: grid; place-items: center; background: rgba(10, 16, 40, .45); overflow: hidden; animation: tw-in .25s ease-out; }
+@keyframes tw-in { from { opacity: 0; } }
+.tw-box { position: relative; display: flex; flex-direction: column; align-items: center; gap: 1.4vmin; padding: 4vmin 6vmin 3vmin; border-radius: 3vmin;
+  background: linear-gradient(#fff9e0, #ffe08a); box-shadow: 0 0 0 .6vmin #fff, 0 0 0 1.2vmin #e8a200, 0 2vmin 5vmin rgba(0,0,0,.45); animation: tw-pop .6s cubic-bezier(.2, 1.5, .4, 1); }
+@keyframes tw-pop { from { transform: scale(.2) rotate(-8deg); opacity: 0; } }
+.tw-rays { position: absolute; left: 50%; top: 40%; width: 120vmin; height: 120vmin; translate: -50% -50%; z-index: -1; pointer-events: none;
+  background: repeating-conic-gradient(rgba(255, 216, 74, .45) 0 10deg, transparent 10deg 20deg); border-radius: 50%; -webkit-mask: radial-gradient(circle, #000 25%, transparent 65%); mask: radial-gradient(circle, #000 25%, transparent 65%);
+  animation: tw-spin 6s linear infinite; }
+@keyframes tw-spin { to { rotate: 360deg; } }
+.tw-ribbon { position: absolute; top: -3vmin; padding: .8vmin 4vmin; border-radius: 999px; font-size: 3.6vmin; font-weight: 900; color: #fff; background: linear-gradient(#ff7a59, #e0261c);
+  box-shadow: 0 .5vmin 0 rgba(0,0,0,.25); white-space: nowrap; }
+.tw-card { width: 24vmin; aspect-ratio: 3 / 4; object-fit: cover; border-radius: 1.6vmin; box-shadow: 0 0 0 .5vmin #fff, 0 1vmin 2vmin rgba(0,0,0,.3); animation: tw-card .7s cubic-bezier(.2, 1.4, .4, 1) .15s both; }
+@keyframes tw-card { from { transform: translateY(-40vh) rotate(-25deg) scale(.6); } }
+.tw-who { display: flex; gap: 2vmin; }
+.tw-who span { display: flex; flex-direction: column; align-items: center; gap: .4vmin; animation: tw-pop .5s cubic-bezier(.2, 1.6, .4, 1) .45s both; }
+.tw-who img { width: 11vmin; height: 11vmin; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 .6vmin #ffd84a, 0 0 2vmin rgba(255, 200, 0, .9); }
+.tw-who b { font-size: 3vmin; color: #5a2d00; white-space: nowrap; }
+.tw-line { font-size: 3.6vmin; font-weight: 900; color: #8a1c00; white-space: nowrap; animation: tw-pop .5s ease .6s both; }
+.tw-next { font-size: 3vmin; font-weight: 800; color: #fff; padding: .5vmin 3vmin; border-radius: 999px; background: #2f74d8; animation: tw-pulse .8s ease-in-out 1s infinite alternate, tw-pop .4s ease 1s both; }
+@keyframes tw-pulse { to { transform: scale(1.08); } }
+.tw-conf { position: absolute; left: var(--sx); top: -5vh; width: 1.4vmin; height: 2.6vmin; border-radius: 2px; background: var(--c); animation: tw-fall 2.6s linear var(--d) forwards; }
+@keyframes tw-fall { to { transform: translate(5vmin, 110vh) rotate(var(--r)); } }
+.chl-month .chl-who span.out { opacity: .45; font-size: .85em; } .chl-month .chl-who span.out img { filter: grayscale(1); }

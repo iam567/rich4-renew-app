@@ -48,14 +48,62 @@ describe('途中加入 in the room', () => {
     expect(host.seatAnswer(1)).toEqual({ nick: '阿明' });
   });
 
-  it('without 途中加入 a phone arriving after the start is turned away', async () => {
+  it('without 途中加入 a phone arriving after the start watches instead (圍觀)', async () => {
     const host = room(0);
     const code = await host.create('2', true);
     const g = room(3);
     await g.join(code); await settle();
     host.start(startMsg(host, 4, pack(2026, 11, 3), 7));
     const late = room(5);
-    await expect(late.join(code)).rejects.toThrow(/已經開始/);
+    let got: StartMsg | null = null;
+    late.onStart = st => { got = st; };
+    await late.join(code); await settle();
+    expect(got).not.toBeNull();
+    expect(late.watching).toBe(true);
+    expect(late.mine.size).toBe(0);
+    expect(host.watchCount).toBe(1);
+    expect(late.watchCount).toBe(1);
+  });
+});
+
+describe('圍觀 (spectators)', () => {
+  it('a spectator cheers (rate-limited, passed to everyone); takes a seat left by a player voted out; 暫離 keeps a seat', async () => {
+    const host = room(0);
+    const code = await host.create('2', true);
+    const a = room(3), b = room(4);
+    await a.join(code); await b.join(code); await settle();
+    host.start(startMsg(host, 4, pack(2026, 11, 3), 7));
+    await settle();
+    host.seatOpen = () => false;
+    host.seatHuman = seat => seat <= 2;
+    const fan = room(6, '粉絲');
+    await fan.watch(code); await settle();
+    expect(fan.watching).toBe(true);
+    const heard: string[] = [];
+    host.onCheer = (k, n) => heard.push(`host ${k} ${n}`);
+    a.onCheer = (k, n) => heard.push(`a ${k} ${n}`);
+    fan.cheer('flower'); await settle();
+    fan.cheer('egg'); await settle();     // within 5 s: dropped
+    expect(heard).toEqual(['host flower 粉絲', 'a flower 粉絲']);
+    // a spectator never answers for a seat
+    expect(host.vacantSeats()).toEqual([]);
+    // b is gone for over 30 s, but on 暫離: still kept
+    b.reserve(true); await settle();
+    const priv = host as unknown as { awaySince: Map<string, number>; guests: Map<string, { open: boolean }> };
+    const bid = b.myId;
+    priv.awaySince.set(bid, Date.now() - 60_000);
+    const conn = priv.guests.get(bid)!; Object.defineProperty(conn, 'open', { get: () => false, configurable: true });
+    expect(host.vacantSeats().map(v => v.seat)).toEqual([]);
+    // without 暫離 the seat is free; the spectator takes it (first come)
+    (host as unknown as { reservedUntil: Map<string, number> }).reservedUntil.delete(bid);
+    const seatB = host.started!.seats[bid];
+    expect(host.vacantSeats().map(v => v.seat)).toEqual([seatB]);
+    fan.take(seatB); await settle();
+    expect(host.started!.seats[fan.myId]).toBe(seatB);
+    expect(bid in host.started!.seats).toBe(false);
+    expect(fan.watching).toBe(false);
+    expect(fan.mine.has(seatB)).toBe(true);
+    expect(host.watchCount).toBe(0);
   });
 });
 

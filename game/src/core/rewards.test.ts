@@ -70,8 +70,8 @@ describe.skipIf(!existsSync(mapFile(2)))('挑戰模式 switch (task cards and �
       const g = make(3, 15), c = g.challengeTracker!, flow = g.run();
       play(g, flow, x => x.daysElapsed >= 2);
       const first = c.month!.seq, since = c.month!.since;
-      play(g, flow, x => x.challengeTracker!.month!.seq !== first);
-      expect(g.daysElapsed - since).toBe(30);
+      play(g, flow, x => !!x.challengeTracker!.month && x.challengeTracker!.month.seq !== first);
+      expect(g.daysElapsed - since).toBe(30); // (the next card after any 獎勵卡 of the same day)
       expect(c.monthLog.at(-1)!.seq).toBe(first);
     } finally { Challenge.forceMonthly = ''; }
   });
@@ -106,7 +106,7 @@ describe.skipIf(!existsSync(mapFile(2)))('挑戰模式 switch (task cards and �
       const g = make(3, 8), c = g.challengeTracker!, flow = g.run();
       play(g, flow, x => x.daysElapsed >= 3);
       const first = c.month!.seq, since = c.month!.since;
-      play(g, flow, x => x.challengeTracker!.month!.seq !== first || x.daysElapsed > since + 40);
+      play(g, flow, x => (!!x.challengeTracker!.month && x.challengeTracker!.month.seq !== first) || x.daysElapsed > since + 40);
       if (!c.monthLog.at(-1)?.won.length) expect(g.daysElapsed - since).toBe(30);
       expect(c.month!.seq).toBe(first + 1);
     } finally { Challenge.forceMonthly = ''; }
@@ -123,6 +123,55 @@ describe.skipIf(!existsSync(mapFile(2)))('挑戰模式 switch (task cards and �
     g.date = pack(2027, 3, 16); expect(c.daysLeft()).toBe(16);
     g.date = pack(2027, 2, 16); expect(c.daysLeft()).toBe(13);
     c.perMonth = 3; c.month!.since = g.daysElapsed - 12; expect(c.daysLeft()).toBe(18);
+  });
+
+  it('the order: who won the card first, then the 獎勵卡, then the next card', () => {
+    const g = make(3, 17), c = g.challengeTracker!, flow = g.run();
+    const order: string[] = [];
+    let seq = c.month!.seq;
+    for (let r = flow.next(), n = 0; !r.done && g.daysElapsed < 200 && n < 400000; r = flow.next(), n++) {
+      const e = r.value as GameEvent;
+      if ('ask' in e) throw new Error('question');
+      if (e.t === 'fx' && (e.kind === 'task-won' || e.kind === 'reward')) order.push(e.kind);
+      if (c.month && c.month.seq !== seq) { seq = c.month.seq; order.push('new'); }
+      // a whole round: a win, its 獎勵卡, and the next card after them
+      if (order.lastIndexOf('task-won') >= 0 && order.lastIndexOf('new') > order.lastIndexOf('task-won')) break;
+    }
+    const s = order.join(' ');
+    expect(s).toMatch(/task-won reward/);
+    // a new card never comes between a win and its 獎勵卡
+    expect(s).not.toMatch(/task-won new/);
+    expect(s).not.toMatch(/task-won (reward )*new reward/);
+  });
+
+  it('a 堅持 card kept by more than two players is void; by one or two it pays', () => {
+    Challenge.forceMonthly = 'M097';   // 奉公守法: no hospital, no prison all month
+    try {
+      for (const [broken, want] of [[[], []], [[0, 1], [2, 3]]] as [number[], number[]][]) {
+        const g = make(1, 19), c = g.challengeTracker!;
+        play(g, g.run(), x => x.daysElapsed >= 3);
+        const m = c.month!; m.mo = g.players.map(() => ({})); m.won = []; m.done = false; c.rewardsDue.length = 0;
+        for (const [i, p] of g.players.entries()) { m.base[i] = { ...m.base[i] }; m.base[i].hospStays = (c as unknown as { stats: (p: unknown) => { hospitalStays: number } }).stats(p)?.hospitalStays ?? 0; }
+        for (const p of broken) m.base[p].hospStays -= 1;   // these broke it
+        (c as unknown as { endMonth: () => void }).endMonth();
+        expect(c.monthLog.at(-1)!.won).toEqual(want);
+      }
+    } finally { Challenge.forceMonthly = ''; }
+  });
+
+  it('a bankrupt player never takes a card (堅持 ✓ by doing nothing) nor counts toward its two', () => {
+    Challenge.forceMonthly = 'M097';
+    try {
+      const g = make(1, 19), c = g.challengeTracker!;
+      play(g, g.run(), x => x.daysElapsed >= 3);
+      const m = c.month!; m.mo = g.players.map(() => ({})); m.won = []; m.done = false; c.rewardsDue.length = 0;
+      const st = (c as unknown as { stats: (p: unknown) => { hospitalStays: number } | undefined });
+      for (const [i, p] of g.players.entries()) { m.base[i] = { ...m.base[i] }; m.base[i].hospStays = st.stats(p)?.hospitalStays ?? 0; }
+      m.base[0].hospStays -= 1;                       // 0 broke it
+      g.players[3].bankrupt = true; g.players[3].whoPlays = 0;   // 3 went bankrupt
+      (c as unknown as { endMonth: () => void }).endMonth();
+      expect(c.monthLog.at(-1)!.won).toEqual([1, 2]);
+    } finally { Challenge.forceMonthly = ''; }
   });
 
   it('every 獎勵卡 does what it says: the winner gains, every rival loses', () => {

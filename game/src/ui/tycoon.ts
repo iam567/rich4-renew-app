@@ -313,6 +313,27 @@ const banner = async (ctx: ScreenContext, cls: string, html: string, ms: number)
   ctx.close();
 };
 
+/** 城市決戰's draw (the user 2026-11-07): the five cities lit in turn, slowing down, stopping on the one drawn. */
+fxScreens['showdown-draw'] = async (ctx, s) => {
+  const d = (s.data ?? {}) as { cities?: string[]; pick?: number; city?: string };
+  const cities = d.cities ?? [], pick = d.pick ?? 0;
+  const box = document.createElement('div');
+  box.className = 'msg tb showdown';
+  box.innerHTML = `<div class="ribbon">城市決戰</div><div class="sd-row">${cities.map((c, i) => `<span data-i="${i}">${esc(c)}</span>`).join('')}</div><div class="msg-text sd-text">抽籤中…</div>`;
+  ctx.open(box);
+  const cells = [...box.querySelectorAll<HTMLElement>('.sd-row span')];
+  const steps = cities.length * 3 + pick; // three rounds, then on to the city drawn
+  for (let k = 0; k <= steps; k++) {
+    cells.forEach((c, i) => c.classList.toggle('on', i === k % cities.length));
+    audio.sfx(Sfx.slider);
+    await new Promise(r => setTimeout(r, (60 + (k / steps) ** 3 * 360) * ctx.scale()));
+  }
+  box.querySelector('.sd-text')!.textContent = `決戰地點：${d.city ?? ''}`;
+  audio.sfx(Sfx.cardFlip);
+  await new Promise(r => setTimeout(r, 1800 * ctx.scale()));
+  ctx.close();
+};
+
 fxScreens['travel-arrive'] = async (ctx, s) => {
   const d = (s.data ?? {}) as { text?: string };
   await banner(ctx, 'arrive', `<div class="msg-text">${phrases(d.text ?? '')}</div>`, 1300);

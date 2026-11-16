@@ -61,9 +61,18 @@ for (const m of json('maps/maps.json').maps) {
 }
 
 // The remake's own maps (editor/build_tokyo.py): records, ground, thumbnail and the sprites they bring along.
+// RICH4_SKIP_MAPS=109,…: maps left out of this build altogether (not listed, no files) — a map still being made stays
+// out of an in-game update (重慶 at 1.1.1, the user 2026-11-10: 「其他的慢慢弄吧，弄到1.2再發布」).
+const skipMaps = new Set((process.env.RICH4_SKIP_MAPS ?? '').split(',').filter(Boolean).map(Number));
 if (existsSync(join(src, 'maps/remake/index.json'))) {
-  copy('maps/remake/index.json');
-  for (const m of json('maps/remake/index.json').maps) {
+  const index = json('maps/remake/index.json');
+  if (skipMaps.size) {
+    index.maps = index.maps.filter(m => !skipMaps.has(m.id));
+    mkdirSync(join(out, 'maps/remake'), { recursive: true });
+    writeFileSync(join(out, 'maps/remake/index.json'), JSON.stringify(index));
+    console.log('left out of this build: maps', [...skipMaps].join(', '));
+  } else copy('maps/remake/index.json');
+  for (const m of index.maps) {
     for (const f of [m.data, m.image, m.thumbnail]) copy(`maps/${f}`);
     for (const s of Object.values(json(`maps/${m.data}`).sprites ?? {})) for (const f of s.frames) shrink(`maps/${s.dir}/${f.file}`, f.width, f.height);
   }
@@ -81,14 +90,20 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   // 派對模式's bar icons and the characters' reaction stickers (party-chat.ts, tools/tycoon-art/party_icons.py).
   if (existsSync(join(src, 'maps/remake/party'))) for (const f of readdirSync(join(src, 'maps/remake/party'))) if (f.endsWith('.webp')) copy(`maps/remake/party/${f}`);
+  // The speech cloud's redrawn expression faces (ui/faces.ts, tools/tycoon-art/face_art.py): faces/<character>-<expr>.webp.
+  if (existsSync(join(src, 'maps/remake/faces'))) for (const f of readdirSync(join(src, 'maps/remake/faces'))) if (/^\d+-\d\.webp$/.test(f)) copy(`maps/remake/faces/${f}`);
+  // 即時制's stopwatch (ui/rt-clock.ts, tools/tycoon-art/rt_clock.py).
+  if (existsSync(join(src, 'maps/remake/rt'))) for (const f of readdirSync(join(src, 'maps/remake/rt'))) if (f.endsWith('.webp')) copy(`maps/remake/rt/${f}`);
   // 挑戰模式's picture cards and star sticker (ui/collection.ts, tools/tycoon-art/challenge_cards.py).
   if (existsSync(join(src, 'maps/remake/challenge'))) for (const f of readdirSync(join(src, 'maps/remake/challenge'))) if (f.endsWith('.webp')) copy(`maps/remake/challenge/${f}`);
+  // 排行榜's button and its four boards' icons (ui/ranks.ts, tools/tycoon-art/rank_icon.py).
+  if (existsSync(join(src, 'maps/remake/ranks'))) for (const f of readdirSync(join(src, 'maps/remake/ranks'))) if (f.endsWith('.webp')) copy(`maps/remake/ranks/${f}`);
   // 獎勵卡 (core/rewards.ts): the ten cards' pictures and the three backs by grade (RWBN / RWBR / RWBSR, the user's
   // picks); the other takes (RW01a, RW01b, RWBN1 …) stay out.
   if (existsSync(join(src, 'maps/remake/rewards'))) for (const f of readdirSync(join(src, 'maps/remake/rewards'))) if (/^RW(\d\d|B(N|R|SR))\.webp$/.test(f)) copy(`maps/remake/rewards/${f}`);
   // The 旅館's redrawn levels 4 and 5 (ui/hotels.ts: map/0091, 0092 on the first stage's maps), and the APARTMENT
   // HOTEL 11 towers (ui/ah11.ts: map/2611..2615 on 日本 and the five cities).
-  for (const res of ['2604', '2605', '2611', '2612', '2613', '2614', '2615']) {
+  for (const res of ['2604', '2605', '2624', '2625', '2611', '2612', '2613', '2614', '2615']) {   // 2624, 2625: their night look (重慶)
     const fj = `maps/remake/sprites/${res}/frames.json`;
     if (!existsSync(join(src, fj))) continue;
     copy(fj);
@@ -112,9 +127,12 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   const cards = [601, 602, 603, 604, 605, 606, 609].map(n => `cards/0${n}.webp`), tools = [614, 615, 616].map(n => `tools/0${n}.webp`);
   const shots = [1, 2, 3, 4].map(n => `icbm/shot-${n}.webp`); // 洲際飛彈's flight (ui/icbm-flight.ts)
   shots.push('title/party.webp', 'title/party-hover.webp'); // 派對模式's title button (ui/main.ts)
+  shots.push('title/maker.webp', 'title/maker-hover.webp'); // 自建地圖's title button (ui/main.ts)
   for (const f of [...cards, ...tools, ...shots, 'onway/layers.json', 'onway/plane.webp', 'onway/train.webp', 'onway/sky.webp', 'onway/land.webp']) {
     if (existsSync(join(src, `maps/remake/${f}`))) copy(`maps/remake/${f}`);
   }
+  // 自建地圖 (ui/maker): the editor's grounds, road strips and trees (tools/tycoon-art/maker_terrain.py).
+  if (existsSync(join(src, 'maps/remake/maker'))) for (const f of readdirSync(join(src, 'maps/remake/maker'))) if (/\.(webp|json)$/.test(f)) copy(`maps/remake/maker/${f}`);
   // The tools' and high-end cards' films (ui/tool-cinema.ts, tools/tycoon-art/cinema_art.py): cinema/<key>/shot-N.webp.
   // (Missing from v0.7.0's app bundles: the films played black with broken pictures on the phone.)
   if (existsSync(join(src, 'maps/remake/cinema'))) for (const d of readdirSync(join(src, 'maps/remake/cinema'))) {
@@ -151,6 +169,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   }
   // …and its own music (ui/jq-music.ts, docs/rules/24 §16): the five loudspeaker tracks and the fanfare.
   if (existsSync(join(src, 'maps/remake/jiqing/music'))) for (const f of readdirSync(join(src, 'maps/remake/jiqing/music'))) if (f.endsWith('.m4a')) copy(`maps/remake/jiqing/music/${f}`);
+  // 重慶 (docs/rules/33): its plates (the ground, by level) and the 麻將館's tiles (maps/remake/chongqing/, mahjong/).
+  if (!skipMaps.has(109)) for (const dir of ['maps/remake/chongqing', 'maps/remake/mahjong']) if (existsSync(join(src, dir))) for (const f of readdirSync(join(src, dir))) if (f.endsWith('.webp')) copy(`${dir}/${f}`);
   for (const n of [617, 618]) if (existsSync(join(src, `maps/remake/tools/0${n}.webp`))) copy(`maps/remake/tools/0${n}.webp`);
   for (const n of [607, 608]) if (existsSync(join(src, `maps/remake/cards/0${n}.webp`))) copy(`maps/remake/cards/0${n}.webp`);
   // The results screen's statistics icons (docs/rules/20 §4, tools/tycoon-art/stats_icons.py): maps/remake/stats/<name>.webp.
@@ -160,6 +180,26 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   // 大富豪模式 local news / fate pictures (docs/rules/18): maps/remake/events/<id>.webp.
   if (existsSync(join(src, 'maps/remake/events'))) {
     for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) shrinkOwn(`maps/remake/events/${f}`);
+  }
+  // 自建地圖's pieces (ui/maker): the sprites this build carries, every facing — the editor offers only these, so it
+  // adds nothing to the app (the dev tree lists them all: tools/tycoon-art/maker_terrain.py pieces).
+  // The editor's whole piece library (the user 2026-11-12: 植物 stayed at 載入中 on the phone — only the maps' own
+  // sprites were in the app): every facing, at half the art's size (twice what a piece is drawn at), those the maps
+  // brought along as they are.
+  if (existsSync(join(src, 'maps/remake/maker/pieces.json'))) {
+    for (const id of json('maps/remake/maker/pieces.json')) {
+      const fj = `maps/remake/sprites/${id}/frames.json`;
+      if (!existsSync(join(src, fj)) || existsSync(join(out, fj))) continue;
+      copy(fj);
+      const j = json(fj), frames = Array.isArray(j) ? j : j.frames;
+      for (const f of frames) shrink(`maps/remake/sprites/${id}/${f.file}`, f.width * (0.5 / Math.min(1, SHRINK)), f.height * (0.5 / Math.min(1, SHRINK)));
+    }
+  }
+  const sprDir = join(out, 'maps/remake/sprites');
+  if (existsSync(sprDir)) {
+    mkdirSync(join(out, 'maps/remake/maker'), { recursive: true });
+    const ids = readdirSync(sprDir).filter(d => existsSync(join(sprDir, d, 'frames.json'))).map(Number).filter(n => n > 0 && n < 9000).sort((a, b) => a - b);
+    writeFileSync(join(out, 'maps/remake/maker/pieces.json'), JSON.stringify(ids));
   }
 }
 
@@ -256,6 +296,9 @@ console.log(`bundled ${count} files, ${(bytes / 1e6).toFixed(0)} MB → ${out}`)
 
 // 在線更新: the build's file list (scripts/update-manifest.mjs), when the build is the app's own dist.
 if (resolve(out) === join(root, 'dist/assets')) {
+  // 更新日誌 first (it is one of the files the update lists)
+  const { writeChangelog } = await import('./changelog.mjs');
+  console.log(`changelog.json: ${writeChangelog(root, join(root, 'dist'))} versions`);
   const { writeBase } = await import('./update-manifest.mjs');
   const m = writeBase(join(root, 'dist'));
   console.log(`update-base.json: v${m.version}, ${Object.keys(m.files).length} files`);

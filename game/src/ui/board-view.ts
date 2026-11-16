@@ -4,7 +4,8 @@
  * Everything is drawn at the device's real resolution; redrawn (4x) frames are used where they exist.
  */
 import { CHARACTERS } from '../core/characters';
-import type { Game } from '../core/game';
+import { REVIVE, type Game } from '../core/game';
+import { shortMoney } from './rt-rank';
 import { nodeById, worldSize } from '../core/board';
 import { month } from '../core/date';
 import type { PickSpot, Player } from '../core/types';
@@ -24,6 +25,8 @@ import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite,
 import type { StreetView } from './kb-ambient';
 import { jqBadges, jqFacSprite, jqHouseSprite, jqPadSprite, jqRules } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { JqStreet } from './jq-street';
+import { cqCompanySprite, cqFacSprite, cqHouseSprite, LEVEL_NAMES, nodeLevel } from './chongqing'; // 重慶's stacked levels (docs/rules/33)
+import type { BoardNode } from '../core/board';
 import { timeout, watch } from './watchdog';
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
 
@@ -42,6 +45,9 @@ const DICE_T = [[4, 12], [12, 12], [8, 6], [-4, -6], [-12, -12], [-24, -12], [-2
 const DICE_SCALE = 0.6;
 const Layer = { building: 0, npc: 8, player: 0xc, current: 0xd, zzz: 0xe } as const;
 
+/** Large plots (facility ids) whose square the redrawn grounds do not show, by map (issue #73). */
+const MISSING_PLOT_ART: Record<number, number[]> = { 7: [7] };
+
 /** The board views on screen now (ui/pad.ts: a controller picks and pans on the one in front). */
 export const liveViews = new Set<BoardView>();
 
@@ -59,7 +65,14 @@ interface Actor {
   /** ZZZ frame while sleepwalking. */
   zzz: number;
   visible: boolean;
+  /** 即時制: the squares of a walk laid on the clock (BoardView.glide), drawn where the time says (BoardView.walkTimed). */
+  segs?: Seg[];
+  /** When its last square was reached (performance.now ms): standing a moment, it stops walking in place. */
+  idleAt?: number;
 }
+
+/** One square of a glide: from, to, when it starts (performance.now ms), how long, the way it faces. */
+interface Seg { fx: number; fy: number; tx: number; ty: number; t0: number; ms: number; dir: number; done: () => void }
 
 interface Item { key: number; draw: () => void }
 
@@ -76,6 +89,14 @@ export type InputMode = 'locked' | 'free' | 'pick' | 'pick-scroll';
 
 export const screenDir = (dir: number, rot: number) => (dir + 8 - rot) & 7;
 const buildingFrame = (facing: number, rot: number) => (8 - facing - rot) & 7;
+
+/**
+ * Whose original houses and facilities a map's lots show (39 + set × 5 + level − 1, chains 79 + set; facilities by
+ * set >> 2 and set & 3): the original maps their own;
+ * a player's map (自建地圖, ids from 5000) its stock template's map (the user 2026-11-12: 阿土伯's lots showed no
+ * houses — there are no house pictures for id 5000).
+ */
+const houseSet = (b: { mapId: number; stockGroup?: number }) => (b.mapId >= 5000 ? ((b.stockGroup ?? 0) % 8 + 8) % 8 : b.mapId);
 
 export class BoardView {
   readonly canvas: HTMLCanvasElement;
@@ -168,6 +189,7 @@ export class BoardView {
       this.fx.alpha = this.alpha;
       // About twice a second: the canvas's pixels still match its size on screen (see `backingStale`).
       if (++this.checks % 30 === 0 && this.backingStale()) this.resize();
+      try { this.glideFrame(performance.now()); } catch (e) { this.oops('glide', e); }
       try { this.draw(); } catch (e) { this.oops('draw', e); }
     };
     requestAnimationFrame(loop);
@@ -271,6 +293,9 @@ export class BoardView {
     const c = this.canvas;
     c.addEventListener('pointerdown', e => {
       this.info.hide();
+      // A finger whose lifting never arrived (seen on the iPhone) would stay held for good: with one finger counted as
+      // down no tap reaches the map again (傳送機's glow, a sign's name), while GO, a button of its own, still works.
+      if (e.isPrimary) this.pointers.clear();
       if (this.pointers.size === 0) this.tap = { x: e.clientX, y: e.clientY, moved: false };
       c.setPointerCapture(e.pointerId);
       this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -298,6 +323,10 @@ export class BoardView {
     };
     c.addEventListener('pointerup', up);
     c.addEventListener('pointercancel', up);
+    // No finger left on the glass: none is held, whatever the pointer events said.
+    const lifted = (e: TouchEvent) => { if (!e.touches.length) { this.pointers.clear(); this.drag = null; } };
+    c.addEventListener('touchend', lifted);
+    c.addEventListener('touchcancel', lifted);
     // The map scale is fixed, as in the original (the view only pans); the wheel does nothing.
     c.addEventListener('wheel', e => e.preventDefault(), { passive: false });
     window.addEventListener('keydown', this.onKey);
@@ -396,6 +425,8 @@ export class BoardView {
       if (n.event === 17 || n.event === 18) { if (near(n.x, n.y, 60)) add('map', n.event === 17 ? 9017 : 9018); }
       else if (pad) { if (near(n.x, n.y, 60)) add('map', pad); }
       else if (n.aux && near(n.x, n.y, 60)) add('map', 24);
+      const lv = this.art.levels;   // 重慶's 扶梯 / 直梯 pads
+      if (lv && (lv.escalator.includes(n.id) || lv.elevator.includes(n.id)) && near(n.x, n.y, 60)) add('map', lv.escalator.includes(n.id) ? 9201 : 9202);
     }
     for (const o of kbFigures(g)) { const n = nodeById(b, o.node); if (near(n.x, n.y)) add('map', o.res); }
     for (const l of b.lands) {
@@ -410,7 +441,7 @@ export class BoardView {
       if (sp) add('map', sp.res);
       if (f.tmpState) add('map', 26);
     }
-    for (const co of b.companies) if (co.resource && near(co.x, co.y, 260)) add('map', co.resource + 38);
+    for (const [ci, co] of b.companies.entries()) if (co.resource && near(co.x, co.y, 260)) add('map', this.art.levels ? cqCompanySprite(this.art.levels, ci, co.resource + 38) : co.resource + 38);
     for (const ls of b.landscapes) if (ls.resource && near(ls.x, ls.y, 300)) add('map', ls.resource + 38);
     const towers = ah11Placements(g, this.art.decor);
     for (const t of towers) if (near(t.x, t.y, 300)) add('map', t.res);
@@ -537,14 +568,16 @@ export class BoardView {
 
   /** The sprite a lot shows now (a building, or the owner's flag on an empty one), as `draw` draws it. */
   private landSprite(l: { level: number; chain: number | boolean; owner: number; facing: number }): { res: number; frame: number; tint?: number } | null {
-    const b = this.game.board;
-    if (l.level) return { res: kbHouseSprite(this.game, l) ?? jqHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
+    const b = this.game.board, lv = this.art.levels, id = (l as { id?: number }).id;
+    if (lv && id && l.level) { const res = cqHouseSprite(lv, id - 1, l.level); if (res) return { res, frame: buildingFrame(lv.facing.lands[id - 1][0], this.rot) }; }
+    if (l.level) return { res: kbHouseSprite(this.game, l) ?? jqHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + houseSet(b) : 39 + houseSet(b) * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
     if (l.owner) return { res: 25, frame: this.game.players[l.owner - 1]?.character ?? 0 };
     return null;
   }
 
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
-    const b = this.game.board, stage = b.mapId >> 2, inStage = b.mapId & 3;
+    const b = this.game.board, stage = houseSet(b) >> 2, inStage = houseSet(b) & 3, lv = this.art.levels, fid = (fa as { id?: number }).id;
+    if (lv && fid && fa.level && fa.type !== 1) { const res = cqFacSprite(lv, fid - 1, fa); if (res) return { res, frame: buildingFrame(lv.facing.facilities[fid - 1][0], this.rot) }; }
     if (fa.level) {
       const jq = jqFacSprite(this.game, fa); // 激情歲月's five facilities (docs/rules/24 §2)
       if (jq) return { res: jq, frame: buildingFrame(0, this.rot) };
@@ -626,7 +659,24 @@ export class BoardView {
     const pk = this.picking;
     if (!pk) return [];
     const shapes = this.pickShapes();
-    return [...pk.all].filter(i => shapes[i] && (!pk.onScreen || shapeVisible(shapes[i], this.W, this.H)));
+    // 重慶: only what the level looked at shows, so only that can be tapped (the 公路's spots on every level).
+    const k = this.art.levels ? this.viewLevel() : 0;
+    return [...pk.all].filter(i => shapes[i] && (!pk.onScreen || shapeVisible(shapes[i], this.W, this.H)) && (!k || [0, k].includes(this.spotLevelOf(pk.spots[i]))));
+  }
+
+  /** 重慶: the level a pick's spot is on (0: the 公路, or another map). */
+  private spotLevelOf(s: PickSpot): number {
+    const w = this.spotPos(s, false);
+    return w ? this.levelAt(w.x, w.y) : 0;
+  }
+
+  /** 重慶: how many of the open pick's spots are on each level (1–3), for the pick's level buttons; null otherwise. */
+  pickLevels(): number[] | null {
+    const pk = this.picking;
+    if (!pk || !this.art.levels) return null;
+    const n = [0, 0, 0, 0];
+    for (const i of pk.all) n[this.spotLevelOf(pk.spots[i])]++;
+    return [n[1] + n[0], n[2] + n[0], n[3] + n[0]];
   }
 
   /** Runs `fn` with the camera where the view of actor `self` puts it (kept on the board), then puts it back. */
@@ -667,10 +717,16 @@ export class BoardView {
     this.picking = pk;
     this.shapes.frame = -1;
     const count = pk.onScreen ? this.withCameraOn(opts.self, () => { this.shapes.frame = -1; const n = this.pickAllowed().length; this.shapes.frame = -1; return n; }) : all.size;
+    // 重慶: nothing to pick on the level looked at: the first level that has some comes up.
+    if (!pk.onScreen && all.size && this.art.levels && !this.pickAllowed().length) {
+      const k = this.pickLevels()!.findIndex(n => n > 0);
+      if (k >= 0) this.showLevel(k + 1);
+    }
     // Look at the first choice if none is on screen.
     if (!pk.onScreen && all.size) {
       const shapes = pk.spots.map(s => this.spotShape(s));
-      if (![...all].some(i => shapeVisible(shapes[i], this.W, this.H))) { const w = this.spotPos(spots[[...all][0]])!; this.follow = null; this.endGlide(); this.cam.x = w.x; this.cam.y = w.y; }
+      const can = this.art.levels ? this.pickAllowed() : [...all];
+      if (can.length && !can.some(i => shapeVisible(shapes[i], this.W, this.H))) { const w = this.spotPos(spots[can[0]])!; this.follow = null; this.endGlide(); this.cam.x = w.x; this.cam.y = w.y; }
     }
     return { done: watch('view.pick', done), cancel: () => { if (this.picking === pk) pk.resolve(-1); }, count };
   }
@@ -842,6 +898,8 @@ export class BoardView {
    * replaced, or frames that stop coming, end the wait (the camera is then put on the spot).
    */
   panTo(x: number, y: number): Promise<void> {
+    // 重慶: the spot's own level comes up (a line, a jail, a missile on another level is not left floating in the air).
+    this.spotLevel(this.levelAt(x, y));
     // 鏡頭跟隨「少動」(issue #11): a spot already well inside the view is shown where it is, the camera stays on the
     // actor; only farther spots (a missile's target, another street) are travelled to.
     if (this.calm && this.alive && this.nearCentre(x, y)) return Promise.resolve();
@@ -930,7 +988,9 @@ export class BoardView {
   followActor(id: number) {
     const changed = this.follow !== id;
     this.follow = id; this.current = id;
+    if (this.levelPick?.spot) this.levelPick = null;   // back from a spot elsewhere: the person's own level again
     if (!changed) return;
+    this.levelPick = null;   // 重慶: back on a person, back on their level
     const a = this.actors.get(id);
     if (!a?.visible || !this.startGlide(() => { const q = this.actors.get(id); return q?.visible ? this.at(q) : null; }, 700)) this.endGlide();
   }
@@ -949,6 +1009,7 @@ export class BoardView {
   unstick() {
     this.endGlide();
     for (const id of [...this.movers.keys()]) this.finishMove(id);
+    for (const a of this.actors.values()) this.endGlides(a);
     const d = this.diceWait; this.diceWait = null; d?.done();
     const w = this.demolishWait; this.demolishWait = null; w?.done();
     this.fx.finishAll();
@@ -966,7 +1027,7 @@ export class BoardView {
   syncAll() {
     for (const p of this.game.players) {
       const a = this.actor(p.id);
-      if (a.phase) continue;
+      if (a.phase || a.segs?.length) continue;
       // 大富豪模式: a player still standing on another city's square (one arriving, summoned, deported) is not drawn
       // here until the rules put them on this map — that square may not exist on it.
       const n = p.placed && p.node ? nodeById(this.game.board, p.node) : undefined;
@@ -990,11 +1051,70 @@ export class BoardView {
     return list.map((n, i) => [base + i, n] as [number, typeof n]).filter(([id]) => id < base + 4);
   }
 
+  /**
+   * 即時制 (the user 2026-11-08: walks as smooth as an RPG's — everyone at their pace, nobody jumping): one square over
+   * `ms`, right after the square queued before it; drawn every frame where the time says, so it never jumps. One that
+   * starts behind (the screen fell behind the rules) goes quicker until it has caught up.
+   */
+  walkTimed(id: number, to: number, dir: number, ms: number, startAt?: number): Promise<void> {
+    const a = this.actor(id), n = nodeById(this.game.board, to);
+    if (!n) return Promise.resolve();
+    this.finishMove(id);
+    this.pose.delete(id);
+    const q = a.segs ?? (a.segs = []), last = q[q.length - 1], now = performance.now();
+    const fx = last ? last.tx : a.x, fy = last ? last.ty : a.y;
+    // `startAt`: when the rules' clock says it starts (a little behind it, so the next square is known before this
+    // one ends: no stop at each square); never before the square before it ends
+    const t0 = Math.max(last ? last.t0 + last.ms : now, startAt ?? now, now - 30);
+    const behind = t0 - now;
+    const dur = behind > ms ? Math.max(ms * 0.35, ms - (behind - ms) / 2) : ms;
+    a.visible = true;
+    if (a.phase !== 1) { a.phase = 1; a.anim = 0; }
+    return new Promise(done => q.push({ fx, fy, tx: n.x, ty: n.y, t0, ms: dur, dir, done }));
+  }
+
+  /** Every frame: each gliding actor where its walk is now; finished squares let their waiters go on. */
+  private glideFrame(now: number) {
+    for (const a of this.actors.values()) {
+      const q = a.segs;
+      if (!q) continue;
+      if (!q.length) {
+        // arrived and no square follows within a moment: standing still, not walking in place
+        if (a.idleAt !== undefined && now - a.idleAt > 150) { if (a.phase === 1) { a.phase = 0; a.anim = 0; } a.idleAt = undefined; }
+        continue;
+      }
+      while (q.length && now >= q[0].t0 + q[0].ms) {
+        const s = q.shift()!;
+        a.x = a.px = s.tx; a.y = a.py = s.ty; a.dir = s.dir;
+        s.done();
+      }
+      const s = q[0];
+      if (!s) { a.idleAt ??= now; continue; }
+      a.idleAt = undefined;
+      const k = Math.max(0, Math.min(1, (now - s.t0) / s.ms));
+      a.x = a.px = s.fx + (s.tx - s.fx) * k;
+      a.y = a.py = s.fy + (s.ty - s.fy) * k;
+      a.dir = s.dir;
+      if (a.phase !== 1) { a.phase = 1; a.anim = 0; }
+    }
+  }
+
+  /** Ends an actor's glide where it is going (put elsewhere, or the walk is over). */
+  private endGlides(a: Actor) {
+    const q = a.segs;
+    if (!q?.length) return;
+    const last = q[q.length - 1];
+    a.x = a.px = last.tx; a.y = a.py = last.ty;
+    a.segs = [];
+    for (const s of q) s.done();
+  }
+
   place(id: number, node: number) {
     const a = this.actor(id), n = nodeById(this.game.board, node);
     // A walk still running ends where it is (whoever waits on it goes on).
     const m = this.movers.get(id);
     if (m) { this.movers.delete(id); m.done(); }
+    this.endGlides(a);
     if (!n) { a.visible = false; return; } // a square of another city (大富豪模式)
     a.x = n.x; a.y = n.y; a.phase = 0; a.anim = 0; a.visible = true;
     this.pose.delete(id);
@@ -1089,10 +1209,12 @@ export class BoardView {
     a.dir = dir; a.visible = true;
     this.pose.delete(id);
     if (a.phase !== 1) { a.phase = 1; a.anim = 0; }
-    const ticks = Math.ceil(Math.hypot(to.x - a.x, to.y - a.y) / Math.max(1, speed)) + 1;
+    // The walk in equal ticks (issue #69: a car's 16 px left a short last tick on every square, a stop each time).
+    const dist = Math.hypot(to.x - a.x, to.y - a.y), steps = Math.max(1, Math.ceil(dist / Math.max(1, speed)));
+    const even = dist > 0 ? dist / steps : speed, ticks = steps + 1;
     return watch(label, new Promise<void>(resolve => {
       const timer = setTimeout(() => this.finishMove(id), ticks * Math.max(this.tickMs, 20) * 4 + 2000);
-      this.movers.set(id, { tx: to.x, ty: to.y, speed, done: () => { clearTimeout(timer); after?.(); resolve(); } });
+      this.movers.set(id, { tx: to.x, ty: to.y, speed: even, done: () => { clearTimeout(timer); after?.(); resolve(); } });
     }));
   }
 
@@ -1227,7 +1349,7 @@ export class BoardView {
         const m = this.movers.get(id);
         if (m) {
           const dx = m.tx - a.x, dy = m.ty - a.y, dist = Math.hypot(dx, dy);
-          if (dist <= m.speed) this.finishMove(id);
+          if (dist <= m.speed + 1e-6) this.finishMove(id);
           else { a.x += dx / dist * m.speed; a.y += dy / dist * m.speed; }
         }
         const fpd = this.fpd(id);
@@ -1282,11 +1404,11 @@ export class BoardView {
 
   // ---------- drawing ----------
 
-  private sprite(archive: Archive, res: number, frame: number, sx: number, sy: number, tint?: number, frozen = false) {
+  private sprite(archive: Archive, res: number, frame: number, sx: number, sy: number, tint?: number, frozen = false, size = 1) {
     const frames = this.bank.board(archive, res);
     const f = frames?.[frame];
     if (!f) return;
-    const s = this.zoom * f.scale;
+    const s = this.zoom * f.scale * size;
     let img = tint !== undefined ? this.bank.tint(archive, res, f, frame, tint) : f.img;
     if (frozen) img = this.bank.frozen(archive, res, f, frame);
     this.ctx.imageSmoothingEnabled = f.scale !== 1;
@@ -1337,7 +1459,390 @@ export class BoardView {
    * Step marks (the remake's own maps): a pale notch across both edges of the road halfway between two squares, so
    * a throw can be counted square by square in every ground style. Drawn on the ground, in world pixels.
    */
-  private stepMarks(ctx: CanvasRenderingContext2D) {
+  // ---------------------------------------------------------------- 重慶's stacked levels (docs/rules/33 §1)
+
+  /** The level of the person the camera follows; 0 on every other map. */
+  autoLevel(): number {
+    const lv = this.art.levels;
+    if (!lv) return 0;
+    const g = this.game, p = g.players[this.current] ?? g.players[g.current];
+    return p ? nodeLevel(lv, p.node) : 3;
+  }
+
+  /**
+   * A level picked on the small map's buttons, kept until the camera's person changes or changes level; `spot`: the
+   * level of a spot the camera was sent to (panTo, `spotLevel`), until it follows a person again.
+   */
+  private levelPick: { level: number; who: number; auto: number; spot?: boolean } | null = null;
+
+  /**
+   * The level of a world point the camera is sent to: of the square, lot or building there (within 40 px); 0 when
+   * none is that near, or on the 公路, or on other maps. The levels' plates overlap in world pixels, so the nearest
+   * thing decides.
+   */
+  levelAt(x: number, y: number): number {
+    const lv = this.art.levels;
+    if (!lv) return 0;
+    const b = this.game.board, ramp = lv.ramp;
+    let best = 0, d = 40;
+    const near = (px: number, py: number, k: number) => { const e = Math.hypot(px - x, py - y); if (e < d) { d = e; best = k; } };
+    for (const n of b.nodes) near(n.x, n.y, ramp.includes(n.id) ? 0 : nodeLevel(lv, n.id));
+    b.lands.forEach((l, i) => near(l.x, l.y, lv.lands[i]));
+    b.facilities.forEach((f, i) => near(f.x, f.y, lv.facilities[i]));
+    b.companies.forEach((c, i) => near(c.x, c.y, lv.companies[i]));
+    return best;
+  }
+
+  /**
+   * Shows level k for a spot away from the camera's person (0: leaves the view as it is); `followActor` / `refollow`
+   * go back to the person's level.
+   */
+  spotLevel(k: number) {
+    if (!k || !this.art.levels) return;
+    const auto = this.autoLevel();
+    if (k === auto) { if (this.levelPick?.spot) this.levelPick = null; }
+    else this.levelPick = { level: k, who: this.current, auto, spot: true };
+    this.noteLevel(this.viewLevel());
+  }
+  /** Called with the level looked at whenever it changes (the small map's buttons). */
+  readonly levelListeners = new Set<(level: number) => void>();
+  private shownLevel = 0;
+
+  /** The level looked at (§1: drawn sharp, the ones under it soft, the ones above it not at all); 0 on other maps. */
+  viewLevel(): number {
+    const auto = this.autoLevel(), pk = this.levelPick;
+    if (pk && (pk.who !== this.current || pk.auto !== auto)) this.levelPick = null;
+    return this.levelPick?.level ?? auto;
+  }
+
+  private lift = -1;
+  private rampTop: number | null = null;
+  /**
+   * How far the second level has come in (0..1, §2): on the 公路 the share of its squares climbed, eased frame by frame;
+   * 1 on the second level and above or when a level is picked, 0 elsewhere on the first.
+   */
+  private liftOf(seen: number): number {
+    const lv = this.art.levels!, b = this.game.board, r = lv.ramp;
+    if (this.rampTop === null) {   // the end of the 公路 next to the second level
+      const up = (id: number) => (b.nodes[id - 1]?.adjacent ?? []).some(m => m && !r.includes(m) && nodeLevel(lv, m) === 2);
+      this.rampTop = up(r[0]) ? 0 : r.length - 1;
+    }
+    const g = this.game, p = g.players[this.current] ?? g.players[g.current];
+    const i = p && !this.levelPick && seen <= 2 ? r.indexOf(p.node) : -1;
+    const target = i >= 0 ? (r.length - Math.abs(i - this.rampTop)) / (r.length + 1) : seen >= 2 ? 1 : 0;
+    if (this.lift < 0 || i < 0 && Math.abs(target - this.lift) > 0.5) this.lift = target;
+    else this.lift += (target - this.lift) * 0.12;
+    return this.lift;
+  }
+
+  /**
+   * Looks at level k (the small map's 一層 / 二層 / 三層): the camera goes to that level's square nearest to it; the
+   * camera's own person's level follows them again.
+   */
+  showLevel(k: number) {
+    const lv = this.art.levels;
+    if (!lv) return;
+    const auto = this.autoLevel(), who = this.current;
+    if (k === auto) {
+      this.levelPick = null;
+      if (who >= 0) { this.follow = null; this.followActor(who); }
+    } else {
+      const ramp = new Set(lv.ramp);
+      let best: BoardNode | null = null, d = Infinity;
+      for (const n of this.game.board.nodes) {
+        if (nodeLevel(lv, n.id) !== k || (k > 1 && ramp.has(n.id))) continue;
+        const e = Math.hypot(n.x - this.cam.x, n.y - this.cam.y);
+        if (e < d) { d = e; best = n; }
+      }
+      this.follow = null;
+      if (best) { const to = { x: best.x, y: best.y }; if (!this.startGlide(() => to, 700)) { this.cam.x = to.x; this.cam.y = to.y; } }
+      this.levelPick = { level: k, who, auto };
+    }
+    this.noteLevel(this.viewLevel());
+  }
+
+  /** The level the board shows now (the small map lights its button). */
+  get levelShown(): number { return this.shownLevel; }
+
+  private noteLevel(k: number) {
+    if (k === this.shownLevel) return;
+    this.shownLevel = k;
+    for (const fn of this.levelListeners) fn(k);
+  }
+
+  private blurBuf: HTMLCanvasElement | null = null;
+  private blurBuf2: HTMLCanvasElement | null = null;
+  /**
+   * Everything drawn so far, softened and darkened a step (重慶 §1: done before each plate up to the one looked at,
+   * so the background is the softest and the level under it the least): shrunk to a quarter, then to a tenth, and drawn
+   * back over (the user on the phone: 「下層的模糊效果還是不夠強」 — a phone's canvas has no blur filter, so the
+   * shrinking does it). `strength` < 1 blends it in part (the 公路, §2).
+   */
+  private blurBelow(ctx: CanvasRenderingContext2D, strength = 1) {
+    if (strength <= 0.01) return;
+    const W = this.canvas.width, H = this.canvas.height;
+    const size = (c: HTMLCanvasElement | null, k: number) => {
+      const cv = c ?? document.createElement('canvas'), w = Math.max(1, Math.round(W / k)), h = Math.max(1, Math.round(H / k));
+      if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+      return cv;
+    };
+    const c1 = this.blurBuf = size(this.blurBuf, 4), c2 = this.blurBuf2 = size(this.blurBuf2, 10);
+    for (const [from, to] of [[this.canvas, c1], [c1, c2]] as const) {
+      const x = to.getContext('2d')!;
+      x.imageSmoothingEnabled = true;
+      x.imageSmoothingQuality = 'medium';
+      if ('filter' in x) x.filter = 'blur(1px)';   // where the canvas has filters (not a phone's): softer still
+      x.clearRect(0, 0, to.width, to.height);
+      x.drawImage(from, 0, 0, to.width, to.height);
+    }
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.globalAlpha = strength;
+    ctx.drawImage(c2, 0, 0, W, H);
+    ctx.fillStyle = 'rgba(10, 14, 32, .26)';
+    ctx.fillRect(0, 0, W, H);
+    ctx.restore();
+  }
+
+  private cliffs = new Map<number, HTMLCanvasElement>();
+  /** 重慶's plate walls, made for the view's turn (`wallOf`). */
+  private walls = new Map<string, { c: HTMLCanvasElement; x: number; y: number; w: number; h: number }>();
+  /** How tall each level's wall stands on screen at zoom 1 (px). */
+  private static WALL_H = [0, 150, 200, 250];
+
+  /**
+   * Level k's side wall (the user 2026-11-09: 「邊緣…圍上高樓或山…立交…穿山輕軌，純邊框多少有點醜」): its strip
+   * (洪崖洞's stilt houses, the high-rises with the 立交 and the 李子壩 train, the hilltop cliff) repeated along every
+   * edge that faces the viewer, standing straight down on screen under the edge; drawn once per turn of the view, in
+   * map pixels (a drop on screen is the same map step at any zoom), the plate drawn over it.
+   */
+  private wallOf(k: number): { c: HTMLCanvasElement; x: number; y: number; w: number; h: number } | null {
+    const img = this.art.walls?.[k], poly = this.game.board.levels?.plates[String(k)];
+    if (!img?.naturalWidth || !poly || poly.length < 3) return null;
+    const key = `${k}|${this.rot}`;
+    const had = this.walls.get(key);
+    if (had) return had;
+    const { a, b: bb, c, d } = this.basis(), det = a * d - c * bb || 1, H = BoardView.WALL_H[k] * this.zoom;
+    const wx = -c * H / det, wy = a * H / det, th = img.naturalHeight;
+    const xs = poly.flatMap(([x]) => [x, x + wx]), ys = poly.flatMap(([, y]) => [y, y + wy]);
+    const ox = Math.min(...xs), oy = Math.min(...ys), w = Math.max(...xs) - ox, h = Math.max(...ys) - oy;
+    const SC = Math.min(1, 2600 / Math.max(w, h));
+    const cv = document.createElement('canvas');
+    cv.width = Math.ceil(w * SC); cv.height = Math.ceil(h * SC);
+    const x = cv.getContext('2d')!, pat = x.createPattern(img, 'repeat');
+    const inside = (px: number, py: number) => {
+      let r = false;
+      for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+        const [x0, y0] = poly[i], [x1, y1] = poly[j];
+        if ((y0 > py) !== (y1 > py) && px < (x1 - x0) * (py - y0) / (y1 - y0) + x0) r = !r;
+      }
+      return r;
+    };
+    let u = 0;
+    if (pat) for (let i = 0; i < poly.length; i++) {
+      const [x0, y0] = poly[i], [x1, y1] = poly[(i + 1) % poly.length];
+      const ex = x1 - x0, ey = y1 - y0, du = Math.hypot(a * ex + c * ey, bb * ex + d * ey) * th / H;
+      if (du < 0.01) continue;
+      // facing the viewer: just under the edge on screen is outside the plate
+      if (!inside((x0 + x1) / 2 + wx * 0.05, (y0 + y1) / 2 + wy * 0.05)) {
+        const Ex = ex / du, Ey = ey / du, Wx = wx / th, Wy = wy / th;
+        x.setTransform(Ex * SC, Ey * SC, Wx * SC, Wy * SC, (x0 - Ex * u - ox) * SC, (y0 - Ey * u - oy) * SC);
+        x.fillStyle = pat;
+        x.fillRect(u, 0, du + 0.6, th);
+      }
+      u += du;
+    }
+    const out = { c: cv, x: ox, y: oy, w, h };
+    this.walls.set(key, out);
+    return out;
+  }
+
+  /** A plate's outline in the cliff's dark (half size), made once. */
+  private cliffOf(k: number, img: HTMLImageElement, x0: number, y0: number, w: number, h: number): HTMLCanvasElement {
+    let c = this.cliffs.get(k);
+    if (!c) {
+      c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(w / 2)); c.height = Math.max(1, Math.round(h / 2));
+      const x = c.getContext('2d')!;
+      x.drawImage(img, x0, y0, w, h, 0, 0, c.width, c.height);
+      x.globalCompositeOperation = 'source-in';
+      x.fillStyle = 'rgb(34, 26, 24)';
+      x.fillRect(0, 0, c.width, c.height);
+      this.cliffs.set(k, c);
+    }
+    return c;
+  }
+
+  /**
+   * Level k's plate (重慶): its cliff dropped under it on screen, the picture, then on it that level's step marks,
+   * owner plates and pads, and the current player's fork arrows when they stand on it.
+   */
+  private drawPlate(ctx: CanvasRenderingContext2D, k: number, e: number, f: number, pads: (only: (n: BoardNode) => boolean) => void, ramp: Set<number>, arrows: () => void) {
+    const lv = this.art.levels!, img = this.art.plates?.[k];
+    if (!img) return;
+    const [x0, y0, x1, y1] = lv.layer_box[String(k)], w = x1 - x0, h = y1 - y0;
+    const { a, b: bb, c, d } = this.basis(), dpr = this.dpr, det = a * d - c * bb || 1;
+    ctx.setTransform(a * dpr, bb * dpr, c * dpr, d * dpr, e * dpr, f * dpr);
+    const drop = (10 + 6 * k) * this.zoom, wx = -c * drop / det, wy = a * drop / det;   // a screen drop as a map step
+    const wall = this.wallOf(k);
+    if (wall) ctx.drawImage(wall.c, wall.x, wall.y, wall.w, wall.h);
+    else { const cliff = this.cliffOf(k, img, x0, y0, w, h); for (const t of [0.34, 0.67, 1]) ctx.drawImage(cliff, x0 + wx * t, y0 + wy * t, w, h); }
+    ctx.drawImage(img, x0, y0, w, h, x0, y0, w, h);
+    const own = (id: number) => nodeLevel(lv, id) === k && !ramp.has(id);
+    if (this.art.stepMarks) this.stepMarks(ctx, own);
+    const refLevel = (ref: number) => (ref > 6000 ? lv.companies : ref > 4000 ? lv.facilities : lv.lands)[(ref % 2000) - 1];
+    this.ownerPlates(ctx, ref => refLevel(ref) === k);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    pads(n => own(n.id));
+    const cur = this.game.players[this.game.current];
+    if (cur && nodeLevel(lv, cur.node) === k) arrows();
+  }
+
+  private rampLine: { pts: [number, number][]; up: number[]; span: [number, number] } | null = null;
+  /**
+   * The 公路's course (map points): from the first level's road square next to it, over its 12 squares, to the second
+   * level's, rounded off (two passes of corner cutting); with each point's share of the way up (0 at the first level).
+   */
+  private rampCourse(): { pts: [number, number][]; up: number[]; span: [number, number] } {
+    if (this.rampLine) return this.rampLine;
+    const lv = this.art.levels!, b = this.game.board, r = lv.ramp;
+    const at = (id: number): [number, number] => { const n = b.nodes[id - 1]; return [n.x, n.y]; };
+    const beyond = (id: number) => (b.nodes[id - 1]?.adjacent ?? []).find(m => m && !r.includes(m));
+    const lo = this.rampTop === 0 ? r[r.length - 1] : r[0], ids = this.rampTop === 0 ? [...r].reverse() : [...r];
+    const a = beyond(lo), z = beyond(ids[ids.length - 1]);
+    let pts: [number, number][] = [...(a ? [at(a)] : []), ...ids.map(at), ...(z ? [at(z)] : [])];
+    // the share of the way where the bridge itself runs: from its first square to its last (the ends are the levels' roads)
+    const raw = [0];
+    for (let i = 1; i < pts.length; i++) raw.push(raw[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    const T = raw[raw.length - 1] || 1, span: [number, number] = [a ? raw[1] / T : 0, z ? raw[raw.length - 2] / T : 1];
+    for (let pass = 0; pass < 2; pass++) {
+      const q: [number, number][] = [pts[0]];
+      for (let i = 0; i < pts.length - 1; i++) {
+        const [x0, y0] = pts[i], [x1, y1] = pts[i + 1];
+        q.push([x0 * 0.75 + x1 * 0.25, y0 * 0.75 + y1 * 0.25], [x0 * 0.25 + x1 * 0.75, y0 * 0.25 + y1 * 0.75]);
+      }
+      q.push(pts[pts.length - 1]);
+      pts = q;
+    }
+    const len = [0];
+    for (let i = 1; i < pts.length; i++) len.push(len[i - 1] + Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]));
+    return (this.rampLine = { pts, up: len.map(l => l / (len[len.length - 1] || 1)), span });
+  }
+
+  /**
+   * The 公路's viaduct (the user 2026-11-09: 「這都飛橋外面了」「鏈接處還是要優化」), drawn along its squares themselves so
+   * they always sit on its deck whichever way the view turns: piers dropping into the river (as deep as the first
+   * level's wall at its foot, the second's at its top, fading out like the walls), the girder under the deck's edge, the
+   * deck (a road as wide as the levels' roads, kerbs and railings, lamps, one dash a square) running onto both levels'
+   * roads; then its squares' pads.
+   */
+  private drawViaduct(pads: (only: (n: BoardNode) => boolean) => void, ramp: Set<number>, e: number, f: number) {
+    this.rampTop ??= 0;
+    const { pts, up, span } = this.rampCourse(), ctx = this.ctx, z = this.zoom, dpr = this.dpr;
+    const P = pts.map(([x, y]) => this.project(x, y));
+    if (P.every(p => p.x < -400 || p.x > this.W + 400 || p.y < -400 || p.y > this.H + 400)) { pads(n => ramp.has(n.id)); return; }
+    const { a, b: bb, c, d } = this.basis(), det = a * d - c * bb || 1;
+    const down = (h: number) => [-c * h / det, a * h / det];   // a drop of h screen px as a map step
+    const H0 = BoardView.WALL_H[1] * z, H1 = BoardView.WALL_H[2] * z;
+    ctx.save();
+    // piers, every 70 map px along the course
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    let next = 0, run = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      while (next <= run + seg) {
+        const t = (next - run) / (seg || 1), u = up[i - 1] + (up[i] - up[i - 1]) * t;
+        const p = { x: P[i - 1].x + (P[i].x - P[i - 1].x) * t, y: P[i - 1].y + (P[i].y - P[i - 1].y) * t };
+        if (u > span[0] + 0.02 && u < span[1] - 0.02) {
+          const h = H0 + (H1 - H0) * u, w = 16 * z;
+          const gr = ctx.createLinearGradient(0, p.y, 0, p.y + h);
+          gr.addColorStop(0, '#a9adb8'); gr.addColorStop(0.55, 'rgba(70, 76, 96, .85)'); gr.addColorStop(1, 'rgba(20, 24, 40, 0)');
+          ctx.fillStyle = gr;
+          ctx.fillRect(p.x - w / 2, p.y, w, h);
+          ctx.fillStyle = 'rgba(0, 0, 0, .22)';
+          ctx.fillRect(p.x, p.y, w / 2, h * 0.7);
+          ctx.fillStyle = 'rgba(255, 196, 96, .9)';   // a lamp under the deck on the pier's head
+          ctx.beginPath(); ctx.ellipse(p.x, p.y + 10 * z, 7 * z, 3 * z, 0, 0, Math.PI * 2); ctx.fill();
+        }
+        next += 70;
+      }
+      run += seg;
+    }
+    // the deck, in map pixels under the board's turn
+    ctx.setTransform(a * dpr, bb * dpr, c * dpr, d * dpr, e * dpr, f * dpr);
+    // the bridge's own part (girder, kerbs) from its first square to its last; the asphalt on to both levels' roads,
+    // round-ended, so it runs into them
+    const line = (dx: number, dy: number, whole = false) => {
+      ctx.beginPath();
+      pts.forEach(([x, y], i) => { if (whole || up[i] >= span[0] - 0.001 && up[i] <= span[1] + 0.001) ctx.lineTo(x + dx, y + dy); });
+    };
+    ctx.lineJoin = 'round'; ctx.lineCap = 'butt';
+    const [gx, gy] = down(11 * z);
+    line(gx, gy); ctx.lineWidth = 54; ctx.strokeStyle = '#4c5060'; ctx.stroke();   // the girder's face
+    line(gx * 0.45, gy * 0.45); ctx.lineWidth = 56; ctx.strokeStyle = '#6d717f'; ctx.stroke();
+    line(0, 0); ctx.lineWidth = 56; ctx.strokeStyle = '#b9bcc6'; ctx.stroke();   // kerbs and railings
+    line(0, 0, true); ctx.lineCap = 'round'; ctx.lineWidth = 44; ctx.strokeStyle = '#363945'; ctx.stroke();   // asphalt
+    ctx.lineCap = 'butt';
+    ctx.lineWidth = 1.6; ctx.strokeStyle = 'rgba(255, 255, 255, .14)';
+    for (const s of [-15, 15]) {   // worn wheel tracks
+      ctx.beginPath();
+      for (let i = 0; i < pts.length; i++) {
+        const [x0, y0] = pts[Math.max(0, i - 1)], [x1, y1] = pts[Math.min(pts.length - 1, i + 1)], L = Math.hypot(x1 - x0, y1 - y0) || 1;
+        ctx.lineTo(pts[i][0] - (y1 - y0) / L * s, pts[i][1] + (x1 - x0) / L * s);
+      }
+      ctx.stroke();
+    }
+    // one dash a square, like every road (chongqing_ground.square_dashes)
+    const b = this.game.board, ids = [...ramp].sort((m, n) => m - n);
+    ctx.lineWidth = 4; ctx.lineCap = 'butt'; ctx.strokeStyle = 'rgba(244, 242, 232, .92)';
+    ctx.beginPath();
+    for (const id of ids) for (const m of b.nodes[id - 1].adjacent) {
+      if (!m || m < id && ramp.has(m)) continue;
+      const n0 = b.nodes[id - 1], n1 = b.nodes[m - 1];
+      if (!n1) continue;
+      const mx = (n0.x + n1.x) / 2, my = (n0.y + n1.y) / 2, dx = (n1.x - n0.x) * 0.15, dy = (n1.y - n0.y) * 0.15;
+      ctx.moveTo(mx - dx, my - dy); ctx.lineTo(mx + dx, my + dy);
+    }
+    ctx.stroke();
+    // lamps on the railings
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    for (let i = 4; i < pts.length - 4; i += 6) {
+      const [x0, y0] = pts[i - 1], [x1, y1] = pts[i + 1], L = Math.hypot(x1 - x0, y1 - y0) || 1;
+      for (const s of [-26, 26]) {
+        const q = this.project(pts[i][0] - (y1 - y0) / L * s, pts[i][1] + (x1 - x0) / L * s);
+        ctx.fillStyle = 'rgba(70, 70, 80, .9)'; ctx.fillRect(q.x - 1.2 * z, q.y - 16 * z, 2.4 * z, 16 * z);
+        const gl = ctx.createRadialGradient(q.x, q.y - 17 * z, 0, q.x, q.y - 17 * z, 12 * z);
+        gl.addColorStop(0, 'rgba(255, 226, 150, 1)'); gl.addColorStop(0.3, 'rgba(255, 190, 90, .6)'); gl.addColorStop(1, 'rgba(255, 170, 60, 0)');
+        ctx.fillStyle = gl; ctx.beginPath(); ctx.arc(q.x, q.y - 17 * z, 12 * z, 0, Math.PI * 2); ctx.fill();
+      }
+    }
+    ctx.restore();
+    // its squares' pads, and the two squares at its ends again (the deck's asphalt runs over them)
+    pads(n => ramp.has(n.id) || n.adjacent.some(m => m && ramp.has(m)));
+  }
+
+  /** Just the level on screen, 「第X層」 (or 「公路」 on the viaduct): the same words for everyone's turn, the computers' too (the user 2026-11-09). */
+  private levelBadge(ctx: CanvasRenderingContext2D, k: number) {
+    const name = LEVEL_NAMES[k];
+    if (!name) return;
+    ctx.save();
+    ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
+    const g = this.game, p = g.players[this.current] ?? g.players[g.current];
+    const onRoad = !this.levelPick && !!p && !!this.art.levels?.ramp.includes(p.node);
+    const text = onRoad ? '公路' : name, x = 12, y = Math.round(this.H * 0.22);
+    ctx.font = '600 15px "PingFang TC", "Noto Sans TC", sans-serif';
+    const w = ctx.measureText(text).width + 22;
+    ctx.fillStyle = 'rgba(20, 16, 40, .72)';
+    ctx.beginPath(); ctx.roundRect(x, y, w, 28, 14); ctx.fill();
+    ctx.strokeStyle = ['', '#4fc3f7', '#ffb74d', '#ef5350'][k]; ctx.lineWidth = 2; ctx.stroke();
+    ctx.fillStyle = '#fff'; ctx.textBaseline = 'middle';
+    ctx.fillText(text, x + 11, y + 14.5);
+    ctx.restore();
+  }
+
+  private stepMarks(ctx: CanvasRenderingContext2D, only?: (id: number) => boolean) {
     const b = this.game.board;
     ctx.save();
     ctx.lineCap = 'round';
@@ -1349,7 +1854,7 @@ export class BoardView {
       for (const id of n.adjacent) {
         if (!id || id < n.id) continue;
         const m = b.nodes[id - 1];
-        if (!m || m.noDrop) continue;
+        if (!m || m.noDrop || (only && (!only(n.id) || !only(id)))) continue;
         const dx = m.x - n.x, dy = m.y - n.y, L = Math.hypot(dx, dy);
         if (L < 1) continue;
         const mx = (n.x + m.x) / 2, my = (n.y + m.y) / 2, px = -dy / L, py = dx / L;
@@ -1365,7 +1870,11 @@ export class BoardView {
 
   /** A plot's angle: from its road squares to it (the map compiler draws the outlines the same way). */
   plotAngle(ref: number, x: number, y: number): number {
-    const b = this.game.board;
+    const b = this.game.board, lv = this.art.levels;
+    if (lv) {   // 重慶: each plot's own turn (22.5° steps, the map file)
+      const k = ref > 6000 ? 'companies' : ref > 4000 ? 'facilities' : 'lands', own = lv.plot_angle[k]?.[(ref % 2000) - 1];
+      if (own !== undefined) return own;
+    }
     let a = this.plateAngle.get(ref);
     if (a === undefined) {
       const own = b.nodes.filter(n => n.ref === ref);
@@ -1388,10 +1897,11 @@ export class BoardView {
     return ((Math.round((toRoad - 90 - turn) / 45) % 8) + 8) % 8;
   }
 
-  private ownerPlates(ctx: CanvasRenderingContext2D) {
+  private ownerPlates(ctx: CanvasRenderingContext2D, only?: (ref: number) => boolean) {
     const g = this.game, b = g.board;
     const angle = (ref: number, x: number, y: number) => this.plotAngle(ref, x, y);
     const plate = (ref: number, x: number, y: number, owner: number, side: number) => {
+      if (only && !only(ref)) return;
       const p = g.players[owner - 1];
       if (!p || p.bankrupt) return;
       const a = angle(ref, x, y), c = Math.cos(a), s = Math.sin(a), h = side / 2;
@@ -1406,9 +1916,70 @@ export class BoardView {
       if (glow > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${glow * 0.6})`; ctx.fill(); }
       ctx.lineWidth = 3; ctx.strokeStyle = `rgba(${rgb}, .95)`; ctx.stroke();
     };
+    // Large plots the redrawn ground left out (issue #73: 地圖08's 北海岸 by the item shop): the same dark square as the
+    // others, so the plot shows where it is.
+    if (this.tiled) for (const id of MISSING_PLOT_ART[g.settings.mapId] ?? []) {
+      const f = b.facilities[id - 1];
+      if (!f || f.owner) continue;
+      const a = angle(f.id + 4000, f.x, f.y), c = Math.cos(a), sn = Math.sin(a), h = 43;
+      ctx.beginPath();
+      for (const [u, v] of [[-h, -h], [h, -h], [h, h], [-h, h]]) ctx.lineTo(f.x + u * c - v * sn, f.y + u * sn + v * c);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(12, 58, 6, .55)'; ctx.fill();
+    }
+    if (this.art.levels) { this.cqPlots(ctx, only); return; }
     for (const l of b.lands) if (l.owner) plate(l.id + 2000, l.x, l.y, l.owner, 44);
     for (const f of b.facilities) if (f.owner) plate(f.id + 4000, f.x, f.y, f.owner, 86);
-    for (const co of b.companies) if (co.controller) plate(co.id + 6000, co.x, co.y, co.controller, 86);
+    for (const co of b.companies) if (co.controller && (b.mapId < 5000 || co.resource)) plate(co.id + 6000, co.x, co.y, co.controller, 86); // (a player's map: its bank and store have no plot, its 企業大樓 one)
+  }
+
+  /**
+   * 重慶's plots (docs/rules/33 §1, the user 2026-11-09: 「能買的地塊再醒目一些，拼合的再嚴絲合縫一些」): every lot and
+   * large plot framed in a clean gold band over the edge of its pad in the ground picture (54 / 102 px, turned with it, the band 8 / 12 px wide over it),
+   * so the pad's turned, ragged edge never shows; an owned one framed and tinted in the owner's colour instead.
+   */
+  private cqPlots(ctx: CanvasRenderingContext2D, only?: (ref: number) => boolean) {
+    const g = this.game, b = g.board;
+    const own = (k: 'lands' | 'facilities' | 'companies', i: number, d: number): [number, number] => this.art.levels?.plot_size?.[k]?.[i] ?? [d, d];
+    const frame = (ref: number, x: number, y: number, owner: number, [wide, deep]: [number, number], band: number) => {
+      if (only && !only(ref)) return;
+      const p = owner ? g.players[owner - 1] : undefined, color = p && !p.bankrupt ? CHARACTERS[p.character].color : null;
+      if (!color && ref > 6000) return;   // a company is not bought by stopping on it
+      const a = this.plotAngle(ref, x, y), c = Math.cos(a), s = Math.sin(a);
+      // a frame `inset` px inside the plot's edge; the map editor's sizes: `wide` along the road, `deep` away from it
+      // (the plot's angle points from its road to it)
+      const path = (inset: number) => {
+        const hw = deep / 2 - inset, hd = wide / 2 - inset;
+        ctx.beginPath();
+        for (const [u, v] of [[-hw, -hd], [hw, -hd], [hw, hd], [-hw, hd]]) ctx.lineTo(x + u * c - v * s, y + u * s + v * c);
+        ctx.closePath();
+      };
+      const rgb = color === null ? '255, 214, 92' : `${color >> 16 & 255}, ${color >> 8 & 255}, ${color & 255}`;
+      let glow = 0;
+      if (color !== null && this.flashing?.refs.has(ref)) { const k = Math.min(1, (performance.now() - this.flashing.start) / 480); glow = Math.sin(k * Math.PI * 2) * 0.32; }
+      ctx.lineJoin = 'miter';
+      if (color === null) {
+        // an empty plot as the originals mark it (the user 2026-11-11: 「畫成和原版似的，像粉筆描地邊那種感覺…醒目一點，
+        // 還細一點」): a thin chalk line, a little broken, over a faint shadow that hides the pad's own edge
+        path(0.5);
+        ctx.setLineDash([]); ctx.lineWidth = 3; ctx.strokeStyle = 'rgba(24, 20, 16, .45)'; ctx.stroke();
+        path(1.5);
+        ctx.setLineDash([9, 2.5, 4, 2]); ctx.lineCap = 'round';
+        ctx.lineWidth = 2; ctx.strokeStyle = 'rgba(236, 248, 222, .92)'; ctx.stroke();
+        ctx.setLineDash([]); ctx.lineCap = 'butt';
+        return;
+      }
+      // an owned plot: its owner's colour inside, a thin line of it round (the empty plot's chalk, in colour)
+      path(band / 2);
+      ctx.fillStyle = `rgba(${rgb}, ${0.38 + Math.max(0, glow)})`; ctx.fill();
+      if (glow > 0) { ctx.fillStyle = `rgba(255, 255, 255, ${glow * 0.6})`; ctx.fill(); }
+      path(1);
+      ctx.lineWidth = band / 2 + 2; ctx.strokeStyle = 'rgba(36, 22, 8, .8)'; ctx.stroke();
+      ctx.lineWidth = band / 2; ctx.strokeStyle = `rgb(${rgb})`; ctx.stroke();
+    };
+    for (const l of b.lands) frame(l.id + 2000, l.x, l.y, l.owner, own('lands', l.id - 1, 54), 8);
+    for (const f of b.facilities) frame(f.id + 4000, f.x, f.y, f.owner, own('facilities', f.id - 1, 104), 12);
+    for (const co of b.companies) if (b.mapId < 5000 || co.resource) frame(co.id + 6000, co.x, co.y, co.controller, own('companies', co.id - 1, 104), 12);
   }
 
   private edge: string | null = null;
@@ -1472,7 +2043,7 @@ export class BoardView {
   }
 
   private draw() {
-    const g = this.game, ctx = this.ctx, b = g.board;
+    const g = this.game, ctx = this.ctx, b = g.board, lv = this.art.levels;
     this.frameNo++;
     this.moveCamera();
 
@@ -1483,8 +2054,10 @@ export class BoardView {
     ctx.setTransform(a * this.dpr, bb * this.dpr, c * this.dpr, d * this.dpr, e * this.dpr, f * this.dpr);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'high';
-    if (this.art.stepMarks) this.stepMarks(ctx);
-    this.ownerPlates(ctx);
+    if (!lv) {   // 重慶: each plate draws its own (drawPlate)
+      if (this.art.stepMarks) this.stepMarks(ctx);
+      this.ownerPlates(ctx);
+    }
     this.street?.drawGround(ctx); // 歌舞伎町's avenues and rails round the board (docs/rules/21 §8.3)
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
 
@@ -1494,14 +2067,14 @@ export class BoardView {
     };
 
     // 2. Event icons, flat on the ground (map#24, frame aux - 1, never rotated).
-    for (const n of b.nodes) {
+    const drawPad = (n: BoardNode) => {
       // 大富豪模式 (docs/rules/17 §2): 車站 / 機場 have their own pads (map sprites 9017 / 9018, the size of map#24's).
       if (n.event === 17 || n.event === 18) {
         const p = visible(n.x, n.y, 60);
         if (p) {
           this.sprite('map', n.event === 17 ? 9017 : 9018, 0, p.x, p.y);
         }
-        continue;
+        return;
       }
       // 歌舞伎町 (docs/rules/21 §7.1): 柏青哥店 / 拉霸店 have their own pads (map sprites 9019 / 9020, the same size).
       // 激情歲月 (docs/rules/24 §4): every pad redrawn in the era's look (map sprites 9100 + aux, 9150 the branch bank).
@@ -1509,20 +2082,53 @@ export class BoardView {
       if (pad) {
         const p = visible(n.x, n.y, 60);
         if (p) this.sprite('map', pad, 0, p.x, p.y);
-        continue;
+        return;
       }
-      if (!n.aux) continue;
+      // 重慶's 扶梯 / 直梯 squares (docs/rules/33 §2): pads of their own (map 9201 / 9202, smaller: lots close by)
+      if (lv && (lv.escalator.includes(n.id) || lv.elevator.includes(n.id))) {
+        const p = visible(n.x, n.y, 60);
+        if (p) this.sprite('map', lv.escalator.includes(n.id) ? 9201 : 9202, 0, p.x, p.y);
+        return;
+      }
+      if (!n.aux) return;
       const p = visible(n.x, n.y, 60);
-      if (p) this.sprite('map', 24, n.aux - 1, p.x, p.y);
-    }
+      // 自建地圖 (ui/maker): the pads at the size the editor shows (a square a step away stays clear of them)
+      if (p) this.sprite('map', 24, n.aux - 1, p.x, p.y, undefined, false, this.art.padScale ?? 1);
+    };
+    if (!lv) for (const n of b.nodes) drawPad(n);   // 重慶: each plate's own (drawPlate)
     // 岔路箭頭 (docs/rules/14): a small arrow on the grass beside every fork, under buildings and players
     // (歌舞伎町: bigger and glowing, over its busy street, after the sprites below).
-    if (!this.street) drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor);
+    const arrows = () => drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor);
+    if (!this.street && !lv) arrows();
 
     // 3. Surcharge / seizure diamonds pressed into the ground, then the y-sorted sprites.
     const items: Item[] = [];
-    const add = (sy: number, layer: number, draw: () => void) => items.push({ key: sy * 16 + layer, draw });
-    const stage = b.mapId >> 2, inStage = b.mapId & 3;
+    // 重慶 (docs/rules/33 §1): one level looked at. Every level's items after its own plate, the levels bottom to top,
+    // what is drawn so far softened before each plate (so the ones under the level looked at blur, the deeper the
+    // more); nothing of a level above it. Everything else (effects, marks) goes with the level looked at.
+    // Up the 公路 (§2): the second level comes in and the first blurs away square by square (`lift`), the viaduct and
+    // whoever is on it always sharp, laid over the second level so it meets its road.
+    const LV = 1e7, ramp = new Set(lv?.ramp ?? []), seen = lv ? this.viewLevel() : 0, lift = lv ? this.liftOf(seen) : 1;
+    const top = lv && seen <= 2 && !this.levelPick ? (lift > 0.02 ? 2 : 1) : seen, R = Math.min(top, 2);
+    if (lv) this.noteLevel(top === 2 && seen <= 2 && !this.levelPick && lift < 0.5 ? 1 : top);
+    const faded = (draw: () => void) => () => { const al = ctx.globalAlpha; ctx.globalAlpha = al * lift; try { draw(); } finally { ctx.globalAlpha = al; } };
+    const addAt = (level: number, sy: number, layer: number, draw: () => void, fade = true) => {
+      if (level <= top) items.push({ key: level * LV + sy * 16 + layer, draw: fade && level === 2 && lift < 0.999 ? faded(draw) : draw });
+    };
+    const add = (sy: number, layer: number, draw: () => void) => addAt(top, sy, layer, draw);
+    if (lv) {
+      const padsOf = (only: (n: BoardNode) => boolean) => { for (const n of b.nodes) if (only(n)) drawPad(n); };
+      for (let k = 1; k <= top; k++) {
+        const lk = k, half = lk === 2 && lift < 0.999;
+        items.push({ key: lk * LV - LV / 2 - 1, draw: () => this.blurBelow(ctx, half ? lift : 1) });
+        const plate = () => this.drawPlate(ctx, lk, e, f, padsOf, ramp, arrows);
+        items.push({ key: lk * LV - LV / 2, draw: half ? faded(plate) : plate });
+      }
+      items.push({ key: R * LV - LV / 2 + 1, draw: () => this.drawViaduct(padsOf, ramp, e, f) });
+    }
+    const nodeLv = (id: number) => (!lv ? 0 : ramp.has(id) ? R : nodeLevel(lv, id));
+    const addOn = (id: number, sy: number, layer: number, draw: () => void) => addAt(nodeLv(id), sy, layer, draw, !ramp.has(id));
+    const stage = houseSet(b) >> 2, inStage = houseSet(b) & 3;
     const ownerColor = (o: number) => (o ? CHARACTERS[g.players[o - 1]?.character ?? 0].color : 0);
 
     // While a clip plays, the lots keep their look until the clip's redraw frame (11 §0.2): draw a snapshot.
@@ -1530,49 +2136,57 @@ export class BoardView {
     const snap = this.lotsFrozen ? this.lotSnap : null;
     for (const [li, live] of b.lands.entries()) {
       const l = { ...live, ...snap?.lands[li] };
+      const lvl = lv ? lv.lands[li] : 0;
+      if (lvl > top) continue;
       const p = visible(l.x, l.y);
       if (!p) continue;
-      const fr = buildingFrame(l.facing, this.rot);
-      if (l.tmpState) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
+      const fr = buildingFrame(lv ? lv.facing.lands[li][0] : l.facing, this.rot);
+      if (l.tmpState && !lv) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
       if (l.level) {
-        const res = kbHouseSprite(g, l) ?? jqHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + b.mapId : 39 + b.mapId * 5 + l.level - 1); // 歌舞伎町's houses (21)
-        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
+        const res = (lv ? cqHouseSprite(lv, li, l.level) : undefined) ?? kbHouseSprite(g, l) ?? jqHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + houseSet(b) : 39 + houseSet(b) * 5 + l.level - 1); // 歌舞伎町's houses (21)
+        addAt(lvl, p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
       } else if (l.owner) {
         const ch = g.players[l.owner - 1]?.character ?? 0;
-        add(p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
+        addAt(lvl, p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
       }
-      if (this.highlight === l.id - 1) add(p.y, Layer.zzz + 1, () => this.ring(p.x, p.y));
+      if (this.highlight === l.id - 1) addAt(lvl, p.y, Layer.zzz + 1, () => this.ring(p.x, p.y));
     }
     for (const [fi, live] of b.facilities.entries()) {
       const fa = { ...live, ...snap?.facilities[fi] };
+      const lvl = lv ? lv.facilities[fi] : 0;
+      if (lvl > top) continue;
       const p = visible(fa.x, fa.y, 260);
       if (!p) continue;
-      let fr = buildingFrame(0, this.rot);
-      if (fa.tmpState) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
+      let fr = buildingFrame(lv ? lv.facing.facilities[fi][0] : 0, this.rot);
+      if (fa.tmpState && !lv) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
-        const jq = jqFacSprite(g, fa); // 激情歲月's five facilities (docs/rules/24 §2)
-        if (!jq && hotelSprite(fa, this.game.settings.mapId)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
+        const cq = lv && fa.type !== 1 ? cqFacSprite(lv, fi, fa) : undefined; // 重慶's 麻將館, 小吃街, 火鍋店, 研究所 (docs/rules/33 §6)
+        const jq = cq ?? jqFacSprite(g, fa); // 激情歲月's five facilities (docs/rules/24 §2)
+        if (!jq && !lv && hotelSprite(fa, this.game.settings.mapId)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
         // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
         const res = jq ?? casinoSprite(fa) ?? kbShopSprite(g, fa) ?? hotelSprite(fa, this.game.settings.mapId) ?? (stage === 0 ? 87 + i : 104 + inStage * 17 + i);
-        add(p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.neon(res, fr, p.x, p.y, fa.id + 4000); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
+        addAt(lvl, p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(fa.owner)); this.neon(res, fr, p.x, p.y, fa.id + 4000); this.flashOver(fa.id + 4000, 'map', res, fr, p.x, p.y); });
       } else if (fa.owner) {
         const ch = g.players[fa.owner - 1]?.character ?? 0;
-        add(p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
+        addAt(lvl, p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
       }
     }
-    for (const co of b.companies) {
+    for (const [ci, co] of b.companies.entries()) {
       if (!co.resource) continue;
+      const lvl = lv ? lv.companies[ci] : 0;
       const p = visible(co.x, co.y, 260);
-      if (p) add(p.y, Layer.building, () => this.sprite('map', co.resource + 38, buildingFrame(co.facing, this.rot), p.x, p.y, ownerColor(co.controller)));
+      const res = lv ? cqCompanySprite(lv, ci, co.resource + 38) : co.resource + 38, fr = buildingFrame(lv ? lv.facing.companies[ci][0] : co.facing, this.rot);
+      if (p) addAt(lvl, p.y, Layer.building, () => this.sprite('map', res, fr, p.x, p.y, ownerColor(co.controller)));
     }
     for (const [li, ls] of b.landscapes.entries()) {
       if (!ls.resource) continue;
       const p = visible(ls.x, ls.y, 300);
       // Landscapes keep their own outline colour (09 §3.4); a magenta placeholder is drawn as a dark line.
-      if (p) add(p.y, Layer.building, () => {
-        const res = ls.resource + 38, fr = buildingFrame(ls.facing, this.rot);
-        this.sprite('map', res, fr, p.x, p.y, this.bank.placeholderOutline('map', res) ? 0x202020 : undefined);
+      if (p) addAt(lv ? lv.landscapes[li] : 0, p.y, Layer.building, () => {
+        // 重慶: a landmark's own size and facing from the map editor (editor/site/remake.html)
+        const res = ls.resource + 38, fr = buildingFrame(lv?.landscape_face?.[li] ?? ls.facing, this.rot);
+        this.sprite('map', res, fr, p.x, p.y, this.bank.placeholderOutline('map', res) ? 0x202020 : undefined, false, lv?.landscape_scale?.[li] ?? this.art.landscapeScale?.[li] ?? 1);
         this.neon(res, fr, p.x, p.y, 8000 + li);
       });
     }
@@ -1589,9 +2203,9 @@ export class BoardView {
       for (const [di, d] of this.art.decor.entries()) {
         const p = visible(d.x, d.y, 90);
         if (!p || this.street?.covers(d.x, d.y) || ah11Hides(towers, d)) continue;
-        add(p.y, Layer.building, () => {
+        addAt(lv ? lv.decorations[di] : 0, p.y, Layer.building, () => {
           const n = this.bank.board('map', d.res)?.length ?? 0;
-          if (n) { this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y); this.neon(d.res, Math.min(season, n - 1), p.x, p.y, 9000 + di); }
+          if (n) { this.sprite('map', d.res, Math.min(season, n - 1), p.x, p.y, undefined, false, d.s ?? 1); this.neon(d.res, Math.min(season, n - 1), p.x, p.y, 9000 + di); }
         });
       }
     }
@@ -1620,10 +2234,10 @@ export class BoardView {
         const far = o.type === 18 && pl.god > 0;
         const [ox, oy] = (far ? ATTACH_FAR : ATTACH)[sd];
         const x = q.x + ox * this.zoom, y = q.y + oy * this.zoom;
-        add(y, Layer.building, () => this.sprite('Data', 395 + o.type, (sd + 4) & 7, x, y));
+        addOn(pl.node, y, Layer.building, () => this.sprite('Data', 395 + o.type, (sd + 4) & 7, x, y));
       } else if (o.node && !this.hiddenObjects.has(o.node)) {
         const n = nodeById(b, o.node), p = visible(n.x, n.y);
-        if (p) add(p.y, Layer.building, () => this.sprite('Data', 395 + o.type, screenDir(o.dir, this.rot), p.x, p.y));
+        if (p) addOn(o.node, p.y, Layer.building, () => this.sprite('Data', 395 + o.type, screenDir(o.dir, this.rot), p.x, p.y));
       }
     }
 
@@ -1637,14 +2251,15 @@ export class BoardView {
       const spr = this.spriteOf(id);
       if (!spr) continue;
       const layer = id === this.current ? Layer.current : id < g.npcBase ? Layer.player : Layer.npc;
-      add(p.y, layer, () => {
+      const on = (draw: () => void) => (pl ? addOn(pl.node, p.y, layer, draw) : addAt(top, p.y, layer, draw));
+      on(() => {
         const frames = this.bank.board('Data', spr.res);
         if (!frames) return;
         const fpd = Math.max(1, frames.length >> 3);
         const anim = Math.min(a.anim, fpd - 1);
         this.sprite('Data', spr.res, screenDir(a.dir, this.rot) * fpd + anim, p.x, p.y, undefined, spr.frozen);
       });
-      if (pl?.sleepwalk) add(p.y, Layer.zzz, () => this.sprite('Data', 414, a.zzz, p.x, p.y));
+      if (pl?.sleepwalk) on(() => this.sprite('Data', 414, a.zzz, p.x, p.y));
     }
 
     this.fx.draw(add);
@@ -1656,12 +2271,13 @@ export class BoardView {
     items.sort((x, y) => x.key - y.key);
     // One picture that fails (released, not decodable) must not take the rest of the frame with it.
     for (const it of items) { try { it.draw(); } catch (err) { this.oops('sprite', err); } }
+    if (lv) this.levelBadge(ctx, top);
     if (this.overWorld) {
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
       try { this.overWorld(ctx, this.W, this.H, this.dpr, this.zoom); } catch (err) { this.oops('weather', err); }
       ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
     }
-    if (this.street) this.badges();
+    if (this.street || this.game.rt || this.game.players.some(p => this.game.isBeggar(p))) this.badges();
     if (this.marks.size || this.markNodes.size) this.drawMarks();
 
     // Picking (09 §7.5): the spots that may be picked glow, drawn over the board so icons do not hide them.
@@ -1745,12 +2361,18 @@ export class BoardView {
     this.street.glow(this.ctx, f.img, id, sx - f.ax * s, sy - f.ay * s, f.w * s, f.h * s);
   }
 
-  /** 歌舞伎町's signs over the heads (docs/rules/21 §2.2 「處理事務中」, §4.1 「黑幫附身」): small rounded tags. */
+  /**
+   * 歌舞伎町's signs over the heads (docs/rules/21 §2.2 「處理事務中」, §4.1 「黑幫附身」): small rounded tags; 即時制's
+   * 「購物中」 over a player in a shop, the bank, the magic house or the lottery, 「保護中」 over one hit enough this turn
+   * (簡單 / 中等) — cards cannot pick them meanwhile.
+   */
   private badges() {
     const g = this.game, ctx = this.ctx, z = this.zoom;
     const fs = Math.max(11, Math.min(15, 11 * z));
     for (const p of g.players) {
-      const list = [...kbBadges(g, p.id), ...jqBadges(g, p.id)], a = this.actors.get(p.id);
+      // 派對模式's 乞丐 (Game.beggarRule): 「乞丐 1.2萬／5萬」, how far from coming back
+      const beg = g.isBeggar(p) ? [{ text: `乞丐 ${shortMoney(p.cash + p.bank)}／${shortMoney(REVIVE)}`, kind: 'beggar' }] : [];
+      const list = [...beg, ...kbBadges(g, p.id), ...jqBadges(g, p.id), ...(g.rt?.isIndoors(p.id) ? [{ text: '購物中', kind: 'busy' }] : g.rt?.isShielded(p.id) ? [{ text: '保護中', kind: 'busy' }] : [])], a = this.actors.get(p.id);
       if (!list.length || !a?.visible || g.offRoad(p)) continue;
       const w = this.at(a), q = this.project(w.x, w.y);
       // Above the head, and above a carried bomb's count.
@@ -1763,7 +2385,7 @@ export class BoardView {
         const tw = ctx.measureText(t.text).width, h = fs + 6, bw = tw + 12, x0 = q.x - bw / 2, y0 = y - h;
         ctx.beginPath();
         ctx.roundRect(x0, y0, bw, h, h / 2);
-        ctx.fillStyle = t.kind === 'gang' ? 'rgba(28, 24, 30, .92)' : t.kind === 'taxi' ? 'rgba(255, 196, 0, .95)' : 'rgba(64, 82, 212, .92)';
+        ctx.fillStyle = t.kind === 'gang' ? 'rgba(28, 24, 30, .92)' : t.kind === 'taxi' ? 'rgba(255, 196, 0, .95)' : t.kind === 'beggar' ? 'rgba(120, 78, 40, .94)' : 'rgba(64, 82, 212, .92)';
         ctx.fill();
         ctx.lineWidth = 1.5;
         ctx.strokeStyle = t.kind === 'gang' ? '#ffd84a' : '#fff';

@@ -4,6 +4,7 @@
  * the statistics ledger of the chosen player (core/stats.ts), and 「儲存到相簿」 / 「分享」 (a picture drawn by
  * results-card.ts), 「下一局」 (pick the next map, next-game.ts) and 「回到主畫面」.
  */
+import { clears, clearStamp } from './clears';
 import { CHARACTERS, playerName } from '../core/characters';
 import { format } from '../core/date';
 import { cardName } from '../core/modules/cards';
@@ -284,7 +285,7 @@ export function pickNextMap(bank: SpriteBank, root: HTMLElement, maps: MapInfo[]
     const shown = list.filter(m => m.kind === kind);
     sheet.innerHTML = `<div class="msg sheet rs-next-box"><div class="ribbon">下一局</div>
       <div class="chips rs-next-tabs"><button class="chip${kind === 'orig' ? ' on' : ''}" data-k="orig">原版地圖</button><button class="chip${kind === 'custom' ? ' on' : ''}" data-k="custom">自製地圖</button></div>
-      <div class="rs-maps">${shown.map(m => `<button class="rs-map${m.id === mapId ? ' on' : ''}" data-m="${m.id}"><img src="${m.thumbnail}" alt=""><span>${esc(m.name)}</span>${run.cleared.includes(m.id) ? '<i class="rs-stamp">已通關</i>' : m.id === current ? '<i class="rs-stamp now">剛玩過</i>' : ''}</button>`).join('')}</div>
+      <div class="rs-maps">${shown.map(m => `<button class="rs-map${m.id === mapId ? ' on' : ''}" data-m="${m.id}"><img src="${m.thumbnail}" alt=""><span>${esc(m.name)}</span>${clears(m.id) ? clearStamp(m.id, 'rs-stamp sm') : run.cleared.includes(m.id) ? '<i class="rs-stamp">已通關</i>' : m.id === current ? '<i class="rs-stamp now">剛玩過</i>' : ''}</button>`).join('')}</div>
       <div class="rs-next-foot"><div class="rs-vs"><div class="rs-vs-side">${humans.map(c => face(bank, c)).join('')}</div><b>VS</b><div class="rs-vs-side">${opponents.map(c => face(bank, c, run.defeated.includes(c) ? 'beaten' : '')).join('')}</div>
         <button class="chip" data-reroll="1">重新抽選</button></div>
       <p class="rs-next-note">${phrases('沿用這一局的設定（資金、行進方式、土地權限、遊戲時間、勝利條件）')}</p>

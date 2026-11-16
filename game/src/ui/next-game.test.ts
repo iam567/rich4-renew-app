@@ -48,4 +48,12 @@ describe('下一局 (next game)', () => {
       fundIndex: 3, traffic: 1, landLimitIndex: 2, daysLimitIndex: 4, victoryIndex: 5, startDate: 12345, seed: 77,
     });
   });
+
+  it('挑戰模式 and 即時制 go on into the next game (issue #68); never 挑戰模式 on 大富翁城, nor 即時制 off the standard maps', () => {
+    const base = { fundIndex: 1, traffic: 0 as const, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0 };
+    expect(nextSettings({ ...base, monthTasks: 2 }, 3, [9], [4], 1, 1).monthTasks).toBe(2);
+    expect(nextSettings({ ...base, monthTasks: 2 }, 105, [9], [4], 1, 1).monthTasks).toBeUndefined();
+    expect(nextSettings({ ...base, realtime: { length: 1200000 } }, 3, [9], [4], 1, 1).realtime).toEqual({ length: 1200000 });
+    expect(nextSettings({ ...base, realtime: { length: 1200000 } }, 106, [9], [4], 1, 1).realtime).toBeUndefined();
+  });
 });

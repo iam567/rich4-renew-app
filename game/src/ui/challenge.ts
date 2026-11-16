@@ -98,7 +98,7 @@ function period(g: Game): string {
 export const REWARD_RULE: Record<MonthlyTask['kind'], string> = {
   race: '搶先：第一個做到的抽一張獎勵卡',
   most: '比拼：到期時最多的抽獎勵卡，平手都抽',
-  keep: '堅持：整期都做到的都抽獎勵卡',
+  keep: '堅持：整期做到的抽獎勵卡（超過 2 人做到就作廢）',
 };
 const ruleOf = (g: Game, t: MonthlyTask) => (g.challengeTracker!.rewards ? REWARD_RULE[t.kind] : MONTHLY_RULE[t.kind]);
 /** Who took it: ★★★ (挑戰模式's stars) or 獎 (a 獎勵卡). */
@@ -117,9 +117,10 @@ export function monthCard(g: Game, face: (character: number) => string, big = fa
   const c = g.challengeTracker!, m = c.month, t = c.monthTask(), el = document.createElement('div');
   el.className = `chl-month${big ? ' big' : ''}`;
   if (!m || !t) { el.innerHTML = `<p class="chl-month-none">${c.rewards && c.perMonth === 2 ? '任務卡：16 日或下個月 1 日抽第一張' : c.rewards ? '任務卡：下個月 1 日抽第一張' : '本月任務：下個月 1 日抽第一張'}</p>`; return el; }
+  // A bankrupt player is out of the card (the user 2026-11-03: 「都已經倒閉了，為什麼他還能抽呢」): greyed, 「出局」, no ✓.
   const who = g.players.map(p => {
-    const won = m.won.includes(p.id);
-    return `<span class="${won ? 'got' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? `<i class="chl-on">${wonMark(g)}</i>` : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
+    const won = m.won.includes(p.id), out = p.bankrupt;
+    return `<span class="${won ? 'got' : ''}${out ? ' out' : ''}" style="--c:${color(g, p.id)}"><img src="${face(p.character)}" alt="">${won ? `<i class="chl-on">${wonMark(g)}</i>` : out ? '出局' : m.done ? '' : esc(monthShown(g, p.id))}</span>`;
   }).join('');
   el.innerHTML = `<span class="chl-month-art"><img class="chl-month-pic" src="${MONTH_ART}/${t.id}.webp" alt="" onerror="this.style.visibility='hidden'"></span>
     <div class="chl-month-body"><small>${esc(period(g))}${m.done ? '・已結束' : ''}</small>

@@ -4,3 +4,4 @@ dist/
 public/assets/
 release/
 .cache/
+public/changelog.json

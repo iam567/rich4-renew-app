@@ -23,7 +23,22 @@
       }
       function started() { return !!document.querySelector('#app .title, #app .game, #app .boot, #app .error'); }
       window.addEventListener('error', function (e) {
-        errs.push((e.message || 'error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno : '') + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
+        // a file the page could not load (a script, a stylesheet): which one (a player's PC after an in-game update,
+        // 2026-11-10, showed only 「error」 twice)
+        var t = e.target, file = t && t !== window && (t.src || t.href);
+        if (file && !started()) {
+          errs.push('缺少檔案：' + String(file).split('/').slice(-2).join('/'));
+          // On the PC: a downloaded version missing its own files goes back to the installed one at once (no three
+          // failed starts first); the in-game update offers it again later.
+          var up = window.rich4Desktop && window.rich4Desktop.update;
+          try {
+            if (up && up.remove && !sessionStorage.getItem('rich4.bootFallback')) {
+              sessionStorage.setItem('rich4.bootFallback', '1');
+              Promise.resolve(up.remove('current')).then(function () { location.reload(); }, function () {});
+              return;
+            }
+          } catch (x) { /* show it */ }
+        } else errs.push((e.message || 'error') + (e.filename ? ' @ ' + e.filename.split('/').pop() + ':' + e.lineno + ':' + e.colno : '') + (e.error && e.error.stack ? '\n' + e.error.stack : ''));
         if (!started()) setTimeout(function () { if (!started()) show(); }, 1500);
       }, true);
       window.addEventListener('unhandledrejection', function (e) {

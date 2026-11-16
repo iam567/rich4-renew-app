@@ -143,6 +143,7 @@
 .rs-stamp { position: absolute; white-space: nowrap; top: 10px; right: 6px; padding: 1px 7px; border-radius: 8px; font-style: normal; font-size: 12px; font-weight: 900; color: #fff;
   background: #e0303c; border: 2px solid #fff; transform: rotate(8deg); box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
 .rs-stamp.now { background: #2d7bd8; }
+.rs-stamp.sm { top: 6px; right: 4px; padding: 0 4px; font-size: 9px; line-height: 14px; border-width: 1.5px; transform: rotate(6deg); }
 .rs-vs { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px; margin: 6px 0 2px; }
 .rs-vs > b { font-size: 22px; font-weight: 900; color: #ffe14a; text-shadow: 0 2px 0 #a04000; }
 .rs-vs-side { display: flex; gap: 4px; }

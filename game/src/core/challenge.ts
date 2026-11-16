@@ -150,6 +150,8 @@ function dec(v: unknown): unknown {
   return v;
 }
 
+/** 挑戰模式's 獎勵卡: a 堅持 card pays only when at most this many kept it (more: void). */
+export const KEEP_MAX = 2;
 /** 完成就抽: the days a card waits for someone before the next is drawn. */
 export const CHAIN_DAYS = 30;
 
@@ -200,6 +202,9 @@ export class Challenge {
    * instead of stars; all three kinds in every mode (完成就抽: a 比拼 / 堅持 card is decided after its 30 days). The game plays the cards owed at the end of a turn (Game.payRewards).
    */
   rewardsDue: number[] = [];
+  /** The card the 獎勵卡 owed are for (shown as won first), and a next card waiting until they are drawn. */
+  rewardFor = '';
+  pendingDraw = false;
   /** 獎勵卡 drawn so far (the next card's number in the game's own reward stream). */
   rewardSeq = 0;
   month: MonthState | null = null;
@@ -360,8 +365,8 @@ export class Challenge {
         if (before === 3 && t === 4) this.bump(p, 'joyOnJoy');
         // 轉運大師 (G15): a bad god (just left) replaced by a good one or the 土地公.
         if (BAD_GODS.has(before) && (GOOD_GODS.has(t) || t === 12)) this.bump(p, 'turnLuck');
-        // 請神 (G45): the god 請神符 brought flying.
-        if (o.invited && GOOD_GODS.has(t)) this.bump(p, 'prayGot');
+        // 請神 (G45, M060): the god 請神符 brought flying — a good one or the 土地公 (issue #86: it takes land for you).
+        if (o.invited && (GOOD_GODS.has(t) || t === 12)) this.bump(p, 'prayGot');
         o.invited = false;
         o.justLeft = 0;
         this.endStay(p);
@@ -716,10 +721,10 @@ export class Challenge {
     this.dayExtras();
     this.checkAll();
     // 每月任務: the 1st (and with two a month the 16th) ends the card and draws the next.
-    if (this.monthly && this.perMonth !== 3 && (dayOf(g.date) === 1 || (this.perMonth === 2 && dayOf(g.date) === 16))) { this.endMonth(); this.drawMonth(); }
+    if (this.monthly && this.perMonth !== 3 && (dayOf(g.date) === 1 || (this.perMonth === 2 && dayOf(g.date) === 16))) { this.endMonth(); this.nextCard(); }
     // 完成就抽: after 30 days a card gives way to the next (the user 2026-11-03: 「没人完成就一个月换一次」); a 比拼 /
     // 堅持 card is decided then (「到三十天之后评选出一个优胜了，然后再抽一张」).
-    if (this.monthly && this.perMonth === 3 && this.month && g.daysElapsed - this.month.since >= CHAIN_DAYS) { this.endMonth(); this.drawMonth(); }
+    if (this.monthly && this.perMonth === 3 && this.month && g.daysElapsed - this.month.since >= CHAIN_DAYS) { this.endMonth(); this.nextCard(); }
     this.raceCheck();
     const best = this.leader();
     if (best >= 0 && this.winner < 0) this.winner = best;
@@ -885,6 +890,14 @@ export class Challenge {
   /** A simulation's card for every month (scripts/monthly-sim.ts --force); never set by the game. */
   static forceMonthly = '';
 
+  /**
+   * The next card: drawn now, or — when someone just won one (獎勵卡 owed) — after the win is shown and the 獎勵卡 drawn
+   * (the user 2026-11-03: who won first, then the reward draw, then the new card; Game.payRewards calls drawPending).
+   */
+  private nextCard() { if (this.rewards && this.rewardsDue.length) this.pendingDraw = true; else this.drawMonth(); }
+  /** The card waiting for the rewards to be drawn first (Game.payRewards). */
+  drawPending(): void { if (this.pendingDraw) { this.pendingDraw = false; this.drawMonth(); } }
+
   private drawMonth() {
     const g = this.g, t = (Challenge.forceMonthly && monthlyById.get(Challenge.forceMonthly)) || drawMonthly(g, this.monthSeq);
     let goal = t.goal < 0 ? -1 : t.money && t.kind === 'race' ? Math.round((t.goal * g.priceIndex) / 1000) * 1000 : t.goal;
@@ -931,7 +944,8 @@ export class Challenge {
     m.won = won; m.done = true;
     if (this.rewards) {
       this.rewardsDue.push(...won);
-      if (taken && this.perMonth === 3) { this.endMonth(); this.drawMonth(); } // 完成就抽: the next card at once
+      this.rewardFor = m.id;
+      if (taken && this.perMonth === 3) { this.endMonth(); this.nextCard(); } // 完成就抽: the next card (after the rewards)
       return;
     }
     for (const p of won) this.monthStars[p] = (this.monthStars[p] ?? 0) + 3;
@@ -948,7 +962,8 @@ export class Challenge {
         if (top >= Math.max(1, m.goal)) this.award(live.filter((_, i) => vals[i] === top).map(p => p.id));
       } else {
         const won = live.filter(p => this.monthValue(p) === 0 && (!t.also || this.monthValue(p, t.also[0]) >= t.also[1])).map(p => p.id);
-        if (won.length) this.award(won);
+        // 挑戰模式's 獎勵卡 (the user 2026-11-03): a 堅持 card kept by more than two players is void — too easy, no reward.
+        if (won.length && !(this.rewards && won.length > KEEP_MAX)) this.award(won);
       }
     }
     this.monthLog.push({ id: m.id, seq: m.seq, won: m.won });

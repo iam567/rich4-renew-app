@@ -9,6 +9,7 @@ import { cardScene, toolScene } from './screens/card-fx';
 import { resultBox } from './screens/event-result';
 import { ASSETS } from './assets';
 import { GRADE_BACKS, GRADES } from '../core/rewards';
+import { monthlyById } from '../core/monthly';
 import { playEventFx } from './event-fx';
 import { preloadClips, QUOTE_LEAD } from './effects';
 import { warmFireworks } from './fireworks';
@@ -25,7 +26,8 @@ import { CARD_LINES, EVENT_LINES, TOOL_LINES } from './lines';
 import { CARD_VOICE, EVENT_VOICE, TOOL_VOICE } from './voices';
 import { audio, characterVoice, GOD_SOUND, Sfx, Theme } from './audio';
 import { cardBox } from './screens/card-result';
-import { cardFace, cardLineIndex, isWaivedNotice, LastLine, parseStuck, payReaction, stuckLament, swapReaction, type SwapBefore } from './reactions';
+import { cardFace, cardLineIndex, isWaivedNotice, LastLine, lineExpr, parseStuck, payReaction, stuckLament, swapReaction, type LineSource, type SwapBefore } from './reactions';
+import { preloadFaces } from './faces';
 
 type Fx = Extract<GameEvent, { t: 'fx' }>;
 type Pt = { x: number; y: number };
@@ -97,6 +99,10 @@ export class MapDirector {
   private pending: Promise<void> = Promise.resolve();
   /** Engine lines replaced by the original's own (said once, then dropped). */
   private drop: string[] = [];
+  /** 即時制 (the user 2026-11-08: the others' lines were too much): only this player speaks on the map; -1 everyone. */
+  onlySpeaker = -1;
+  /** 即時制 (the user 2026-11-08: the dog's bite back, just quicker): the board's clips at 1.5 times the speed, the camera left where it looks. */
+  quick = false;
   /** The last line said: the original never says the same line twice in a row (rich4.asm:23542). */
   private last = new LastLine();
   private angelTop = false;
@@ -107,6 +113,8 @@ export class MapDirector {
     // Idle time after the map is up: the fireworks' glow dots (any lot reaching level 5, the robot worker's last
     // floor, the angel) are painted once, so the first show starts at once (fireworks.ts; no clip to decode).
     setTimeout(warmFireworks, 2500);
+    // The players' redrawn faces, so the first line already has them.
+    preloadFaces(game.players.map(p => p.character));
   }
 
   private get pi() { return this.game.priceIndex; }
@@ -158,14 +166,16 @@ export class MapDirector {
    * `_rich4_player_say(p, face, text)`: the camera goes to the speaker (unless `stay`), the cloud with the
    * expression face shows for 1000 ms (a tap ends it). Nobody speaks while abroad, sleepwalking or hibernating.
    */
-  async line(id: number | undefined, face: number, text: string | null | undefined, stay = false, force = false, spot?: Pt, voice?: number, occasion?: string) {
+  async line(id: number | undefined, face: number, text: string | null | undefined, stay = false, force = false, spot?: Pt, voice?: number, occasion?: string, src: LineSource = { kind: 'text' }) {
     const p = this.player(id);
     if (!p || !text || !p.whoPlays && !p.bankrupt) return;
+    if (this.onlySpeaker >= 0 && p.id !== this.onlySpeaker) return;
     if (!force && (p.vanish || p.sleepwalk || p.sleep)) return;
     const v = voice ?? characterVoice(p.character, text);
     if (!this.last.take(p.character, text, v)) return;
     const at = spot ?? this.pos(p.id);
     if (!stay) await this.view.panTo(at.x, at.y);
+    else this.view.spotLevel(this.view.levelAt(at.x, at.y));   // 重慶: the speaker's level, even without a camera move
     // 激情歲月 (docs/rules/24 §7): a quotation first in the same cloud, the line 0.6 s later (× the game speed).
     const quote = occasion && jqRules(this.game) && quotesMode() === 0 ? pickQuote(p.character, occasion) : undefined;
     // The quotation and the line show together (the user 2026-10-23: no empty cloud first); the cloud stays the
@@ -176,21 +186,22 @@ export class MapDirector {
     // tap ends both.
     void audio.voice(v);
     const ms = lead + Math.max(1000, v !== undefined ? audio.length('voice', v) * 1000 + 80 : 0);
-    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, face, text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }), quote, 0);
+    // The expression: the original's face, made richer by the words and the occasion (docs/rules/15 §6).
+    await this.view.fx.cloud(() => spot ?? this.pos(p.id), p.character, lineExpr(face, text, src), text, ms, end => this.view.fx.onTap(() => { audio.stopVoice(); end(); }), quote, 0);
     if (!stay) this.view.refollow();
   }
 
   private ev(id: number | undefined, slot: number, face: number, stay = false, force = false) {
     const p = this.player(id);
-    return p ? this.line(id, face, EVENT_LINES[p.character]?.[slot], stay, force, undefined, EVENT_VOICE[p.character]?.[slot], eventOccasion(slot)) : Promise.resolve();
+    return p ? this.line(id, face, EVENT_LINES[p.character]?.[slot], stay, force, undefined, EVENT_VOICE[p.character]?.[slot], eventOccasion(slot), { kind: 'event', slot }) : Promise.resolve();
   }
   private tool(id: number | undefined, slot: number, face: number) {
     const p = this.player(id);
-    return p ? this.line(id, face, TOOL_LINES[p.character]?.[slot], false, false, undefined, TOOL_VOICE[p.character]?.[slot], 'tool') : Promise.resolve();
+    return p ? this.line(id, face, TOOL_LINES[p.character]?.[slot], false, false, undefined, TOOL_VOICE[p.character]?.[slot], 'tool', { kind: 'tool', slot }) : Promise.resolve();
   }
   private card(id: number | undefined, k: number, face: number) {
     const p = this.player(id);
-    return p ? this.line(id, face, CARD_LINES[p.character]?.[k], false, false, undefined, CARD_VOICE[p.character]?.[k], 'card') : Promise.resolve();
+    return p ? this.line(id, face, CARD_LINES[p.character]?.[k], false, false, undefined, CARD_VOICE[p.character]?.[k], 'card', { kind: 'card', card: k % 30 + 1, role: Math.floor(k / 30) as 0 | 1 | 2 }) : Promise.resolve();
   }
   /** A card line by role (0 user, 1 on oneself, 2 the one it hit) with the original's face (reactions.ts). */
   private cardRole(id: number | undefined, card: number, role: 0 | 1 | 2) {
@@ -235,7 +246,7 @@ export class MapDirector {
    */
   private async clipAt(res: number, at: Pt | (() => Pt), o: { bake?: number; detach?: boolean; hold?: number; caption?: string; at?: Record<number, () => void>; origin?: [number, number]; offset?: [number, number]; pan?: boolean; sound?: number; stay?: boolean } = {}) {
     const p = typeof at === 'function' ? at() : at;
-    if (o.pan !== false) await this.view.panTo(p.x, p.y);
+    if (o.pan !== false && !this.quick) await this.view.panTo(p.x, p.y);
     const bake = o.bake ?? 0;
     if (bake && !o.detach) this.view.freezeLots();
     let reached!: () => void;
@@ -245,7 +256,7 @@ export class MapDirector {
     if (o.sound !== undefined) { const first = frames[0], id = o.sound; frames[0] = () => { audio.sfx(id); first?.(); }; }
     const prev = frames[Math.max(0, bake - 1)];
     frames[Math.max(0, bake - 1)] = () => { prev?.(); this.view.thawLots(); reached(); };
-    const done = this.view.fx.clip(res, at, { at: frames, hold: o.hold, caption: o.caption, skippable: !!o.caption, origin: o.origin, offset: o.offset });
+    const done = this.view.fx.clip(res, at, { at: frames, hold: this.quick ? 0 : o.hold, caption: o.caption, skippable: !!o.caption, origin: o.origin, offset: o.offset, ...(this.quick ? { speed: 1.5 } : {}) });
     if (o.detach) {
       this.pending = done.then(() => this.view.refollow());
       await Promise.race([atBake, done]);
@@ -496,6 +507,19 @@ export class MapDirector {
     }
   }
 
+  /**
+   * 即時制: a news entry's effect on the board alone (外星人, 怪獸, 氣爆, 颱風, 龍捲風 over their lots; a street flashing),
+   * without its picture board, the camera left where the player looks (the user 2026-11-08: seen in passing).
+   */
+  async newsOnBoard(s: Extract<GameEvent, { t: 'fx' }>) {
+    const id = Number(s.data?.id), node = s.node ? this.game.node(s.node) : null;
+    const ref = node?.ref ?? 0, at = this.view.lotPos(ref) ?? (node ? { x: node.x, y: node.y } : null);
+    if (!at) return;
+    const clip = NEWS_CLIP[id];
+    if (clip) await this.clipAt(clip[0], at, { bake: clip[1], sound: NEWS_SOUND[id] });
+    else if (id === 6 || id === 14 || id === 18 || id === 19) await this.view.flashLots(this.street(ref));
+  }
+
   private lotOwner(ref: number): number {
     const b = this.game.board;
     const l = ref > 2000 && ref < 4000 ? b.lands[ref - 2001] : ref > 4000 && ref < 6000 ? b.facilities[ref - 4001] : undefined;
@@ -592,9 +616,10 @@ export class MapDirector {
       case 'chest':
         if (!p) return false;
         this.chest = p.id;
-        this.drop.push('得到５００點券！');
-        audio.sfx(Sfx.chest);
-        await this.hud.flash('得到５００點券！', 1500);
+        { const got = typeof s.data?.points === 'number' ? `得到${s.data.points}點券！` : '得到５００點券！'; // 地獄: 100–500
+          this.drop.push(got);
+          audio.sfx(Sfx.chest);
+          await this.hud.flash(got, 1500); }
         await this.ev(p.id, 0, Face.normal);
         return true;
       case 'card-received': {
@@ -747,7 +772,7 @@ export class MapDirector {
       case 'robot-worker': {
         if (!p) return false;
         const ref = Number(s.data?.ref), at = v.lotPos(ref);
-        if (!at) return false;
+        if (!at) { v.thawLots(); return false; }
         v.freezeLots();
         await this.tool(p.id, 8, Face.normal);
         await this.clipAt(553, at, { bake: 44, sound: Sfx.robot });
@@ -888,6 +913,8 @@ export class MapDirector {
       // A normal game's 挑戰模式 (core/rewards.ts): the 獎勵卡 drawn, before what it does.
       case 'reward': await this.reward(s); return true;
       case 'reward-end': return true; // for the task tracker only
+      // 挑戰模式: who won the task card, before the 獎勵卡 are drawn (the user 2026-11-03).
+      case 'task-won': await this.taskWon(s); return true;
       // 派對模式's 途中加入: a player who joined took a computer's seat over.
       case 'seat-taken': { const d = (s.data ?? {}) as { was?: string; name?: string }; audio.sfx(Sfx.cardFlip); await this.hud.flash(`真人玩家 ${d.name ?? ''}\n接替了電腦 ${d.was ?? ''}`, 2400); return true; }
 
@@ -906,7 +933,7 @@ export class MapDirector {
         return true;
       // Fate 8 (shares confiscated) shows only its board; stock trades are the market screen's own or the
       // computer's message box (a 'say'); the daily price update only redraws (fcn_004291d6).
-      case 'stock-confiscated': case 'stock-trade': case 'stocks-updated': case 'stock-subscribe':
+      case 'stock-confiscated': case 'stock-trade': case 'stock-order': case 'position-open': case 'position-close': case 'position-liquidated': case 'stocks-updated': case 'stock-subscribe':
         return true;
 
       // ---- construction company's free floor (core_actions:1810-1861, 2014-2043)
@@ -979,6 +1006,29 @@ export class MapDirector {
    * lot owner's event[3 | 4] after fate 0 / 1 (fortune.asm fcn_0044be16: lot flash, 300 ms, line) and news 5,
    * 15, 19, 21 (the clip or flash, 300 ms, line).
    */
+  /**
+   * A task card won (挑戰模式, core/challenge.ts → Game.payRewards): the card flies in, the winners' faces and names, 「拿下任務」,
+   * confetti; about 3 s (a tap skips), then the 獎勵卡 are drawn.
+   */
+  private async taskWon(s: Fx) {
+    const d = (s.data ?? {}) as { id?: string; winners?: number[] };
+    const t = monthlyById.get(d.id ?? ''), winners = (d.winners ?? []).filter(p => this.game.players[p]);
+    if (!t || !winners.length) return;
+    const el = document.createElement('div');
+    el.className = 'tw-ov';
+    const face = (p: number) => this.view.bank.art('Data', 2, this.game.players[p].character)?.src ?? '';
+    el.innerHTML = `<div class="tw-box"><div class="tw-rays"></div><div class="tw-ribbon">任務達成</div>
+      <img class="tw-card" src="${ASSETS}/maps/remake/challenge/${t.id}.webp" alt="">
+      <div class="tw-who">${winners.map(p => `<span><img src="${face(p)}" alt=""><b></b></span>`).join('')}</div>
+      <div class="tw-line"></div><div class="tw-next">抽獎勵卡！</div></div>`
+      + Array.from({ length: 40 }, (_, k) => `<i class="tw-conf" style="--sx:${Math.round(Math.random() * 100)}vw;--d:${(Math.random() * .8).toFixed(2)}s;--c:${['#ffd84a', '#ff5c8a', '#5cd6ff', '#9dff7a', '#c38cff'][k % 5]};--r:${Math.round(Math.random() * 720 - 360)}deg"></i>`).join('');
+    el.querySelectorAll('.tw-who b').forEach((b, i) => { b.textContent = playerName(this.game.players[winners[i]]); });
+    el.querySelector('.tw-line')!.textContent = `${winners.map(p => playerName(this.game.players[p])).join('、')} 拿下任務「${t.name}」`;
+    document.body.append(el);
+    audio.sfx(Sfx.fireworks);
+    await new Promise<void>(res => { const end = () => { el.remove(); res(); }; const timer = window.setTimeout(end, 3000); el.addEventListener('pointerdown', () => { clearTimeout(timer); end(); }); });
+  }
+
   /** The 獎勵卡 a task card's winner drew (core/rewards.ts): the draw, then its picture, grade, name and text; tap to go on. */
   private async reward(s: Fx) {
     const d = (s.data ?? {}) as { id?: string; name?: string; text?: string; grade?: number; backs?: number[]; at?: number };

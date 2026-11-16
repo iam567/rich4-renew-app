@@ -16,3 +16,14 @@
 .mn-panel span { font-size: 18px; }
 .mn-panel em { font-style: normal; font-size: 16px; color: #c8b8ff; }
 .mn-loading { position: absolute; display: grid; place-items: center; font-size: 22px; color: #fff; background: #0c1424; }
+/* 小遊戲搗亂 (派對模式): who did it, and the watchers' bar */
+.mn-shout { position: absolute; left: 50%; top: 18%; transform: translateX(-50%); z-index: 5; padding: 6px 18px; border-radius: 999px; font-size: 22px; font-weight: 700; color: #fff; background: rgba(200, 30, 30, .85); border: 3px solid #ffe14a; pointer-events: none; white-space: nowrap; animation: mn-shout 1.6s ease-out forwards; }
+@keyframes mn-shout { 0% { opacity: 0; transform: translate(-50%, 10px) scale(.8); } 15% { opacity: 1; transform: translate(-50%, 0) scale(1.08); } 70% { opacity: 1; } 100% { opacity: 0; transform: translate(-50%, -16px); } }
+.mn-watchbar { position: absolute; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; text-align: center; color: #fff; pointer-events: none; border-radius: 14px; background: rgba(20, 10, 40, .78); box-shadow: 0 0 0 2px rgba(255, 191, 46, .85); }
+.mn-watchbar b { font-size: 16px; color: #ffd84a; }
+.mn-watchbar span { font-size: 13px; }
+.mn-watchbar.cool span { color: #aab; }
+.mn-panel.mn-watchbar { border-radius: 0; }
+.mn-panel.mn-watchbar b { font-size: 24px; }
+.mn-panel.mn-watchbar span { font-size: 18px; }
+.mn-watch .mn-canvas { cursor: crosshair; }

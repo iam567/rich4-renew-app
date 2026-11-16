@@ -3,6 +3,7 @@
  * Owns: the 46 object slots (gods, dog, gift, chest, Death, roadblocks, mines, time bombs), attaching gods
  * to players (luck values), what happens when a player steps on or stops at an object, and monthly moves.
  */
+import { ruleOn } from '../compat';
 import { facilityOf, landOf, type BoardNode, type Facility, type Land } from '../board';
 import { ask, type Flow } from '../flow';
 import type { Game } from '../game';
@@ -34,6 +35,13 @@ export const OBJECT_NAMES = [
   '惡犬', '土地公', '禮物', '寶箱', '死神', '路障', '地雷', '定時炸彈',
 ];
 
+/**
+ * 自建地圖's 道具禮物箱 (MapSwitches.gifts, the user 2026-11-16: 每個月百分百刷新, 1、5、10、15 個, 最多 15 個): by level, the
+ * gift boxes on the road — all of them on new squares at each month's start, the taken ones back too. Level 0: the
+ * original's one. A small map keeps two thirds of its squares free of them.
+ */
+export const GIFT_COUNTS = [1, 5, 10, 15] as const;
+
 /** Fixed slot types 0x47ed3c (01 §2.4): slots 1..14 = type, 15-16 Death, 17-26 roadblock, 27-36 mine, 37-46 bomb. */
 export const SLOT_TYPES: readonly number[] = Array.from({ length: 46 }, (_, i) =>
   i < 14 ? i + 1 : i < 16 ? 15 : i < 26 ? 16 : i < 36 ? 17 : 18);
@@ -43,8 +51,10 @@ export const LUCK_BAD = [-100, -200, -100, -200, 100, 200, 100, 200, -100, 100, 
 export const LUCK_MONEY = [100, 150, 0, 0, -60, -100, 0, 0, 60, -60, 0, 0, 0, 0, -200];
 export const LUCK_FATE = [0, 0, 100, 150, 0, 0, -60, -100, 60, -60, 0, 0, 0, 0, -200];
 
+/** The gods (自建地圖's 沒有神仙): 財神, 福神, 窮神, 衰神, 天使, 小惡魔, 土地公, 死神. */
+export const GODS = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15]);
 /** Gods 送神符 sends away (04 §3.22) and whose leaving is announced (06 §5.2). */
-const BAD_GODS = new Set([5, 6, 7, 8, 10, 15]);
+export const BAD_GODS = new Set([5, 6, 7, 8, 10, 15]);
 /** Types the 请神符 may call (fcn_0040ea62, 06 §5.2). */
 const INVITABLE = new Set([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 15]);
 /** Carried time bomb life in steps (0x26). */
@@ -73,6 +83,26 @@ export class Objects {
   init(): void {
     this.slots = SLOT_TYPES.map(type => ({ type, node: 0, dir: 0, life: 0, owner: 0 }));
     for (const type of [1, 3, 5, 7, 9, 11, 13, 14]) this.put(type, this.g.randomFreeNode().id);
+    // 道具禮物箱: the map's extra gift boxes, slots after the 46 (a save keeps them as it keeps the others)
+    for (let k = 1; k < this.giftCount(); k++) {
+      this.slots.push({ type: OBJ.Gift, node: 0, dir: 0, life: 0, owner: 0 });
+      this.put(OBJ.Gift, this.g.randomFreeNode().id);
+    }
+  }
+
+  /** How many gift boxes the map has (道具禮物箱; the original 1), no more than a third of its free squares. */
+  private giftCount(): number {
+    const lv = this.giftLevel();
+    if (!lv) return 1;
+    const room = this.g.board.nodes.filter(n => !n.noDrop && n.adjacent.some(Boolean)).length;
+    return Math.max(1, Math.min(GIFT_COUNTS[lv], Math.floor(room / 3)));
+  }
+
+  /** The map's 道具禮物箱 level (0: the original's one gift box). */
+  giftLevel(): number {
+    const sw = this.g.settings.mapRules;
+    if (!sw?.gifts || sw.noChests || !ruleOn(this.g.settings.level, 'map-gifts')) return 0;
+    return Math.max(0, Math.min(3, sw.gifts | 0));
   }
 
   /** Object on a node, if any (attached gods and carried bombs are not on the map). */
@@ -103,6 +133,8 @@ export class Objects {
   /** _rich4_place_object: first free slot of the type; facing = towards the node's first exit. Returns the slot id or 0. */
   private put(type: number, node: number): number {
     if (this.g.rules?.godAllowed && !this.g.rules.godAllowed(type)) return 0; // 大富翁城 (docs/rules/19 §5.6)
+    const sw = this.g.settings.mapRules; // 自建地圖's own rules
+    if ((sw?.noGods && GODS.has(type)) || (sw?.noChests && (type === OBJ.Gift || type === OBJ.Chest))) return 0;
     const i = this.slots.findIndex(o => o.type === type && o.node === 0 && o.owner === 0);
     if (i < 0) return 0;
     const o = this.slots[i], n = this.g.node(node), exit = n.adjacent.find(Boolean);
@@ -364,6 +396,12 @@ export class Objects {
       Object.assign(o, { node: 0, life: 0, owner: 0 });
       this.put(o.type, this.g.randomFreeNode(origin ? this.g.node(origin) : undefined).id);
     }
+    // 道具禮物箱: every other gift box on a new square too, the taken ones back
+    if (this.giftLevel()) {
+      const extra = this.slots.slice(SLOT_TYPES.length).filter(o => o.type === OBJ.Gift);
+      for (const o of extra) Object.assign(o, { node: 0, life: 0, owner: 0 });
+      for (let k = 0; k < extra.length; k++) this.put(OBJ.Gift, this.g.randomFreeNode().id);
+    }
     yield { t: 'board' };
   }
 
@@ -494,14 +532,17 @@ export class Objects {
         }
         return 0;
       }
-      case OBJ.Chest:
+      case OBJ.Chest: {
         this.remove(id);
-        p.points = (p.points + 500) & 0xffff;
-        yield { t: 'fx', kind: 'chest', p: p.id, node };
+        // 地獄 (the user 2026-11-16): 100 to 500 points, by tens
+        const pts = g.hellRules() ? 100 + 10 * g.rng.below(41) : 500;
+        p.points = (p.points + pts) & 0xffff;
+        yield { t: 'fx', kind: 'chest', p: p.id, node, ...(pts !== 500 ? { data: { points: pts } } : {}) };
         yield { t: 'board' };
-        yield { t: 'points', p: p.id, amount: 500 };
-        yield* this.say(p, '得到５００點券！');
+        yield { t: 'points', p: p.id, amount: pts };
+        yield* this.say(p, pts === 500 ? '得到５００點券！' : `得到${pts}點券！`);
         return 0;
+      }
       case OBJ.Death:
         // 大富豪模式's roaming Death (17 §7, the user 2026-10-19): stopping on it, it attaches as any god. (The original
         // only calls it from a surrender, never on the road.)
@@ -564,10 +605,11 @@ export class Objects {
   /** 土地公 takes a lot or plot (06 §5.5): hostility, the owner changes, the fx. */
   *earthGodTakes(p: Player, lot: Land | Facility, ref: number, node: number): Flow {
     const g = this.g;
-    if (lot.owner === p.id + 1) return;
+    if (lot.owner === p.id + 1 || g.isBeggar(p)) return; // (派對模式's 乞丐 owns nothing: 土地公 takes nothing for one)
+    const from = lot.owner - 1; // whose it was (-1: nobody's), for 即時制's alert to them
     if (lot.owner) g.addHostility(lot.owner - 1, p.id, Math.trunc((lot.price * g.priceIndex * (lot.level + 2)) / 5));
     lot.owner = p.id + 1;
-    yield { t: 'fx', kind: 'earth-god', p: p.id, node, data: { ref } };
+    yield { t: 'fx', kind: 'earth-god', p: p.id, node, data: { ref, ...(g.rt ? { from } : {}) } };
     yield { t: 'board' };
   }
 

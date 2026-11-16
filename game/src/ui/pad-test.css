@@ -1,0 +1,33 @@
+/* 手把測試 (pad-test.ts) */
+.padt { position: fixed; inset: 0; z-index: 9800; display: grid; place-items: center; background: rgba(6, 10, 30, .78); }
+.padt-box { width: min(94vw, 760px); max-height: 92vh; overflow-y: auto; box-sizing: border-box; padding: 12px 16px 16px; border-radius: 18px; background: linear-gradient(#2a4bb8, #1a2f7a); border: 3px solid #ffd84a; color: #fff; }
+.padt-box header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.padt-box header b { font-size: 20px; color: #ffe14a; }
+.padt-x { padding: 6px 16px; border: 0; border-radius: 999px; background: #e8590c; color: #fff; font-weight: 800; }
+.padt-tip { margin: 0 0 10px; font-size: 13px; line-height: 1.5; color: #dfe7ff; }
+.padt-slots { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 8px; }
+.padt-slot { padding: 8px; border-radius: 12px; background: rgba(0, 0, 0, .25); border: 2px solid transparent; opacity: .55; transition: border-color .1s; }
+.padt-slot.on { opacity: 1; border-color: rgba(255, 255, 255, .25); }
+.padt-slot.press { border-color: #7dff7a; }
+.padt-head { display: flex; align-items: baseline; gap: 6px; margin-bottom: 6px; }
+.padt-head b { font-size: 18px; color: #ffe14a; }
+.padt-name { font-size: 11px; color: #cfd8ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.padt-pad { position: relative; height: 96px; border-radius: 26px 26px 40px 40px; background: rgba(255, 255, 255, .1); }
+.padt-pad .b { position: absolute; display: grid; place-items: center; min-width: 18px; height: 18px; padding: 0 2px; box-sizing: border-box; border-radius: 9px; background: rgba(255, 255, 255, .18); font-size: 10px; font-style: normal; font-weight: 800; color: #fff; z-index: 1; }
+.padt-pad .b.lit { background: #7dff7a; color: #0a3a0a; box-shadow: 0 0 8px #7dff7a; }
+.padt-pad .l2 { left: 4px; top: 3px; } .padt-pad .l1 { left: 30px; top: 3px; } .padt-pad .r1 { right: 30px; top: 3px; } .padt-pad .r2 { right: 4px; top: 3px; }
+.padt-pad .du { left: 24px; top: 26px; } .padt-pad .dd { left: 24px; top: 62px; } .padt-pad .dl { left: 6px; top: 44px; } .padt-pad .dr { left: 42px; top: 44px; }
+.padt-pad .fu { right: 24px; top: 26px; } .padt-pad .fd { right: 24px; top: 62px; } .padt-pad .fl { right: 42px; top: 44px; } .padt-pad .fr { right: 6px; top: 44px; }
+.padt-pad .se, .padt-pad .sb { top: 28px; width: 34px; font-size: 7px; }
+.padt-pad .se { left: calc(50% - 37px); } .padt-pad .sb { right: calc(50% - 37px); }
+.padt-pad .l3, .padt-pad .r3 { top: 60px; width: 26px; height: 26px; border-radius: 50%; background: transparent; font-size: 8px; color: rgba(255, 255, 255, .55); }
+.padt-pad .l3 { left: calc(50% - 32px); } .padt-pad .r3 { right: calc(50% - 32px); }
+.padt-pad u.stk { position: absolute; top: 60px; width: 26px; height: 26px; box-sizing: border-box; border-radius: 50%; border: 1.5px solid rgba(255, 255, 255, .4); text-decoration: none; }
+.padt-pad u.sl { left: calc(50% - 32px); } .padt-pad u.sr { right: calc(50% - 32px); }
+.padt-pad u.stk s { position: absolute; left: 8px; top: 8px; width: 8px; height: 8px; border-radius: 50%; background: #ffe14a; }
+.padt-box section { margin-top: 12px; }
+.padt-box h3 { margin: 0 0 6px; font-size: 15px; color: #ffe14a; }
+.padt-roles { width: 100%; border-collapse: collapse; font-size: 13px; }
+.padt-roles th { width: 34%; padding: 4px 8px 4px 0; text-align: left; color: #ffe14a; font-weight: 700; vertical-align: top; }
+.padt-roles td { padding: 4px 0; color: #e8eeff; }
+.padt-roles tr + tr { border-top: 1px solid rgba(255, 255, 255, .12); }

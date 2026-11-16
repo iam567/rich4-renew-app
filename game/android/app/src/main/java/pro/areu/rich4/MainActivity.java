@@ -1,5 +1,7 @@
 package pro.areu.rich4;
 
+import android.app.UiModeManager;
+import android.content.res.Configuration;
 import android.os.Bundle;
 import android.os.SystemClock;
 import android.view.InputDevice;
@@ -20,6 +22,7 @@ public class MainActivity extends BridgeActivity {
     @Override
     public void onCreate(Bundle savedInstanceState) {
         registerPlugin(PhotoSaverPlugin.class); // 儲存到相簿 of the results screen
+        registerPlugin(LanInfoPlugin.class); // 局域網房間: this phone's address on the Wi-Fi
         super.onCreate(savedInstanceState);
         fullScreen();
         // Issue #39: the web view sizes the page's words by the phone's font size setting (larger on many phones), so
@@ -55,13 +58,25 @@ public class MainActivity extends BridgeActivity {
      */
     @Override
     public boolean dispatchKeyEvent(KeyEvent event) {
-        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && fromController(event)) {
+        // Android TV's remote (the user 2026-11-08): its centre (OK) key is the page's Enter, the 確定 of ui/pad.ts.
+        if (event.getKeyCode() == KeyEvent.KEYCODE_DPAD_CENTER) {
+            return super.dispatchKeyEvent(new KeyEvent(event.getDownTime(), event.getEventTime(), event.getAction(), KeyEvent.KEYCODE_ENTER,
+                event.getRepeatCount(), event.getMetaState(), event.getDeviceId(), event.getScanCode(), event.getFlags(), event.getSource()));
+        }
+        // On a TV every BACK is the remote's or a controller's: the page's 返回 (Home leaves the game).
+        if (event.getKeyCode() == KeyEvent.KEYCODE_BACK && (fromController(event) || isTv())) {
             if (event.getAction() == KeyEvent.ACTION_UP && !event.isCanceled() && bridge != null && bridge.getWebView() != null) {
                 bridge.getWebView().evaluateJavascript("window.__rich4PadBack && window.__rich4PadBack()", null);
             }
             return true;
         }
         return super.dispatchKeyEvent(event);
+    }
+
+    /** Running on a TV (Android TV, Google TV, a TV box). */
+    private boolean isTv() {
+        UiModeManager m = (UiModeManager) getSystemService(UI_MODE_SERVICE);
+        return m != null && m.getCurrentModeType() == Configuration.UI_MODE_TYPE_TELEVISION;
     }
 
     /** A key from a gamepad / joystick / D-pad device, or BACK made from an unhandled controller button. */

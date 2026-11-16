@@ -5,14 +5,15 @@
  */
 import { companyOf, facilityOf, landOf, nodeById, type Board, type BoardNode, type Facility, type Land } from './board';
 import { CHARACTERS, playerName } from './characters';
-import { addDays, addMonths, daysBetween, day as dayOf, nextDay, weekday, type PackedDate } from './date';
+import { addDays, addMonths, daysBetween, day as dayOf, lunarNewYearEve, month as monthOf, nextDay, weekday, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
+import type { RtHooks } from './realtime';
 import { Rng, daySeed } from './rng';
 import { BlackMarket } from './modules/blackmarket';
 import { Forks, type ForkWalk } from './modules/forks';
 import { Cards } from './modules/cards';
 import { Events } from './modules/events';
-import { Objects } from './modules/objects';
+import { OBJ, Objects } from './modules/objects';
 import { Places } from './modules/places';
 import { Stocks } from './modules/stocks';
 import { Tools, type ToolDef } from './modules/tools';
@@ -20,8 +21,10 @@ import { runWheel, WHEEL_AUTO_STOP, WheelKind } from './modules/wheel';
 import { SmartAi } from './smart-ai';
 import { Challenge, CHALLENGE_WIN, taskPool } from './challenge';
 import { ChallengeAi } from './challenge-ai';
+import { cardName } from './modules/cards';
 import { playReward } from './rewards';
 import { ledgerOf, observed, type Ledger } from './stats';
+import { ruleOn } from './compat';
 import {
   DAY_LIMITS, FUNDS, LAND_LIMIT_MONTHS, VICTORY_MULTIPLES,
   type GameSettings, type Option, type Player, type TurnAnswer,
@@ -37,6 +40,10 @@ export type { Flow } from './flow';
 export interface WorldHooks {
   /** Total assets over every city and the nationwide market (02 §7.1 summed). */
   wealth(p: Player): number;
+  /** 城市決戰 (the user 2026-11-07): only the original's cards and tools from now on (none of 大富豪模式's own). */
+  originalOnly?(): boolean;
+  /** 城市決戰: what the tolls and facility fees are multiplied by. */
+  tollBoost?(): number;
   /** Bankruptcy in the world (17 §9): properties in every city, the end of the game. */
   bankrupt(p: Player, g: Game): Flow;
   /** A station / airport square stopped at (17 §3: passing does nothing); true when the player left the city. */
@@ -109,6 +116,8 @@ export interface MapRules {
   landOnFacility?(g: Game, p: Player, f: Facility): Flow<boolean>;
   /** The facility type an effect builds on an empty plot here (a card or tool: no choice), for 大富翁城's halls. */
   facilityType?(f: Facility): number;
+  /** A facility's top level here when not FACILITY_MAX_LEVEL's (重慶's 麻將館 / 火鍋店 on the original's one-floor types). */
+  facilityTop?(f: Facility): number | undefined;
   /**
    * A human's free building on an empty large plot of this map (機器工人, 超級工人, 天使卡, 魔法屋): its own picker
    * (歌舞伎町's five shops, 大富翁城's halls), as the original asks for the facility type there (05 §3.8,
@@ -264,10 +273,27 @@ export const REMAKE_FREE_BUILD = { on: true };
  * turn start, nothing resolved there), with which the golden test proves that nothing else changed.
  */
 export const DOOR_STEP = { on: true };
+/** Test hook (regional-golden.test.ts): the holiday gift cards (holidayGift, 2026-11-03) off, as every game before them. */
+export const HOLIDAY_GIFT = { on: true };
 
 export const FACILITY_MAX_LEVEL = [1, 5, 5, 1, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5, 5]; // + 5..9 大富翁城's halls (docs/rules/19), 10..13 歌舞伎町's shops (21), 14 激情歲月's 宣傳站 (24), not in the original
 /** Walking/scooter/car/construction speed in px per frame (0x4749d8), used for animation length. */
 export const SPEED = [8, 12, 16, 8];
+/** 派對模式's 乞丐 (Game.beggarRule, the user 2026-11-08): what a beggar asks of each player met, and the cash to come back. */
+export const BEG = 2000, REVIVE = 50000;
+/** What a beggar gets on someone's land instead of paying: 100 on an empty lot up to 1,000 at level 5, at random. */
+export const ALMS = [100, 1000];
+
+/**
+ * 派對模式's 換地圖 with the money kept (the user 2026-11-04): a player's cash and deposits less the loan go to the new map;
+ * lots, shares, cards and tools belong to the old one. Whoever has less than a tenth of the fund (bankrupt too) starts
+ * with that tenth, in the bank.
+ */
+export function keptMoney(p: Pick<Player, 'cash' | 'bank' | 'loan'>, fund: number): { cash: number; bank: number } {
+  const net = Math.max(p.cash + p.bank - p.loan, Math.trunc(fund / 10));
+  const cash = Math.min(Math.max(p.cash, 0), net);
+  return { cash, bank: net - cash };
+}
 
 export class Game {
   readonly settings: GameSettings;
@@ -330,11 +356,11 @@ export class Game {
     // New game (docs/rules/01 §2.3): humans split the fund in half, computers by their cash ratio.
     this.players = link ? link.players : settings.players.map((s, id): Player => {
       const ch = CHARACTERS[s.character];
-      const cash = s.human ? Math.trunc(this.fund / 2) : Math.trunc((ch.cashRatio * this.fund) / 100);
+      const cash = s.keep ? s.keep.cash : s.human ? Math.trunc(this.fund / 2) : Math.trunc((ch.cashRatio * this.fund) / 100);
       return {
         id, character: s.character, human: s.human, whoPlays: 0, autopilot: false, bankrupt: false, placed: false,
         node: 0, lastNode: 0, dir: 0, traffic: settings.traffic, dice: settings.traffic + 1,
-        cash, bank: this.fund - cash, loan: 0, specialFinance: 0, loanDue: 0, points: 0,
+        cash, bank: s.keep ? s.keep.bank : this.fund - cash, loan: 0, specialFinance: 0, loanDue: 0, points: 0,
         hotel: 0, vanish: 0, prison: 0, hospital: 0, sleep: 0, sleepwalk: 0, stay: 0, turtle: 0,
         bankRefused: 0, noLoan: 0, allyDays: 0, insurance: 0, god: 0, bomb: 0, ally: 0,
         hostility: new Array(Math.max(4, settings.players.length)).fill(0), monthLoss: 0, monthGain: 0, monthBadDays: 0,
@@ -417,6 +443,15 @@ export class Game {
     if (this.settings.party) { const l = this.settings.aiLevel ?? 2; return p.human && l > 2 ? 2 : l; }
     return this.settings.aiLevel ?? 0;
   }
+  /**
+   * 地獄's own rules (the user 2026-11-16; compat 'hell-rules'): the game's 電腦難度 is 地獄 (a party room's 電腦地獄
+   * too) — the pools by the number of players, no lab tool sold, chests of 100–500, shares day by day, the computers
+   * harder at the humans. Not 大富豪模式 (its own world), not 挑戰模式.
+   */
+  hellRules(): boolean {
+    if (this.world || this.settings.challenge || this.settings.trial) return false;
+    return (this.settings.aiLevel ?? (this.settings.party ? 2 : 0)) === 3 && ruleOn(this.settings.level, 'hell-rules');
+  }
   /** 中級 and up: the smarter money, buying, building and dice (core/smart-ai.ts). */
   smartAi(p: Player): boolean { return this.aiLevel(p) >= 1; }
   /** 困難: also the smarter cards, tools, shop and passive cards (core/smart-ai.ts). */
@@ -424,6 +459,19 @@ export class Game {
   /** Not on the road: hotel, vanished, prison or hospital (+50..+53). */
   offRoad(p: Player): boolean { return p.hotel !== 0 || p.vanish !== 0 || p.prison !== 0 || p.hospital !== 0 || !!p.trip; }
   living(): Player[] { return this.players.filter(p => p.whoPlays !== 0); }
+
+  /**
+   * 派對模式's 乞丐 (the user 2026-11-08: a bankrupt friend should not stand by the road, out of the game): a human who
+   * goes bankrupt in a turn-based party game keeps playing as a beggar — bankrupt but still taking turns. Walks, begs
+   * BEG from every player met (passing or stopping, either one walking), buys nothing, pays no toll, the gods and fate
+   * as usual; on someone's land a little from its owner instead (ALMS by the level); cards and points kept for later;
+   * back in the game with REVIVE cash. Only there: not alone, not 即時制, 大富豪 or 挑戰模式.
+   */
+  beggarRule(p: Player): boolean { return !!this.settings.party && !this.settings.noBeggar && p.human && !this.rt && !this.world && !this.challenge; }
+  /** A walking beggar (派對模式, beggarRule): bankrupt, still taking turns. */
+  isBeggar(p: Player): boolean { return p.bankrupt && p.whoPlays !== 0; }
+  /** Out of the game for good (bankrupt and not a walking beggar). */
+  isOut(p: Player): boolean { return p.bankrupt && p.whoPlays === 0; }
   /**
    * Actor ids (01 §0.3): players 0..n-1, the four NPCs from `npcBase` (4 in a normal game, 12 in 大富豪模式), the
    * robot doll at `dollId`.
@@ -448,7 +496,7 @@ export class Game {
   /** Total assets (docs/rules/02 §7.1): money minus loans, shares, original (not price-indexed) property values. */
   wealth(p: Player): number {
     if (this.world) return this.world.hooks.wealth(p);
-    let w = this.stocks.holdingsValue(p.cash + p.bank - p.loan, p);
+    let w = this.stocks.holdingsValue(p.cash + p.bank - p.loan, p) + this.stocks.positionsValue(p);
     const owner = p.id + 1;
     for (const l of this.board.lands) if (l.owner === owner) w += l.price + (l.chain ? l.perLevel : l.level * l.perLevel);
     for (const f of this.board.facilities) if (f.owner === owner) w += this.rules?.facilityWorth?.(f) ?? f.price + f.level * f.fees[0];
@@ -548,7 +596,7 @@ export class Game {
       let need = amount;
       const a = Math.max(0, Math.min(p[first], need)); p[first] -= a; need -= a;
       const b = Math.max(0, Math.min(p[second], need)); p[second] -= b; need -= b;
-      if (need > 0 && this.canRaise()) { yield* this.raiseCash(p, need); const c = Math.min(p.bank, need); p.bank -= c; need -= c; }
+      if (need > 0) need -= yield* this.cover(p, need);
       // 挑戰模式 (docs/rules/26 §2): nobody goes bankrupt; what the money does not cover is debt to the bank (negative
       // cash). The receiver gets only what was there (debt creates no money: unbounded fortunes and endless auctions).
       if (need > 0 && this.challenge) {
@@ -594,12 +642,44 @@ export class Game {
   *forcedDebit(p: Player, amount: number): Flow {
     p.bank -= amount;
     if (p.bank < 0) { p.cash += p.bank; p.bank = 0; }
-    if (p.cash < 0 && this.canRaise()) { const owe = -p.cash; p.cash = 0; yield* this.raiseCash(p, owe); const c = Math.min(p.bank, owe); p.bank -= c; p.cash = c - owe; }
+    if (p.cash < 0) p.cash += yield* this.cover(p, -p.cash);
     if (p.cash < 0 && !this.challenge) { p.cash = 0; yield* this.bankrupt(p); }
   }
 
   /** 大富豪模式 outside 大富翁城 (chips there): a player short of money sells before going bankrupt (raiseCash). */
   private canRaise(): boolean { return !!this.world && !this.rules?.noLoans; }
+
+  /**
+   * Short of `need` for a payment: what selling covers, taken back out of the deposit — 大富豪模式's raiseCash (as much
+   * as needed), or 派對模式's 破產清算 (everything, when the player says so); 0 when nothing is sold.
+   */
+  private *cover(p: Player, need: number): Flow<number> {
+    const all = !this.canRaise();
+    if (all && !(yield* this.wantsLiquidation(p, need))) return 0;
+    yield* this.raiseCash(p, all ? Infinity : need);
+    const c = Math.min(p.bank, need);
+    p.bank -= c;
+    return c;
+  }
+
+  /**
+   * 派對模式's 破產清算 (追加玩法; issue #87, the user 2026-11-11: 「破產的時候 玩家可以選擇先做資產清算 把股票和地產全部
+   * 變成現金」): a human short of money is asked first; yes sells every share and 槓桿 position and every lot and
+   * facility (half its value, to the bank), and only what is still short bankrupts. 托管 and a question left
+   * unanswered say yes; the computers go bankrupt as ever. Not in 大富豪 (raiseCash anyway) or 挑戰模式 (debt).
+   */
+  liquidateRule(p: Player): boolean { return !!this.settings.party && !this.settings.noLiquidate && p.human && !p.bankrupt && !this.world && !this.challenge; }
+  private *wantsLiquidation(p: Player, need: number): Flow<boolean> {
+    if (!this.liquidateRule(p) || !this.hasAssets(p)) return false;
+    if (!this.isHuman(p)) return true;
+    return (yield ask({ t: 'yesno', p: p.id, kind: 'liquidate', text: `錢不夠付，還差${need.toLocaleString('en-US')}元\n\n要先清算資產嗎？\n股票全部賣出，地產半價賣給銀行\n賣完還不夠才破產` })) as boolean;
+  }
+  /** Anything to sell: shares, 槓桿 positions, lots or facilities. */
+  private hasAssets(p: Player): boolean {
+    const me = p.id + 1;
+    return this.markets().some(m => m.holdings[p.id]?.some(h => h.shares > 0) || m.positions.some(x => x.p === p.id))
+      || this.boards().some(b => b.lands.some(l => l.owner === me) || b.facilities.some(f => f.owner === me));
+  }
 
   /** 挑戰模式 (docs/rules/26): no bankruptcy, debt instead; tasks and stars (core/challenge.ts). */
   get challenge(): boolean { return !!this.settings.challenge; }
@@ -620,6 +700,7 @@ export class Game {
       const n = m.holdings[p.id]?.[slot]?.shares ?? 0;
       if (n > 0) got += m.sell(p, slot, n, true);
     }
+    for (const m of this.markets()) for (const x of m.positions.filter(y => y.p === p.id)) if (got < need) got += yield* m.closePosition(p, x.id);
     if (got) yield* this.say(p.id, `${this.name(p.id)}資金不足，賣出股票還債（${got.toLocaleString('en-US')}元）`);
     if (got >= need) return got;
     const me = p.id + 1, PI = this.priceIndex;
@@ -653,6 +734,9 @@ export class Game {
 
   // ---------------------------------------------------------------- shared property helpers
 
+  /** A facility's top level (topped out: no more floors, the fireworks). */
+  facilityTop(f: Facility): number { return this.rules?.facilityTop?.(f) ?? FACILITY_MAX_LEVEL[f.type]; }
+
   /** Free upgrade fcn_0040b110 (docs/rules/02 §3.2): returns the new level | 0x80 when topped out, or -1. */
   freeUpgrade(ref: number): number {
     if (ref > 2000 && ref < 4000) {
@@ -663,9 +747,9 @@ export class Game {
     }
     if (ref > 4000 && ref < 6000) {
       const f = this.board.facilities[ref - 4001];
-      if (!f.level || f.level >= FACILITY_MAX_LEVEL[f.type]) return -1;
+      if (!f.level || f.level >= this.facilityTop(f)) return -1;
       f.level += 1;
-      return f.level | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
+      return f.level | (f.level >= this.facilityTop(f) ? 0x80 : 0);
     }
     return -1;
   }
@@ -682,7 +766,7 @@ export class Game {
       ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: 0 })) || 0))
       : f.owner === p.id + 1 ? (this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1) : 0;
     f.level = 1;
-    return 1 | (f.level >= FACILITY_MAX_LEVEL[f.type] ? 0x80 : 0);
+    return 1 | (f.level >= this.facilityTop(f) ? 0x80 : 0);
   }
 
   /**
@@ -770,6 +854,8 @@ export class Game {
         if (this.over) break;
         // 歌舞伎町's 暴走卡 (docs/rules/21 §7.5): another whole turn at once, the day not ended in between.
         while (!this.over && p.whoPlays && this.rules?.extraTurn?.(this, p)) yield* this.playerTurn(p);
+        // 派對模式's 等待中下單: what the others ordered during this turn (the room's host answers, as for 'seat').
+        if (!this.over && this.settings.party && !this.world && !p.bankrupt) yield* this.stocks.fillOrders(yield ask({ t: 'orders', p: p.id }));
       } else yield* this.places.npcTurn(this.current);
       if (this.over) break;
       yield* this.outOfChips();
@@ -781,10 +867,14 @@ export class Game {
   /** The 獎勵卡 owed (a normal game's 挑戰模式, core/rewards.ts): each winner of a task card draws one now. */
   private *payRewards(): Flow {
     const ch = this.challengeTracker;
-    while (ch?.rewardsDue.length && !this.over) {
+    if (!ch) return;
+    // First who won the card (an animation of its own), then each winner's 獎勵卡, then the next card (the user 2026-11-03).
+    if (ch.rewardsDue.length && !this.over) yield { t: 'fx', kind: 'task-won', data: { id: ch.rewardFor, winners: [...new Set(ch.rewardsDue)] } };
+    while (ch.rewardsDue.length && !this.over) {
       const p = this.players[ch.rewardsDue.shift()!];
       if (p?.whoPlays) yield* playReward(this, p, ch.rewardSeq++);
     }
+    if (!this.over) ch.drawPending();
   }
 
   /**
@@ -818,7 +908,7 @@ export class Game {
       if (this.current === this.players.length && this.current < base) this.current = base;
       if (this.current >= base + 4) { this.current = 0; newDay = true; }
       if (this.current >= base) { if (this.places.npcActive(this.current)) break; continue; }
-      if (this.players[this.current].bankrupt) continue;
+      if (this.isOut(this.players[this.current])) continue; // (派對模式's 乞丐 still plays)
       break;
     }
     if (newDay) yield* this.dailySettlement();
@@ -858,12 +948,34 @@ export class Game {
       yield* this.blackMarket.monthly();
       this.monthsElapsed += 1;
     }
+    yield* this.holidayGift();
     for (const l of [...this.board.lands, ...this.board.facilities]) {
       if (l.tmpState >> 4) l.tmpState = (l.tmpState >> 4) - 1 ? l.tmpState - 0x10 : 0;
       // Per the bug decision #12 the expiry triggers on or after the date instead of only on it.
       if (l.expire && daysBetween(l.expire, this.date) >= 0) { l.owner = 0; l.expire = 0; }
     }
     yield { t: 'board' };
+  }
+
+  /**
+   * 節日送卡 (docs/rules/01 §4.4, fcn_00452444 effect bit 8; the user 2026-11-03: 「原版聖誕節每人送一張卡」): on the
+   * holiday table's gift days every living player gets a random card — 12/25 on the original maps 1–5, 7, 8 (and the
+   * remade maps on them), 除夕 (lunar new year's eve) on map 6. Not in 大富豪模式 nor on the maps with their own rules.
+   */
+  private *holidayGift(): Flow {
+    if (this.world || this.rules || !HOLIDAY_GIFT.on) return;
+    const slot = this.mapSlot, d = this.date;
+    const xmas = monthOf(d) === 12 && dayOf(d) === 25 && slot >= 0 && slot <= 7 && slot !== 5;
+    const eve = slot === 5 && lunarNewYearEve(d);
+    if (!xmas && !eve) return;
+    const lines: { p: number; text: string }[] = [];
+    for (const p of this.living()) {
+      const id = yield* this.cards.receiveRandom(p);
+      if (this.over) return;
+      lines.push({ p: p.id, text: id ? `得到${cardName(id)}` : '沒有拿到卡片' });
+    }
+    const head = xmas ? '聖誕快樂！每人送一張卡片' : '除夕快樂！每人送一張卡片';
+    yield { t: 'fx', kind: 'event-result', data: { src: 'holiday', id: 0, fx: 'gain', title: xmas ? '聖誕節' : '除夕', head, lines } };
   }
 
   /**
@@ -927,6 +1039,9 @@ export class Game {
     if (timeUp || rich) yield* this.finish(best.id);
   }
 
+  /** 即時制's time limit (core/realtime.ts): the game ends now, `winner` the richest. */
+  *finishNow(winner: number): Flow { yield* this.finish(winner); }
+
   private *finish(winner: number): Flow {
     for (const p of this.players) if (p.id !== winner) p.whoPlays = 0;
     const humans = this.players.filter(p => p.human).length;
@@ -940,6 +1055,9 @@ export class Game {
   *turnStart(p: Player): Flow {
     this.foldChips();
     this.stocks.turnStart(p);
+    // 槓桿: a price a card or news moved since may have wiped a position out (the day's own update checks too)
+    yield* this.stocks.liquidate();
+    if (this.over) return;
     if (!p.whoPlays) return;
     if (p.loanDue) {
       const d = daysBetween(this.date, p.loanDue);
@@ -1036,8 +1154,9 @@ export class Game {
 
   /** Dispatch fcn_00418c55 (docs/rules/01 §3.3-§3.5). */
   *playerTurn(p: Player): Flow {
-    if (p.bankrupt) return;
+    if (this.isOut(p)) return;
     yield { t: 'turn', p: p.id };
+    if (this.isBeggar(p)) { yield* this.revive(p); if (this.over) return; }
     // 派對模式: 取消托管 is an answer, so every phone takes it at the same point (the user 2026-10-19).
     if (this.settings.party && p.whoPlays === 1 && p.autopilot && (yield ask({ t: 'auto-turn', p: p.id })) === 1) p.autopilot = false; // 1 = 取消托管
     // 派對模式's 途中加入 (the user 2026-11-03): a computer's turn first asks whether a player who joined the game takes
@@ -1072,12 +1191,17 @@ export class Game {
       for (;;) {
         const maxDice = p.traffic === 3 ? 1 : p.traffic + 1;
         const a = (yield ask({ t: 'turn', p: p.id, maxDice, canUseCard: p.cards.length > 0, canUseTool: p.tools.some(Boolean) })) as TurnAnswer | undefined;
+        // 派對模式: a late answer to an earlier question (a player dropped: 「Cannot use 'in' operator」, room 6425) asks again.
+        if (typeof a === 'number') continue;
         if (!a || 'dice' in a) { if (a?.dice) p.dice = Math.max(1, Math.min(maxDice, a.dice)); break; }
-        if (a.action === 'card') yield* this.cards.humanUse(p);
+        if ((a.action === 'card' || a.action === 'tool') && this.isBeggar(p)) yield* this.say(p.id, '卡片和道具先存著，東山再起之後才能用');
+        else if (a.action === 'card') yield* this.cards.humanUse(p);
         else if (a.action === 'tool') yield* this.tools.humanUse(p);
         // Leaving the stock screen or the trade board checks for a new bank operator (rich4_ui_stock.asm:3043,
         // rich4_ui_sale.asm:5627).
+        else if ((a.action === 'stock' || a.action === 'trade') && this.isBeggar(p)) yield* this.say(p.id, '乞丐不能買賣股票和地產');
         else if (a.action === 'stock') { yield* this.stocks.humanMarket(p); if (!this.over) yield* this.financeRecall(); }
+        else if (a.action === 'trade' && this.settings.mapRules?.noBlackMarket) yield* this.say(p.id, '這張地圖沒有黑市');
         else if (a.action === 'trade') { yield* this.blackMarket.humanMarket(p); if (!this.over) yield* this.financeRecall(); }
         else if (a.action === 'surrender') { yield* this.surrender(p); return; }
         else if (a.action === 'autopilot') { p.autopilot = true; break; } // 托管: the computer plays from here
@@ -1093,7 +1217,8 @@ export class Game {
       }
       human = this.isHuman(p);
     }
-    if (!human && this.smartAi(p)) {
+    if (!human && this.isBeggar(p)) this.aiChooseDice(p); // 托管 beggar: no stocks, no market, just the dice
+    else if (!human && this.smartAi(p)) {
       // The smarter computer (派對模式, 中級 / 困難; core/smart-ai.ts): its own stock, card and tool play, then its dice.
       yield* this.smart.beforeDice(p);
       if (this.over || !p.whoPlays || this.offRoad(p) || p.sleep || p.sleepwalk) return;
@@ -1108,7 +1233,7 @@ export class Game {
       yield* this.financeRecall(); // rich4.asm:11632, right after the computer's buying and selling
       if (this.over) return;
       // Where the original runs the trade board for computers; the black market uses its own random stream.
-      yield* this.blackMarket.aiTurn(p);
+      if (!this.settings.mapRules?.noBlackMarket) yield* this.blackMarket.aiTurn(p);
       if (this.over) return;
       // 大富豪模式 (docs/rules/17 §3.4): a computer that wants to travel may aim at the station / airport with the
       // remote dice first (world only; a normal game draws its rand() here as before).
@@ -1193,12 +1318,19 @@ export class Game {
   /** Per-step handling _rich4_player_move_one_step_done (docs/rules/01 §7.1). Returns the remaining steps. */
   private *stepDone(p: Player, left: number): Flow<number> {
     const n = this.node(p.node);
-    if (n.event === 14 && !p.sleepwalk && left !== 0 && this.objects.at(n.id)?.type !== 16) {
-      yield* this.atm(p);
+    if (n.event === 14 && !p.sleepwalk && left !== 0 && this.objects.at(n.id)?.type !== 16 && !this.isBeggar(p) && !this.bankClosed()) {
+      yield* this.indoors(p, this.atm(p));
       if (this.over) return 0;
     }
+    // 派對模式's 乞丐: the beggar walking by, or by the beggar (beggarRule)
+    for (const q of this.players) {
+      if (q.id === p.id || !q.placed || q.node !== n.id || this.offRoad(q) || !q.whoPlays) continue;
+      if (this.isBeggar(p) && !q.bankrupt) yield* this.beg(p, q);
+      else if (this.isBeggar(q) && !p.bankrupt) yield* this.beg(q, p);
+      if (this.over || !p.whoPlays) return 0;
+    }
     const other = this.players.find(q => q.id !== p.id && q.placed && q.node === n.id && !this.offRoad(q));
-    if (other && other.bankrupt && left === 0) {
+    if (other && this.isOut(other) && left === 0) {
       const alms = 1000 * this.priceIndex;
       yield* this.say(p.id, `施捨給乞丐${alms}元`);
       yield* this.transfer(p.id, -1, alms, 0, '施捨');
@@ -1221,6 +1353,7 @@ export class Game {
     const n = this.node(p.node);
     this.checkedIn = false;
     if (p.sleepwalk && n.event !== 0) return;
+    if (this.isBeggar(p)) { yield* this.beggarLands(p, n); return; }
     if (this.rules?.landSquare && (yield* this.rules.landSquare(this, p, n))) return; // 大富翁城 (docs/rules/19 §4.4)
     switch (n.event) {
       case 0:
@@ -1236,7 +1369,7 @@ export class Game {
       case 4: yield* this.places.prisonStop(p); break;
       case 5: yield* this.places.hospitalStop(p); break;
       case 6: case 7: case 8: yield* this.places.miniGame(p, n.event); break;
-      case 9: yield* this.places.lotteryStop(p); break;
+      case 9: yield* this.indoors(p, this.places.lotteryStop(p)); break;
       case 10: case 11: case 12: {
         const amount = n.event === 10 ? 50 : n.event === 11 ? 30 : 10;
         p.points = (p.points + amount) & 0xffff;
@@ -1249,12 +1382,23 @@ export class Game {
         break;
       }
       case 14:
+        if (this.bankClosed()) { if (this.isHuman(p)) yield* this.say(p.id, '今天是週末，銀行不開門'); break; }
         if (this.rules?.chipsOnly) { if (this.isHuman(p)) yield* this.say(p.id, '大富翁城只用籌碼，銀行不辦存款和貸款'); break; }
-        yield* this.atm(p); if (!this.over && p.whoPlays) yield* this.bankCounter(p); break;
-      case 15: yield* this.tools.shop(p); break;
-      case 16: yield* this.places.magicHouse(p); break;
+        yield* this.indoors(p, (function* (g: Game): Flow { yield* g.atm(p); if (!g.over && p.whoPlays) yield* g.bankCounter(p); })(this)); break;
+      case 15: yield* this.indoors(p, this.tools.shop(p)); break;
+      case 16: yield* this.indoors(p, this.places.magicHouse(p)); break;
       case 17: case 18: if (this.world) yield* this.world.hooks.travelSquare(this, p, 0); break;
     }
+  }
+
+  /**
+   * 即時制: a human in a screen that hides the board (a shop, the bank, the magic house, the lottery) cannot be hit by
+   * others' cards, magic or a missile lock meanwhile (the user 2026-11-08: they cannot see what is going on outside).
+   */
+  private *indoors(p: Player, f: Flow): Flow {
+    if (!this.rt || !this.isHuman(p)) { yield* f; return; }
+    this.rt.indoors(p.id, 1);
+    try { yield* f; } finally { this.rt.indoors(p.id, -1); }
   }
 
   private *landOnProperty(p: Player, n: BoardNode): Flow {
@@ -1273,10 +1417,15 @@ export class Game {
       if (p.sleepwalk || god === 12) return;
       const price = (land.price + land.level * land.perLevel) * this.priceIndex;
       if (price > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
+      const ref = land.id + 2000;
+      if (!(yield* this.rtQueue(p, ref, land.name, () => land.owner !== 0))) return;
+      this.rt?.claim(ref, p.id);
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-land', text: `${land.name}\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
         : this.smartAi(p) ? this.smart.wantsToBuy(p, price, land) : this.aiCanAfford(p, price);
+      this.rt?.release(ref, p.id);
       if (!yes) return;
+      if (!(yield* this.rtStill(p, price, () => (land.owner ? `${land.name}已經被${this.name(land.owner - 1)}買走了` : null)))) return;
       if (yield* this.investmentBlocked(p)) return;
       land.owner = me;
       if (this.landLimit()) land.expire = addMonths(this.date, this.landLimit());
@@ -1293,6 +1442,7 @@ export class Game {
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'upgrade-land', text: `${land.name}\n\n升級費用:${cost}元\n\n是否升級？`, price: cost })) as boolean
         : this.smartAi(p) ? this.smart.wantsToBuild(p, cost) : true; // computers always build when they have the cash
       if (!yes) return;
+      if (!(yield* this.rtStill(p, cost, () => (land.owner !== me ? `${land.name}已經不是你的了` : land.level >= 5 ? '已經蓋到頂了' : null)))) return;
       if (yield* this.investmentBlocked(p)) return;
       p.cash -= cost;
       land.level += 1;
@@ -1302,6 +1452,9 @@ export class Game {
     }
     yield* this.payToll(p, land);
   }
+
+  /** 城市決戰 (大富豪模式, core/finale.ts): tolls and facility fees ×2 every 20 days of it; 1 anywhere else. */
+  tollBoost(): number { return this.world?.hooks.tollBoost?.() ?? 1; }
 
   /** Street toll (docs/rules/02 §3.3): one owner's lots sharing the street name add up; chain stores count 2000 each. */
   calcToll(ownerPlus1: number, name: string | null): number {
@@ -1321,7 +1474,7 @@ export class Game {
     if (land.tmpState) base *= 2;
     if (this.rules?.tollFactor) base = Math.round(base * this.rules.tollFactor(this, land)); // 歌舞伎町 (docs/rules/21 §6, §7.5)
     base = this.debtToll(owner, base);
-    const total = base + allyPart;
+    const total = (base + allyPart) * this.tollBoost();
     // The owner's (and ally's) lots of this street, or all their chain stores, flash first when there is more
     // than one, to show the toll is the whole street's (rich4_player_core_actions.asm:550-661, fcn_00451985).
     const linked = this.board.lands.filter(l => (l.owner === land.owner || (owner.ally > 0 && l.owner === owner.ally))
@@ -1422,10 +1575,15 @@ export class Game {
       if (p.sleepwalk || god === 12) return;
       const price = f.price * this.priceIndex;
       if (price > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
+      const fref = f.id + 4000;
+      if (!(yield* this.rtQueue(p, fref, f.name, () => f.owner !== 0))) return;
+      this.rt?.claim(fref, p.id);
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'buy-facility', text: `${f.name}\n\n費用:${price}元\n\n是否買下此地？`, price })) as boolean
         : this.smartAi(p) ? this.smart.wantsToBuy(p, price, undefined, f.name) : this.aiCanAfford(p, price);
+      this.rt?.release(fref, p.id);
       if (!yes) return;
+      if (!(yield* this.rtStill(p, price, () => (f.owner ? `${f.name}已經被${this.name(f.owner - 1)}買走了` : null)))) return;
       if (yield* this.investmentBlocked(p)) return;
       f.owner = me;
       if (this.landLimit()) f.expire = addMonths(this.date, this.landLimit());
@@ -1446,6 +1604,7 @@ export class Game {
           : this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1;
         // A computer builds a hotel in a resort city (the draw above is kept, so the rand() sequence is the same).
         if (resort > 1 && !this.isHuman(p)) f.type = 1;
+        if (!(yield* this.rtStill(p, cost, () => (f.owner !== me ? `${f.name}已經不是你的了` : f.level ? '已經蓋好了' : null)))) return;
         if (yield* this.investmentBlocked(p)) return;
         f.level = 1;
         p.cash -= cost;
@@ -1453,13 +1612,14 @@ export class Game {
         yield* this.blessing(p, f.id + 4000);
         return;
       }
-      if (f.level >= FACILITY_MAX_LEVEL[f.type]) return;
+      if (f.level >= this.facilityTop(f)) return;
       const cost = f.fees[0] * this.priceIndex;
       if (cost > p.cash) { if (this.isHuman(p)) yield* this.say(p.id, '您的現金不足！'); return; }
       const yes = this.isHuman(p)
         ? (yield ask({ t: 'yesno', p: p.id, kind: 'upgrade-facility', text: `${f.name}\n\n升級費用:${cost}元\n\n是否升級？`, price: cost })) as boolean
         : this.smartAi(p) ? this.smart.wantsToBuild(p, cost) : true;
       if (!yes) return;
+      if (!(yield* this.rtStill(p, cost, () => (f.owner !== me ? `${f.name}已經不是你的了` : f.level >= this.facilityTop(f) ? '已經蓋到頂了' : null)))) return;
       if (yield* this.investmentBlocked(p)) return;
       p.cash -= cost;
       f.level += 1;
@@ -1471,7 +1631,7 @@ export class Game {
     const owner = this.players[f.owner - 1];
     const fee = ['', '住宿費', '購物費', '加油費'][f.type];
     if (!(yield* this.ownerCollects(owner, f.tmpState, fee))) return;
-    let rate = f.fees[f.level] * this.priceIndex;
+    let rate = f.fees[f.level] * this.priceIndex * this.tollBoost();
     // 大富豪模式: a resort city's hotels earn more (沖繩, docs/rules/17 §2.4).
     if (this.world && f.type === 1) rate = Math.round(rate * this.world.hooks.resort(this));
     if (f.tmpState && f.type !== 3) rate *= 2;
@@ -1479,7 +1639,11 @@ export class Game {
     let amount = 0, days = 0;
     // Message boxes, 1500 ms (core_actions:1296-1382).
     // The wheel first (fcn_0044090e with the owner's name, core_actions:1270-1330), then the message box.
-    if (f.type === 1) { days = yield* this.spin(WheelKind.hotel, this.name(owner.id)); amount = rate * days; yield* this.say(undefined, `休息${days}天\n\n費用${amount}元！`); }
+    if (f.type === 1) {
+      days = yield* this.spin(WheelKind.hotel, this.name(owner.id));
+      if (this.hotelBossFree(p)) yield* this.say(undefined, this.hotelBossLine(days));
+      else { amount = rate * days; yield* this.say(undefined, `休息${days}天\n\n費用${amount}元！`); }
+    }
     else if (f.type === 2) { const mult = yield* this.spin(WheelKind.shopping, this.name(owner.id)); amount = rate * mult; yield* this.say(undefined, `您的消費金額為\n\n${rate}x${mult}倍=${amount}元`); }
     else {
       const vehicle = p.traffic & 3;
@@ -1495,6 +1659,42 @@ export class Game {
     const paid = amount ? yield* this.collect(p, owner, amount, fee, f.type !== 1) : null;
     if (paid) f.lastFee = yield* this.transfer(paid.payer, f.owner - 1, paid.amount, 0, fee);
     if (f.type === 1 && days && p.whoPlays && !this.over) yield* this.checkIn(p, p, f, days, false);
+  }
+
+  /** ＨＯＴＥＬ１１'s 董事長 (派對模式, the user 2026-11-07): stays at the others' hotels as anyone, and pays nothing. */
+  hotelBossFree(p: Player): boolean { return this.stocks.isHotelBoss(p); }
+  /** What the hotel says to its alliance's 董事長. */
+  hotelBossLine(days: number): string { return `休息${days}天\n\n歡迎董事長光臨本酒店！\n本次住宿全部免單`; }
+
+  /** 即時制 (core/realtime.ts): the clock's side of the rules (lots being decided on); none in the turn-based game. */
+  rt?: RtHooks;
+  /** 即時制: the clock (ms) at the last save, where a loaded game's clock goes on (core/realtime.ts). */
+  rtNow = 0;
+
+  /**
+   * 即時制: a lot or a large plot nobody owns, reached while another player still decides on it (the user 2026-11-07):
+   * the first has 5 s; meanwhile a human may queue (wait for them) or walk on, a computer walks on. False: no offer.
+   */
+  private *rtQueue(p: Player, ref: number, name: string, owned: () => boolean): Flow<boolean> {
+    const rt = this.rt;
+    if (!rt) return true;
+    const held = rt.heldBy(ref, p.id);
+    if (held < 0) return true;
+    if (!this.isHuman(p)) return false;
+    const wait = Number(yield ask({ t: 'choose', p: p.id, title: `${this.name(held)}正在考慮買${name}`, options: [{ label: '排隊等', value: 1 }, { label: '繼續走', value: 0 }], cancellable: false }));
+    if (wait !== 1) return false;
+    while (rt.heldBy(ref, p.id) >= 0 && !owned()) yield { t: 'fx', kind: 'rt-wait', p: p.id };
+    if (owned()) { yield* this.say(p.id, `${name}已經被買走了`); return false; }
+    return true;
+  }
+
+  /** 即時制: after a decision others went on meanwhile — the lot may be gone, the cash spent. True: go ahead. */
+  private *rtStill(p: Player, cost: number, gone: () => string | null): Flow<boolean> {
+    if (!this.rt) return true;
+    const who = gone();
+    if (who !== null) { yield* this.say(p.id, who); return false; }
+    if (cost > p.cash) { yield* this.say(p.id, '您的現金不足！'); return false; }
+    return true;
   }
 
   /** Set by a stay begun on this landing (土地公 then waits for the check-out, REMAKE_HOTEL). */
@@ -1630,8 +1830,11 @@ export class Game {
    * The counter _rich4_ui_bank_entry (02 §8.4, §8.6, §8.7). Only a human (not on autopilot) whose bank tile
    * belongs to a company he controls gets the chairman's room; computers never use special financing.
    */
+  /** 自建地圖's 假日銀行不開門: Saturdays and Sundays. */
+  bankClosed(): boolean { const w = weekday(this.date); return !!this.settings.mapRules?.bankHoliday && (w === 0 || w === 6); }
+
   *bankCounter(p: Player): Flow {
-    if (p.bankRefused || this.rules?.noLoans) return; // 大富翁城's finale: chips, no loans (docs/rules/19 §2)
+    if (p.bankRefused || this.rules?.noLoans || this.settings.mapRules?.noLoans) return; // 大富翁城's finale: chips, no loans (docs/rules/19 §2)
     const wealth = this.wealth(p);
     // 挑戰模式 (docs/rules/26 §2): in debt, no loans and no special financing.
     const indebted = this.challenge && p.cash < 0;
@@ -1749,10 +1952,13 @@ export class Game {
 
   // ---------------------------------------------------------------- bankruptcy (docs/rules/02 §9.3, 01 §8.2)
 
-  *bankrupt(p: Player): Flow {
+  *bankrupt(p: Player, quit = false): Flow {
     if (this.world) { yield* this.world.hooks.bankrupt(p, this); return; }
+    // a beggar who gives up (認輸) is out for good; money short again changes nothing
+    if (this.isBeggar(p) && quit) { p.whoPlays = 0; yield { t: 'bankrupt', p: p.id }; yield* this.lastStanding(); return; }
     if (p.bankrupt || !p.placed) return;
-    p.whoPlays = 0;
+    const beg = this.beggarRule(p) && !quit;
+    if (!beg) p.whoPlays = 0;
     p.bankrupt = true;
     this.objects.detachAll(p);
     this.endAlly(p);
@@ -1764,10 +1970,9 @@ export class Game {
     });
     for (const q of this.players) q.hostility[p.id] = 0;
     yield { t: 'bankrupt', p: p.id };
-    const living = this.living(), humans = living.filter(q => q.human);
-    if (this.players.filter(q => q.human).length === 1 && p.human) { yield* this.lose(); return; }
-    if (!humans.length) { this.over = { winner: living[0]?.id ?? -1, code: 1 }; yield { t: 'gameover', winner: living[0]?.id ?? -1, code: 1 }; return; }
-    if (living.length === 1) { yield* this.finish(living[0].id); return; }
+    if (beg) { p.begAt = []; yield* this.say(p.id, `${this.name(p.id)}破產了，變成乞丐！\n路上碰到誰就向誰要${BEG}元，要到${REVIVE / 10000}萬元就能東山再起`); }
+    else if (this.players.filter(q => q.human).length === 1 && p.human) { yield* this.lose(); return; }
+    if (yield* this.lastStanding()) return;
     const owner = p.id + 1, released: number[] = [];
     for (const l of this.board.lands) if (l.owner === owner) { l.owner = 0; l.expire = 0; released.push(l.id + 2000); }
     for (const f of this.board.facilities) if (f.owner === owner) { f.owner = 0; f.expire = 0; released.push(f.id + 4000); }
@@ -1777,12 +1982,97 @@ export class Game {
     yield* this.tools.dropAll(p);
     yield* this.cards.dropAll(p);
     this.places.lottery = this.places.lottery.map(b => (b === owner ? 0 : b));
-    if (released.length > 3) {
+    if (!this.rt && released.length > 3) {
       // Three random released properties go to public auction; the proceeds go to the lottery pool.
       const picked = new Set<number>();
       while (picked.size < 3) picked.add(released[this.rng.below(released.length)]);
       for (const ref of picked) yield* this.places.auction(-1, ref);
     }
+  }
+
+  /**
+   * Whether the game is over after someone left it: the last player standing wins (a walking beggar does not count);
+   * no human left (nor a human beggar who could come back) and the computers win.
+   */
+  private *lastStanding(): Flow<boolean> {
+    // (who has not landed yet, the first day, is in the game too)
+    const living = this.players.filter(q => !q.bankrupt && (q.whoPlays !== 0 || !q.placed)), humans = living.filter(q => q.human);
+    if (!humans.length && !this.players.some(q => q.human && this.isBeggar(q))) { this.over = { winner: living[0]?.id ?? -1, code: 1 }; yield { t: 'gameover', winner: living[0]?.id ?? -1, code: 1 }; return true; }
+    if (living.length === 1) { yield* this.finish(living[0].id); return true; }
+    return false;
+  }
+
+  /**
+   * 派對模式's 乞丐 meets `from` (either one walking): BEG from them, once a week each (the user: not again and again
+   * while they keep crossing), then maybe back in the game.
+   */
+  private *beg(b: Player, from: Player): Flow {
+    const last = b.begAt?.[from.id] ?? 0;
+    if (last && this.daysElapsed - (last - 1) < 7) return;
+    (b.begAt ??= [])[from.id] = this.daysElapsed + 1;
+    yield* this.alms(b, from, BEG, '乞討');
+  }
+
+  /** The beggar `b` gets `want` from `from` (小衰神 half, 大衰神 nothing; never more than `from` has, into the hand). */
+  private *alms(b: Player, from: Player, want: number, why: string): Flow {
+    const god = this.objects.godType(b);
+    want = god === OBJ.BigBadLuck ? 0 : god === OBJ.SmallBadLuck ? Math.trunc(want / 20) * 10 : want;
+    const amount = Math.min(want, from.cash + from.bank);
+    if (!amount) { yield* this.say(b.id, `${this.name(b.id)}向${this.name(from.id)}要錢……${want ? '對方身無分文' : '大衰神附身，一毛也要不到'}`); return; }
+    yield* this.say(b.id, `${this.name(b.id)}向${this.name(from.id)}${why}${amount}元`);
+    yield* this.transfer(from.id, b.id, amount, 1, why);
+    if (!this.over) yield* this.revive(b);
+  }
+
+  /** A beggar with REVIVE cash is back in the game (派對模式's 乞丐). */
+  private *revive(b: Player): Flow {
+    if (!this.isBeggar(b) || b.cash + b.bank < REVIVE) return;
+    b.bankrupt = false;
+    delete b.begAt;
+    yield { t: 'fx', kind: 'revive', p: b.id };
+    yield* this.say(b.id, `${this.name(b.id)}要到${REVIVE / 10000}萬元，東山再起！`);
+  }
+
+  /**
+   * Where a beggar stops (派對模式's 乞丐): fate, news, prison, hospital, the free squares and the mini games as anyone;
+   * nothing to buy (no land, building, lottery, bank, shops, stocks) and no toll — the traps, the gods (土地公 takes
+   * nothing for a beggar, objects.ts) and the construction team on the square as usual.
+   */
+  private *beggarLands(p: Player, n: BoardNode): Flow {
+    switch (n.event) {
+      case 0: {
+        // someone's land: no toll, a little from its owner instead — ALMS by the level (the user 2026-11-08: 100 to 1,000)
+        const lot = landOf(this.board, n) ?? facilityOf(this.board, n), owner = lot?.owner ? this.players[lot.owner - 1] : undefined;
+        if (lot && owner && owner !== p && !owner.bankrupt) {
+          const top = ALMS[0] + Math.min(5, lot.level) * (ALMS[1] - ALMS[0]) / 5;
+          yield* this.alms(p, owner, ALMS[0] + this.rng.below((top - ALMS[0]) / 10 + 1) * 10, '討了');
+          if (this.over || !p.whoPlays) return;
+        }
+        yield* this.objects.landEffect(p);
+        if (!this.over && p.whoPlays) yield* this.tools.construction(p);
+        break;
+      }
+      case 2: yield* this.events.news(p); break;
+      case 3: yield* this.events.fate(p); break;
+      case 4: yield* this.places.prisonStop(p); break;
+      case 5: yield* this.places.hospitalStop(p); break;
+      case 6: case 7: case 8: yield* this.places.miniGame(p, n.event); break;
+      case 10: case 11: case 12: {
+        const amount = n.event === 10 ? 50 : n.event === 11 ? 30 : 10;
+        p.points = (p.points + amount) & 0xffff;
+        yield { t: 'points', p: p.id, amount };
+        break;
+      }
+      case 13: {
+        const id = yield* this.cards.receiveRandom(p);
+        if (id) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card: id } };
+        break;
+      }
+      case 9: case 14: case 15: case 16:
+        if (this.isHuman(p)) yield* this.say(p.id, '乞丐身上沒錢，這裡什麼也買不了');
+        break;
+    }
+    if (!this.over) yield* this.revive(p);
   }
 
   /**
@@ -1795,7 +2085,7 @@ export class Game {
       const target = (yield ask({ t: 'pick-player', p: p.id, title: '請死神去找誰？', players: others.map(q => q.id), cancellable: true })) as number;
       if (target >= 0 && this.players[target]) yield* this.objects.callDeath(this.players[target]);
     }
-    yield* this.bankrupt(p);
+    yield* this.bankrupt(p, true);
   }
 
   private *lose(): Flow {
@@ -1807,6 +2097,6 @@ export class Game {
 const EVENT_NAMES: Record<number, string> = {
   2: '新聞', 3: '命運', 4: '監獄', 5: '醫院', 6: '企鵝挖寶', 7: '七彩氣球', 8: '喜從天降', 9: '樂透',
   10: '點券50', 11: '點券30', 12: '點券10', 13: '卡片', 14: '銀行', 15: '道具店', 16: '魔法屋',
-  17: '車站', 18: '機場',
+  17: '車站', 18: '機場', 19: '柏青哥店', 20: '拉霸店',
 };
 export function eventName(e: number): string { return EVENT_NAMES[e] ?? ''; }

@@ -24,6 +24,7 @@ import { Rng } from '../rng';
 import type { Player } from '../types';
 import { weatherOf } from '../../ui/weather';
 import { CARDS, cardName } from './cards';
+import { GENERAL_CARDS } from './general-cards';
 import { MAX_HELD, TOOLS } from './tools';
 import type { BoardFace, EventResult, ResultLine } from './events';
 import {
@@ -102,6 +103,7 @@ export function eligible(g: Game, p: Player, e: RegionalEvent): boolean {
       case 'lose-card': return p.cards.length > 0;
       case 'points': return e.effect.amount > 0 || p.points > 0;
       case 'card': return cardPool(g).length > 0;
+      case 'vanish': case 'turn': return !g.offRoad(p);
       default: return true;
     }
   }
@@ -115,7 +117,9 @@ export function eligible(g: Game, p: Player, e: RegionalEvent): boolean {
     case 'company': return b.companies.length > 0;
     case 'street': return b.lands.length > 0;
     case 'everyone': case 'cards-all': return g.locals().length > 0 && (e.effect.t !== 'cards-all' || cardPool(g).length > 0);
-    case 'one-hospital': return onRoad(g, 'all').length > 0;
+    case 'one-hospital': case 'turn-all': return onRoad(g, 'all').length > 0;
+    case 'take-tools': return g.locals().some(q => q.tools.some(x => x > 0));
+    case 'tools-all': return g.locals().length > 0;
     default: return true;
   }
 }
@@ -220,12 +224,16 @@ function fill(g: Game, text: string, v: { amount?: number; street?: string; lot?
 
 // ------------------------------------------------------------------ presentation helpers
 
-function boardId(e: RegionalEvent): number { return REGIONAL_ID_BASE + REGIONAL_EVENTS.indexOf(e); }
+/** The board id: a city's local card by its place in REGIONAL_EVENTS; a library card (自建地圖) from 5000. */
+function boardId(e: RegionalEvent): number {
+  const i = REGIONAL_EVENTS.indexOf(e);
+  return i >= 0 ? REGIONAL_ID_BASE + i : 5000 + Math.max(0, GENERAL_CARDS.findIndex(c => c.id === e.id));
+}
 
 /** The board (news / fate picture box) with the event's own picture (`local`) and the city's name. */
 function* show(g: Game, p: Player, e: RegionalEvent, text: string, ref?: number, faces?: BoardFace[]): Flow {
   const node = ref ? nodeOf(g, ref) : undefined;
-  const data: Record<string, unknown> = { id: boardId(e), text, local: e.id, city: CITY[e.map] ?? '' };
+  const data: Record<string, unknown> = { id: boardId(e), text, local: (e as { art?: string }).art ?? e.id, city: CITY[e.map] ?? '' };
   if (e.kind === 'news') data.category = e.category;
   if (faces?.length) data.faces = faces;
   yield { t: 'fx', kind: e.kind, p: p.id, ...(node ? { node } : {}), data };
@@ -237,7 +245,7 @@ function* result(g: Game, p: Player, e: RegionalEvent, fx: string, lines: Result
   const { node, ...rest } = o;
   const data = {
     src: e.kind, id: boardId(e), fx, title: e.kind === 'news' ? e.category : '命運', head: e.head, lines,
-    tag: CITY[e.map], local: e.id, ...(e.kind === 'fate' ? { focus: [p.id] } : {}), ...rest,
+    tag: CITY[e.map], local: (e as { art?: string }).art ?? e.id, ...(e.kind === 'fate' ? { focus: [p.id] } : {}), ...rest,
   };
   yield { t: 'fx', kind: 'event-result', p: p.id, ...(node ? { node } : {}), data: data as unknown as Record<string, unknown> };
 }
@@ -273,7 +281,7 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
       const r = yield* g.objects.luck(p, 1, 1);
       if (r === 1) { yield* result(g, p, e, 'blessed', [{ p: p.id, text: luckWords(g, p, true, '逃過此劫') }]); return; }
       if (fx.t === 'stay') {
-        p.stay = r === 2 ? 2 : 1;
+        p.stay = (fx.turns ?? 1) * (r === 2 ? 2 : 1);
         yield* result(g, p, e, 'jam', [{ p: p.id, text: `停留${p.stay}回合${r === 2 ? '（倒楣加倍）' : ''}` }]);
         return;
       }
@@ -304,14 +312,15 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
     }
     case 'tool': {
       yield* show(g, p, e, fill(g, e.text, {}));
-      const name = TOOLS[fx.id - 1]?.name ?? '道具';
-      if (p.tools[fx.id - 1] < MAX_HELD) {
-        p.tools[fx.id - 1] += 1;
-        yield { t: 'fx', kind: 'tool-received', p: p.id, data: { tool: fx.id } };
+      const id = fx.id || 1 + rng.below(13);
+      const name = TOOLS[id - 1]?.name ?? '道具';
+      if (p.tools[id - 1] < MAX_HELD) {
+        p.tools[id - 1] += 1;
+        yield { t: 'fx', kind: 'tool-received', p: p.id, data: { tool: id } };
         yield* result(g, p, e, 'blessed', [{ p: p.id, text: `得到${name}` }]);
       } else {
         // The tool bag is full: the tool's price in points instead (as selling it).
-        const pts = TOOLS[fx.id - 1]?.price ?? 0;
+        const pts = TOOLS[id - 1]?.price ?? 0;
         p.points = (p.points + pts) & 0xffff;
         yield { t: 'points', p: p.id, amount: pts };
         yield* result(g, p, e, 'blessed', [{ p: p.id, text: `${name}已滿，換成${pts}點券` }]);
@@ -333,6 +342,23 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
       g.freeUpgrade(ref);
       yield { t: 'board' };
       yield* result(g, p, e, 'price-up', [{ p: p.id, text: `${refName(g, ref)}免費加蓋到${refLevel(g, ref)}級` }], { node: nodeOf(g, ref), refs: [ref] });
+      return;
+    }
+    case 'vanish': {
+      yield* show(g, p, e, fill(g, e.text, {}));
+      const r = yield* g.objects.luck(p, 1, 1);
+      if (r === 1) { yield* result(g, p, e, 'blessed', [{ p: p.id, text: luckWords(g, p, true, '逃過此劫') }]); return; }
+      const days = fx.days * (r === 2 ? 2 : 1);
+      yield* g.vanish(p, days, fx.alien);
+      if (g.over) return;
+      yield* result(g, p, e, fx.alien ? 'abduct' : 'abroad', [{ p: p.id, text: `${fx.alien ? '被外星人帶走' : '出國觀光'}${days}天` }]);
+      return;
+    }
+    case 'turn': {
+      yield* show(g, p, e, fill(g, e.text, {}));
+      g.places.turnAround(p);
+      yield { t: 'fx', kind: 'turn-around', p: p.id, target: p.id };
+      yield* result(g, p, e, 'jam', [{ p: p.id, text: '向後轉' }]);
       return;
     }
     case 'lose-card': {
@@ -374,8 +400,9 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
       let ref: number | undefined;
       if (fx.t === 'typhoon') { const refs = builtRefs(g); ref = refs[rng.below(refs.length)]; }
       yield* show(g, p, e, text({ lot: ref ? refName(g, ref) : '' }), ref, who.map(q => ({ p: q.id })));
-      for (const q of who) q.stay = 1;
-      const lines: ResultLine[] = who.map(q => ({ p: q.id, text: '停留一回合' }));
+      const turns = fx.t === 'stay' ? fx.turns ?? 1 : 1;
+      for (const q of who) q.stay = turns;
+      const lines: ResultLine[] = who.map(q => ({ p: q.id, text: turns > 1 ? `停留${turns}回合` : '停留一回合' }));
       let owner: number | undefined;
       if (ref) {
         owner = refOwner(g, ref);
@@ -513,13 +540,38 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
       const who = g.locals();
       yield* show(g, p, e, text(), undefined, who.map(q => ({ p: q.id })));
       const lines: ResultLine[] = [];
-      for (const q of who) {
+      for (const q of who) for (let k = 0; k < (fx.n ?? 1); k++) {
         const ids = cardPool(g);
         if (!ids.length) break;
         const id = ids[rng.below(ids.length)];
         if (yield* g.cards.take(q, id)) lines.push({ p: q.id, text: `得到${cardName(id)}` });
       }
       yield* result(g, p, e, 'birthday', lines, { focus: who.map(q => q.id) });
+      return;
+    }
+    case 'tools-all': case 'take-tools': {
+      const who = g.locals();
+      yield* show(g, p, e, text(), undefined, who.map(q => ({ p: q.id })));
+      const lines: ResultLine[] = [];
+      for (const q of who) {
+        if (fx.t === 'tools-all') {
+          const id = 1 + rng.below(13);
+          if (q.tools[id - 1] < MAX_HELD) { q.tools[id - 1] += 1; lines.push({ p: q.id, text: `得到${TOOLS[id - 1]?.name ?? '道具'}` }); }
+        } else {
+          const held = q.tools.map((x, i) => (x > 0 ? i : -1)).filter(i => i >= 0);
+          if (!held.length) continue;
+          const i = held[rng.below(held.length)];
+          q.tools[i] -= 1; lines.push({ p: q.id, text: `被沒收${TOOLS[i]?.name ?? '道具'}` });
+        }
+      }
+      yield* result(g, p, e, fx.t === 'tools-all' ? 'birthday' : 'cursed', lines.length ? lines : [{ p: p.id, text: '沒有人受影響' }], { focus: who.map(q => q.id) });
+      return;
+    }
+    case 'turn-all': {
+      const who = onRoad(g, 'all');
+      yield* show(g, p, e, text(), undefined, who.map(q => ({ p: q.id })));
+      for (const q of who) { g.places.turnAround(q); yield { t: 'fx', kind: 'turn-around', p: q.id, target: q.id }; }
+      yield* result(g, p, e, 'jam', who.map(q => ({ p: q.id, text: '向後轉' })), { focus: who.map(q => q.id) });
       return;
     }
     case 'one-hospital': {

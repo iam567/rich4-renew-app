@@ -1,7 +1,8 @@
-// Builds the installable packages into release/: an Android APK and an unsigned iOS IPA (sign it yourself before installing).
+// Builds the installable packages into release/: the Android APKs (phone and Android TV) and an unsigned iOS IPA (sign
+// it yourself before installing).
 //
-//   npm run package            # both
-//   npm run package -- apk     # Android only (debug-signed, installs directly: adb install, or open the file on the phone)
+//   npm run package            # all
+//   npm run package -- apk     # Android only, phone and TV (debug-signed, installs directly: adb install, or open the file)
 //   npm run package -- ipa     # iOS only (unsigned)
 //   npm run package -- --no-build apk   # reuse the last dist/
 //
@@ -40,10 +41,13 @@ if (targets.includes('apk')) {
   const local = join(root, 'android/local.properties');
   if (!existsSync(local) && existsSync(sdk)) writeFileSync(local, `sdk.dir=${sdk}\n`);
   run('npx', ['cap', 'sync', 'android']);
-  run('./gradlew', ['assembleDebug', '-q'], { cwd: join(root, 'android'), env });
-  const apk = join(out, `rich4-${version}.apk`);
-  cpSync(join(root, 'android/app/build/outputs/apk/debug/app-debug.apk'), apk);
-  console.log(`APK → ${apk}`);
+  // the phone build and the Android TV one (build.gradle's flavors; either runs on both)
+  run('./gradlew', ['assemblePhoneDebug', 'assembleTvDebug', '-q'], { cwd: join(root, 'android'), env });
+  for (const [flavor, name] of [['phone', `rich4-${version}.apk`], ['tv', `rich4-${version}-androidtv.apk`]]) {
+    const apk = join(out, name);
+    cpSync(join(root, `android/app/build/outputs/apk/${flavor}/debug/app-${flavor}-debug.apk`), apk);
+    console.log(`APK → ${apk}`);
+  }
 }
 
 if (targets.includes('ipa')) {

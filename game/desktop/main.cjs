@@ -49,6 +49,11 @@ ipcMain.handle('update:write', (_e, name, data) => { const f = inside(name); fs.
 ipcMain.handle('update:remove', (_e, name) => { fs.rmSync(inside(name), { recursive: true, force: true }); return true; });
 ipcMain.handle('update:rename', (_e, from, to) => { const b = inside(to); fs.rmSync(b, { recursive: true, force: true }); fs.renameSync(inside(from), b); return true; });
 ipcMain.handle('update:list', () => { try { return fs.readdirSync(UPDATE); } catch { return []; } });
+// 全螢幕 / 視窗 and 結束遊戲 from the game's 系統 window (issue #72)
+const winOf = e => BrowserWindow.fromWebContents(e.sender);
+ipcMain.handle('win:isFullScreen', e => !!winOf(e)?.isFullScreen());
+ipcMain.handle('win:setFullScreen', (e, on) => { winOf(e)?.setFullScreen(!!on); return true; });
+ipcMain.handle('win:quit', () => { app.quit(); return true; });
 
 function createWindow() {
   // RICH4_SIZE=WxH (test runs, scripts/ui-sweep.mjs): that content size, phone sizes included.
@@ -56,7 +61,8 @@ function createWindow() {
   const win = new BrowserWindow({
     width: size ? Number(size[1]) : 1280, height: size ? Number(size[2]) : 800, useContentSize: !!size,
     minWidth: size ? 200 : 800, minHeight: size ? 200 : 500, backgroundColor: '#0b2427', title: '大富翁4',
-    autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, preload: join(__dirname, 'preload.cjs') },
+    // (allowRunningInsecureContent: 局域網房間 — another PC's room on the network is plain ws:// / http://, lan-find.ts)
+    autoHideMenuBar: true, webPreferences: { contextIsolation: true, sandbox: true, allowRunningInsecureContent: true, preload: join(__dirname, 'preload.cjs') },
   });
   win.loadURL('app://rich4/index.html');
   // Test runs: the page asks for a picture of itself (console 'RICH4-SHOT name' -> RICH4_SHOTS_DIR/name.png).
@@ -133,3 +139,14 @@ app.whenReady().then(() => {
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 });
 app.on('window-all-closed', () => app.quit());
+
+// 局域網房間 (the user 2026-11-08, lan-relay.cjs): 派對模式's relay for the phones on this computer's network (they
+// join with the app), from when the game asks till it quits.
+let lan = null;
+ipcMain.handle('lan:start', async () => {
+  lan ??= require('./lan-relay.cjs').startLan().catch(e => { lan = null; throw e; });
+  const l = await lan;
+  return { port: l.port, urls: l.urls };
+});
+ipcMain.handle('lan:find', () => require('./lan-relay.cjs').findLan());
+app.on('before-quit', () => { void lan?.then(l => l.stop(), () => {}); });

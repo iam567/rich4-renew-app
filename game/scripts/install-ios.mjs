@@ -37,7 +37,7 @@ const devicectl = (...a) => {
 
 // 1. The connected iPhone (CoreDevice id for devicectl, hardware UDID for xcodebuild).
 const list = devicectl('list', 'devices').json?.result?.devices ?? [];
-const phones = list.filter(d => d.hardwareProperties?.deviceType === 'iPhone' && d.connectionProperties?.pairingState === 'paired'
+const phones = list.filter(d => d.hardwareProperties?.deviceType === 'iPhone' && d.hardwareProperties?.reality !== 'simulated' && d.connectionProperties?.pairingState === 'paired'
   && d.connectionProperties?.tunnelState !== 'unavailable');
 const phone = phones.find(d => d.connectionProperties?.tunnelState === 'connected') ?? phones[0];
 if (!phone) throw new Error('找不到已連接的 iPhone：用數據線接上、解鎖並信任這台電腦');

@@ -56,6 +56,37 @@ export class SmartAi {
   constructor(private readonly g: Game) {}
   /** 地獄 (Game.aiLevel 3). */
   private hell(p: Player): boolean { return this.g.aiLevel(p) === 3; }
+  /** 地獄 with its 1.2.3 rules on (Game.hellRules): the harder play below (the user 2026-11-16). */
+  private hellPlus(p: Player): boolean { return this.hell(p) && this.g.hellRules(); }
+  /** A lot's worth (land and its houses, or the facility and its levels), price-indexed. */
+  private worth(x: Land | Facility): number {
+    const PI = this.g.priceIndex;
+    return 'perLevel' in x ? (x.price + x.level * x.perLevel) * PI : x.price * (1 + x.level) * PI;
+  }
+  /** A rival (地獄: a human) owns this lot. */
+  private rivalOwns(p: Player, x: Land | Facility | undefined): boolean {
+    const q = x && x.owner ? this.g.players[x.owner - 1] : undefined;
+    return !!q && this.rival(p, q);
+  }
+
+  /**
+   * 魔法屋 at 地獄 (the user 2026-11-16): the spell that hurts the humans among the targets most — their whole hand of
+   * cards, all their tools, the hospital, the prison — and the 一張卡片 when only fellow computers are hit.
+   */
+  magicSpell(p: Player, targets: Player[]): number {
+    const hit = targets.filter(q => this.rival(p, q));
+    if (!hit.length) return 6;
+    let cards = 0, tools = 0, road = 0;
+    for (const q of hit) {
+      for (const c of q.cards) cards += CARD_POINTS[c - 1] ?? 20;
+      q.tools.forEach((n, i) => { if (n > 0 && i < 13) tools += (TOOL_POINTS[i] ?? 30) * n; });
+      if (!this.g.offRoad(q)) road += 1;
+    }
+    const opts: [number, number][] = [[0, cards], [8, tools * 0.8], [10, road * 90], [2, road * 85]];
+    let best = 10, v = -1;
+    for (const [e, x] of opts) if (x > v) { v = x; best = e; }
+    return v > 0 ? best : 10;
+  }
   /**
    * Whether q is someone p plays against. 地獄 (the user 2026-11-03: the computers that fill the seats all gang up on
    * the players): only the humans — cards, tools, tolls and the leader count against them, a fellow computer is
@@ -194,6 +225,11 @@ export class SmartAi {
     let v = -fee;
     if (fee > money) v -= 2 * money + 100000 * PI; // bankruptcy
     else if (fee > money * 0.5) v -= fee - money * 0.5;
+    if (n.event === 0 && this.hellPlus(p) && g.objects.godType(p) === O.EarthGod) {
+      // 地獄 with 土地公 on it: a human's lot stopped on is taken, houses and all
+      const x = landOf(g.board, n) ?? facilityOf(g.board, n);
+      if (x && this.rivalOwns(p, x)) v += fee + this.worth(x) * 1.5;
+    }
     if (n.event === 0) {
       const land = landOf(g.board, n), f = facilityOf(g.board, n);
       if (land && !land.owner && (land.price + land.level * land.perLevel) * PI <= p.cash) v += (land.tolls[Math.min(5, land.level + 1)] ?? 0) * PI * 0.4 + this.ownOnStreet(p, land.name) * 1500 * PI;
@@ -212,6 +248,9 @@ export class SmartAi {
       if (t === O.Mine || t === O.Dog && !(p.traffic & 3)) v -= 3 * this.turnCost(p);
       else if (t === O.TimeBomb) v -= 3000 * PI;
       else if (t === O.SmallPoor || t === O.BigPoor || t === O.SmallBad || t === O.BigBad || t === O.Devil || t === O.Death) v -= 3000 * PI;
+      // 地獄 (the user 2026-11-16): runs for the good gods, 土地公 above all while the humans own lots
+      else if (t === O.EarthGod && this.hellPlus(p)) v += Math.max(3000 * PI, 0.25 * g.board.lands.filter(l => this.rivalOwns(p, l)).reduce((a, l) => a + this.worth(l), 0));
+      else if ((t === O.SmallWealth || t === O.BigWealth || t === O.SmallFortune || t === O.BigFortune || t === O.Angel) && this.hellPlus(p)) v += 8000 * PI;
       else if (t === O.SmallWealth || t === O.BigWealth || t === O.SmallFortune || t === O.BigFortune || t === O.Angel || t === O.EarthGod) v += 3000 * PI;
       else if (t === O.Gift || t === O.Chest) v += 1000 * PI;
     }
@@ -426,7 +465,9 @@ export class SmartAi {
     const cards = t.cardShelf(), tools = t.toolShelf();
     const held = (id: number) => p.cards.filter(c => c === id).length;
     // 挑戰模式: the cards and tools its open tasks want come first (core/challenge-ai.ts).
-    for (const [kind, id, cap] of [...(g.challengeAi?.shopWishes(p) ?? []), ...SHOP_WISHES]) {
+    // 地獄 (the user 2026-11-16): the few 遙控骰子 and 路障 of the game into its own hands first
+    const hellWishes: (readonly ['card' | 'tool', number, number])[] = this.hellPlus(p) ? [['tool', 8, 9], ['tool', 2, 9]] : [];
+    for (const [kind, id, cap] of [...(g.challengeAi?.shopWishes(p) ?? []), ...hellWishes, ...SHOP_WISHES]) {
       if (kind === 'tool') {
         const i = tools.indexOf(id), price = TOOL_POINTS[id - 1];
         if (i < 0 || p.points < price || p.tools[id - 1] >= Math.min(cap, 9)) continue;
@@ -666,6 +707,12 @@ export class SmartAi {
         const fee = this.fee(p, route[i], i + 1);
         card(28, pr * fee * 1.5 + (fee > money ? pr * 50000 * PI : 0) - 3000 * PI, n.ref);
       }
+    }
+    // 30 烏龜卡 on itself at 地獄 with 土地公 on it (the user 2026-11-16): one step a turn over the humans' lots ahead
+    if (has(30) && !p.turtle && this.hellPlus(p) && g.objects.godType(p) === O.EarthGod) {
+      let take = 0;
+      for (const id of route.slice(0, 3)) { const n = g.node(id), x = n && n.event === 0 ? landOf(g.board, n) ?? facilityOf(g.board, n) : undefined; if (x && this.rivalOwns(p, x)) take += this.worth(x); }
+      card(30, take - 3000 * PI, p.id);
     }
     // 22 送神符, 23 請神符, 24 紅卡, 25 黑卡, 30 烏龜卡, 7 改建卡 and a map's own cards: the original's judgement,
     // without its personality limit.

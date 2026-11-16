@@ -6,8 +6,8 @@ import { afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
 
 vi.mock('peerjs', () => import('./peerjs-mock'));
 
-import { Lobby, Room, type RoomInfo } from './party-net';
-import { hostMismatch, refuseGuest, sameVersion, statsByVersion } from './party-version';
+import { Lobby, Room, startMsg, type RoomInfo } from './party-net';
+import { hostMismatch, levelNote, refuseGuest, refuseLate, roomLevel, sameVersion, statsByVersion, verKey } from './party-version';
 
 const settle = async (ms = 0) => { for (let k = 0; k < 20; k++) await Promise.resolve(); if (ms) await new Promise(r => setTimeout(r, ms)); for (let k = 0; k < 20; k++) await Promise.resolve(); };
 const me = (character: number, nick?: string) => ({ name: nick ?? `p${character}`, character, nick });
@@ -48,6 +48,45 @@ describe('version texts', () => {
     expect(sameVersion(r(1, '0.7.4'), '0.7.4')).toBe(true);
     expect(sameVersion(r(1), '0.7.4')).toBe(false);
     expect(sameVersion(r(1, '0.7.2'), '0.7.4')).toBe(false);
+  });
+});
+
+describe('versions of one family (1.2.0 on, core/compat.ts)', () => {
+  const CH = [{ id: 'a', since: '1.2.1', name: '新卡片' }, { id: 'b', since: '1.2.3', name: '新事件' }];
+  it('1.2.x join each other; 1.1 and 1.3 do not', () => {
+    expect(refuseGuest('1.2.3', '1.2.0', 'x')).toBeNull();
+    expect(hostMismatch('1.2.0', '1.2.3')).toBeNull();
+    expect(refuseGuest('1.2.0', '1.1.2', 'x')!.why).toContain('房主是 v1.2.0，你是 v1.1.2');
+    expect(hostMismatch('1.2.5', '1.3.0')).toContain('房主是 v1.3.0');
+    const r = (ver?: string): RoomInfo => ({ code: '1', host: '', character: 0, map: '', players: 1, max: 8, at: 0, ver });
+    expect(sameVersion(r('1.2.0'), '1.2.4')).toBe(true);
+    expect(sameVersion(r('1.1.2'), '1.2.0')).toBe(false);
+    expect(verKey('1.2.4')).toBe(verKey('1.2.0'));
+    expect(verKey('1.1.2')).toBe('1.1.2');
+  });
+  it('the room plays at its oldest version; each phone is told what it goes without', () => {
+    expect(roomLevel(['1.2.3', '1.2.0', undefined])).toBe('1.2.0');
+    expect(levelNote('1.2.0', '1.2.3', CH)).toBe('房間裡有 v1.2.0 的玩家，這局以下玩法不能用，會和 v1.2.0 保持一致：新卡片、新事件');
+    expect(levelNote('1.2.1', '1.2.3', CH)).toContain('：新事件');
+    expect(levelNote('1.2.0', '1.2.0', CH)).toBe('');
+    expect(levelNote('1.2.0', '1.2.0.5', CH)).toBe('');
+  });
+  it('a phone too old for the game going on is told why; an older one that lacks nothing comes in', () => {
+    expect(refuseLate('1.2.3', '1.2.0', CH)).toMatch(/這局用了 v1\.2\.3 的玩法（新卡片、新事件），你是 v1\.2\.0/);
+    expect(refuseLate('1.2.3', '1.2.2', CH)).toMatch(/（新事件）/);
+    expect(refuseLate('1.2.0', '1.2.3', CH)).toBeNull();
+    expect(refuseLate('1.2.3', '1.2.0', [])).toBeNull();
+  });
+  it('a 1.2.3 guest joins a 1.2.0 host; the game carries the level', async () => {
+    const host = room('1.2.0', 0);
+    const code = await host.create('2', false);
+    const g = room('1.2.3', 3);
+    await g.join(code);
+    await settle();
+    expect(host.members.map(m => m.ver)).toEqual(['1.2.0', '1.2.3']);
+    expect(g.refused || host.refused).toBe(false);
+    expect(startMsg(host, 0, 0, 1).settings.level).toBe('1.2.0');
+    await expect(room('1.1.2', 5).join(code)).rejects.toThrow(/版本不同/);
   });
 });
 

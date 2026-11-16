@@ -19,9 +19,11 @@ export type FateEffect =
   | { t: 'fine'; amount: number }                    // paid to the lottery pool (luck "loss": waived / doubled; insurance refunds)
   | { t: 'hospital'; days: number }                  // luck "misfortune", pardon / frame cards, then the hospital
   | { t: 'prison'; days: number }                    // the same, prison
-  | { t: 'stay' }                                    // luck "misfortune"; stands still one turn
+  | { t: 'stay'; turns?: number }                    // luck "misfortune"; stands still one turn (or `turns`)
   | { t: 'card'; id: number; n?: number }            // a card (id 1..30; 0 = one drawn from the pool), n times
-  | { t: 'tool'; id: number }                        // a tool (05 §1 id), up to the 9 held
+  | { t: 'tool'; id: number }                        // a tool (05 §1 id; 0 = one of 1..13 at random), up to the 9 held
+  | { t: 'vanish'; days: number; alien: boolean }     // 自建地圖's library: abducted by aliens / a trip abroad (as fate 6 / 7)
+  | { t: 'turn' }                                    // 自建地圖's library: turns round
   | { t: 'points'; amount: number }                  // 點券 (negative: lost, not below 0)
   | { t: 'upgrade' }                                 // one of the player's buildings in this city one level up, free
   | { t: 'repair'; perLevel: number; cap: number }   // repairs: perLevel × the player's building levels here, capped
@@ -29,7 +31,7 @@ export type FateEffect =
 
 /** What a news event does in its city. Amounts × F. */
 export type NewsEffect =
-  | { t: 'stay'; who: 'all' | 'walk' | 'ride' }                          // locals on the road stand still one turn
+  | { t: 'stay'; who: 'all' | 'walk' | 'ride'; turns?: number }         // locals on the road stand still one turn (or `turns`)
   | { t: 'per-lot'; amount: number; cap: number }                        // each owner: ± amount per built lot here, capped
   | { t: 'per-level'; amount: number; cap: number }                      // each owner pays amount per building level here
   | { t: 'value-tax'; percent: number; cap: number }                     // each owner pays % of the property value here
@@ -42,7 +44,10 @@ export type NewsEffect =
   | { t: 'everyone'; amount: number }                                    // every local player ± amount
   | { t: 'top-owner'; amount: number }                                   // the biggest landowner of this city gets amount
   | { t: 'renovate' }                                                    // a random built lot here one level up, free
-  | { t: 'cards-all' }                                                   // every local player draws a card
+  | { t: 'cards-all'; n?: number }                                       // every local player draws a card (or `n`)
+  | { t: 'tools-all' }                                                   // 自建地圖's library: every local player gets a random tool
+  | { t: 'take-tools' }                                                  // 自建地圖's library: every local player loses a random tool
+  | { t: 'turn-all' }                                                    // 自建地圖's library: everyone on the road turns round
   | { t: 'one-hospital'; days: number }                                  // one random local on the road to hospital
   | { t: 'typhoon' };                                                    // locals stand still and one building −1
 

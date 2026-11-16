@@ -7,6 +7,7 @@
  * The original closes it as soon as the mouse moves or is released; on a touch screen it stays 3 s or until
  * the next press. Event squares get a line about what they do (the original shows nothing for them).
  */
+import { CQ_FAC_NAMES, CQ_MAP } from '../core/chongqing';
 import type { Game } from '../core/game';
 import { eventName } from '../core/game';
 import { OBJECT_NAMES } from '../core/modules/objects';
@@ -27,6 +28,7 @@ const EVENT_TEXT: Record<number, string> = {
   6: '停留可玩小遊戲賺點券', 7: '停留可玩小遊戲賺點券', 8: '停留可玩小遊戲賺點券',
   9: '停留可買樂透，每月15日開獎', 10: '停留得點券 50', 11: '停留得點券 30', 12: '停留得點券 10',
   13: '停留得一張卡片', 14: '路過可存提款\n停留可貸款、還款', 15: '停留可買賣道具和卡片', 16: '停留時施展魔法',
+  19: '停留可用點券玩柏青哥\n鋼珠可換點券或獎品', 20: '停留可用點券玩拉霸\n代幣可換點券或獎品',
 };
 
 /** Lines for whatever is at a world point, nearest first by layer (actors, objects, plots, scenery, squares). */
@@ -49,17 +51,22 @@ export function describe(game: Game, at: Pt, actorPos: (id: number) => Pt | unde
   const land = near(b.lands, 30);
   if (land) {
     const owned = land.owner > 0;
-    const lines = [who(land.owner), land.chain ? '連鎖店' : HOUSE[land.level] ?? '', LEVEL[land.level] ?? ''];
+    // The street's name first (the user 2026-11-03: the task cards name streets — which lot is it?), then the owner,
+    // the building and its level on one line, the toll.
+    const lines = [land.name, who(land.owner), land.chain ? '連鎖店' : `${(HOUSE[land.level] ?? '').replace(/\s+/g, '')} ${LEVEL[land.level] ?? ''}`];
     if (owned && land.chain) lines.push(`$${pi * 2000}×${b.lands.filter(l => l.chain && l.owner === land.owner).length}`);
     else lines.push(`$${owned ? (land.tolls[land.level] ?? 0) * pi : land.price}`);
     return { pos: land, lines: lines.filter(Boolean) };
   }
   const f = near(b.facilities, 44);
   if (f) {
-    const lines = [who(f.owner)];
+    // the plot's own name first (the task cards name plots too), then the owner and the facility
+    const plot = f.name || '';
+    const lines = [plot, who(f.owner)];
     if (!f.level && !f.owner) lines.push('空  地');
     else {
-      lines.push(f.name || FACILITY[f.type] || '');
+      const kind = game.settings.mapId === CQ_MAP ? CQ_FAC_NAMES[f.type] ?? FACILITY[f.type] : FACILITY[f.type];   // 重慶's own names
+      if (kind && kind !== plot) lines.push(kind);
       if (f.type === 3) lines.push('×1000');
       else if (f.type === 1 || f.type === 2) lines.push(LEVEL[f.level] ?? '', `×${(f.fees[f.level] ?? 0) * pi}`);
       else if (f.type === 4) lines.push(LEVEL[f.level] ?? '', f.labTool ? toolDef(game.tools.labToolId(f.labTool))?.name ?? '' : '');

@@ -142,6 +142,11 @@ class ShopScene {
   private layout: Layout = LAND;
   private ask!: ShopAsk;
   private resolver: ((v: ShopAnswer) => void) | null = null;
+  /**
+   * A tap while the engine was still taking the last one (no question open for a moment; longer in 即時制 and 派對模式):
+   * kept and sent as soon as the next question comes, instead of lost (the user 2026-11-08: taps did nothing).
+   */
+  private queued: (() => void) | null = null;
   private guard = 0;
   private speechTimer = 0;
   private infoTimer = 0;
@@ -218,7 +223,11 @@ class ShopScene {
     this.ask = a;
     this.render();
     if (first) this.enter(true);
-    return new Promise(resolve => { this.resolver = resolve; });
+    const p = new Promise<ShopAnswer>(resolve => { this.resolver = resolve; });
+    const q = this.queued;
+    this.queued = null;
+    q?.();
+    return p;
   }
 
   private answer(v: ShopAnswer) {
@@ -303,7 +312,7 @@ class ShopScene {
     this.img(this.shelfImg, 'Panel', 10, 1 + pg * 16, 0, 0);
     this.rows.replaceChildren(pg === 0 ? place(el('div', 'shop-face card'), 10, 66, 202, 386) : place(el('div', 'shop-face tool'), 14, 80, 194, 367));
     if (pg === 0) {
-      const stack = stackOf(this.ctx.game), full = (id: number) => !handRoom(me.cards, id, stack);
+      const stack = stackOf(this.ctx.game), full = (id: number) => !handRoom(me.cards, id, stack) || this.ctx.game.cards.hellHeld(me, id);
       // 大富豪模式's shelf has every card (05 §8.3, 17 §3.10): more than the 15 rows that fit, so two columns of shorter
       // rows in the same list area, every card on the one page.
       const many = a.cards.length > 15, per = Math.ceil(a.cards.length / 2), step = many ? Math.min(25, Math.floor(378 / per)) : 25;
@@ -381,7 +390,7 @@ class ShopScene {
       let k = 0;
       TOOLS.forEach(d => {
         const n = me.tools[d.id - 1];
-        if (!n) return;
+        if (!n || this.ctx.game.tools.unsellable(d.id)) return; // 地獄: a lab's tools are not sold back
         const c = cell(k++), icon = this.art('Panel', 11, d.id + 1), get = sellPrice(d.price);
         c.classList.add('tool');
         c.innerHTML = `${icon ? `<img class="ic" src="${icon.src}" alt="" style="width:${icon.w}px;height:${icon.h}px">` : ''}<span class="pr">+${get}</span><span class="n">×${n}</span>`;
@@ -417,13 +426,16 @@ class ShopScene {
   // ------------------------------------------------------------ actions
 
   private buy(kind: 'card' | 'tool', index: number) {
-    if (!this.resolver || this.leaving) return;
+    if (this.leaving) return;
+    if (!this.resolver) { if (this.ask) this.queued = () => this.buy(kind, index); return; }
     const a = this.ask, me = this.player, lines = LINES[this.page];
     const id = kind === 'card' ? a.cards[index] : a.tools[index];
     if (!id) return;
     const price = kind === 'card' ? cardPrice(id) : TOOLS[id - 1].price;
     // Refusals in the original order: points first, then the full hand / stack (rich4_shop.asm:1312-1354, 1480-1543).
     if (a.points < price) { this.say(lines.poor, 2000, true); return; }
+    // 地獄 (the user 2026-11-16): one of each fighting card in a hand
+    if (kind === 'card' && this.ctx.game.cards.hellHeld(me, id)) { this.say('地獄難度：\n這種卡每人只能有一張！', 2000, true); return; }
     if (kind === 'card' ? !handRoom(me.cards, id, stackOf(this.ctx.game)) : me.tools[id - 1] >= MAX_HELD) { this.say(lines.full, 2000, true); return; }
     this.arrived = { kind, id };
     this.floatText(`−${price}`, 'minus');
@@ -432,7 +444,9 @@ class ShopScene {
   }
 
   private sell(v: ShopAnswer, get: number, from: HTMLElement) {
-    if (!this.resolver || this.leaving) return;
+    if (this.leaving) return;
+    // (a card's place in the hand moves after the sale before it: only a tool, sold by its kind, waits)
+    if (!this.resolver) { if (this.ask && typeof v === 'object' && 'sell' in v && v.sell === 'tool') this.queued = () => this.sell(v, get, from); return; }
     from.classList.add('gone');
     this.floatText(`+${get}`, 'plus');
     this.answer(v);

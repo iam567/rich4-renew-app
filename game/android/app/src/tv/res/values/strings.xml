@@ -1,0 +1,6 @@
+<?xml version='1.0' encoding='utf-8'?>
+<!-- The Android TV build's name (build.gradle's tv flavor). -->
+<resources>
+    <string name="app_name">大富翁4 TV</string>
+    <string name="title_activity_main">大富翁4 TV</string>
+</resources>

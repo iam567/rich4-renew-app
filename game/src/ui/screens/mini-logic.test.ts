@@ -296,3 +296,23 @@ describe('喜從天降 (13 §4)', () => {
     expect(g.ticks).toBe(0);
   });
 });
+
+describe('小遊戲搗亂 (派對模式)', () => {
+  it('a bomb dropped by someone watching dazes the catcher, the game goes on', () => {
+    const box = { w: 60, h: 90, ax: 30, ay: 85 };
+    const g = new Gifts(Array.from({ length: 15 }, () => box), 100, () => 0);   // (rand 0: the imp with its bombs never comes)
+    while (g.phase !== 'ready') g.tick();
+    g.start();
+    let dazed = 0, was = false;
+    for (let i = 0; i < 300 && (g.phase as string) === 'play'; i++) {
+      g.aim(i % 4 < 2 ? 290 : 350);   // pacing round the middle
+      if (i % 25 === 0) g.heckle(320);
+      g.tick();
+      if (g.pop && !was) dazed++;
+      was = !!g.pop;
+    }
+    expect(dazed).toBeGreaterThan(0);
+    expect(g.phase as string).toBe('play');
+    expect(g.ticks).toBeLessThan(80);
+  });
+});

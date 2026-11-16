@@ -51,6 +51,11 @@ describe.skipIf(!have)('歌舞伎町 (map 106)', () => {
     expect(KB_FATE).toHaveLength(26);
   });
 
+  it.skipIf(!have)('every news and fate card has its picture', () => {
+    const missing = [...KB_NEWS, ...KB_FATE].filter(c => !existsSync(fileURLToPath(new URL(`../../../editor/site/assets/remake/events/${c.id}.webp`, import.meta.url))));
+    expect(missing.map(c => c.id)).toEqual([]);
+  });
+
   it('the machines pay a little under 1 and end within a session', () => {
     const rng = new Rng(7);
     let spent = 0, back = 0;

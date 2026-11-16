@@ -23,7 +23,8 @@ export interface SlotPreview {
   version: number;
   savedAt: number;
   kind?: 'tycoon';
-  settings: { mapId: number };
+  /** `name`: a player's own map's (我的地圖: its id is no map list's). */
+  settings: { mapId: number; name?: string };
   /** A normal game's date (packed, core/date.ts). */
   game: { date: number };
   /** A 大富豪 world's date and turn. */
@@ -39,7 +40,7 @@ export function previewOf(s: SaveData): SlotPreview {
   return {
     version: a.version, savedAt: a.savedAt ?? 0,
     ...(a.kind === 'tycoon' ? { kind: 'tycoon' as const, world: { date: a.world?.date ?? 0, current: a.world?.current ?? 0 } } : {}),
-    settings: { mapId: a.settings?.mapId ?? 0 },
+    settings: { mapId: a.settings?.mapId ?? 0, ...((a.settings?.mapId ?? 0) >= 5000 && (a.settings?.myMap?.name || a.board?.name) ? { name: a.settings?.myMap?.name || a.board?.name } : {}) },
     game: { date: a.game?.date ?? 0 },
     players: (Array.isArray(a.players) ? a.players : []).map(p => ({ character: p.character, bankrupt: !!p.bankrupt, human: !!p.human })),
   };

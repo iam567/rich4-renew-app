@@ -232,6 +232,9 @@ class Wheel {
     this.scene?.close();
     if (live === this) live = null;
     wheels.delete(this);
+    // (a player, 2026-11-15: tapping fast through a computer's wheel at their hotel, the wheel's sound went on for good,
+    // only a restart stopped it — not reproduced; a loop whose sound came late must not outlive every wheel)
+    for (const ms of [400, 1500]) setTimeout(() => { if (!wheels.size) audio.stop(Sfx.wheel); }, ms);
     this.unspin?.();
     this.unspin = null;
     this.done?.();
@@ -268,5 +271,22 @@ fxScreens.wheel = async (ctx, fx: Fx) => {
   }
   await w.play(t);
 };
+
+/**
+ * 即時制 (the user 2026-11-08): this player's wheel turns by itself and comes to rest in about `ms` — no tap, nothing
+ * held up meanwhile (the rules stop it as a computer's, the start random); its result stays a moment, a tap closes it.
+ */
+export async function quickWheel(ctx: ScreenContext, fx: Fx, ms = 1500) {
+  const d = fx.data ?? {};
+  const t: Timeline = {
+    cells: (d.cells as number[]) ?? [], start: Number(d.start) || 0, stop: Number(d.stop), result: Number(d.result),
+    end: Number(d.end), value: Number(d.value), human: false,
+  };
+  if (!t.cells.length) return;
+  live?.close();
+  const w = new Wheel(ctx, Number(d.wheel) & 3, String(d.name ?? ''), t.start);
+  await w.open(Math.max(8, ms / Math.max(1, t.result)));
+  await w.play(t);
+}
 
 export {};

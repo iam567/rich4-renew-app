@@ -79,7 +79,9 @@ button:disabled { opacity: 0.4; cursor: default; }
 .toolbar .tb span { display: none; }
 .toolbar .tb:hover .tb-n, .toolbar .tb:active .tb-n { opacity: 0; }
 .toolbar .tb:hover .tb-h, .toolbar .tb:active .tb-h { opacity: 1; transform: scale(1.06); }
-.toolbar:not(.turn-open) .tb:is([data-key=save], [data-key=tool], [data-key=card], [data-key=trade], [data-key=stock]) { opacity: 0.45; }
+.toolbar:not(.turn-open) .tb:is([data-key=save], [data-key=trade]) { opacity: 0.45; }
+/* 派對模式, another player's turn (wait-open): 道具 and 卡片 can be looked at, 股市 takes orders */
+.toolbar:not(.turn-open, .wait-open, .rt-open) .tb:is([data-key=tool], [data-key=card], [data-key=stock]) { opacity: 0.45; }
 
 .view-tools { position: absolute; left: 8px; top: 8px; display: flex; gap: 6px; z-index: 3; }
 .view-tools button { width: 38px; height: 38px; padding: 0; border-radius: 50%; display: grid; place-items: center; color: #5a2d00;
@@ -372,6 +374,29 @@ button:disabled { opacity: 0.4; cursor: default; }
 .game.portrait.layout-2 .mm-box { left: 0; top: calc(80px * var(--pu)); }
 .game.portrait.layout-2 .st-box { left: calc(200px * var(--pu)); width: calc(200px * var(--pu)); }
 .game.portrait.layout-0 .mm-rot { display: none; }
+/* 玩家一覽 (side.ts PlayerStrip, issue #91): a wide portrait screen's room beside the panels holds the players' cards. */
+.ps { display: none; }
+.game.portrait.gaps .ps { display: flex; flex-direction: column; justify-content: center; gap: 8px; grid-column: 1; grid-row: 3; min-height: 0; overflow: hidden;
+  width: calc((100% - 400px * var(--pu)) / 2 - 16px); padding: 8px 0; box-sizing: border-box; }
+.game.party.portrait.gaps .ps { grid-row: 4; }
+.game.portrait.gaps .ps-l { justify-self: start; margin-left: 8px; }
+.game.portrait.gaps .ps-r { justify-self: end; margin-right: 8px; }
+.ps-card { flex: 1 1 0; max-height: 210px; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1px; padding: 6px 4px;
+  border-radius: 14px; border: 3px solid var(--c); background: linear-gradient(#fff6dc, #f1d9a2); color: #4a2a00; text-align: center; box-shadow: 0 3px 0 rgba(0,0,0,.35); overflow: hidden; }
+.ps-card.on { box-shadow: 0 0 0 3px #fff36b, 0 0 16px #ffd23f; }
+.ps-card.out { filter: grayscale(1); opacity: .55; }
+.ps-face { width: min(64px, 62%); aspect-ratio: 1; border-radius: 12px; overflow: hidden; border: 3px solid var(--c); flex: none; background: #fff; }
+.ps-face img { width: 100%; height: 100%; display: block; object-fit: cover; }
+.ps-name { font-weight: 400; font-size: 16px; line-height: 20px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-top: 2px; }
+.ps-card .ps-k { font-size: 11px; line-height: 13px; color: #8a6a3a; margin-top: 2px; }
+.ps-card em { font-style: normal; font-size: 15px; line-height: 17px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.ps-out { font-size: 14px; color: #a01010; }
+.ps.many { gap: 5px; }
+.ps.many .ps-card { flex-direction: row; flex-wrap: wrap; gap: 0 6px; padding: 3px 6px; }
+.ps.many .ps-face { width: 34px; border-width: 2px; border-radius: 8px; }
+.ps.many .ps-name { font-size: 14px; }
+.ps.many .ps-k { display: none; }
+.ps.many em { font-size: 13px; width: 100%; }
 /* A near-square screen in the landscape arrangement (fitShell .roomy: an unfolded foldable): the room left under the
    panel and the calendar shows the small map, --ms px per original px, centred. */
 .game.roomy.layout-0 .mm-box { display: flex; justify-content: center; align-items: center; width: 100%; height: auto; flex: 1 1 0; min-height: 0; }
@@ -389,6 +414,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 .mm-rot { position: absolute; top: 3px; width: 22px; height: 22px; padding: 3px; border-radius: 50%; color: #5a2d00;
   background: linear-gradient(#fff6c2, #ffd23f); border: 2px solid #fff; box-shadow: 0 2px 0 #c98a00; }
 .mm-rot svg { width: 100%; height: 100%; display: block; }
+/* 重慶's level buttons (minimap.ts): 一層 / 二層 / 三層 top right, the level looked at lit. */
+.mm-lv { position: absolute; top: 3px; width: 32px; height: 22px; padding: 0; border-radius: 11px; font: 700 11px/18px "PingFang TC", "Noto Sans TC", sans-serif;
+  color: #5a2d00; background: linear-gradient(#fff6c2, #ffd23f); border: 2px solid #fff; box-shadow: 0 2px 0 #c98a00; }
+.mm-lv.on { color: #fff; background: linear-gradient(#ff8a65, #e53935); box-shadow: 0 2px 0 #8e1b1b; }
 /* Today's card (portrait corner, side.ts SideToday): 120×80 original px (200×80 in 全部), parchment like the panel. */
 .st { position: relative; width: 120px; height: 80px; transform: scale(var(--pu)); transform-origin: 0 0; box-sizing: border-box; margin: 0;
   display: grid; grid-template-columns: 40px 1fr; grid-template-rows: 1fr auto auto auto 1fr; grid-template-areas: "wx ." "wx date" "wx wd" "wx price" "wx .";
@@ -515,6 +544,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 }
 /* The big sheets fill the game screen's height up to a comfortable size (a tablet keeps them compact). */
 .ui-layer.full { z-index: 20; align-items: center; background: rgba(20, 10, 40, 0.5); padding: 22px 8px 10px; }
+.ui-layer.full.wait-layer { z-index: 22; }
 .ui-layer.full > .msg.sheet.wide { height: min(100%, 680px); max-height: 100%; margin-top: 0; }
 .ui-layer.full > .msg.sheet.wide > .info, .ui-layer.full > .msg.sheet.wide > .stk { flex: 1 1 auto; min-height: 0; overflow: visible; }
 .game { position: relative; }
@@ -522,6 +552,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 /* ============================================================== title and new game */
 .title { position: relative; height: 100%; background: #1b6fd1 var(--title-bg, none) center 22% / cover no-repeat; overflow: hidden; font-family: var(--ui-font), "PingFang SC", "PingFang TC", system-ui, sans-serif; }
 .title-buttons { position: absolute; left: 0; right: 0; bottom: max(7%, env(safe-area-inset-bottom)); display: flex; justify-content: center; align-items: flex-end; gap: clamp(10px, 4vw, 48px); }
+/* Five buttons since 自建地圖 (2026-11-11): a narrow screen puts them in two rows (three and two) rather than squeezing them. */
+@media (max-aspect-ratio: 2/3) { .title-buttons { flex-wrap: wrap; row-gap: 6px; padding: 0 8px; } }
 .title-btn { position: relative; display: grid; justify-items: center; padding: 0; background: none; width: calc(clamp(92px, 18vmin, 170px) * var(--k, 1)); }
 .title-btn img { grid-area: 1 / 1; width: 100%; height: auto; transition: transform .15s; filter: drop-shadow(0 6px 8px rgba(0, 20, 60, .45)); }
 .title-btn .h { opacity: 0; }
@@ -535,6 +567,10 @@ button:disabled { opacity: 0.4; cursor: default; }
 .title-ver { position: absolute; right: max(10px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); padding: 1px 8px;
   border-radius: 999px; font-size: 12px; line-height: 1.4; color: #fff; background: rgba(0, 20, 80, .45); text-shadow: 0 1px 2px #003; opacity: .9;
   font-variant-numeric: tabular-nums; pointer-events: none; }
+/* 版本選擇 (update.ts pickVersion): the number is a button on the apps */
+button.title-ver { pointer-events: auto; cursor: pointer; border: 1px solid rgba(255, 255, 255, .35); font-family: inherit; }
+.up-versions .choices { flex-wrap: wrap; justify-content: center; gap: 8px; }
+.up-versions .choices .candy { min-width: 96px; }
 .title-note { right: calc(max(12px, env(safe-area-inset-right)) + 64px); }
 /* Portrait phones: the landscape art would cut the logo off, so they get the redraw composed for 9:19.5 (Data#9001). */
 /* The note wraps to two lines there: centred and balanced, the buttons kept above it (also with the home-bar inset). */
@@ -580,6 +616,10 @@ button:disabled { opacity: 0.4; cursor: default; }
   background: rgba(255,255,255,.12); border: 3px solid transparent; min-width: 0; }
 .ng-map img { width: 100%; aspect-ratio: 1.9; object-fit: cover; border-radius: 9px; display: block; }
 .ng-sheet.portrait .ng-map img { aspect-ratio: 1.6; }
+/* 我的地圖 (自建地圖): no picture yet — the size and the maker on a little green field */
+.ng-map.ng-mine i { width: 100%; aspect-ratio: 1.9; border-radius: 9px; display: grid; place-items: center; font-style: normal; font-size: 12px; line-height: 1.3;
+  color: #f4ffe8; text-shadow: 0 1px 2px #0008; background: radial-gradient(circle at 30% 30%, #8fd46a, #3d8d3a 70%), #3d8d3a; }
+.ng-sheet.portrait .ng-map.ng-mine i { aspect-ratio: 1.6; }
 .ng-map span { white-space: nowrap; overflow: hidden; }
 .ng-map.on { border-color: #ffe27a; background: rgba(255, 226, 122, .2); box-shadow: 0 0 0 3px rgba(255,255,255,.35); }
 .ng-players { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -622,6 +662,20 @@ button:disabled { opacity: 0.4; cursor: default; }
 .stk-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
 .stk-bar .chip:disabled { opacity: .4; }
 .stk-bank { margin-left: auto; font-size: 16px; color: #ffe27a; }
+/* 等待中下單: when they are filled, the orders waiting */
+.stk-orders { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 3px 0; font-size: 13px; color: #ffe27a; }
+.stk-orders .chip { padding: 1px 8px; font-size: 12px; }
+/* 槓桿: the positions held (a tap, then 「再按一次平倉」), and the multiple in the trade box */
+.stk-pos { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 3px 0; font-size: 13px; color: #ffe27a; }
+.stk-pos .chip { padding: 1px 8px; font-size: 12px; }
+.stk-pos .chip b { margin-left: 4px; }
+.stk-pos .chip.up b { color: #ff8a80; }
+.stk-pos .chip.down b { color: #7dffa0; }
+.stk-pos .chip.sure { background: #e8590c; color: #fff; }
+.stk-pos .chip.sure b { color: #fff; }
+.stk-lev { display: flex; flex-wrap: wrap; justify-content: center; gap: 6px; margin: 2px 0 4px; }
+.stk-lev .chip { padding: 2px 10px; font-size: 13px; white-space: nowrap; }
+.stk-trade-box .nw, .stk-pos .chip { white-space: nowrap; }
 .stk-table { width: 100%; border-collapse: collapse; font-size: calc(14px * var(--k)); font-variant-numeric: tabular-nums; background: rgba(0, 0, 0, .18); border-radius: 12px; overflow: hidden; }
 .stk-table th { font-weight: 400; color: #ffe27a; padding: max(1px, calc((var(--k) - 0.7) * 16px)) 6px; line-height: 1.2; text-align: right; background: rgba(0,0,0,.2); white-space: nowrap; }
 .stk-table th:first-child, .stk-table td:first-child { text-align: left; }
@@ -629,6 +683,7 @@ button:disabled { opacity: 0.4; cursor: default; }
 .stk-table tr[data-a] { cursor: pointer; }
 .stk-table tr.sel td { background: rgba(255, 255, 255, .18); box-shadow: inset 0 1px 0 #fff, inset 0 -1px 0 #fff; }
 .stk-table .nm.hq { color: #6ff3f3; }
+.stk-table .stk-avg { display: none; }
 .stk-table tr.up .px, .stk-table tr.up .chg { color: #ff6a6a; }
 .stk-table tr.down .px, .stk-table tr.down .chg { color: #5cf07a; }
 .stk-table tr.limit-up .px span { background: #d00000; color: #fff; padding: 0 6px; border-radius: 6px; }
@@ -675,6 +730,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 @media (max-width: 560px) {
   .stk-table { font-size: 12px; } .stk-table th, .stk-table td { padding: 3px 3px; }
   .stk-table:not(.holders) th:nth-child(6), .stk-table:not(.holders) td:nth-child(6) { display: none; }
+  /* (a narrow phone: 平均成本 under 持有股數 instead of a column of its own) */
+  .stk-table .stk-avg { display: block; font-size: 10px; color: #ffe27a; line-height: 1.1; }
 }
 
 /* character choice: the twelve characters, your pick, the others drawn at random */
@@ -689,6 +746,8 @@ button:disabled { opacity: 0.4; cursor: default; }
 .ng-lineup { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-top: 6px; }
 .ng-seat { display: grid; grid-template-columns: 34px 1fr; grid-template-rows: auto auto; align-items: center; gap: 0 6px; padding: 4px 6px;
   border-radius: 12px; background: rgba(0,0,0,.15); border-left: 5px solid var(--c); color: #fff; }
+.ng-seat[data-seat] { cursor: pointer; }
+.ng-seat.picking { box-shadow: 0 0 0 2px #ffe27a; }
 .ng-seat img { grid-row: 1 / 3; width: 34px; height: 34px; border-radius: 8px; background: #fff; }
 .ng-seat b { font-weight: 400; font-size: 13px; white-space: nowrap; overflow: hidden; }
 .ng-seat .chip { justify-self: start; padding: 0 8px; font-size: 12px; }
@@ -718,8 +777,16 @@ button:disabled { opacity: 0.4; cursor: default; }
 .pick-hint .candy { padding: 3px 12px; font-size: 14px; white-space: nowrap; pointer-events: auto; }
 /* While picking, nothing but the hint floats over the map. */
 .stage.picking .view-tools { display: none; }
+/* 自建地圖's 試玩: 結束試玩 (top right of the map) */
+.trial-end { position: absolute; right: 8px; top: 8px; z-index: 3; padding: 6px 14px; border-radius: 999px; border: 3px solid #fff; font: inherit; font-size: 15px; color: #fff;
+  background: linear-gradient(#ff8a7a, #e0453a); box-shadow: 0 3px 0 #8e1b1b; }
+.trial-end.passed { background: linear-gradient(#9af5a4, #2dbb48); box-shadow: 0 3px 0 #157a2a; }
 .pick-hint span { white-space: nowrap; overflow: hidden; min-width: 0; }
 .pick-hint.miss { animation: pick-miss .35s; }
+/* 重慶's missile: one button per level with its number of targets (main.ts). */
+.pick-hint .pick-lv { display: flex; gap: 4px; flex: none; }
+.pick-hint .pick-lv .mm-lv { position: static; width: auto; height: 24px; padding: 0 8px; font-size: 12px; pointer-events: auto; }
+.pick-hint .pick-lv .mm-lv:disabled { opacity: .45; }
 @keyframes pick-miss { 20%, 60% { transform: translateX(-6px); } 40%, 80% { transform: translateX(6px); } }
 
 /* facility choice: one row of buildings */
@@ -861,4 +928,195 @@ button:disabled { opacity: 0.4; cursor: default; }
 
 /* 在線更新 (update.ts): the download's progress bar in its sheet. */
 .update-sheet .up-bar { height: 12px; margin: 10px 4px 2px; border-radius: 6px; background: rgba(0, 0, 0, .15); overflow: hidden; }
+/* (220px / 36vh first: an older Android WebView has no dvh, dropped the whole line and the notes pushed 立即更新 off the screen — a player: 「每次都得刪了遊戲重新下載」) */
+.update-sheet .up-notes { max-height: 220px; max-height: min(36vh, 220px); max-height: min(36dvh, 220px); overflow: hidden; margin: 8px 2px 4px; padding: 8px 10px 8px 26px; border-radius: 10px; background: rgba(255, 255, 255, .92); color: #2a2a2a; text-align: left; }
+.update-sheet .up-notes li { font-size: 13px; line-height: 1.45; margin: 0 0 4px; display: list-item; }
 .update-sheet .up-bar i { display: block; height: 100%; width: 0; background: linear-gradient(#9af5a4, #2dbb48); transition: width .2s; }
+
+/* 即時制's stopwatch (ui/rt-clock.ts): under the map's turn buttons, the hand once round per game day */
+.rt-clock { position: absolute; left: 4px; bottom: 6px; z-index: 3; width: 100px; display: grid; justify-items: center; gap: 1px; pointer-events: none; }
+.rt-dial { position: relative; width: 100px; height: 100px; }
+.rt-dial img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.rt-hand { position: absolute; inset: 0; transform-origin: 50% 50%; will-change: transform; }
+.rt-left { margin-top: -12px; font: 700 13px/1.2 system-ui, sans-serif; color: #fff; background: rgba(40, 20, 0, .62); border-radius: 9px; padding: 1px 7px; white-space: nowrap; }
+.rt-clock.late .rt-left { background: #c8261d; }
+.rt-clock.plain .rt-dial { border-radius: 50%; background: radial-gradient(#fffbe9 62%, #e2b64a 64%, #b98418 100%); box-shadow: 0 2px 4px rgba(0, 0, 0, .35); }
+.rt-clock.plain img { display: none; }
+.rt-clock.plain .rt-hand::after { content: ''; position: absolute; left: calc(50% - 2px); top: 12%; width: 4px; height: 38%; background: #d32a1f; border-radius: 2px; }
+.stage.picking .rt-clock { display: none; }
+
+/* 新遊戲: 回合制 / 即時制 beside the map kinds (the user 2026-11-08) */
+.ng-mode { display: flex; margin-left: auto; flex: none; border-radius: 999px; background: rgba(0, 0, 0, .28); border: 2px solid rgba(255, 255, 255, .3); overflow: hidden; }
+.ng-mode button { font-family: inherit; font-size: 14px; padding: 4px 9px; color: #c8d4f0; background: none; border: 0; white-space: nowrap; }
+.ng-mode button.on { color: #5a2d00; background: linear-gradient(#ffd27a, #ff8a2e); }
+.ng-mode.off { opacity: .45; pointer-events: none; }
+.ng-mode-opt .ng-mode { margin-left: 0; }
+.ng-mode-opt .ng-mode button { flex: 1; font-size: 15px; padding: 5px 6px; }
+
+/* 即時制's messages (ui/rt-msgs.ts): a chat log at the bottom left, under GO (z-index 4) so it never hides the button */
+.rt-msgs { position: absolute; left: 108px; bottom: 6px; z-index: 3; width: min(330px, calc(100% - 116px)); display: flex; flex-direction: column; gap: 4px; pointer-events: none; }
+/* an online game's chat box: small, text only, the newest at the bottom, the top fading out */
+.rt-log { pointer-events: auto; max-height: 122px; overflow-y: auto; overscroll-behavior: contain; padding: 14px 8px 4px; border-radius: 10px; background: rgba(8, 16, 48, .55);
+  -webkit-mask-image: linear-gradient(transparent 0, #000 22px); mask-image: linear-gradient(transparent 0, #000 22px); scrollbar-width: none; touch-action: pan-y; }
+.rt-log::-webkit-scrollbar { display: none; }
+.rt-log:empty { display: none; }
+.rt-line { padding-left: 5px; border-left: 3px solid transparent; font-size: 12.5px; line-height: 1.45; color: #fff; text-shadow: 0 1px 1px #000; word-break: break-word; animation: rt-line-in .2s ease-out both; }
+.rt-line b { font-weight: 700; margin-right: 3px; text-shadow: 0 1px 1px #000, 0 0 2px #000; }
+.rt-line i { font-style: normal; color: #ffe14a; }
+@keyframes rt-line-in { from { opacity: 0; transform: translateY(4px); } }
+.rt-watch { pointer-events: auto; display: flex; align-items: center; gap: 4px; padding: 3px 6px; border-radius: 999px; background: rgba(16, 32, 92, .72); width: max-content; max-width: 100%; }
+.rt-watch[hidden] { display: none; }
+.rt-watch span { color: #ffe14a; font-size: 12px; margin-right: 2px; }
+.rt-watch button { padding: 0; border: 2px solid transparent; border-radius: 50%; background: none; opacity: .45; line-height: 0; }
+.rt-watch button img { width: 24px; height: 24px; border-radius: 50%; background: #fff; }
+.rt-watch button.on { opacity: 1; border-color: #ffe14a; }
+.rt-watch button.all { border-radius: 999px; padding: 2px 8px; font: inherit; font-size: 12px; line-height: 18px; color: #fff; background: rgba(255, 255, 255, .15); }
+.rt-watch button.all.on { background: #ffbf2e; color: #5a2d00; }
+.stage.picking .rt-msgs { display: none; }
+
+/* 通關次數 on the new-game screen's map cards (ui/clears.ts, the user 2026-11-08) */
+.ng-map { position: relative; }
+.ng-clear { position: absolute; top: 4px; right: 3px; padding: 0 4px; border-radius: 5px; font-style: normal; font-size: 9px; line-height: 14px; font-weight: 900; color: #fff; white-space: nowrap;
+  background: #e0303c; border: 1.5px solid #fff; transform: rotate(6deg); box-shadow: 0 1px 2px rgba(0, 0, 0, .35); pointer-events: none; }
+
+/* 即時制's alerts (ui/rt-alert.ts): what happens to this player, a thin bar at the map's top, 2 s then fading */
+.rt-alerts { position: absolute; left: 8px; right: 124px; top: 52px; /* (left of the standings, ui/rt-rank.ts) */ z-index: 6; display: flex; flex-direction: column; align-items: center; gap: 3px; pointer-events: none; }
+.rt-alert { pointer-events: auto; max-width: min(100%, 360px); padding: 2px 12px; border-radius: 999px; font-size: 13px; line-height: 1.35; font-weight: 700; color: #fff; text-align: center;
+  text-shadow: 0 1px 1px rgba(0, 0, 0, .6); background: rgba(22, 48, 128, .85); border: 1.5px solid #8fb8ff; box-shadow: 0 2px 5px rgba(0, 0, 0, .3);
+  animation: rt-alert-in .2s ease-out both; transition: opacity .45s, transform .45s; }
+.rt-alert.good { background: rgba(18, 112, 52, .85); border-color: #8dff9a; }
+.rt-alert.bad { background: rgba(160, 28, 24, .85); border-color: #ffb0a0; }
+.rt-alert.big { font-size: 16px; color: #ffe14a; background: rgba(40, 24, 90, .82); border-color: #ffe14a; }
+.rt-alert.count { font-size: 14px; }
+.rt-alert.out { opacity: 0; transform: translateY(-4px); }
+.rt-state { pointer-events: none; padding: 2px 12px; border-radius: 999px; font-size: 13px; line-height: 1.35; font-weight: 700; color: #fff; background: rgba(60, 60, 70, .85); border: 1.5px solid #ffe14a; text-shadow: 0 1px 1px rgba(0, 0, 0, .6); }
+.rt-state[hidden] { display: none; }
+@keyframes rt-alert-in { from { opacity: 0; transform: translateY(-8px) scale(.94); } }
+.stage.picking .rt-alerts { display: none; }
+/* 暫時離開 (alone): beside the turn buttons; the cover stops everything till a tap */
+.view-tools .rt-away-btn { width: auto; padding: 0 12px; border-radius: 19px; font-size: 14px; font-weight: 800; white-space: nowrap; }
+.rt-away { position: fixed; inset: 0; z-index: 9999; display: grid; place-items: center; background: rgba(8, 12, 40, .72); cursor: pointer; }
+.rt-away div { display: grid; gap: 8px; justify-items: center; padding: 22px 32px; border-radius: 18px; background: linear-gradient(#fff6c2, #ffd23f); border: 4px solid #fff; color: #5a2d00; box-shadow: 0 6px 16px rgba(0, 0, 0, .4); }
+.rt-away b { font-size: 26px; }
+.rt-away span { font-size: 15px; }
+.rt-away em { font-style: normal; font-size: 14px; padding: 4px 14px; border-radius: 999px; background: #e8590c; color: #fff; }
+
+/* 即時制's cooldown (ui/rt-cool.ts): the player's character waiting, the seconds left; in GO's place (ui/main.ts), GO hidden meanwhile */
+.rt-cool { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 4; display: grid; justify-items: center; pointer-events: none; }
+.rt-cool[hidden] { display: none; }
+.rt-cool img { width: 88px; height: 88px; object-fit: contain; filter: drop-shadow(0 3px 4px rgba(0, 0, 0, .35)); }
+.rt-cool b { margin-top: -18px; min-width: 44px; height: 44px; padding: 0 10px; box-sizing: border-box; display: grid; place-items: center; border-radius: 999px; text-align: center;
+  font: 900 26px/1 system-ui, sans-serif; color: #5a2d00; background: linear-gradient(#fff07a, #ffbf2e); border: 3px solid #fff; box-shadow: 0 3px 6px rgba(0, 0, 0, .35); white-space: nowrap; }
+/* each character's badge (ui/rt-cool.ts COUNT) */
+.rt-cool.c0 b { clip-path: polygon(50% 0, 61% 32%, 96% 35%, 69% 56%, 79% 91%, 50% 71%, 21% 91%, 31% 56%, 4% 35%, 39% 32%); border: 0; width: 64px; height: 64px; padding-top: 6px; background: linear-gradient(#ffe680, #d99a1a); font-size: 22px; }
+.rt-cool.c1 b { background: radial-gradient(circle at 35% 30%, #fff3b0, #e0a312 70%); color: #3a2400; font-size: 30px; font-family: 'Geeza Pro', 'Noto Naskh Arabic', serif; }
+.rt-cool.c2 b { background: radial-gradient(circle at 35% 30%, #5a5aa0, #22224a 70%); color: #fff; border-color: #c8c8e8; font-size: 28px; text-shadow: 0 0 4px #000; font-family: 'Hiragino Mincho ProN', 'Yu Mincho', serif; }
+.rt-cool.c3 b { border-radius: 40% 40% 50% 50% / 30% 30% 70% 70%; background: linear-gradient(#fff2a8, #f2b51b 60%, #c98800); color: #7a3c00; font-family: serif; min-width: 60px; }
+.rt-cool.c4 b { border-radius: 4px; background: #d8231c; color: #ffe066; border-color: #ffd34d; font-family: 'Kaiti TC', 'STKaiti', serif; }
+.rt-cool.c5 b { border-radius: 10px 10px 999px 999px; background: linear-gradient(#ffd6ea, #f07ab0); color: #fff; border-color: #ffe14a; font-family: 'Times New Roman', serif; text-shadow: 0 1px 0 #b03070; }
+.rt-cool.c6 b { border-radius: 6px; background: linear-gradient(#d9a066, #9a6232); color: #2a1200; border-color: #5a3410; font-family: 'Hiragino Mincho ProN', 'Yu Mincho', serif; }
+.rt-cool.c7 b { background: repeating-linear-gradient(45deg, #ff7ab8 0 8px, #fff 8px 16px); color: #c0246c; text-shadow: 0 0 3px #fff, 0 0 3px #fff; }
+.rt-cool.c8 b { border-radius: 10px; background: linear-gradient(#b0703a, #6e3c16); color: #ffe7b0; border-color: #3a1e08; letter-spacing: -2px; }
+.rt-cool.c9 b { border-radius: 45%; background: radial-gradient(circle at 50% 40%, #ff5a4a, #c4120c 70%); color: #ffe066; border-color: #ffcc33; font-family: 'Kaiti SC', 'STKaiti', serif; }
+.rt-cool.c10 b { background: radial-gradient(circle at 35% 30%, #ffb070, #e2671a 70%); color: #fff; border-color: #3a1a08; text-shadow: 0 1px 2px #6a2a00; }
+.rt-cool.c11 b { border-radius: 14px 14px 18px 18px; background: linear-gradient(#e8fbff, #9fe3ef); color: #0a7d8f; border-color: #fff; font-size: 22px; padding: 0 12px; }
+.rt-cool b.pop { animation: rt-cool-pop .35s cubic-bezier(.3, 1.6, .5, 1); }
+/* 即時制's stopwatch (ui/rt-watch.ts): small, beside the map's buttons at the top left (on the page, over the place scenes' 60);
+   rocks the last seconds */
+.rt-timer { position: fixed; left: 0; top: 0; transform: translateY(-50%); z-index: 61; display: flex; align-items: center; gap: 1px;
+  padding: 6px; margin: -6px; /* (a bigger finger target than it looks) */ cursor: grab; touch-action: none; user-select: none; -webkit-user-select: none; }
+.rt-timer[hidden] { display: none; }
+.rt-timer.stack { flex-direction: column; transform: none; }
+.rt-timer.free { transform: none; } /* dragged: left / top are its corner */
+.rt-timer-body { width: 25px; height: 28px; filter: drop-shadow(0 1px 1px rgba(0, 0, 0, .35)); transform-origin: 50% 15%; }
+.rt-timer-body svg { width: 100%; height: 100%; display: block; }
+.rt-timer-what { display: flex; align-items: baseline; gap: 2px; padding: 0 6px; border-radius: 999px; font: 800 10.5px/1.5 system-ui, sans-serif; color: #fff; background: rgba(90, 45, 0, .78); white-space: nowrap; }
+.rt-timer-what b { font-size: 13px; font-weight: 900; color: #ffe14a; }
+.rt-timer.urgent .rt-timer-what b { color: #ff6b6b; }
+.rt-timer.urgent .rt-timer-body { animation: rt-timer-rock .5s ease-in-out infinite; }
+@keyframes rt-timer-rock { 0%, 100% { transform: rotate(-16deg); } 50% { transform: rotate(16deg) scale(1.08); } }
+
+@keyframes rt-cool-pop { from { transform: scale(1.5); } }
+.stage.picking .rt-cool { display: none; }
+
+/* 即時制: this player's news / fate card over the map, not holding the game (main.ts showCard) */
+.rt-card { position: absolute; left: 50%; top: 46%; transform: translate(-50%, -50%); z-index: 6; height: min(62%, 420px); aspect-ratio: 440 / 480; max-width: 86%;
+  container-type: size; cursor: pointer; transition: opacity .35s; animation: rt-card-in .25s cubic-bezier(.3, 1.4, .5, 1) both; }
+.rt-card[hidden] { display: none; }
+.rt-card.out { opacity: 0; }
+.rt-card .board-card { height: 100%; width: 100%; }
+.rt-card .board-text { font-size: clamp(12px, 4.6cqh, 20px); }
+@keyframes rt-card-in { from { transform: translate(-50%, -50%) scale(.8); opacity: 0; } }
+
+/* 系統公告 (ui/notice.ts): at the top over everything, till its × */
+.sys-notice { position: fixed; left: 50%; top: max(10px, env(safe-area-inset-top)); transform: translateX(-50%); z-index: 9500; width: min(92vw, 460px); box-sizing: border-box;
+  padding: 8px 36px 10px 14px; border-radius: 14px; background: rgba(120, 20, 30, .95); border: 2px solid #ffe14a; color: #fff; font-size: 14px; line-height: 1.5;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, .45); animation: sys-notice-in .25s ease-out both; transition: opacity .4s; }
+.sys-notice b { display: block; color: #ffe14a; font-size: 15px; }
+.sys-notice p { margin: 2px 0 0; white-space: pre-line; word-break: break-word; }
+.sys-notice.out { opacity: 0; }
+.sys-gift small { display: block; margin-top: 3px; font-size: 12px; opacity: .75; }
+.sys-notice-x { position: absolute; right: 6px; top: 6px; width: 26px; height: 26px; padding: 0; border-radius: 50%; border: 0; background: rgba(255, 255, 255, .2); color: #fff; font-size: 18px; line-height: 26px; }
+@keyframes sys-notice-in { from { opacity: 0; transform: translate(-50%, -8px); } }
+
+/* 即時制's standings (ui/rt-rank.ts): the map's top right, small */
+.rt-rank { position: absolute; right: 6px; top: 8px; z-index: 5; display: grid; gap: 2px; padding: 3px 5px; border-radius: 10px; background: rgba(8, 16, 48, .55); pointer-events: none; }
+.rt-rank-tog { pointer-events: auto; position: absolute; right: 100%; top: 0; margin-right: 2px; padding: 6px 7px; border: 0; border-radius: 8px 0 0 8px; background: rgba(8, 16, 48, .7); color: #ffe14a; font-size: 13px; font-weight: 800; line-height: 1.2; white-space: nowrap; }
+.rt-rank.folded { padding: 0; background: none; }
+.rt-rank.folded .rt-rk { display: none; }
+.rt-rank.folded .rt-rank-tog { position: static; margin: 0; border-radius: 8px; padding: 4px 8px; }
+.rt-rk { position: relative; display: grid; grid-template-columns: 10px 24px auto; align-items: center; gap: 4px; padding: 1px 4px 1px 2px; border-radius: 8px; color: #fff; font-size: 12px; line-height: 1; }
+.rt-rk i { font-style: normal; font-weight: 800; color: #ffe14a; text-align: center; }
+.rt-face { position: relative; width: 24px; height: 24px; margin-right: 6px; }
+.rt-face u { position: absolute; right: -7px; bottom: -5px; padding: 0 2px; border-radius: 6px; background: rgba(0, 0, 0, .75); color: #fff; font-size: 9px; line-height: 12px; font-weight: 800; text-decoration: none; white-space: nowrap; }
+.rt-face u[hidden] { display: none; }
+.rt-face u.cross { background: #fff; color: #e0241b; box-shadow: 0 0 0 1px #e0241b; }
+.rt-rk img { width: 24px; height: 24px; border-radius: 50%; background: #fff; box-shadow: 0 0 0 2px var(--c); }
+.rt-rk b { font-weight: 700; min-width: 50px; text-align: right; font-size: 11.5px; line-height: 1.2; text-shadow: 0 1px 1px #000; }
+.rt-rk b small { font-size: 9.5px; font-weight: 400; color: #bcd3ff; margin-right: 2px; }
+.rt-rk.me { background: rgba(255, 225, 74, .28); }
+.rt-rk.out { opacity: .45; }
+.rt-pop { position: absolute; right: 100%; top: 50%; margin-right: 4px; white-space: nowrap; font-size: 13px; font-weight: 800; pointer-events: none;
+  text-shadow: 0 1px 0 #000, 0 0 3px #000; animation: rt-pop 1.3s ease-out forwards; }
+.rt-pop.up { color: #7dff7a; }
+.rt-pop.down { color: #ff7a6a; }
+@keyframes rt-pop { 0% { opacity: 0; transform: translate(6px, -50%) scale(.7); } 12% { opacity: 1; transform: translate(0, -50%) scale(1.15); } 25% { transform: translate(0, -50%) scale(1); } 75% { opacity: 1; } 100% { opacity: 0; transform: translate(-4px, -160%); } }
+.stage.picking .rt-rank { display: none; }
+/* a short landscape screen: the standings a size smaller */
+@media (max-height: 400px) { .rt-rk { font-size: 11px; grid-template-columns: 9px 20px auto; } .rt-face, .rt-rk img { width: 20px; height: 20px; } .rt-rk b { font-size: 10.5px; min-width: 44px; } .rt-rk b small { font-size: 8.5px; } .rt-alerts { right: 112px; } }
+
+/* 即時制's quick drawers (ui/rt-quick.ts): 卡片 on the left edge, 道具 on the right, the first ten each */
+.rt-quick { position: absolute; top: 50%; transform: translateY(-50%); z-index: 6; display: flex; align-items: center; gap: 4px; pointer-events: none; }
+.rt-quick.left { left: 0; }
+.rt-quick.right { right: 0; flex-direction: row-reverse; }
+.rt-quick-tab { pointer-events: auto; writing-mode: vertical-rl; padding: 8px 4px; border: 0; background: rgba(8, 16, 48, .72); color: #ffe14a; font-size: 12px; font-weight: 800; letter-spacing: 2px; }
+.rt-quick-tab i { font-style: normal; margin-top: 3px; display: inline-block; transition: transform .15s; }
+.rt-quick.left .rt-quick-tab { border-radius: 0 10px 10px 0; }
+.rt-quick.right .rt-quick-tab { border-radius: 10px 0 0 10px; }
+.rt-quick.open .rt-quick-tab i { transform: rotate(180deg); }
+.rt-quick-list { display: none; pointer-events: auto; grid-template-columns: repeat(2, 54px); gap: 4px; padding: 5px; border-radius: 10px; background: rgba(8, 16, 48, .78); max-height: calc(100vh - 140px); overflow-y: auto; }
+.rt-quick.open .rt-quick-list { display: grid; }
+.rt-quick-list button { position: relative; display: grid; justify-items: center; gap: 1px; padding: 3px 2px; border: 0; border-radius: 8px; background: rgba(255, 255, 255, .12); color: #fff; }
+.rt-quick-list button:active { background: rgba(255, 225, 74, .4); }
+.rt-quick-list img { width: 30px; height: 30px; object-fit: contain; }
+.rt-quick-list span { font-size: 9.5px; line-height: 1.1; white-space: nowrap; max-width: 52px; overflow: hidden; text-overflow: ellipsis; }
+.rt-quick-list em { position: absolute; right: 2px; top: 1px; font-style: normal; font-size: 9px; color: #ffe14a; }
+.rt-quick-list p { grid-column: 1 / -1; margin: 6px 10px; color: #ccd; font-size: 12px; }
+.stage.picking .rt-quick { display: none; }
+@media (max-height: 400px) { .rt-quick-list { grid-template-columns: repeat(3, 48px); gap: 3px; padding: 4px; } .rt-quick-list img { width: 24px; height: 24px; } .rt-quick-list span { font-size: 8.5px; max-width: 46px; } }
+/* the game's own message boxes (dialog.ts) */
+.ui-dialog { z-index: 400; }
+/* (a long text scrolls inside the box: its buttons stay on screen however short it is — landscape phones, 排行榜's 怎麼算分) */
+.ui-dialog-box { width: min(420px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
+.ui-dialog-box > .choices { flex: none; }
+.ui-dialog-text { margin: 6px 4px 10px; font-size: 16px; line-height: 1.6; text-align: left; white-space: normal; min-height: 0; flex: 0 1 auto; overflow-y: auto; }
+@media (max-height: 500px) { .ui-dialog-text { font-size: 14px; line-height: 1.45; } }
+.ui-dialog-input { width: 100%; box-sizing: border-box; margin: 6px 0 10px; font: inherit; font-size: 17px; padding: 8px 12px; border-radius: 12px; border: 0; }
+/* the wide new-game sheet: 玩法 joined the rules (the user 2026-11-13), the column a little tighter to keep its height */
+.ng-sheet:not(.portrait) .ng-opts { gap: 6px; }
+.ng-sheet:not(.portrait) .ng-opts .stepper button { height: 29px; }
+.ng-sheet:not(.portrait) .ng-mode-opt .ng-mode button { padding-top: 3px; padding-bottom: 3px; }
+.ng-sheet:not(.portrait) .ng-mode-opt .ng-mode { max-width: 220px; }
+/* 新遊戲's 我的地圖: each map's state (maker/model.ts mapStatus) */
+.ng-map.ng-mine .mk-st { display: inline-block; position: absolute; left: 6px; top: 6px; padding: 0 7px; border-radius: 999px; font-style: normal; font-size: 11px; line-height: 17px; color: #fff; }
+.ng-map.ng-mine .mk-st.pub { background: #8a4cf0; } .ng-map.ng-mine .mk-st.won { background: #2dbb48; } .ng-map.ng-mine .mk-st.new { background: rgba(0, 0, 0, .4); }
