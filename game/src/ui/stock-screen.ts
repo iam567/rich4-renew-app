@@ -342,6 +342,9 @@ export class StockScreen {
     const s = this.st.stocks[this.selected], t = this.trade!, max = this.max(t.buy), lev = t.lev;
     const limit = t.buy ? trendOf(s) === Trend.LimitUp : trendOf(s) === Trend.LimitDown;
     const what = lev > 1 ? (t.buy ? '做多' : '做空') : t.buy ? '買進' : '賣出';
+    // why none can be bought (never just 「最多 0 股」)
+    const none = !t.buy || lev > 1 || max > 0 || s.suspendDays ? '' : this.market.stocks.onMarket(this.selected) <= 0 ? '市場上沒有流通的股份'
+      : limit ? '' : s.turnQuota <= 0 ? '這回合的交易量買完了，下回合再來' : '存款不夠買一股';
     // 槓桿: 現股 or a multiple; with one, the margin and the price that wipes it out
     const levs = this.leverage ? `<div class="stk-lev">${[1, ...LEVERAGE].map(k => `<button class="chip${k === lev ? ' on' : ''}" data-a="lev" data-v="${k}">${k === 1 ? '現股' : `${k}倍`}</button>`).join('')}</div>` : '';
     const margin = Math.ceil((t.n * s.price) / lev), boom = s.price * (t.buy ? 1 - 1 / lev : 1 + 1 / lev);
@@ -350,7 +353,7 @@ export class StockScreen {
       : `金額 ${money(t.n * s.price)}${this.pad ? '<br>成交價以回合結束時為準' : ''}`;
     return `<div class="stk-trade"><div class="stk-trade-box">
       <h4>${what} ${s.name}</h4>${levs}
-      <p>每股 ${formatPrice(s.price)} 元 · 最多 ${max.toLocaleString('en-US')} 股${limit ? `<br><b class="warn">${t.buy ? `漲停無法${what}！` : `跌停無法${what}！`}</b>` : ''}</p>
+      <p>每股 ${formatPrice(s.price)} 元 · 最多 ${max.toLocaleString('en-US')} 股${none ? `<br><b class="warn">${none}</b>` : limit ? `<br><b class="warn">${t.buy ? `漲停無法${what}！` : `跌停無法${what}！`}</b>` : ''}</p>
       <div class="stk-n">${[-1000, -100, -10].map(k => `<button class="chip" data-a="n" data-v="${k}">${k}</button>`).join('')}
         <b>${t.n.toLocaleString('en-US')}</b>${[10, 100, 1000].map(k => `<button class="chip" data-a="n" data-v="${k}">+${k}</button>`).join('')}
         <button class="chip" data-a="max">最多</button></div>

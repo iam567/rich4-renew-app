@@ -7,7 +7,7 @@
  *   最慘榜  the most 慘分: bad gods, attacks suffered, days in hospital / prison, bad luck, tolls paid — and won anyway
  *
  * Only a game of 開始遊戲: one human, three computers, every computer bankrupt; not 派對, 試玩, 即時制, 大富豪 or a game with
- * 挑戰模式 / 每月任務 on; only the game's own maps (no player's map, 創作樂園's neither).
+ * 挑戰模式 / 每月任務 on, nor at 慢節奏 / 快節奏 (遊戲節奏); only the game's own maps (no player's map, 創作樂園's neither).
  */
 import type { Game } from './game';
 import type { PlayerStats } from './stats';
@@ -55,6 +55,8 @@ export function notRanked(g: Game, winner: number): string {
   if (!me?.human) return 'lost';
   if (g.players.some(p => p !== me && !p.bankrupt)) return 'not all broke';
   if (!mapKey(g)) return 'own map';
+  // 遊戲節奏 (the user 2026-11-23: 「快節奏、慢節奏都不能進排行榜，以後所有的改動，只有原版模式和規則下玩的才能進排行榜」)
+  if (g.pace !== 1) return 'pace';
   if (g.stats?.loaded) return 'loaded';
   return '';
 }

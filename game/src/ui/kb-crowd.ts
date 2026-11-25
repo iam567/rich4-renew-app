@@ -249,15 +249,20 @@ export class Crowd {
   readonly bike: number;
   private readonly pace: readonly [number, number][];
   private readonly sideSign: number;
+  /** How far across the way walkers spread (map px beyond 2) and how often they stop (× the default). */
+  private readonly spread: number;
+  private readonly idle: number;
 
   constructor(readonly tracks: Track[], n: number, seed: number, private roadDir: (x: number, y: number) => [number, number] | null = () => null,
     bikes = 0, busy: (x: number, y: number) => number = () => 1,
-    opts: { kinds?: number; pace?: readonly [number, number][]; keepRight?: boolean } = {}) {
+    opts: { kinds?: number; pace?: readonly [number, number][]; keepRight?: boolean; spread?: number; idle?: number } = {}) {
     // 歌舞伎町: six kinds, the cyclist 6, keeping left (Japan); 激情歲月 (docs/rules/24 §8): its own kinds, keeping right.
     this.kinds = opts.kinds ?? 6;
     this.bike = this.kinds;
     this.pace = opts.pace ?? PACE;
     this.sideSign = opts.keepRight ? -1 : 1;
+    this.spread = opts.spread ?? 3;
+    this.idle = opts.idle ?? 1;
     this.r = prng(seed);
     if (!tracks.length) return;
     for (const t of tracks) { const m = t.pts[t.pts.length >> 1]; this.weight.set(t, busy(m[0], m[1])); }
@@ -289,8 +294,8 @@ export class Crowd {
   private spawn(track: Track, s: number, kind: number): Walker {
     const r = this.r, [lo, hi] = this.pace[kind] ?? PACE[BIKE];
     const w: Walker = {
-      kind, track, s, then: null, speed: lo + r() * (hi - lo), wob: r() * 6.28, pace: 0, lane: 2 + r() * 3, dodge: 0,
-      x: 0, y: 0, h: 0, anim: r() * 4, stop: 0, why: 'phone', nextStop: 6 + r() * 30, look: 0, lead: null, back: 0, side: 0,
+      kind, track, s, then: null, speed: lo + r() * (hi - lo), wob: r() * 6.28, pace: 0, lane: 2 + r() * this.spread, dodge: 0,
+      x: 0, y: 0, h: 0, anim: r() * 4, stop: 0, why: 'phone', nextStop: (6 + r() * 30) / this.idle, look: 0, lead: null, back: 0, side: 0,
     };
     w.pace = w.speed;
     this.walkers.push(w);

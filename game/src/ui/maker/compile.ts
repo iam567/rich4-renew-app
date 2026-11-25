@@ -14,8 +14,9 @@ import { GroundGL } from './ground-gl';
 import { companySlots, stockNames, TEMPLATE_COMPANIES, type CoBind } from './stocks';
 import { drawWoodsFull } from './woods';
 import { drawLots, drawRoads, facingTo, lotGeom, wx, wy, SPRITE_SCALE, type Frames } from './layers';
-import { CELL, companyKind, evInfo, G, isWater, listMaps, loadMap, loadThumb, PAD_SCALE, parseMap, playHash, saveMap, saveThumb, type MakerMap } from './model';
+import { CELL, companyKind, evInfo, G, isWater, listMaps, loadMap, loadPaint, loadThumb, PAD_SCALE, padUrl, parseMap, playHash, saveMap, saveThumb, type MakerMap } from './model';
 import { ASSETS } from '../assets';
+import { isOrig, pieceDir, pieceFrames } from './pieces';
 import { ConverterFactory } from 'opencc-js/core';
 import ST_CHARACTERS from 'opencc-js/dict/STCharacters';
 
@@ -72,6 +73,14 @@ const hex = (b: Uint8Array) => Array.from(b, v => v.toString(16).padStart(2, '0'
 const facing = facingTo;
 
 /** The map's records: squares numbered 1.. in their order, lots and plots after them. */
+/** An official map's own pads by board square (MapArt.padImages), none for a player's map. */
+function padImages(m: MakerMap, ids: Map<number, number>): { pad_images?: Record<number, string> } {
+  if (!m.pads) return {};
+  const out: Record<number, string> = {};
+  for (const n of m.nodes) { const u = padUrl(m, n, `${ASSETS}/maps/remake/maker`); if (u) out[ids.get(n.id)!] = u; }
+  return { pad_images: out };
+}
+
 export function records(m: MakerMap): RawMap & { decorations: MapDecor[]; sprites: MapSprites; step_marks: boolean; landscape_scale: number[]; pad_scale: number } {
   const ids = new Map(m.nodes.map((n, i) => [n.id, i + 1]));
   const smalls = m.lots.filter(l => !l.kind), bigs = m.lots.filter(l => l.kind === 1);
@@ -107,7 +116,8 @@ export function records(m: MakerMap): RawMap & { decorations: MapDecor[]; sprite
   const building = new Map([...binds].map(([lid, b]) => [b.tpl, lid]));
   const put = (lid: number, b: CoBind) => {
     const l = m.lots.find(x => x.id === lid)!, kind = companyKind(b.cat);
-    const look = kind?.styles.includes(l.style as never) ? l.style! : kind?.styles[0] ?? 0;
+    // (an official map's own 企業大樓 — 長安's Tang buildings, map sprites ≥ 9000 — keep their sprite; pieces() registers it)
+    const look = (l.style ?? 0) >= 9000 ? l.style! - 38 : kind?.styles.includes(l.style as never) ? l.style! : kind?.styles[0] ?? 0;
     const id = record(b.slot, b.cat, b.value, b.fee, lotX(l), lotY(l), look, toward(l));
     for (const n of l.nodes) coRef.set(n, 6000 + id);
   };
@@ -161,16 +171,17 @@ export function records(m: MakerMap): RawMap & { decorations: MapDecor[]; sprite
     return { id: i + 1, raw_hex: hex(b), ...(l.name ? { name: l.name } : {}) };
   });
   // (the world is square, its side the longer one: see squared)
-  return { map_id: 0, name: m.name, width: Math.max(m.w, m.h) * CELL, nodes, lands, facilities, companies, landscapes: [], decorations: [], sprites: {}, step_marks: true, landscape_scale: [], pad_scale: PAD_SCALE,
+  return { map_id: 0, name: m.name, width: Math.max(m.w, m.h) * CELL, nodes, lands, facilities, companies, landscapes: [], decorations: [], sprites: {}, step_marks: true, landscape_scale: [], pad_scale: PAD_SCALE, ...(m.reveal ? { reveal: true } : {}), ...padImages(m, ids), ...(m.crowd?.kinds.length ? { walkers: m.crowd.paths, walker_kinds: m.crowd.kinds, walker_hot: m.crowd.hot ?? [], ...(m.crowd.areas?.length ? { walker_areas: m.crowd.areas } : {}) } : {}), ...(m.builds ? { build_sprites: m.builds } : {}), ...(m.rules ? { theme: m.rules } : {}), ...(m.specials ? { specials: Object.fromEntries(Object.entries(m.specials).flatMap(([k, v]) => (ids.has(Number(k)) ? [[String(ids.get(Number(k))), v]] : []))) } : {}),
     stock_group: m.stocks?.group ?? 0, ...(m.stocks?.names.some(Boolean) || binds.size ? { stock_names: stockNames(m) } : {}) };
 }
 
 /** The pieces: buildings with eight facings as landscapes (turned, scaled), the rest (plants: seasons) as decorations. */
 async function pieces(m: MakerMap, raw: ReturnType<typeof records>) {
-  const res = [...new Set(m.things.map(t => t.res))];
+  const res = [...new Set([...m.things.map(t => t.res), ...m.lots.filter(l => l.kind === 2 && (l.style ?? 0) >= 9000).map(l => l.style!), ...(m.crowd?.kinds ?? []), ...(m.crowd?.areas ?? []).flatMap(a => a[4]), ...(m.builds ? [...m.builds.lots.flat(), ...Object.values(m.builds.fac).flat(), ...(m.builds.chain ? [m.builds.chain] : [])] : [])])];
   const frames = new Map<number, Frames['frames']>();
-  await Promise.all(res.map(r => fetch(`${ASSETS}/maps/remake/sprites/${r}/frames.json`).then(x => x.json()).then(j => frames.set(r, Array.isArray(j) ? j : j.frames)).catch(() => {})));
-  for (const r of res) if (frames.has(r)) raw.sprites[`map/${r}`] = { dir: `remake/sprites/${r}`, frames: frames.get(r)! };
+  await Promise.all(res.map(r => pieceFrames(r).then(f => frames.set(r, f)).catch(() => {})));
+  // (the dir from the maps' folder: the original's sprites are in hd/, beside it)
+  for (const r of res) if (frames.has(r)) raw.sprites[`map/${r}`] = { dir: isOrig(r) ? `../${pieceDir(r)}` : `remake/sprites/${r}`, frames: frames.get(r)! };
   for (const t of m.things) {
     const f = frames.get(t.res);
     if (!f) continue;
@@ -210,16 +221,37 @@ export async function groundPicture(m: MakerMap): Promise<HTMLImageElement> {
   const x = c.getContext('2d')!;
   gl.draw(0, 0, 1);
   x.drawImage(gl.canvas, 0, 0);
-  await drawWoodsFull(x, m);
+  const paint = await loadPaint(m, `${ASSETS}/maps/remake/maker`);
+  if (paint) x.drawImage(paint, 0, 0);   // (its own size: the map before squared() padded it)
+  if (!paint) await drawWoodsFull(x, m);   // (an official map's painting has its own woods: the user saw cartoon trees over it)
   // the road textures load once; wait for them before drawing the roads for good
   await new Promise<void>(ok => { let n = 0; const tick = () => { drawRoads(document.createElement('canvas').getContext('2d')!, m, () => {}); if (++n > 20) ok(); else setTimeout(tick, 60); }; tick(); });
   drawRoads(x, m, () => {});
-  drawLots(x, m);
+  // (an official map's 企業大樓 stands on ground of its own: no chalk frame round it — the user 2026-11-19: 「要是這些地方是
+  // 公司的話，你就不要弄一個實心的地塊圍出來了」)
+  drawLots(x, paint ? { ...m, lots: m.lots.filter(l => l.kind !== 2) } : m);
   const blob = await new Promise<Blob>((ok, fail) => c.toBlob(b => (b ? ok(b) : fail(new Error('ground'))), 'image/webp', 0.9));
   const img = new Image();
   img.src = URL.createObjectURL(blob);
   await img.decode();
   return img;
+}
+
+/**
+ * An official map made in the editor (長安, editor/maker_changan.py) as a classic map file for the 自製地圖 list (the user
+ * 2026-11-19: 「不要走編輯器格式，而是作為和東京大阪那些正式地圖一樣，點擊就開始遊戲」): its records — the same as 試玩's,
+ * the pads' pictures by path from maps/ — and its ground picture. The map id and the rules come from the list
+ * (maps/remake/index.json, core MAP_RULES). Run in the dev page: tools/tycoon-art/export_official.mjs.
+ */
+export async function officialFiles(m: MakerMap, id: number): Promise<{ raw: ReturnType<typeof records>; ground: Blob }> {
+  const raw = records(m);
+  await pieces(m, raw);
+  raw.map_id = id;
+  const r = raw as ReturnType<typeof records> & { pad_images?: Record<number, string> };
+  if (r.pad_images) for (const k of Object.keys(r.pad_images)) r.pad_images[Number(k)] = r.pad_images[Number(k)].replace(`${ASSETS}/maps/`, '');
+  const img = await groundPicture(squared(m));
+  const ground = await fetch(img.src).then(x => x.blob());
+  return { raw, ground };
 }
 
 /**
@@ -267,7 +299,7 @@ export async function prepareMakerMap(m: MakerMap, at?: number): Promise<{ mapId
     if (cur && playHash(cur) === hash) { cur.cleared = hash; saveMap(cur); }
   }, m.name);
   const sw = gameSwitches(m);
-  return { mapId: id, extra: { ...(gameDeck(m) ? { deck: gameDeck(m) } : {}), ...(sw ? { mapRules: sw } : {}) } };
+  return { mapId: id, extra: { ...(gameDeck(m) ? { deck: gameDeck(m) } : {}), ...(sw ? { mapRules: sw } : {}), ...(m.rules ? { ruleSet: m.rules } : {}) } };
 }
 
 /**

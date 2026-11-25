@@ -55,9 +55,32 @@ b{color:#ffe14a;font-size:26px;letter-spacing:.06em}small{opacity:.8}a{display:b
 <p><small>手機要連在和電腦同一個 Wi-Fi</small></p><a href="${DOWNLOAD}">還沒有 App？下載大富翁4</a></main></body></html>`;
 }
 
-/** Starts the server on the first free port of PORTS, on every address (the firewall may ask once). Resolves with { port, urls, stop }. */
-function startLan({ log = () => {} } = {}) {
+/** What a phone says about itself in its hello (app version, platform, player name, install id), cleaned. */
+function cleanApp(a) {
+  if (!a || typeof a !== 'object') return {};
+  const str = (v, n) => (typeof v === 'string' ? v.replace(/[\u0000-\u001f<>&"'`]/g, '').slice(0, n) : undefined);
+  const dev = str(a.dev, 40);
+  return { v: str(a.v, 20), plat: str(a.plat, 12), name: str(a.name, 14), dev: dev && /^[A-Za-z0-9]{8,40}$/.test(dev) ? dev : undefined };
+}
+
+/**
+ * The relay itself (sessions, connections between two ids) on an http server of its own, without a port yet — shared
+ * by 局域網房間 (startLan below) and 私服 (tools/private-server, the user 2026-11-18). `allow(ip)`: who may come in;
+ * `route(u, req, res, cors)`: the server's own pages (true: answered); `page(host, room)`: what a browser gets;
+ * `maxSessions` (a number, or a function: the 私服's 管理頁 changes it), `perIp`: how many phones at once, in all and
+ * from one address.
+ *
+ * 斷線重連 (the user 2026-11-23, 「掉線就連不回去」 on a 私服): `holdMs` how long a session outlives its socket (a
+ * room's own id: `roomHoldMs` — the longer a lost host's id is held, the longer the others wait before one of them
+ * takes the room over), told to the phone in its `ok` (`hold`) so it waits as long. `gate(m, ip)`: a fresh hello refused
+ * (null: let in) — a 私服's password, bans, a player sent away — with the reason sent as it is ({ t: 'password' } …).
+ * `onSession(sess)`: each session as it comes (fresh or back). `kick(sess, why)`: ends it, the phone told why
+ * ({ t: 'kicked', why }: it does not come back by itself).
+ */
+function relayCore({ allow = () => true, route = () => false, page: pageOf = page, maxSessions = 500, perIp = 0, holdMs = HOLD_MS, roomHoldMs = holdMs, gate = () => null, onSession = () => {} } = {}) {
   const sessions = new Map(), conns = new Map();
+  const maxNow = () => (typeof maxSessions === 'function' ? maxSessions() : maxSessions);
+  const holdOf = id => (/-room-\d{1,8}$/.test(id) ? roomHoldMs : holdMs);
 
   const raw = (ws, obj) => { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); };
   function put(sess, obj) {
@@ -81,26 +104,41 @@ function startLan({ log = () => {} } = {}) {
     sess.conns.clear();
     if (sess.ws) { if (why === 'evicted') raw(sess.ws, { t: 'evicted' }); try { sess.ws.close(); } catch { /* gone */ } }
   }
+  /** Sent away (a 私服's 管理頁): told why, the session ended at once. */
+  function kick(sess, why) {
+    if (sessions.get(sess.id) !== sess) return;
+    raw(sess.ws, { t: 'kicked', why: String(why ?? '').slice(0, 80) });
+    end(sess, 'kicked');
+  }
+  const refuse = (ws, obj) => { raw(ws, obj); try { ws.close(); } catch { /* gone */ } return null; };
   function hello(ws, m) {
-    if (typeof m.id !== 'string' || !ID_RE.test(m.id)) { raw(ws, { t: 'bad' }); ws.close(); return null; }
+    if (typeof m.id !== 'string' || !ID_RE.test(m.id)) return refuse(ws, { t: 'bad' });
     let sess = sessions.get(m.id);
     if (sess && m.token && sess.token === m.token) {
       if (sess.ws && sess.ws !== ws) { const old = sess.ws; old.sess = null; try { old.close(); } catch { /* gone */ } }
-      sess.ws = ws; sess.lostAt = 0; sess.seen = Date.now();
-      raw(ws, { t: 'ok', token: sess.token, ack: sess.sIn, fresh: false });
+      sess.ws = ws; sess.lostAt = 0; sess.seen = Date.now(); sess.ip = ws.ip; sess.drops = (sess.drops ?? 0) + 1;
+      if (m.app) sess.app = cleanApp(m.app);
+      raw(ws, { t: 'ok', token: sess.token, ack: sess.sIn, fresh: false, hold: holdOf(sess.id) });
       acked(sess, Number(m.ack) || 0);
       for (const [, text] of sess.out) ws.send(text);
+      onSession(sess);
       return sess;
     }
+    const app = cleanApp(m.app);
+    const no = gate(m, ws.ip, app);
+    if (no) return refuse(ws, no);
     if (sess) {
       const live = sess.ws && sess.ws.readyState === 1 && Date.now() - sess.seen < STALE_MS;
-      if (live) { raw(ws, { t: 'taken' }); ws.close(); return null; }
+      if (live) return refuse(ws, { t: 'taken' });
       end(sess, 'evicted');
     }
-    if (sessions.size >= 500) { raw(ws, { t: 'full' }); ws.close(); return null; }
-    sess = { id: m.id, token: randomBytes(12).toString('hex'), ws, sOut: 0, sIn: 0, out: [], outBytes: 0, conns: new Set(), seen: Date.now(), lostAt: 0, win: 0, winAt: Date.now() };
+    const max = maxNow();
+    if (sessions.size >= max) return refuse(ws, { t: 'full', online: sessions.size, max });
+    if (perIp && [...sessions.values()].filter(x => x.ip === ws.ip).length >= perIp) return refuse(ws, { t: 'full' });
+    sess = { id: m.id, ip: ws.ip, app, token: randomBytes(12).toString('hex'), ws, sOut: 0, sIn: 0, out: [], outBytes: 0, conns: new Set(), seen: Date.now(), since: Date.now(), lostAt: 0, win: 0, winAt: Date.now(), drops: 0 };
     sessions.set(m.id, sess);
-    raw(ws, { t: 'ok', token: sess.token, ack: 0, fresh: true });
+    raw(ws, { t: 'ok', token: sess.token, ack: 0, fresh: true, hold: holdOf(sess.id) });
+    onSession(sess);
     return sess;
   }
   function frame(sess, m) {
@@ -134,8 +172,15 @@ function startLan({ log = () => {} } = {}) {
     }
   }
 
+  // The player's address: the socket's, or behind a proxy on this machine (nginx, Caddy) the first X-Forwarded-For.
+  const ipOf = req => {
+    const remote = String(req?.socket?.remoteAddress ?? '');
+    const fwd = String(req?.headers?.['x-forwarded-for'] ?? '').split(',')[0].trim();
+    return (/^(127\.|::1$|::ffff:127\.)/.test(remote) && fwd ? fwd : remote).replace(/^::ffff:/, '');
+  };
   const wss = new WebSocketServer({ noServer: true, maxPayload: FRAME_MAX });
-  wss.on('connection', ws => {
+  wss.on('connection', (ws, req) => {
+    ws.ip = ipOf(req);
     let sess = null;
     ws.on('message', (data, isBinary) => {
       if (isBinary) return;
@@ -157,38 +202,48 @@ function startLan({ log = () => {} } = {}) {
     for (const sess of [...sessions.values()]) {
       if (sess.ackDue && sess.ws) { sess.ackDue = false; raw(sess.ws, { t: 'ack', a: sess.sIn }); }
       if (sess.ws && now - sess.seen > STALE_MS) { try { sess.ws.terminate(); } catch { /* gone */ } sess.ws = null; sess.lostAt = now; }
-      if (!sess.ws && sess.lostAt && now - sess.lostAt > HOLD_MS) end(sess, 'expired');
+      if (!sess.ws && sess.lostAt && now - sess.lostAt > holdOf(sess.id)) end(sess, 'expired');
     }
   }, 1000);
 
+  /** The rooms' codes open here. */
+  const rooms = () => [...sessions.keys()].map(id => /-room-(\d{1,8})$/.exec(id)?.[1]).filter(Boolean);
   const server = http.createServer((req, res) => {
-    if (!local(req.socket.remoteAddress)) { res.writeHead(403); res.end(); return; }
+    if (!allow(req.socket.remoteAddress)) { res.writeHead(403); res.end(); return; }
     const u = new URL(req.url ?? '/', 'http://x');
     const cors = { 'access-control-allow-origin': '*', 'cache-control': 'no-store' };
     // what the game asks a relay for besides the rooms: nothing to tell here
+    if (req.method === 'OPTIONS') { res.writeHead(204, { ...cors, 'access-control-allow-headers': 'content-type, authorization, x-rich4-password, x-rich4-pw', 'access-control-allow-methods': 'GET, POST' }); res.end(); return; }
+    if (route(u, req, res, cors)) return;
     if (u.pathname === '/stats') { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end(JSON.stringify({ online: 0, menu: 0, room: 0, game: 0 })); return; }
-    // the phones looking for a room on the network (lan-find.ts): this computer's name and its rooms' codes
-    if (u.pathname === '/lan') {
-      const rooms = [...sessions.keys()].map(id => /-room-(\d{1,8})$/.exec(id)?.[1]).filter(Boolean);
-      res.writeHead(200, { ...cors, 'content-type': 'application/json' });
-      res.end(JSON.stringify({ rich4: 'lan', host: os.hostname().replace(/\.local$/, '').slice(0, 40), rooms }));
-      return;
-    }
     if (u.pathname === '/notice') { res.writeHead(200, { ...cors, 'content-type': 'application/json' }); res.end('{}'); return; }
-    if (req.method === 'OPTIONS') { res.writeHead(204, { ...cors, 'access-control-allow-headers': 'content-type', 'access-control-allow-methods': 'GET, POST' }); res.end(); return; }
     if (req.method === 'POST') { req.resume(); res.writeHead(204, cors); res.end(); return; } // reports, chat: kept nowhere
     if (req.method !== 'GET' && req.method !== 'HEAD') { res.writeHead(405); res.end(); return; }
     // the game's files are never served: a browser gets how to join with the app
     const room = /^\d{1,8}$/.test(u.searchParams.get('room') ?? '') ? u.searchParams.get('room') : '';
     res.writeHead(200, { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' });
-    res.end(req.method === 'HEAD' ? '' : page(String(req.headers.host ?? ''), room));
+    res.end(req.method === 'HEAD' ? '' : pageOf(String(req.headers.host ?? ''), room));
   });
   server.on('upgrade', (req, socket, head) => {
-    if (!local(req.socket.remoteAddress)) { socket.destroy(); return; }
+    if (!allow(req.socket.remoteAddress)) { socket.destroy(); return; }
     wss.handleUpgrade(req, socket, head, ws => wss.emit('connection', ws, req));
   });
 
   const stop = () => { clearInterval(tick); for (const c of wss.clients) c.terminate(); server.close(); };
+  return { server, sessions, conns, rooms, stop, tick, kick, end, ipOf };
+}
+
+/** Starts the server on the first free port of PORTS, on every address (the firewall may ask once). Resolves with { port, urls, stop }. */
+function startLan({ log = () => {} } = {}) {
+  // the phones looking for a room on the network (lan-find.ts): this computer's name and its rooms' codes
+  const route = (u, req, res, cors) => {
+    if (u.pathname !== '/lan') return false;
+    res.writeHead(200, { ...cors, 'content-type': 'application/json' });
+    res.end(JSON.stringify({ rich4: 'lan', host: os.hostname().replace(/\.local$/, '').slice(0, 40), rooms: core.rooms() }));
+    return true;
+  };
+  const core = relayCore({ allow: local, route });
+  const { server, stop, tick } = core;
   // the first free port of PORTS (another program on one: the next; each try's listeners go with it)
   return new Promise((resolve, reject) => {
     let k = 0;
@@ -246,4 +301,4 @@ function findLan(ports = PORTS) {
   })();
 }
 
-module.exports = { startLan, findLan, local, lanAddresses };
+module.exports = { startLan, findLan, local, lanAddresses, relayCore, cleanApp };

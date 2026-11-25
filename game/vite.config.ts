@@ -15,9 +15,11 @@ export default defineConfig({
   build: {
     copyPublicDir: !process.env.RICH4_NO_ASSETS,
     // Android's System WebView can be old on phones without Google Play (issue #7: HarmonyOS 4.2 runs the APK on
-    // Huawei's own WebView): the script is lowered for Chrome 87 (ui/compat.ts fills in the newer functions). The
-    // style sheets keep Vite's own default targets.
-    target: ['chrome87', 'edge88', 'firefox104', 'safari16'],
-    cssTarget: ['chrome107', 'edge107', 'firefox104', 'safari16'],
+    // Huawei's own WebView) and on TVs, which seldom update it (issue #121: a Sony TV stuck on the green background —
+    // `?.` / `??` are Chrome 80, and the script stopped at its first line): the script is lowered for Chrome 74
+    // (Android 10's own WebView; ui/compat.ts fills in the newer functions), the style sheets for Chrome 74 too
+    // (`inset` and the like written out the old way).
+    target: ['chrome74', 'edge88', 'firefox104', 'safari16'],
+    cssTarget: ['chrome74', 'edge107', 'firefox104', 'safari16'],
   },
 });

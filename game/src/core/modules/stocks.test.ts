@@ -95,9 +95,11 @@ describe.skipIf(!haveMaps)('stocks on the original maps', () => {
         expect(st.slotOf(c)).toBe(c.stockSlot);
       });
       expect(st.stocks.filter(s => s.companyId).length).toBe(g.board.companies.length);
-      for (const s of st.stocks) {
-        if (s.floatPool <= 1000) expect(s.turnQuota).toBe(s.floatPool);
-        else { expect(s.turnQuota).toBeGreaterThanOrEqual(s.floatPool / 10); expect(s.turnQuota).toBeLessThan(s.floatPool * 0.3); }
+      for (const [i, s] of st.stocks.entries()) {   // (the 保留股份 on the market too since 2026-11-25, compat 'open-shares')
+        const pool = st.onMarket(i);
+        expect(pool).toBe(s.floatPool + (st.companyOf(i)?.freeShares ?? 0));
+        if (pool <= 1000) expect(s.turnQuota).toBe(pool);
+        else { expect(s.turnQuota).toBeGreaterThanOrEqual(Math.trunc(pool / 10)); expect(s.turnQuota).toBeLessThan(pool * 0.3); }
       }
     }
     // 日產建設 sells 5000 primary shares at 24 each, the stock opens at 28.

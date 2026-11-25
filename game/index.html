@@ -14,9 +14,10 @@
       function show(why) {
         var app = document.getElementById('app');
         if (started() && !why) return;
+        // top/left/right/bottom, not `inset` (Chrome 87): on an old TV WebView the box sat below the screen (issue #121)
         var box = document.getElementById('boot-err') || document.createElement('pre');
         box.id = 'boot-err';
-        box.style.cssText = 'position:fixed;inset:0;z-index:99999;margin:0;padding:24px;overflow:auto;background:#0b2427;color:#ffe14a;font:14px/1.5 -apple-system,monospace;white-space:pre-wrap';
+        box.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:99999;margin:0;padding:24px;overflow:auto;background:#0b2427;color:#ffe14a;font:14px/1.5 -apple-system,monospace;white-space:pre-wrap';
         box.textContent = '大富翁4 無法啟動，請截圖給開發者\n\n' + (why ? why + '\n\n' : '') + errs.join('\n\n') + '\n\n' + navigator.userAgent;
         if (!box.parentNode) document.body.appendChild(box);
         shown = true;

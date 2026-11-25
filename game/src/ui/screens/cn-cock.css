@@ -1,0 +1,96 @@
+/* 長安's 鬥雞場 (cn-cock.ts): the stage 1600 × 900 (900 × 1600 upright), scaled by fitOverlay. */
+.cnk-ov { position: absolute; inset: 0; z-index: 60; background: #1b120c; }
+.cnk-scene { position: absolute; left: 50%; top: 50%; overflow: hidden; font-family: 'Huninn', 'PingFang TC', sans-serif; color: #fff; user-select: none; background: #000; }
+.cnk-shake { position: absolute; inset: 0; background: center / cover; }
+.cnk-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at center, rgba(20, 10, 4, .25), rgba(20, 10, 4, .7)); }
+.cnk-scene section { position: absolute; inset: 0; }
+.cnk-scene section[hidden] { display: none; }
+.fx-scene.cnk-scene img { position: static; display: inline-block; }
+.cnk-plaque { left: 50%; top: 18px; width: 300px; height: 84px; transform: translateX(-50%); }
+.cnk-plaque .cn-lbl { font-size: 42px; letter-spacing: 12px; padding-left: 12px; color: #fff1b8; inset: 4px 20px; }
+.cnk-status { left: 26px; top: 26px; width: 500px; height: 60px; }
+.cnk-status .cn-lbl { font-size: 22px; }
+.cnk-pair { position: absolute; top: 118px; left: 0; right: 0; text-align: center; font-size: 25px; color: #fff1cc; text-shadow: 0 2px 3px #000; }
+.cnk-pair b { color: #ffd36a; font-weight: normal; }
+.cnk-cards { position: absolute; top: 160px; left: 0; right: 0; display: flex; gap: 22px; justify-content: center; }
+.cn-scene button.cnk-card { width: 320px; height: 400px; padding: 0; cursor: pointer; font-family: inherit; transition: transform .15s; }
+.cn-scene button.cnk-card.sel { transform: translateY(-10px) scale(1.03); box-shadow: 0 0 0 3px #e0b24a, 0 0 0 7px #ffd34a, 0 12px 20px rgba(0, 0, 0, .5); }
+.cnk-card .cnk-no { position: absolute; left: 18px; top: 16px; width: 66px; height: 66px; background: center / contain no-repeat; font-size: 32px; line-height: 66px; color: #ffe7a8; text-shadow: 0 2px 0 #5a1008; }
+.cnk-card .cnk-pick { position: absolute; right: 16px; top: 20px; padding: 4px 14px; border-radius: 20px; background: linear-gradient(#3d9a3d, #1f5f1f); color: #fff; font-size: 24px; border: 2px solid #d6f5c0; display: none; }
+.cnk-card.sel .cnk-pick { display: block; }
+.fx-scene.cnk-scene .cnk-card img.ck { display: block; height: 150px; max-width: 230px; object-fit: contain; margin: 60px auto 0; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, .35)); }
+.cnk-card .cnk-nm { font-size: 30px; color: #7a1a10; }
+.cnk-card .cnk-stars { margin-top: 6px; height: 34px; display: flex; justify-content: center; gap: 2px; }
+.cnk-scene .cnk-card .cnk-stars img { width: 28px; height: 28px; }
+.cnk-card .cnk-od { font-size: 20px; color: #7a5530; margin-top: 4px; line-height: 1.3; }
+.cnk-types { position: absolute; top: 590px; left: 0; right: 0; display: flex; justify-content: center; gap: 12px; }
+.cn-scene .cnk-types button.cn-btn { min-width: 150px; height: 64px; font-size: 26px; padding: 0 16px; }
+.cnk-hint { position: absolute; top: 668px; left: 0; right: 0; text-align: center; font-size: 23px; color: #fff1cc; text-shadow: 0 2px 3px #000; }
+.cnk-stake { position: absolute; top: 706px; left: 0; right: 0; display: flex; justify-content: center; gap: 18px; }
+.cn-scene .cnk-stake button.cn-btn { height: 64px; min-width: 220px; font-size: 26px; }
+.cnk-foot { position: absolute; bottom: 18px; left: 0; right: 0; display: flex; justify-content: center; gap: 22px; align-items: center; }
+.cnk-odds { position: relative; width: 680px; height: 74px; }
+.cnk-odds .cn-lbl { font-size: 23px; }
+.cnk-odds .cn-lbl b { font-size: 28px; }
+.cn-scene button.cnk-go { height: 84px; min-width: 260px; font-size: 32px; }
+/* the fights */
+.cnk-hp { position: absolute; top: 118px; width: 600px; height: 110px; }
+.cnk-hp.l { left: 40px; } .cnk-hp.r { right: 40px; }
+.cnk-hp .n { position: absolute; top: 0; font-size: 32px; color: #fff1cc; text-shadow: 0 2px 0 #000, 0 0 8px #000; }
+.cnk-hp.l .n { left: 30px; } .cnk-hp.r .n { right: 30px; }
+.cnk-hp .track { position: absolute; top: 52px; left: 20px; right: 20px; height: 40px; border-radius: 10px; overflow: hidden; background: rgba(40, 16, 8, .85); display: flex;
+  border: 3px solid #e0b24a; box-shadow: 0 0 0 3px #6e4512, 0 6px 10px rgba(0, 0, 0, .5); }
+.cnk-hp.r .track { justify-content: flex-end; }
+.cnk-hp .fill { width: 100%; height: 100%; background: linear-gradient(#ffe27a, #f0902a 60%, #c8461a); transition: width .3s; }
+.cnk-round { left: 50%; top: 100px; transform: translateX(-50%); width: 280px; height: 70px; }
+.cnk-round .cn-lbl { font-size: 30px; letter-spacing: 4px; }
+.cnk-ck { position: absolute; bottom: 110px; width: 360px; height: 360px; background: center bottom / contain no-repeat; filter: drop-shadow(0 12px 6px rgba(0, 0, 0, .45)); }
+.cnk-ck.l { left: 330px; } .cnk-ck.r { right: 330px; transform: scaleX(-1); }
+.cnk-fx, .cnk-fx2 { position: absolute; inset: 0; pointer-events: none; }
+.fx-scene.cnk-scene img.cnk-fxi { position: absolute; pointer-events: none; }
+.cnk-callout { position: absolute; font-size: 58px; color: #fff6c0; text-shadow: 0 0 10px #ff7a00, 0 4px 0 #8a1a10, 0 -2px 0 #8a1a10; white-space: nowrap; }
+.cnk-special { position: absolute; left: 0; right: 0; top: 330px; text-align: center; font-size: 96px; color: #fff; letter-spacing: 20px; text-shadow: 0 0 20px #ff5a00, 0 0 40px #ff2a00, 0 6px 0 #6a0a00; }
+.cnk-feather { position: absolute; width: 26px; height: 10px; border-radius: 50%; box-shadow: 0 0 2px #0006; }
+.cnk-darken { position: absolute; inset: 0; background: rgba(0, 0, 0, .65); pointer-events: none; opacity: 0; }
+.cnk-bracket { position: absolute; left: 14px; bottom: 14px; width: 250px; padding: 14px 10px; font-size: 17px; line-height: 1.35; }
+.cnk-bracket b { color: #a8261c; font-weight: normal; }
+.cn-scene button.cnk-skip { position: absolute; right: 24px; bottom: 22px; height: 64px; min-width: 170px; font-size: 26px; }
+/* the podium and the verdict */
+.cnk-podium { position: absolute; left: 50%; top: 130px; width: 1200px; height: 560px; margin-left: -600px; background: center bottom / contain no-repeat; }
+.cnk-pslot { position: absolute; width: 240px; height: 240px; transform: translate(-50%, -100%); display: flex; align-items: flex-end; justify-content: center; }
+.cnk-scene .cnk-pslot img.ck { max-width: 200px; max-height: 200px; filter: drop-shadow(0 8px 4px rgba(0, 0, 0, .45)); }
+.cnk-scene .cnk-pslot img.ck.boss { max-width: 250px; max-height: 250px; animation: cnk-swag 1.6s ease-in-out infinite; transform-origin: 50% 100%; }
+.fx-scene.cnk-scene .cnk-pslot img.ros { position: absolute; width: 70px; left: 0; bottom: 20px; }
+.cnk-ptag { position: absolute; transform: translate(-50%, -50%); width: 200px; text-align: center; font-size: 22px; line-height: 1.3; color: #ffe7a8; text-shadow: 0 2px 0 #5a1008, 0 0 6px #000; }
+.cnk-ptag b { font-size: 34px; letter-spacing: 4px; font-weight: normal; }
+.cnk-verdict { position: absolute; top: 700px; left: 0; right: 0; height: 160px; display: flex; justify-content: center; align-items: center; gap: 24px; }
+.cnk-scene .cnk-verdict img.vicon { width: 160px; height: 160px; object-fit: contain; }
+.cnk-verdict .vtext { font-size: 60px; white-space: nowrap; text-shadow: 0 5px 0 rgba(0, 0, 0, .4), 0 0 12px rgba(0, 0, 0, .5); }
+.cnk-verdict .vtext.win { color: #ffd84a; filter: drop-shadow(2px 0 0 #8a3a00) drop-shadow(-2px 0 0 #8a3a00) drop-shadow(0 2px 0 #8a3a00) drop-shadow(0 -2px 0 #8a3a00); }
+.cnk-verdict .vtext.lose { color: #dfe6ee; filter: drop-shadow(2px 0 0 #3a4450) drop-shadow(-2px 0 0 #3a4450) drop-shadow(0 2px 0 #3a4450) drop-shadow(0 -2px 0 #3a4450); }
+.cnk-verdict .vsub { margin-top: 6px; font-size: 26px; color: #fff1cc; text-shadow: 0 2px 3px #000; white-space: nowrap; }
+@keyframes cnk-swag { 0%, 100% { transform: rotate(-3deg); } 50% { transform: rotate(3deg) translateY(-4px); } }
+@keyframes cnk-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes cnk-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+/* upright */
+.cnk-scene.tall .cnk-status { left: 50%; top: 118px; transform: translateX(-50%); width: 600px; }
+.cnk-scene.tall .cnk-pair { top: 200px; font-size: 24px; }
+.cnk-scene.tall .cnk-cards { top: 250px; left: 40px; right: 40px; flex-wrap: wrap; gap: 26px 30px; }
+.cn-scene.tall button.cnk-card { width: 370px; height: 440px; }
+.cnk-scene.tall .cnk-card img.ck { height: 180px; max-width: 260px; margin-top: 72px; }
+.cnk-scene.tall .cnk-types { top: 1190px; gap: 6px; flex-wrap: wrap; padding: 0 20px; }
+.cn-scene.tall .cnk-types button.cn-btn { min-width: 160px; }
+.cnk-scene.tall .cnk-hint { top: 1268px; }
+.cnk-scene.tall .cnk-stake { top: 1306px; }
+.cnk-scene.tall .cnk-foot { flex-wrap: wrap; bottom: 30px; gap: 16px 22px; }
+.cnk-scene.tall .cnk-odds { order: -1; width: 860px; }
+.cnk-scene.tall .cnk-hp { width: 430px; top: 200px; }
+.cnk-scene.tall .cnk-hp.l { left: 10px; } .cnk-scene.tall .cnk-hp.r { right: 10px; }
+.cnk-scene.tall .cnk-ck { bottom: 520px; } .cnk-scene.tall .cnk-ck.l { left: 30px; } .cnk-scene.tall .cnk-ck.r { right: 30px; }
+.cnk-scene.tall .cnk-special { top: 520px; font-size: 84px; letter-spacing: 10px; }
+.cnk-scene.tall .cnk-bracket { bottom: 40px; width: 300px; font-size: 19px; }
+.cnk-scene.tall .cnk-skip { bottom: 40px; }
+.cnk-scene.tall .cnk-podium { left: 10px; right: 10px; width: auto; margin-left: 0; top: 380px; height: 640px; }
+.cnk-scene.tall .cnk-verdict { top: 1060px; flex-direction: column; height: auto; gap: 10px; }
+.cnk-scene.tall .cnk-verdict .vbox { text-align: center; }
+.cnk-scene.tall .cnk-verdict .vtext { font-size: 54px; }

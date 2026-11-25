@@ -1,0 +1,59 @@
+/* 清明上河's 梁山令 card (qm-ling.ts): the stage 1600 × 900 (900 × 1600 upright), scaled by fitOverlay. */
+.qml-ov { position: absolute; inset: 0; z-index: 60; background: rgba(8, 4, 2, .86); cursor: pointer; }
+.qml-scene { --gc: 244, 240, 228; perspective: 1800px; }
+.qml-scene.g-high { --gc: 74, 163, 255; }
+.qml-scene.g-rare { --gc: 186, 96, 255; }
+.qml-scene.g-legend { --gc: 255, 206, 58; }
+.qml-back { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 38%, rgba(120, 40, 20, .55), rgba(20, 8, 4, .2) 60%, transparent 80%); }
+.qml-title { left: 30px; top: 26px; width: 420px; font-size: 40px; }
+/* the deck: three card backs */
+.qml-deck { position: absolute; left: 150px; top: 330px; width: 150px; height: 225px; }
+.qml-deck i, .qml-card .back { position: absolute; inset: 0; box-sizing: border-box; border-radius: 14px; border: 4px solid #e9bd58;
+  background: radial-gradient(circle at 50% 50%, rgba(255, 220, 140, .25), transparent 60%), repeating-linear-gradient(45deg, #7a120c 0 10px, #8e1a12 10px 20px);
+  box-shadow: inset 0 0 0 6px #5a0a06, inset 0 0 0 8px #e9bd58, 0 6px 10px rgba(0, 0, 0, .5); }
+.qml-deck i:nth-child(1) { transform: translate(-8px, 8px) rotate(-4deg); }
+.qml-deck i:nth-child(2) { transform: translate(-4px, 4px) rotate(-2deg); }
+/* the card: two faces turning */
+.qml-card { position: absolute; left: 613px; top: 30px; width: 374px; height: 560px; transform-style: preserve-3d; z-index: 2; }
+.qml-card .face { position: absolute; inset: 0; backface-visibility: hidden; -webkit-backface-visibility: hidden; border-radius: 16px; }
+.qml-card .back { transform: rotateY(180deg); display: grid; place-items: center; }
+.qml-card .back b { writing-mode: vertical-rl; font-weight: normal; font-size: 54px; letter-spacing: .25em; color: #ffe39a; text-shadow: 0 3px 0 #3e0804; }
+.qml-face { position: relative; width: 100%; height: 100%; }
+.qml-face img { display: block; width: 100%; height: 100%; border-radius: 16px; }
+/* the paper slip's inside (the card 400 × 600: 22–378, 476–578, its frame 3 wide), over the words in the picture */
+.qml-slip { position: absolute; left: 6.2%; right: 6.2%; top: 79.8%; height: 16.2%; box-sizing: border-box; padding: 0 1.5%; display: grid; place-items: center; background: #faf0d6; border-radius: 6px; overflow: hidden; color: #3c1a08; text-align: center; line-height: 1.22; font-family: 'LXGW WenKai TC', 'Huninn', 'PingFang TC', serif; text-shadow: none; }
+.qml-slip span { display: block; text-wrap: balance; }
+.qml-scene.shown .qml-card .front { box-shadow: 0 0 0 3px rgba(var(--gc), .9), 0 0 40px 8px rgba(var(--gc), .75), 0 14px 30px rgba(0, 0, 0, .6); }
+/* the grade's glow */
+.qml-glow { position: absolute; left: 350px; top: -140px; width: 900px; height: 900px; pointer-events: none; opacity: 0; transition: opacity .5s; }
+.qml-scene.shown .qml-glow { opacity: 1; }
+.qml-glow i { position: absolute; inset: 0; border-radius: 50%; }
+.qml-glow .halo { background: radial-gradient(circle, rgba(var(--gc), .55), rgba(var(--gc), .18) 38%, transparent 62%); }
+.qml-glow .rays { background: repeating-conic-gradient(rgba(var(--gc), .35) 0 7deg, rgba(var(--gc), 0) 7deg 18deg);
+  -webkit-mask: radial-gradient(circle, #000 18%, transparent 66%); mask: radial-gradient(circle, #000 18%, transparent 66%); animation: qml-spin 14s linear infinite; }
+.qml-scene.g-common .qml-glow .rays { opacity: .5; }
+@keyframes qml-spin { to { transform: rotate(360deg); } }
+.qml-sparks { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+.qml-sparks i { position: absolute; width: 14px; height: 14px; margin: -7px; border-radius: 50%;
+  background: radial-gradient(circle, #fffbe0, #ffd34a 45%, rgba(255, 180, 40, 0) 70%); }
+/* the line under it */
+.qml-dialog { left: 250px; bottom: 16px; width: 1100px; z-index: 4; animation: qm-pop .35s cubic-bezier(.2, 1.5, .4, 1) both; }
+.qml-dialog[hidden] { display: none; }
+.qml-say { font-size: 40px; }
+.qml-say small { font-size: 26px; margin-bottom: 4px; }
+.qml-grade { left: 6%; top: -30px; width: 170px; font-size: 28px; }
+.qml-scene.g-high .qml-grade { color: #bfe0ff; }
+.qml-scene.g-rare .qml-grade { color: #ecc8ff; }
+.qml-scene.g-legend .qml-grade { color: #fff1a0; }
+.qml-hint { position: absolute; right: 40px; top: 560px; font-size: 26px; color: #ffe9b0; text-shadow: 0 2px 0 #000; animation: qml-blink 1.2s ease-in-out infinite; }
+.qml-hint[hidden] { display: none; }
+@keyframes qml-blink { 50% { opacity: .4; } }
+/* upright */
+.qml-scene.tall .qml-title { left: 50%; top: 40px; width: 620px; transform: translateX(-50%); font-size: 46px; }
+.qml-scene.tall .qml-card { left: 180px; top: 170px; width: 540px; height: 810px; }
+.qml-scene.tall .qml-glow { left: -100px; top: 25px; width: 1100px; height: 1100px; }
+.qml-scene.tall .qml-deck { left: 60px; top: 1330px; width: 120px; height: 180px; }
+.qml-scene.tall .qml-dialog { left: 10px; top: 1040px; bottom: auto; width: 880px; aspect-ratio: auto; height: 280px; }
+.qml-scene.tall .qml-say { font-size: 36px; }
+.qml-scene.tall .qml-say small { font-size: 32px; }
+.qml-scene.tall .qml-hint { left: 0; right: 0; top: auto; bottom: 120px; text-align: center; }

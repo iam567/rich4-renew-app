@@ -14,6 +14,12 @@ contextBridge.exposeInMainWorld('rich4Desktop', {
     start: () => ipcRenderer.invoke('lan:start'),
     find: () => ipcRenderer.invoke('lan:find'),
   },
+  // 存檔: the slots as files in the game folder's `save` (main.cjs)
+  saves: {
+    dir: () => ipcRenderer.invoke('saves:dir'),
+    read: (slot, kind) => ipcRenderer.invoke('saves:read', slot, kind),
+    write: (slot, text) => ipcRenderer.invoke('saves:write', slot, text),
+  },
   // 全螢幕 / 視窗 and 結束遊戲 from the game's 系統 window (issue #72)
   window: {
     isFullScreen: () => ipcRenderer.invoke('win:isFullScreen'),

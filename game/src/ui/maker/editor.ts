@@ -10,20 +10,20 @@
  */
 import { uiAlert, uiConfirm, uiPrompt } from '../dialog';
 import { audio } from '../audio';
-import { ASSETS } from '../assets';
+import { ASSETS, cssUrl } from '../assets';
 import { GroundGL } from './ground-gl';
 import type { GameSettings } from '../../core/types';
 import { problemList, type Problem } from './check';
 import { autoFix, joinEnds as joinRoadEnds } from './fix';
 import { randomize, THEMES } from './random';
 import { rulesSheet } from './rules';
-import { BUILDING_KINDS, DECOR_KINDS, piecesOf, type PieceKind } from './pieces';
+import { ORIG_PIECES, PIECE_TABS, pieceThumb, piecesOf, type PieceKind, type PieceTab } from './pieces';
 import { deckSheet } from './deck';
 import { companySlots, stockNames, stockSheet } from './stocks';
 import { EDGES, lassoCells, type Edge, type Pt } from './lasso';
 import { makeThumbs, playMap } from './compile';
 import { covers, drawCompanies, drawLots, drawRoads, drawSquares, drawSteps, drawThings, lotGeom, styleIcon, lotNudge, thingAt } from './layers';
-import { dropThumb, fromSample, notOwn, loadThumb, mapStatus, mapStatusTag, NAME_MAX } from './model';
+import { dropThumb, fromSample, notOwn, loadPaint, loadThumb, mapStatus, mapStatusTag, NAME_MAX } from './model';
 import { CELL, COMPANY_KINDS, companyKind, STYLE_NAMES, DEFAULT_LIGHT, DEFAULT_TEX, DEFAULT_WOOD, deleteMap, parseMap, EVENTS, evInfo, G, GROUNDS, LAND_PRICES, cleared, lastMap, listMaps, loadMap, newMap, PLOT_PRICES, ROAD_STYLES, saveMap, setLastMap, SIZE_MAX, SIZE_MIN, type MakerMap, type MkLight, type MkLot, type MkNode, type MkTex, type MkWood } from './model';
 import { browse, CONTACT_KINDS, fetchLib, giveFlower, libraryBase, played, publish, take, type LibAbout, type LibEntry, type LibSort } from './library';
 import { addPartyLib, inParty, PARTY_LIB_MAX, PARTY_LIB_ON, partyLibs, removePartyLib } from './party-lib';
@@ -50,7 +50,8 @@ function fitSheets() {
     for (const r of recs) for (const n of r.addedNodes) {
       if (!(n instanceof HTMLElement) || !n.classList.contains('mk-ov')) continue;
       const box = n.querySelector<HTMLElement>(':scope > .msg');
-      if (box) fitToScreen(n, box);
+      // a map's page scrolls its text instead (issue #120: a long 地圖說明 at half size still pushed the buttons off)
+      if (box && !box.classList.contains('mk-page')) fitToScreen(n, box);
     }
   }).observe(document.body, { childList: true, subtree: true });
 }
@@ -182,10 +183,10 @@ function librarySheet(app: HTMLElement, back: () => void, play: (s: GameSettings
     const kind = (k: string) => CONTACT_KINDS.find(x => x[0] === k)?.[1] ?? k;
     const given = gaveFlower(e.id);
     pg.innerHTML = `<div class="msg sheet mk-page"><div class="ribbon">${esc(e.name)}</div>
-      <div class="mk-page-top">${picOf(e)}<div class="mk-page-info"><p><b>${esc(e.author)}</b> 做的</p><p class="mk-dim">${e.w} × ${e.h} 格・${new Date(e.at).toLocaleDateString()} 發布</p>${stat(e)}</div></div>
+      <div class="mk-page-body"><div class="mk-page-top">${picOf(e)}<div class="mk-page-info"><p><b>${esc(e.author)}</b> 做的</p><p class="mk-dim">${e.w} × ${e.h} 格・${new Date(e.at).toLocaleDateString()} 發布</p>${stat(e)}</div></div>
       ${e.note ? `<blockquote class="mk-note">${esc(e.note)}<cite>— ${esc(e.author)}</cite></blockquote>` : ''}
       ${e.desc ? `<div class="mk-page-sec"><h4>地圖說明</h4><p class="mk-desc">${esc(e.desc)}</p></div>` : ''}
-      ${e.contact.length ? `<div class="mk-page-sec"><h4>聯絡作者</h4>${e.contact.map(c => `<button class="mk-contact" data-copy="${esc(c.v)}"><span>${kind(c.k)}</span><b>${esc(c.v)}</b><small>點一下複製</small></button>`).join('')}</div>` : ''}
+      ${e.contact.length ? `<div class="mk-page-sec"><h4>聯絡作者</h4>${e.contact.map(c => `<button class="mk-contact" data-copy="${esc(c.v)}"><span>${kind(c.k)}</span><b>${esc(c.v)}</b><small>點一下複製</small></button>`).join('')}</div>` : ''}</div>
       <div class="choices"><button class="candy ghost" data-g="back">返回</button><button class="candy${given ? ' ghost' : ''}" data-g="flower"${given ? ' disabled' : ''}>${LIB_ICON.flower}${given ? '已送花' : '送花'}</button>${PARTY_LIB_ON ? `<button class="candy" data-g="party">${inParty(e.id) ? '從派對模式移除' : '加到派對模式'}</button>` : ''}<button class="candy" data-g="take"${listMaps().some(x => x.id === `lib-${e.id}`) ? ' disabled>已在我的地圖' : '>下載到我的地圖'}</button><button class="candy yes" data-g="play">${LIB_ICON.play}直接玩</button></div>
       ${PARTY_LIB_ON ? `<p class="mk-deck-hint mk-party-hint">派對模式建房間時可以選加進去的地圖（最多 ${PARTY_LIB_MAX} 張，現在 ${partyLibs().length} 張）</p>` : ''}</div>`;
     app.append(pg);
@@ -310,8 +311,9 @@ const svg = (k: string) => `<svg viewBox="0 0 24 24">${ICON[k]}</svg>`;
 const TOOLS: [Tool, string, boolean][] = [['pointer', '指針', true], ['brush', '畫筆', true], ['eraser', '橡皮擦', true], ['line', '直線', true],
   ['rect', '方塊', true], ['lasso', '圈地', true], ['bucket', '油漆桶', true], ['tune', '微調', true], ['move', '移動', true]];
 /** The layers, one a tab: what the tools paint (the user 2026-11-12: layers, the eraser takes from one layer only). */
-const TABS = ['地面', '道路', '格子', '建築', '裝飾'];
-const enum L { Ground, Road, Square, Building, Decor }
+// (地標 建築 植被 裝飾: the pieces by kind, the user 2026-11-17 — all four place the same things)
+const TABS = ['地面', '道路', '格子', '地標', '建築', '植被', '裝飾'];
+const enum L { Ground, Road, Square, Landmark, Building, Plant, Decor }
 const LOT_SMALL = 100, LOT_BIG = 101;    // the 格子 tab's two lot items (beside the events)
 /** The 企業大樓 items: CO_ITEM + their index in COMPANY_KINDS (the user 2026-11-16). */
 const CO_ITEM = 200;
@@ -323,7 +325,7 @@ interface Snapshot { cells: Uint8Array; nodes: string; lots: string; streets: st
 export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play: (s: GameSettings) => void) {
   setLastMap(m.id);
   let tool: Tool = 'brush', layer = L.Ground, size = 2, hollow = false, edge: Edge = 0, lassoPath: Pt[] = [];
-  let ground: number = G.grass, road = 0, square = 14, piece = { [L.Building]: 0, [L.Decor]: 0 } as Record<number, number>;
+  let ground: number = G.grass, road = 0, square = 14, piece = { [L.Landmark]: 0, [L.Building]: 0, [L.Plant]: 0, [L.Decor]: 0 } as Record<number, number>;
   let selLot = -1, selThing = -1, selNode = -1;
   /** The look each kind of 企業大樓 is built with next (its category → a style). */
   const coStyle: Record<number, number> = {};
@@ -360,11 +362,12 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
   app.append(root);
   const stage = root.querySelector<HTMLElement>('.mk-stage')!, over = root.querySelector<HTMLCanvasElement>('.mk-over')!;
   const toastEl = root.querySelector<HTMLElement>('.mk-toast')!, grid = root.querySelector<HTMLElement>('.mk-grid')!;
-  /** 建築 / 裝飾: the kind of piece shown (pieces.ts). */
+  /** 地標 / 建築 / 植被 / 裝飾: the kind of piece shown (pieces.ts). */
   const kind: Record<number, PieceKind> = {};
   let toastT = 0;
   const toast = (t: string) => { toastEl.textContent = t; toastEl.hidden = false; clearTimeout(toastT); toastT = window.setTimeout(() => (toastEl.hidden = true), 2400); };
-  fetch(`${TEX}/pieces.json`).then(r => r.json()).then((ids: number[]) => { pieces = ids; if (layer >= L.Building) showGrid(); }).catch(() => {});
+  // the remake's pieces this build carries, and the original game's (always in the app: pieces.ts ORIG_PIECES)
+  fetch(`${TEX}/pieces.json`).then(r => r.json()).then((ids: number[]) => { pieces = [...ids, ...ORIG_PIECES]; if (layer >= L.Landmark) showGrid(); }).catch(() => { pieces = [...ORIG_PIECES]; });
 
   // -------------------------------------------------- the view
   const view = { x: 0, y: 0, s: 1 };     // world point at the stage's top-left, css px per world px
@@ -381,6 +384,9 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
   };
   let frame = 0;
   const dirty = () => { if (!frame) frame = requestAnimationFrame(render); };
+  // 官方地圖's painted ground (model.ts paint)
+  let paintPic: HTMLImageElement | null = null;
+  void loadPaint(m, TEX).then(im => { paintPic = im; if (im) dirty(); });
   let preview: ((c: CanvasRenderingContext2D) => void) | null = null;
   function render() {
     frame = 0;
@@ -395,7 +401,8 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
     c.clearRect(0, 0, over.width, over.height);
     // the layers, in world coordinates
     c.setTransform(dpr * view.s, 0, 0, dpr * view.s, -view.x * view.s * dpr, -view.y * view.s * dpr);
-    woods.changed(); woods.draw(c);
+    if (paintPic) c.drawImage(paintPic, 0, 0, m.w * CELL, m.h * CELL);
+    if (!paintPic) { woods.changed(); woods.draw(c); }   // (a painted map has its own woods in the painting)
     drawRoads(c, m, dirty);
     drawSteps(c, m);
     drawLots(c, m, selLot, layer === L.Square);
@@ -715,12 +722,12 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
         joining = null;
         selLot = l?.id ?? -1; showOptions(); dirty(); return;
       }
-      if (layer >= L.Building) {
+      if (layer >= L.Landmark) {
         selThing = thingAt(m, p.x, p.y);
         if (selThing >= 0) { begin(); const t = m.things[selThing]; dragThing = { i: selThing, dx: t.x - p.x, dy: t.y - p.y, x0: t.x, y0: t.y }; }
         showOptions(); dirty(); return;
       }
-      toast('指針：在「格子」頁點地塊、在「建築」「裝飾」頁點物件，可以修改'); return;
+      toast('指針：在「格子」頁點地塊、在「地標」「建築」「植被」「裝飾」頁點物件，可以修改'); return;
     }
     if (tool === 'bucket') {
       begin();
@@ -751,7 +758,7 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
       }
       commit(); start = last = null; return;
     }
-    if (layer >= L.Building) {
+    if (layer >= L.Landmark) {
       if (tool === 'eraser') { const i = thingAt(m, p.x, p.y); if (i >= 0) m.things.splice(i, 1); selThing = -1; }
       else if (piece[layer]) {
         const t = { res: piece[layer], x: Math.round(p.x), y: Math.round(p.y), s: 1, face: 0 };
@@ -932,14 +939,17 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
       + EVENTS.map(e => `<button class="mk-sw${e.ev === square ? ' on' : ''}" data-sq="${e.ev}">${e.pad >= 0 ? `<img src="${ASSETS}/hd/map/0024-SMP/frame-${String(e.pad).padStart(3, '0')}.webp" alt="" class="pad">` : '<i class="mk-dot"></i>'}${e.name}</button>`).join('');
     else {
       // the kind chosen (pieces.ts), its pieces
-      const kinds = layer === L.Building ? BUILDING_KINDS : DECOR_KINDS, k = kind[layer] ?? kinds[0];
+      // a kind this build carries no piece of (1.2.5 left the world's new pieces out) is not offered
+      const all: readonly PieceKind[] = PIECE_TABS[TABS[layer] as PieceTab];
+      const kinds = pieces.length ? all.filter(x => piecesOf(pieces, x).length) : all;
+      const k = kind[layer] && kinds.includes(kind[layer]!) ? kind[layer]! : kinds[0] ?? all[0];
       const ids = piecesOf(pieces, k);
       const cats = `<div class="mk-cats">${kinds.map(x => `<button class="chip${x === k ? ' on' : ''}" data-kind="${x}">${x}</button>`).join('')}</div>`;
       if (!piece[layer] && ids.length) piece[layer] = ids[0];
-      html = cats + (ids.length ? ids.map(id => `<button class="mk-sw${id === piece[layer] ? ' on' : ''}" data-p="${id}"><img loading="lazy" src="${ASSETS}/maps/remake/sprites/${id}/frame-000.webp" alt="" class="piece"></button>`).join('') : `<p class="mk-none">${pieces.length ? '這一類還沒有物件' : '載入中…'}</p>`);
+      html = cats + (ids.length ? ids.map(id => `<button class="mk-sw${id === piece[layer] ? ' on' : ''}" data-p="${id}"><img loading="lazy" src="${pieceThumb(id)}" alt="" class="piece"></button>`).join('') : `<p class="mk-none">${pieces.length ? '這一類還沒有物件' : '載入中…'}</p>`);
     }
     grid.innerHTML = html;
-    grid.classList.toggle('pieces', layer >= L.Building);
+    grid.classList.toggle('pieces', layer >= L.Landmark);
   }
   function showOptions() {
     const sizes = `<div class="chips">${[1, 2, 3, 4, 5].map(n => `<button class="chip${n === size ? ' on' : ''}" data-size="${n}">${['小', '', '中', '', '大'][n - 1] || n}</button>`).join('')}</div>`;
@@ -1291,7 +1301,7 @@ export function openEditor(app: HTMLElement, m: MakerMap, back: () => void, play
     ov.className = 'slots-overlay mk-ov';
     ov.innerHTML = `<div class="msg sheet mk-themes"><div class="ribbon">隨機創建</div>
       <p class="mk-deck-hint">選一個主題，系統會用 ${m.w} × ${m.h} 的大小做一張能玩的地圖：路、事件、地塊、建築和樹都擺好，你再慢慢微調。現在的地圖會被換掉（可以按「撤銷」換回來）。</p>
-      <div class="mk-theme-grid">${THEMES.map((t, i) => `<button class="mk-theme" data-th-i="${i}" style="--bg:url('${TEX}/ground-${GROUNDS[t.key === 'island' ? G['shallow-sea'] : t.land].key}.webp')"><b>${t.name}</b><small>${t.desc}</small></button>`).join('')}</div>
+      <div class="mk-theme-grid">${THEMES.map((t, i) => `<button class="mk-theme" data-th-i="${i}" style="--bg:${cssUrl(`${TEX}/ground-${GROUNDS[t.key === 'island' ? G['shallow-sea'] : t.land].key}.webp`)}"><b>${t.name}</b><small>${t.desc}</small></button>`).join('')}</div>
       <div class="choices"><button class="candy ghost" data-th-i="x">取消</button></div></div>`;
     root.append(ov);
     ov.addEventListener('click', e => {

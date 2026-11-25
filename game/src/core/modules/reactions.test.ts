@@ -105,6 +105,42 @@ describe.skipIf(!haveMaps)('card reactions from the rules', () => {
     expect(says(ev).some(t => t.startsWith('搶到'))).toBe(false);
   });
 
+  it('搶奪卡 with a full hand: the card taken takes its place, nothing asked to drop (1.2.5)', () => {
+    const g = makeGame(), p = g.players[0];
+    g.players[1].cards = [9];
+    p.cards = [13, 13, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 14, 15];
+    const asked: string[] = [], ans = script(choose0, x => spot(x, 'actor', 1), x => (x.t === 'choose' ? 9 : null));
+    const ev = drive(g.cards.humanUse(p), x => { asked.push(String((x as { title?: string }).title)); return ans(x); });
+    expect(asked.some(t => t.includes('卡片欄已滿'))).toBe(false);
+    expect(p.cards.filter(c => c === 13)).toHaveLength(1);
+    expect(p.cards).toContain(9);
+    expect(p.cards).toHaveLength(15);
+    expect(g.players[1].cards).toEqual([]);
+    expect(fx(ev, 'card-result')[0]).toMatchObject({ target: 1, data: { card: 13, got: 9 } });
+  });
+
+  it('搶奪卡 taking a rival\'s 搶奪卡 keeps it, also at 地獄 (1.2.5)', () => {
+    for (const hell of [false, true]) {
+      const g = makeGame(), p = g.players[0];
+      if (hell) g.settings.aiLevel = 3;
+      g.players[1].cards = [13];
+      p.cards = [13];
+      drive(g.cards.humanUse(p), script(choose0, x => spot(x, 'actor', 1), x => (x.t === 'choose' ? 13 : null)));
+      expect(p.cards).toEqual([13]);
+      expect(g.players[1].cards).toEqual([]);
+    }
+  });
+
+  it('搶奪卡 in a room of 1.2.4 phones still plays the old way', () => {
+    const g = makeGame(), p = g.players[0];
+    g.settings.level = '1.2.4';
+    g.players[1].cards = [9];
+    p.cards = [13, 13, 1, 2, 3, 4, 5, 6, 7, 8, 10, 11, 12, 14, 15];
+    const asked: string[] = [], ans = script(choose0, x => spot(x, 'actor', 1), x => (x.t === 'choose' ? 9 : null));
+    drive(g.cards.humanUse(p), x => { asked.push(String((x as { title?: string }).title)); return ans(x); });
+    expect(asked.some(t => t.includes('卡片欄已滿'))).toBe(true);
+  });
+
   it('查稅卡 names the one who paid, also after a frame card moved the bill', () => {
     const g = makeGame(), p = g.players[0];
     const t = g.players[1], other = g.players[2];

@@ -22,7 +22,7 @@ function play(mapId: number, seed: number, level: 0 | 1 | 2 | 3, cheat?: (g: Gam
   g.animation = false;
   const rec = new Recorder(false);
   const flow = g.run();
-  let answer: Answer = undefined, yes = 0, step = 0, turns = 0, autoAt = 0;
+  let answer: Answer = undefined, yes = 0, step = 0, turns = 0, autoAt = 0, films = 0;
   for (;;) {
     rec.step(answer);
     cheat?.(g, step);
@@ -31,7 +31,8 @@ function play(mapId: number, seed: number, level: 0 | 1 | 2 | 3, cheat?: (g: Gam
     step++;
     answer = undefined;
     if (r.done) break;
-    const s = r.value as { ask?: boolean; t?: string; options?: { value: number; disabled?: boolean }[] };
+    const s = r.value as { ask?: boolean; t?: string; kind?: string; options?: { value: number; disabled?: boolean }[] };
+    if (s.t === 'fx' && s.kind === 'cinema') films++;
     if (!('ask' in s)) continue;
     if (s.t === 'turn' && ++turns === 20 && !byHand) { answer = { action: 'autopilot' } as Answer; autoAt = step; } // 托管 from the menu
     else if (s.t === 'yesno') answer = (yes++ & 1) === 0;
@@ -39,13 +40,15 @@ function play(mapId: number, seed: number, level: 0 | 1 | 2 | 3, cheat?: (g: Gam
     else if (s.t === 'facility-type') answer = 1;
     if (step > 2_000_000) throw new Error('no end');
   }
-  return { g, settings, raw, log: rec.log };
+  return { g, settings, raw, log: rec.log, films };
 }
 
 describe('排行榜 replay', () => {
   it('a game played again from its record comes to the same figures', () => {
-    const { g, settings, raw, log } = play(0, 11, 2);
+    const { g, settings, raw, log, films } = play(0, 11, 2);
     expect(g.over).toBeTruthy();
+    // the screen's films are steps of its record (1.2.4's first records were refused when the replay lacked them)
+    expect(films).toBeGreaterThan(0);
     const r = replay(settings, raw, log);
     expect(r.days).toBe(g.daysElapsed);
     expect(r.winner).toBe(g.over!.winner);
@@ -56,6 +59,14 @@ describe('排行榜 replay', () => {
     // the record's size (the user: 流量): a whole game's answers, as JSON
     console.log(`days ${g.daysElapsed}, answers ${log.a.length}, ${JSON.stringify(log).length} bytes`);
   });
+
+  it('長安 and 清明上河 play again to the same figures too (their own rules, squares and cards — 1.3)', () => {
+    for (const map of [110, 111]) for (const byHand of [false, true]) {
+      const { g, settings, raw, log } = play(map, 21, 1, undefined, byHand);
+      const r = replay(settings, raw, log);
+      expect([r.days, r.winner, r.money]).toEqual([g.daysElapsed, g.over!.winner, g.players.map(p => p.cash + p.bank)]);
+    }
+  }, 120_000);
 
   it('money changed during the game does not come out the same', () => {
     const honest = play(0, 11, 2);

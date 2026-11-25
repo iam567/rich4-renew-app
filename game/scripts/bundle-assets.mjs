@@ -64,6 +64,11 @@ for (const m of json('maps/maps.json').maps) {
 // RICH4_SKIP_MAPS=109,…: maps left out of this build altogether (not listed, no files) — a map still being made stays
 // out of an in-game update (重慶 at 1.1.1, the user 2026-11-10: 「其他的慢慢弄吧，弄到1.2再發布」).
 const skipMaps = new Set((process.env.RICH4_SKIP_MAPS ?? '').split(',').filter(Boolean).map(Number));
+// Maps held for a later version, left out until package.json reaches it (the user 2026-11-19: 「重慶地圖作為1.4版再發布」).
+const HELD = { 109: '1.4.0' };
+const verNum = v => v.split('.').map(Number).reduce((a, n) => a * 1000 + (n || 0), 0);
+const appVersion = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8')).version;
+for (const [id, from] of Object.entries(HELD)) if (verNum(appVersion) < verNum(from)) skipMaps.add(Number(id));
 if (existsSync(join(src, 'maps/remake/index.json'))) {
   const index = json('maps/remake/index.json');
   if (skipMaps.size) {
@@ -98,6 +103,8 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   if (existsSync(join(src, 'maps/remake/challenge'))) for (const f of readdirSync(join(src, 'maps/remake/challenge'))) if (f.endsWith('.webp')) copy(`maps/remake/challenge/${f}`);
   // 排行榜's button and its four boards' icons (ui/ranks.ts, tools/tycoon-art/rank_icon.py).
   if (existsSync(join(src, 'maps/remake/ranks'))) for (const f of readdirSync(join(src, 'maps/remake/ranks'))) if (f.endsWith('.webp')) copy(`maps/remake/ranks/${f}`);
+  // 回到桌面's button on the PC / Mac title (ui/main.ts, tools/tycoon-art/quit_icon.py).
+  if (existsSync(join(src, 'maps/remake/quit'))) for (const f of readdirSync(join(src, 'maps/remake/quit'))) if (f.endsWith('.webp')) copy(`maps/remake/quit/${f}`);
   // 獎勵卡 (core/rewards.ts): the ten cards' pictures and the three backs by grade (RWBN / RWBR / RWBSR, the user's
   // picks); the other takes (RW01a, RW01b, RWBN1 …) stay out.
   if (existsSync(join(src, 'maps/remake/rewards'))) for (const f of readdirSync(join(src, 'maps/remake/rewards'))) if (/^RW(\d\d|B(N|R|SR))\.webp$/.test(f)) copy(`maps/remake/rewards/${f}`);
@@ -181,15 +188,27 @@ if (existsSync(join(src, 'maps/remake/index.json'))) {
   if (existsSync(join(src, 'maps/remake/events'))) {
     for (const f of readdirSync(join(src, 'maps/remake/events'))) if (f.endsWith('.webp')) shrinkOwn(`maps/remake/events/${f}`);
   }
+  // 長安 (the official map in the editor's format, editor/maker_changan.py; 1.3, the user 2026-11-19 「作為1.3版本」): its
+  // pads (maps/remake/maker/pads/<set>/) and its screens' art (maps/remake/changan/: 博戲坊's dice, the Tang place
+  // screens); its sprites come with its map file (remake/changan.json, above).
+  const walkAll = (dir, f) => { for (const e of readdirSync(join(src, dir), { withFileTypes: true })) e.isDirectory() ? walkAll(`${dir}/${e.name}`, f) : f(`${dir}/${e.name}`); };
+  if (existsSync(join(src, 'maps/remake/maker/pads'))) walkAll('maps/remake/maker/pads', p => { if (p.endsWith('.webp')) copy(p); });
+  if (existsSync(join(src, 'maps/remake/changan'))) walkAll('maps/remake/changan', p => { if (/\.(webp|json|m4a)$/.test(p)) copy(p); });
+  // 清明上河 (map 111, docs/rules/35): its screens' art (maps/remake/qingming/: the dock, the painted buttons and scrolls,
+  // the 108 梁山令 cards in both scripts and their thumbnails, the Song 貢院 banks and examiner).
+  if (!skipMaps.has(111) && existsSync(join(src, 'maps/remake/qingming'))) walkAll('maps/remake/qingming', p => { if (/\.(webp|json|m4a)$/.test(p)) copy(p); });
   // 自建地圖's pieces (ui/maker): the sprites this build carries, every facing — the editor offers only these, so it
   // adds nothing to the app (the dev tree lists them all: tools/tycoon-art/maker_terrain.py pieces).
   // The editor's whole piece library (the user 2026-11-12: 植物 stayed at 載入中 on the phone — only the maps' own
   // sprites were in the app): every facing, at half the art's size (twice what a piece is drawn at), those the maps
   // brought along as they are.
+  // The world's new pieces (groups 43–54, tools/tycoon-art/world_pieces.py, 88 MB of art) stay out of the app until
+  // the user ships them (the user 2026-11-17: 新素材不要打進 1.2.5，太大了) — RICH4_WORLD_PIECES=1 takes them in.
+  const heldGroup = (id) => !process.env.RICH4_WORLD_PIECES && Math.floor(id / 100) >= 43 && Math.floor(id / 100) <= 54;
   if (existsSync(join(src, 'maps/remake/maker/pieces.json'))) {
     for (const id of json('maps/remake/maker/pieces.json')) {
       const fj = `maps/remake/sprites/${id}/frames.json`;
-      if (!existsSync(join(src, fj)) || existsSync(join(out, fj))) continue;
+      if (heldGroup(id) || !existsSync(join(src, fj)) || existsSync(join(out, fj))) continue;
       copy(fj);
       const j = json(fj), frames = Array.isArray(j) ? j : j.frames;
       for (const f of frames) shrink(`maps/remake/sprites/${id}/${f.file}`, f.width * (0.5 / Math.min(1, SHRINK)), f.height * (0.5 / Math.min(1, SHRINK)));

@@ -1,0 +1,91 @@
+/* 長安's 貢院 (cn-exam.ts): the stage 1600 × 900 (900 × 1600 upright), scaled by fitOverlay. */
+.cne-ov { position: absolute; inset: 0; z-index: 60; background: #140c08; }
+.cne-scene { position: absolute; left: 50%; top: 50%; overflow: hidden; font-family: 'Huninn', 'PingFang TC', sans-serif; color: #2a1a10; user-select: none; --brush: "LXGW WenKai TC", "Kaiti TC", "STKaiti", "BiauKai", serif; }
+.cne-bg { position: absolute; inset: 0; background: center / cover; filter: brightness(.55) saturate(.9); }
+.cne-status { position: absolute; left: 14px; top: 12px; height: 46px; padding: 0 18px 0 6px; display: flex; align-items: center; gap: 16px; font-size: 22px; color: #ffe9b8;
+  background: rgba(30, 16, 8, .78); border: 2px solid #c9962c; border-radius: 12px; z-index: 4; }
+.cne-scene .cne-status img { position: static; width: 36px; height: 36px; border-radius: 6px; object-fit: cover; }
+.cne-scene img.cne-examiner { position: absolute; left: 10px; bottom: -14px; height: 860px; filter: drop-shadow(0 12px 14px rgba(0, 0, 0, .55)); z-index: 1; }
+
+/* the wide scroll and its paper (scroll-wide.webp: the paper 13–88 % across, 16–83 % down) */
+.cne-scroll { position: absolute; left: 430px; top: 60px; width: 1150px; height: 755px; background: center / 100% 100% no-repeat; z-index: 2; }
+.cne-tag { position: absolute; left: 50%; top: 4.5%; transform: translateX(-50%); padding: 3px 18px; font-family: var(--brush); font-size: 26px; letter-spacing: 6px; color: #ffe6b0;
+  background: linear-gradient(#a3221a, #6e0f0b); border: 2px solid #e0b24a; border-radius: 6px; box-shadow: 0 3px 6px rgba(0, 0, 0, .4); }
+.cne-paper { position: absolute; left: 15%; right: 14%; top: 19%; bottom: 20%; display: flex; flex-direction: row-reverse; align-items: stretch; gap: 10px; }
+.cne-q { position: relative; writing-mode: vertical-rl; text-orientation: upright; display: flex; flex-direction: row; gap: 6px; height: 100%; padding-left: 18px; }
+.cne-tier { writing-mode: vertical-rl; text-orientation: upright; white-space: nowrap; flex: none; font-style: normal; font-family: var(--brush); font-size: 22px; color: #b01e18; letter-spacing: 2px; align-self: flex-start; }
+.cne-qtext { font-weight: normal; font-family: var(--brush); font-size: 54px; line-break: strict; word-break: normal; line-height: 1.35; letter-spacing: 6px; color: #1a1410; max-height: 100%; }
+.cne-opts { flex: 1; display: flex; flex-direction: row-reverse; justify-content: space-evenly; align-items: stretch; }
+.cne-scene button.cne-opt { position: relative; writing-mode: vertical-rl; text-orientation: upright; display: flex; flex-direction: row; align-items: center; gap: 18px; max-height: 100%; overflow: visible; padding: 6px 4px; border: 0; background: none;
+  cursor: pointer; font-family: var(--brush); color: #1a1410; transition: opacity .4s, transform .15s; border-radius: 10px; }
+.cne-scene button.cne-opt:hover { background: rgba(176, 30, 24, .07); }
+.cne-opt i { font-style: normal; display: inline-flex; align-items: center; justify-content: center; width: 50px; height: 50px; border: 3px solid #b01e18; border-radius: 50%;
+  font-size: 28px; color: #b01e18; writing-mode: horizontal-tb; }
+.cne-opt span { font-size: calc(64px * var(--opt-k, 1)); letter-spacing: 8px; line-height: 1; white-space: nowrap; }
+.cne-scene button.cne-opt.picked { background: rgba(176, 30, 24, .12); }
+.cne-opts.answered .cne-scene button.cne-opt, .cne-scene .cne-opts.answered button.cne-opt { background: none; }
+.cne-scene button.cne-opt.off { opacity: .3; pointer-events: none; }
+.cne-scene button.cne-opt.off::after { content: ''; position: absolute; left: 50%; top: 4%; bottom: 4%; width: 6px; margin-left: -3px; border-radius: 3px; background: #b01e18; }
+.cne-opts.answered .cne-opt.off::after { display: none; }
+.cne-status .cne-god { color: #ffd34d; }
+.cne-scene button.cne-opt.gone { opacity: 0; pointer-events: none; }
+.cne-opts.answered .cne-opt.gone { display: none; }
+.cne-opts.answered { flex: 0 0 auto; padding: 0 30px; }
+.cne-opt.right i { visibility: hidden; }
+.cne-scene .cne-opt img.cne-ring { position: absolute; left: 50%; top: var(--ry, 50%); width: 150px; height: var(--rh, 60%); transform: translate(-50%, -50%) rotate(-3deg); pointer-events: none; mix-blend-mode: multiply;
+  opacity: 0; animation: cne-ink .6s ease-out forwards; }
+@keyframes cne-ink { from { opacity: 0; clip-path: inset(0 0 100% 0); } to { opacity: .95; clip-path: inset(0 0 0 0); } }
+.cne-note { writing-mode: vertical-rl; text-orientation: upright; flex: 0 0 auto; height: var(--note-h, 100%); align-self: flex-start; max-width: 0; overflow: hidden; font-size: 26px; line-height: 1.6; letter-spacing: 2px; color: #3a2a1a; opacity: 0; transition: opacity .5s, max-width .5s; }
+.cne-note.on { max-width: 260px; opacity: 1; }
+
+/* the incense (a stick burning down the seconds) */
+.cne-incense { position: absolute; left: 1380px; top: 700px; width: 90px; height: 170px; z-index: 3; }
+.cne-incense .bowl { position: absolute; left: 10px; bottom: 26px; width: 70px; height: 34px; border-radius: 0 0 36px 36px; background: linear-gradient(#c8963c, #6e4618); box-shadow: 0 4px 6px rgba(0, 0, 0, .4); }
+.cne-incense .bowl::before { content: ''; position: absolute; left: -4px; right: -4px; top: -6px; height: 10px; border-radius: 50%; background: #8a5a22; }
+.cne-incense .stick { position: absolute; left: 43px; bottom: 56px; width: 4px; height: 90px; background: linear-gradient(#ff6a2a 0 4px, #b9a98a 4px); transform-origin: bottom; border-radius: 2px; }
+.cne-incense.burn .stick { animation: cne-burn var(--secs, 10s) linear forwards; }
+.cne-incense.out .stick { animation-play-state: paused; }
+@keyframes cne-burn { to { transform: scaleY(.04); } }
+.cne-incense .smoke { position: absolute; left: 30px; bottom: 140px; width: 30px; height: 40px; border-radius: 50%; background: radial-gradient(rgba(240, 240, 240, .5), transparent 70%); animation: cne-smoke 2s ease-out infinite; }
+@keyframes cne-smoke { from { transform: translateY(0) scale(.6); opacity: .8; } to { transform: translateY(-40px) scale(1.4); opacity: 0; } }
+.cne-incense span { position: absolute; left: -40px; right: -40px; bottom: -4px; text-align: center; font-size: 18px; color: #ffe9b8; text-shadow: 0 1px 3px #000; white-space: nowrap; }
+
+.cne-qscroll { display: none; }
+.cne-hint { position: absolute; left: 50%; bottom: 22px; transform: translateX(-50%); padding: 6px 22px; border-radius: 20px; font-size: 22px; color: #fae6be; background: rgba(30, 18, 10, .78); z-index: 5; }
+.cne-hint[hidden] { display: none; }
+
+/* the result: the rank's picture behind a big badge */
+.cne-result { position: absolute; inset: 0; z-index: 6; }
+.cne-result[hidden] { display: none; }
+.cne-scene-pic { position: absolute; inset: 0; background: center / cover; opacity: 0; transition: opacity .6s; }
+.cne-result.in .cne-scene-pic { opacity: 1; }
+.cne-badge { position: absolute; left: 50%; top: 50%; width: 460px; transform: translate(-50%, -50%) scale(.2); opacity: 0; text-align: center; }
+.cne-result.in .cne-badge { animation: cne-badge .7s cubic-bezier(.2, 1.5, .4, 1) .25s forwards; }
+@keyframes cne-badge { to { transform: translate(-50%, -50%) scale(1); opacity: 1; } }
+.cne-scene .cne-badge img { position: static; display: block; width: 100%; filter: drop-shadow(0 12px 16px rgba(0, 0, 0, .5)); }
+.cne-badge b { position: absolute; left: 14%; right: 14%; top: 71%; font-weight: normal; font-family: var(--brush); font-size: 46px; color: #fff3c0; letter-spacing: 6px;
+  text-shadow: 0 3px 0 #6a0e08, 0 0 8px rgba(0, 0, 0, .5); white-space: nowrap; }
+.cne-badge em { display: block; margin-top: 6px; font-style: normal; font-size: 40px; color: #fff3c0; text-shadow: 0 3px 0 #6a3a08, 0 0 10px rgba(0, 0, 0, .8); }
+.cne-result.lose .cne-badge b { top: 74%; color: #e8f0ff; text-shadow: 0 3px 0 #1e2632, 0 0 8px rgba(0, 0, 0, .5); }
+.cne-result.lose .cne-badge em { color: #dfe6f0; text-shadow: 0 2px 0 #1e2632, 0 0 8px rgba(0, 0, 0, .8); font-size: 32px; }
+.cne-fx { position: absolute; inset: 0; pointer-events: none; }
+.cne-scene img.cne-coin { position: absolute; }
+
+/* a computer's visit: only the badge */
+.cne-scene.only-result .cne-scroll, .cne-scene.only-result .cne-qscroll, .cne-scene.only-result img.cne-examiner, .cne-scene.only-result .cne-incense { display: none; }
+
+/* upright: a hanging scroll for the question beside the examiner, the answers on the wide scroll below */
+.cne-scene.tall img.cne-examiner { left: -30px; top: 60px; bottom: auto; height: 680px; }
+.cne-scene.tall .cne-qscroll { display: block; position: absolute; right: 24px; top: 60px; width: 440px; height: 660px; background: center / 100% 100% no-repeat; z-index: 2; }
+.cne-scene.tall .cne-qscroll .cne-tag { top: -6px; }
+.cne-scene.tall .cne-qscroll .cne-q { position: absolute; left: 18%; right: 18%; top: 13%; bottom: 12%; height: auto; padding: 0; justify-content: center; }
+.cne-scene.tall .cne-qscroll .cne-qtext { font-size: 60px; }
+.cne-scene.tall .cne-scroll { left: 10px; top: 800px; width: 880px; height: 578px; }
+.cne-scene.tall .cne-scroll .cne-tag, .cne-scene.tall .cne-paper .cne-q { display: none; }
+.cne-scene.tall .cne-paper { left: 15%; right: 14%; top: 19%; bottom: 19%; }
+.cne-scene.tall .cne-opt span { font-size: calc(62px * var(--opt-k, 1)); }
+.cne-scene.tall .cne-opt i { width: 56px; height: 56px; font-size: 30px; }
+.cne-scene.tall .cne-incense { left: 120px; top: 610px; }
+.cne-scene.tall .cne-note.on { max-width: 240px; font-size: 28px; }
+.cne-scene.tall .cne-badge { width: 600px; }
+.cne-scene.tall .cne-hint { bottom: 90px; }

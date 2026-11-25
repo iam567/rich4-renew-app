@@ -17,6 +17,23 @@ const money = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : ''}${Math.abs(n).t
 
 /** At least this long on screen, whatever the speed; taps before it are ignored. */
 export const RESULT_MIN_MS = 2000;
+/**
+ * More rows than this: the list shows this many and scrolls (by itself, slowly, and by finger) — the user 2026-11-24 on a
+ * 梁山令 flagging eleven lots: 「出東西太多了…做成滑動的…只顯示5個，然後慢慢滑動」.
+ */
+export const RESULT_SCROLL_ROWS = 5;
+/** The auto-scroll: ms per row, and the pause at the top and after a finger. */
+const SCROLL_ROW_MS = 1100, SCROLL_HOLD_MS = 1200;
+
+/** The same line more than once (a street's lots each flagged): one row, its count after it, its sums added. */
+function mergeLines(lines: BoxData['lines']): BoxData['lines'] {
+  const out: (BoxData['lines'][number] & { n?: number })[] = [];
+  for (const l of lines) {
+    const same = out.find(o => o.p === l.p && o.text === l.text);
+    if (same) { same.n = (same.n ?? 1) + 1; if (typeof l.amount === 'number') same.amount = (same.amount ?? 0) + l.amount; } else out.push({ ...l });
+  }
+  return out.map(o => (o.n ? { ...o, text: `${o.text}（${o.n}處）` } : o));
+}
 
 /** Good, bad or neutral news, for the header colour. */
 const TONE: Record<string, 'good' | 'bad' | 'info'> = {
@@ -49,8 +66,8 @@ const ONE_LINE = '.er-row, .er-body, .er-amt, .er-box.tight .er-text';
 export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number | null): Promise<void> {
   // More than four players (大富豪模式's twelve): the biggest sums first, and a line every row shares said once
   // above the rows (「繳交地價稅」), which then hold just the face, the name and the sum.
-  let lines = r.lines;
-  const many = lines.length > 4;
+  let lines = mergeLines(r.lines);
+  const many = lines.length > 4, scroll = lines.length > RESULT_SCROLL_ROWS;
   if (many && lines.every(l => typeof l.amount === 'number')) lines = [...lines].sort((a, b) => Math.abs(b.amount!) - Math.abs(a.amount!));
   const common = many && lines.every(l => l.p !== undefined && l.text === lines[0].text) ? lines[0].text : '';
   const rows = lines.map(l => {
@@ -64,7 +81,7 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
       <span class="er-body">${ch ? `<b class="er-name">${esc(playerName(p))}</b>` : ''}${text}</span>${amt}</div>`;
   }).join('');
   const node = document.createElement('div');
-  node.className = `msg er-box ${tone(r.fx)}${many ? ' many' : ''}${common ? ' bare' : ''}`;
+  node.className = `msg er-box ${tone(r.fx)}${many ? ' many' : ''}${common ? ' bare' : ''}${scroll ? ' scroll' : ''}`;
   const tag = r.tag ?? TAG[r.fx];
   node.innerHTML = `<div class="er-head"><span class="er-cat">${esc(r.title)}</span>${tag ? `<span class="er-tag">${esc(tag)}</span>` : ''}</div>
     <div class="er-title">${phrases(r.head)}</div>${r.hero ?? ''}${common ? `<div class="er-common">${esc(common)}</div>` : ''}
@@ -96,7 +113,39 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
     fitPhrases(node.querySelector<HTMLElement>('.er-title')!, 0.8);
   };
   let pages = onePage;
-  if (pickLayout([...looks(false), ...looks(true)], apply, fitsFlat) === null && pickLayout([...looks(false), ...looks(true)], apply, fits) === null) {
+  let scrollMs = 0;
+  if (scroll) {
+    // RESULT_SCROLL_ROWS rows in view (fewer when even that does not fit), the rest scrolled to
+    const cap = (l: { cls: string }) => (l.cls.includes('tight') ? 2 : 3);
+    const view = (k: number) => {
+      const rows = [...list.children] as HTMLElement[];
+      const gap = parseFloat(getComputedStyle(list).rowGap) || 0;
+      list.style.maxHeight = `${rows.slice(0, k).reduce((h, e) => h + e.offsetHeight, 0) + gap * (k - 1) + 2}px`;
+    };
+    const flat = [...looks(false), ...looks(true)].filter(l => !/two|three/.test(l.cls));
+    const ok = (k: number) => flat.find(l => (apply(l), view(k), node.offsetHeight <= room() && across(cap(l))));
+    let k = RESULT_SCROLL_ROWS;
+    while (k > 2 && !ok(k)) k -= 1;
+    if (!ok(k)) { apply(flat[flat.length - 1]); view(k); }
+    const rowH = (list.scrollHeight - list.clientHeight) / Math.max(1, n - k);
+    scrollMs = SCROLL_HOLD_MS * 2 + (n - k) * SCROLL_ROW_MS * Math.max(1, ctx.scale());
+    let last = 0, hold = performance.now() + SCROLL_HOLD_MS, pos = 0;
+    const tick = (t: number) => {
+      if (!node.isConnected) return;
+      if (last && t > hold && list.scrollTop < list.scrollHeight - list.clientHeight - 1) {
+        pos = Math.max(pos, list.scrollTop) + ((t - last) * rowH) / SCROLL_ROW_MS;
+        list.scrollTop = pos;
+      }
+      last = t;
+      requestAnimationFrame(tick);
+    };
+    requestAnimationFrame(tick);
+    // a finger on the list: it scrolls by hand, the auto-scroll waits and goes on from there
+    const handOn = () => { hold = performance.now() + SCROLL_HOLD_MS * 2; pos = list.scrollTop; };
+    list.addEventListener('pointerdown', handOn);
+    list.addEventListener('scroll', () => { if (performance.now() < hold) pos = list.scrollTop; }, { passive: true });
+    list.addEventListener('wheel', handOn, { passive: true });
+  } else if (pickLayout([...looks(false), ...looks(true)], apply, fitsFlat) === null && pickLayout([...looks(false), ...looks(true)], apply, fits) === null) {
     // The most compact layout whose rows still read (a long text on up to three lines), its rows on pages.
     const cap = (l: { cls: string }) => (l.cls.includes('tight') ? 2 : 3);
     const last = [...looks(true)].reverse().find(l => (apply(l), across(cap(l)))) ?? looks(true)[0];
@@ -108,7 +157,7 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
   if (layer) layer.style.pointerEvents = 'auto';
   // Longer for more rows (those of the page shown); a page turns by itself, a tap turns it or closes the box.
   const extra = Math.max(0, Math.ceil(r.lines.length / pages.count) - 1);
-  const ms = Math.max(RESULT_MIN_MS + 350 * extra, (2600 + 500 * extra) * ctx.scale());
+  const ms = Math.max(RESULT_MIN_MS + 350 * extra, (2600 + 500 * extra) * ctx.scale(), scrollMs);
   return new Promise(resolve => {
     let done = false;
     const end = () => {
@@ -121,7 +170,10 @@ export function resultBox(ctx: ScreenContext, r: BoxData, subject?: () => number
       resolve();
     };
     const turn = () => { if (!pages.next()) return end(); clearTimeout(timer); timer = setTimeout(turn, ms); };
-    const tap = () => turn();
+    // (a drag on the scrolling list is not a tap)
+    let down: { x: number; y: number } | null = null;
+    (layer ?? node).addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY }; });
+    const tap = (e: PointerEvent) => { if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10) return; turn(); };
     let timer = setTimeout(turn, ms);
     // The pager's own buttons give the page shown its full time again.
     node.querySelector('.fl-pager')?.addEventListener('click', () => { clearTimeout(timer); timer = setTimeout(turn, ms); });

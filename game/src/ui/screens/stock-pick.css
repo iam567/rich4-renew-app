@@ -1,0 +1,17 @@
+/* 紅卡 / 黑卡's stock picker (stock-pick.ts): the market's rows; red up, green down as the stock screen. */
+.sp-box { width: min(92vw, 640px); max-height: 88vh; display: flex; flex-direction: column; }
+.sp-head, .sp-row { display: grid; grid-template-columns: 1.6fr .9fr .9fr 1fr 1fr; align-items: center; gap: 6px; padding: 6px 10px; }
+.sp-head { font-size: 13px; opacity: .8; border-bottom: 1px solid rgba(255, 255, 255, .25); }
+.sp-list { overflow-y: auto; flex: 1 1 auto; min-height: 0; }
+.sp-row { width: 100%; border: 0; border-bottom: 1px solid rgba(255, 255, 255, .12); background: none; color: inherit; font: inherit; font-size: 16px; text-align: left; cursor: pointer; border-radius: 8px; }
+.sp-row:hover, .sp-row:active { background: rgba(255, 220, 140, .18); }
+.sp-row:disabled { opacity: .45; cursor: default; }
+.sp-name { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sp-price, .sp-chg { font-variant-numeric: tabular-nums; }
+.sp-chg.u { color: #ff6b5a; } .sp-chg.d { color: #4fd17a; }
+.sp-line { width: 90px; height: 30px; }
+.sp-line polyline { fill: none; stroke-width: 2; }
+.sp-line.u polyline { stroke: #ff6b5a; } .sp-line.d polyline { stroke: #4fd17a; }
+.sp-mine { font-size: 13px; color: #ffe08a; white-space: nowrap; }
+.sp-none { opacity: .5; font-style: normal; }
+@media (max-width: 480px) { .sp-head, .sp-row { grid-template-columns: 1.5fr .9fr .9fr .9fr; } .sp-head span:nth-child(5), .sp-row .sp-mine { display: none; } .sp-line { width: 70px; } }

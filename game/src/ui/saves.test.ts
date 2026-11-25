@@ -267,3 +267,45 @@ describe.skipIf(!existsSync(mapFile))('save slots on iOS: exactly as 0.7.3', () 
     expect((await saves.autoSaves(0)).map(a => a.save.savedAt)).toEqual([1025, 1024, 1023, 1022, 1021]);
   });
 });
+
+describe.skipIf(!existsSync(mapFile))('save slots on Windows / macOS: files in the game folder (the user 2026-11-24)', () => {
+  const desk = new Map<string, string>();
+  beforeAll(() => {
+    if (base) return;
+    const g = new Game({ mapId: 2, players: [0, 4, 9, 11].map(character => ({ character, human: false })), fundIndex: 1, traffic: 1,
+      landLimitIndex: 2, daysLimitIndex: 0, victoryIndex: 0, startDate: pack(2026, 10, 14), seed: 77 }, parseBoard(JSON.parse(readFileSync(mapFile, 'utf8')) as RawMap));
+    const f = g.run();
+    for (let r = f.next(); !r.done && g.daysElapsed < 20 && !g.over; r = f.next());
+    base = JSON.parse(JSON.stringify(saveGame(g)));
+  });
+  beforeEach(async () => {
+    desk.clear(); store.clear(); files.clear(); platform = 'web';
+    (globalThis as { rich4Desktop?: unknown }).rich4Desktop = { saves: {
+      dir: async () => 'C:/Games/Rich4/save',
+      read: async (slot: number, kind = '') => desk.get(`slot-${slot}${kind}.json`) ?? null,
+      write: async (slot: number, text: string) => {
+        const cur = `slot-${slot}.json`;
+        if (desk.has(cur)) desk.set(`slot-${slot}.prev.json`, desk.get(cur)!);
+        desk.set(cur, text);
+        return true;
+      },
+      open: async () => '',
+    } };
+    vi.resetModules();
+    saves = await import('./saves');
+  });
+
+  it('each slot is a JSON file in the save folder; the one before kept; the list and the load read them', async () => {
+    await saves.writeSlot(2, save(1));
+    await saves.writeSlot(2, save(2));
+    expect([...desk.keys()].sort()).toEqual(['slot-2.json', 'slot-2.prev.json']);
+    expect(JSON.parse(desk.get('slot-2.json')!).savedAt).toBe(1002);
+    expect((await saves.loadSlot(2))).toEqual({ save: save(2), damaged: false });
+    expect((await saves.previewSlot(2))?.savedAt).toBe(1002);
+    expect(await saves.deskSavesDir()).toBe('C:/Games/Rich4/save');
+    // an interrupted swap: the temporary file, else the previous one
+    desk.delete('slot-2.json');
+    expect((await saves.readSlot(2))?.savedAt).toBe(1001);
+    expect(files.size).toBe(0);
+  });
+});

@@ -114,7 +114,7 @@ export const OBJECT_TONE: Record<string, Tone> = {
   gift: G, chest: G, 'earth-god': G, blessing: G, mine: B, dog: B, 'bomb-explode': B, 'npc-steal': B, 'npc-rob-card': B,
 };
 /** Fees between players that count as tolls. */
-export const TOLL_REASONS = new Set(['過路費', '住宿費', '購物費', '加油費', '賭場門票']);
+export const TOLL_REASONS = new Set(['過路費', '住宿費', '購物費', '加油費', '漕運費', '賭場門票']);
 
 /** The tone of a news / fate entry (original ids, or a local one ≥ REGIONAL_ID_BASE with its own tone). */
 export function eventTone(src: 'news' | 'fate', id: number): Tone {

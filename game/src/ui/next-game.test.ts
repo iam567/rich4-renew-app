@@ -56,4 +56,10 @@ describe('下一局 (next game)', () => {
     expect(nextSettings({ ...base, realtime: { length: 1200000 } }, 3, [9], [4], 1, 1).realtime).toEqual({ length: 1200000 });
     expect(nextSettings({ ...base, realtime: { length: 1200000 } }, 106, [9], [4], 1, 1).realtime).toBeUndefined();
   });
+  it('遊戲節奏 goes on into the next game; 原版 stays no field', () => {
+    const base = { fundIndex: 1, traffic: 0 as const, landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0 };
+    expect(nextSettings({ ...base, pace: 0 }, 3, [9], [4], 1, 1).pace).toBe(0);
+    expect(nextSettings({ ...base, pace: 2 }, 3, [9], [4], 1, 1).pace).toBe(2);
+    expect('pace' in nextSettings({ ...base, pace: 1 }, 3, [9], [4], 1, 1)).toBe(false);
+  });
 });

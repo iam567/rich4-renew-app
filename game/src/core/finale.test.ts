@@ -798,7 +798,7 @@ describe.skipIf(!have)('城市決戰 (the user 2026-11-07)', () => {
     keep.forEach((id, k) => {
       const p = w.players[id];
       // money, not chips: the total assets are what they were (property elsewhere and shares became deposit)
-      expect(w.wealth(p) - (id === 3 ? 0 : 0)).toBe(before[k]);
+      expect(Math.abs(w.wealth(p) - before[k])).toBeLessThanOrEqual(1); // shares sold one by one vs World.wealth's float32 sum: a yuan of rounding
       expect(p.map).toBe(city);
       w.cities.forEach((c, i) => {
         if (i === city) return;

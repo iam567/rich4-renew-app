@@ -11,6 +11,7 @@ app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 
 // Test runs keep their own profile (RICH4_USER_DATA=<dir>): the player's saves in the app's real profile stay untouched.
 if (process.env.RICH4_USER_DATA) app.setPath('userData', process.env.RICH4_USER_DATA);
+
 const DIST = process.env.RICH4_DIST || (app.isPackaged ? join(process.resourcesPath, 'dist') : join(__dirname, '..', 'dist'));
 
 // 在線更新 (docs/rules/29, game/src/ui/update.ts): a newer version downloaded into <userData>/rich4-update/v<version>/
@@ -49,6 +50,41 @@ ipcMain.handle('update:write', (_e, name, data) => { const f = inside(name); fs.
 ipcMain.handle('update:remove', (_e, name) => { fs.rmSync(inside(name), { recursive: true, force: true }); return true; });
 ipcMain.handle('update:rename', (_e, from, to) => { const b = inside(to); fs.rmSync(b, { recursive: true, force: true }); fs.renameSync(inside(from), b); return true; });
 ipcMain.handle('update:list', () => { try { return fs.readdirSync(UPDATE); } catch { return []; } });
+// 存檔 (the user 2026-11-24: 「win版和mac版的遊戲目錄裡放一個save文件夾存存檔」): every slot a JSON file in the folder
+// `save` beside the game — Windows: beside Rich4.exe; macOS: beside 大富翁4.app — written to .tmp, read back, and swapped
+// in, the previous version kept as .prev (as the iPhone's files). A game folder that cannot be written (Program Files, a
+// Mac app run straight from its download) keeps them in <userData>/save instead. The page (ui/saves.ts) copies the
+// saves it had in the browser storage over the first time.
+let saveDir = null;
+function writable(dir) {
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    const probe = join(dir, `.probe-${process.pid}`);
+    fs.writeFileSync(probe, 'ok'); fs.rmSync(probe, { force: true });
+    return true;
+  } catch { return false; }
+}
+function savesDir() {
+  if (saveDir) return saveDir;
+  const exe = process.execPath;
+  const game = !app.isPackaged || process.env.RICH4_USER_DATA ? null
+    : process.platform === 'darwin' ? (exe.includes('/AppTranslocation/') ? null : join(exe, '..', '..', '..', '..')) : dirname(exe);
+  const here = game ? join(game, 'save') : null;
+  saveDir = here && writable(here) ? here : join(app.getPath('userData'), 'save');
+  fs.mkdirSync(saveDir, { recursive: true });
+  return saveDir;
+}
+const slotFile = (slot, kind = '') => { const n = Number(slot); if (!Number.isInteger(n) || n < 0 || n > 99999) throw new Error('slot'); return join(savesDir(), `slot-${n}${kind}.json`); };
+ipcMain.handle('saves:dir', () => savesDir());
+ipcMain.handle('saves:read', (_e, slot, kind) => { try { return fs.readFileSync(slotFile(slot, ['', '.tmp', '.prev'].includes(kind) ? kind : ''), 'utf8'); } catch { return null; } });
+ipcMain.handle('saves:write', (_e, slot, text) => {
+  const s = String(text), tmp = slotFile(slot, '.tmp'), cur = slotFile(slot), prev = slotFile(slot, '.prev');
+  fs.writeFileSync(tmp, s, 'utf8');
+  if (fs.readFileSync(tmp, 'utf8').length !== s.length) throw new Error('save file incomplete');
+  if (fs.existsSync(cur)) { fs.rmSync(prev, { force: true }); fs.renameSync(cur, prev); }
+  fs.renameSync(tmp, cur);
+  return true;
+});
 // 全螢幕 / 視窗 and 結束遊戲 from the game's 系統 window (issue #72)
 const winOf = e => BrowserWindow.fromWebContents(e.sender);
 ipcMain.handle('win:isFullScreen', e => !!winOf(e)?.isFullScreen());

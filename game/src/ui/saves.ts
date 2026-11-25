@@ -250,10 +250,48 @@ async function iosRead(slot: number): Promise<SaveData | undefined> {
   return undefined;
 }
 
+// ---------------------------------------------------------------- Windows / macOS: files in the game folder's `save`
+
+/**
+ * The computer version (the user 2026-11-24: 「win版和mac版的遊戲目錄裡放一個save文件夾存存檔」): each slot a JSON file in
+ * `save` beside the game (desktop/main.cjs, written to .tmp, read back and swapped in, the previous kept). Only an
+ * installer from 1.3 on has it (`rich4Desktop.saves`); an older one keeps its browser storage. The slots it had there
+ * are copied over once, the automatic ones too.
+ */
+interface DeskSaves { dir(): Promise<string>; read(slot: number, kind?: string): Promise<string | null>; write(slot: number, text: string): Promise<boolean> }
+const desk = (): DeskSaves | undefined => (globalThis as { rich4Desktop?: { saves?: DeskSaves } }).rich4Desktop?.saves;
+/** Where the computer version keeps its saves (the folder), '' elsewhere. */
+export const deskSavesDir = (): Promise<string> => desk()?.dir().catch(() => '') ?? Promise.resolve('');
+
+async function deskFile(d: DeskSaves, slot: number, kind = ''): Promise<SaveData | undefined> {
+  try { const t = await d.read(slot, kind); return t ? (JSON.parse(t) as SaveData) : undefined; } catch { return undefined; }
+}
+const DESK_MIGRATED = 'rich4.savesToFolder';
+let deskMigration: Promise<void> | null = null;
+function deskMigrate(d: DeskSaves): Promise<void> {
+  return (deskMigration ??= (async () => {
+    try { if (localStorage.getItem(DESK_MIGRATED)) return; } catch { /* no storage: try below */ }
+    for (const id of allIds()) {
+      if (await deskFile(d, id)) continue;
+      const old = await idb<SaveData | undefined>('readonly', s => s.get(id)).catch(() => undefined);
+      if (old) await d.write(id, JSON.stringify(old));
+    }
+    try { localStorage.setItem(DESK_MIGRATED, '1'); } catch { /* tried again next start */ }
+  })().catch(() => { deskMigration = null; }));
+}
+/** The slot's save: the file, else an interrupted swap's temporary file, else the previous version. */
+async function deskRead(d: DeskSaves, slot: number): Promise<SaveData | undefined> {
+  await deskMigrate(d);
+  for (const kind of ['', '.tmp', '.prev']) { const s = await deskFile(d, slot, kind); if (s) return s; }
+  return undefined;
+}
+
 let writing: Promise<unknown> = Promise.resolve();
 /** Writes a slot (one write at a time, in order); resolves once the save is really stored. */
 export function writeSlot(slot: number, data: SaveData): Promise<void> {
-  const run = () => (android() ? migrate().then(() => within(fileWrite(slot, data), 15000, 'save file'))
+  const d = desk();
+  const run = () => (d ? deskMigrate(d).then(() => within(d.write(slot, JSON.stringify(data)), 15000, 'save file')).then(() => {})
+    : android() ? migrate().then(() => within(fileWrite(slot, data), 15000, 'save file'))
     : native() ? within(iosFileWrite(slot, data), 15000, 'save file')
     : idb('readwrite', s => s.put(data, slot)).then(() => {}));
   const p = writing.then(run, run);
@@ -263,6 +301,8 @@ export function writeSlot(slot: number, data: SaveData): Promise<void> {
 
 /** The slot's whole save, and whether a newer copy was damaged (then the save is the one before it). */
 export async function loadSlot(slot: number): Promise<Loaded<SaveData>> {
+  const d = desk();
+  if (d) return { save: await deskRead(d, slot), damaged: false };
   if (android()) return nativeRead(slot, decodeSave, s => s);
   if (native()) return { save: await iosRead(slot), damaged: false };
   return { save: await idb<SaveData | undefined>('readonly', s => s.get(slot)), damaged: false };
@@ -274,7 +314,8 @@ export async function previewSlot(slot: number): Promise<SlotPreview | undefined
   try {
     if (android()) return (await nativeRead(slot, peekSave, previewOf)).save;
     // iOS and the browser read the whole save, as before; the list keeps only its preview.
-    const s = native() ? await iosRead(slot) : await idb<SaveData | undefined>('readonly', st => st.get(slot));
+    const d = desk();
+    const s = d ? await deskRead(d, slot) : native() ? await iosRead(slot) : await idb<SaveData | undefined>('readonly', st => st.get(slot));
     return s ? previewOf(s) : undefined;
   } catch { return undefined; }
 }

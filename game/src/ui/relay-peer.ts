@@ -40,6 +40,14 @@ const browser = () => typeof window !== 'undefined' && typeof document !== 'unde
 let helloApp: Record<string, string> = {};
 export function setHelloApp(a: Record<string, string>) { helloApp = a; }
 
+/**
+ * Why the newest relay said no to a fresh hello (a 私服: full, its password, a ban, sent away), for the message the
+ * game shows (net-peer.ts refusalWhy); null: it did not refuse.
+ */
+export interface Refusal { t: 'full' | 'password' | 'banned' | 'kicked'; online?: number; max?: number; why?: string }
+let refused: Refusal | null = null;
+export const lastRefusal = (): Refusal | null => refused;
+
 /** Kept outgoing frames before giving up on a session (a phone away with a lot to say). */
 const OUT_MAX = 8 << 20;
 /** The server keeps a session this long after its socket went (relay.mjs HOLD_MS, less a margin). */
@@ -66,9 +74,14 @@ export class RelayPeer extends Emitter {
   private tries = 0;
   private timer = 0;
   private beat = 0;
+  /** Registered at least once: from then on a failed try is tried again (斷線重連), never the end. */
+  private was = false;
+  /** How long the relay keeps this session after its socket went (its `ok` says; else relay.mjs's), less a margin. */
+  private hold = HOLD_MS;
   private wake = () => { if (!this.destroyed && (!this.ws || this.ws.readyState > 1)) this.dial(true); else this.ping(); };
 
-  constructor(readonly url: string, readonly id: string) {
+  /** `extra`: more for each hello (a 私服's password, `pw`). */
+  constructor(readonly url: string, readonly id: string, private readonly extra: Record<string, unknown> = {}) {
     super();
     this.dial(true);
     this.beat = setInterval(() => this.tick(), 1000) as unknown as number;
@@ -123,7 +136,7 @@ export class RelayPeer extends Emitter {
       if (now - this.lastHeard > 12_000) { try { this.ws.close(); } catch { /* gone */ } this.dropped(); }
     }
     // Away past the server's hold: the session is gone (its connections closed when it comes back fresh).
-    if (this.lostAt && now - this.lostAt > HOLD_MS && this.open) this.lost();
+    if (this.lostAt && now - this.lostAt > this.hold && this.open) this.lost();
   }
 
   private dial(now = false) {
@@ -135,8 +148,9 @@ export class RelayPeer extends Emitter {
       try { ws = new WebSocket(this.url); } catch { this.dropped(); return; }
       this.ws = ws;
       let greeted = false;
-      const opened = setTimeout(() => { if (!greeted) { try { ws.close(); } catch { /* gone */ } } }, 8000);
-      ws.onopen = () => ws.send(JSON.stringify({ t: 'hello', id: this.id, token: this.token || undefined, ack: this.sIn, app: helloApp }));
+      // (a socket still not open after 8 s is given up on here: closing one that is connecting may never say it closed)
+      const opened = setTimeout(() => { if (!greeted) { try { ws.close(); } catch { /* gone */ } gone(); } }, 8000);
+      ws.onopen = () => ws.send(JSON.stringify({ ...this.extra, t: 'hello', id: this.id, token: this.token || undefined, ack: this.sIn, app: helloApp }));
       ws.onmessage = ev => {
         if (this.ws !== ws) return;
         let m: Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -144,14 +158,20 @@ export class RelayPeer extends Emitter {
         this.lastHeard = Date.now();
         if (!greeted) {
           greeted = true; clearTimeout(opened);
-          if (m.t === 'ok') this.welcome(m.token, Number(m.ack) || 0, !!m.fresh);
+          if (m.t === 'ok') { if (Number(m.hold) > 0) this.hold = Math.max(Number(m.hold) * 0.8, Number(m.hold) - 5000); this.welcome(m.token, Number(m.ack) || 0, !!m.fresh); }
           else if (m.t === 'taken') { this.emit('error', { type: 'unavailable-id' }); this.destroy(); }
-          else { this.emit('error', { type: m.t === 'full' ? 'server-full' : 'server-error' }); this.destroy(); }
+          else if (m.t === 'password' || m.t === 'banned' || m.t === 'kicked') this.refusedBy(m);
+          // full (or anything else) after having been in: tried again until there is room (the game waits meanwhile)
+          else if (this.was) { try { ws.close(); } catch { /* gone */ } }
+          else { if (m.t === 'full') refused = { t: 'full', online: Number(m.online) || undefined, max: Number(m.max) || undefined }; this.emit('error', { type: m.t === 'full' ? 'server-full' : 'server-error' }); this.destroy(); }
           return;
         }
         this.frame(m);
       };
-      ws.onclose = () => { clearTimeout(opened); if (this.ws === ws) { this.ws = null; if (!greeted && !this.open && !this.token) { this.emit('error', { type: 'network' }); this.destroy(); return; } this.dropped(); } };
+      // (the first try only: one that was in keeps trying while the network is down — it used to end here when the
+      // session had expired meanwhile, and a 私服, with no other way, never got the phone back)
+      const gone = () => { clearTimeout(opened); if (this.ws === ws) { this.ws = null; if (!greeted && !this.open && !this.token && !this.was) { this.emit('error', { type: 'network' }); this.destroy(); return; } this.dropped(); } };
+      ws.onclose = gone;
       ws.onerror = () => { /* onclose follows */ };
     };
     if (now) go(); else this.timer = setTimeout(go, Math.min(500 * 2 ** Math.min(this.tries, 3), 3000)) as unknown as number;
@@ -173,11 +193,20 @@ export class RelayPeer extends Emitter {
       for (const c of [...this.conns.values()]) c.closed();
     }
     const first = !this.open;
+    this.was = true;
     this.token = token; this.open = true; this.lostAt = 0; this.tries = 0;
     while (this.out.length && this.out[0][0] <= ack) this.outBytes -= this.out.shift()![1].length;
     for (const [, text] of this.out) this.ws?.send(text);
     this.ping();
     if (first) this.emit('open', this.id);
+  }
+
+  /** A 私服 said no for good (its password, a ban, sent away by its owner): no more tries; the game shows why. */
+  private refusedBy(m: Record<string, unknown>) {
+    refused = { t: m.t as Refusal['t'], ...(typeof m.why === 'string' ? { why: m.why.slice(0, 80) } : {}) };
+    this.open = false;
+    this.emit('error', { type: m.t, why: refused.why });
+    this.destroy();
   }
 
   /** The session is gone for good (away past the hold, or too much waiting): connections closed, 'disconnected'. */
@@ -192,6 +221,7 @@ export class RelayPeer extends Emitter {
     if (m.t === 'q') { this.rtt = Math.max(1, Date.now() - Number(m.at)); return; }
     if (m.t === 'ack') { const a = Number(m.a) || 0; while (this.out.length && this.out[0][0] <= a) this.outBytes -= this.out.shift()![1].length; return; }
     if (m.t === 'evicted') { this.open = false; this.emit('error', { type: 'unavailable-id' }); this.destroy(); return; }
+    if (m.t === 'kicked') { this.refusedBy(m); return; }
     if (typeof m.s === 'number') { if (m.s <= this.sIn) return; this.sIn = m.s; }
     const c = this.conns.get(m.cid);
     switch (m.t) {
@@ -214,9 +244,10 @@ export class RelayPeer extends Emitter {
  * Opens a RelayPeer: resolves when registered, null when the id is taken, 'down' when the relay can't be reached
  * (or is full) within `ms`.
  */
-export function openRelay(url: string, id: string, ms = 5000): Promise<RelayPeer | null | 'down'> {
+export function openRelay(url: string, id: string, ms = 5000, extra?: Record<string, unknown>): Promise<RelayPeer | null | 'down'> {
+  refused = null;
   return new Promise(resolve => {
-    const p = new RelayPeer(url, id);
+    const p = new RelayPeer(url, id, extra);
     let done = false;
     const finish = (v: RelayPeer | null | 'down') => { if (!done) { done = true; resolve(v); } };
     p.on('open', () => finish(p));

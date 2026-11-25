@@ -1,11 +1,13 @@
 /** Title/setup screen and the game controller that plays the engine's flow on screen. */
 import './compat'; // older Android / vendor WebViews (issue #7): first, before anything runs
+import './log-start'; // the error log (log.ts), before the game's own modules
 import '@fontsource/huninn/index.css';
 import { applyFont, fontMode, FONTS, setFont } from './fonts';
 import { Capacitor } from '@capacitor/core';
 import { CHARACTERS, playerName } from '../core/characters';
 import { format, today } from '../core/date';
-import { Game, SPEED } from '../core/game';
+import { Game, PACE_NAMES, SPEED } from '../core/game';
+import { PACE_HINTS } from '../core/types';
 import { nodeById } from '../core/board';
 import { loadGame, reshuffleGame, saveGame, type SaveData } from '../core/save';
 import type { Answer, Ask, GameSettings, Step } from '../core/types';
@@ -30,9 +32,10 @@ import { closeQuestionScenes } from './screens/place-scene';
 import { watchNotices } from './notice';
 import { fatePicture, newsPicture } from './screens/news';
 import { regionalPicture } from './screens/regional';
-import { ASSETS, loadMap, makerName, makerWon, mapList, type MapInfo } from './assets';
+import { ASSETS, FULL_ONLY, fullOnlyMsg, loadMap, mapLacks, makerName, makerWon, mapList, type MapInfo } from './assets';
 import { BoardView } from './board-view';
 import { Hud } from './hud';
+import { StatusStrip } from './status-strip';
 import { GoButton, Toolbar } from './controls';
 import { Calendar, PlayerPanel, PlayerStrip, sideFlag, SideToday } from './side';
 import { Minimap } from './minimap';
@@ -54,6 +57,7 @@ import { formatPrice, type Stock } from '../core/modules/stocks';
 import { AUTO_SLOT, TYCOON_AUTO_SLOT, interruptedLoad, loadSlot, markLoading, notice, pickSlot, saveStep, writeAuto, writeSlot, type Loaded } from './saves';
 import { lowerTier } from './mem-tier';
 import { memReport } from './mem-report';
+import { logStep, setLogState } from './log';
 import { SpriteBank } from './sprites';
 import { MapDirector } from './map-fx';
 import { audio, boardVoice, Sfx, Theme } from './audio';
@@ -72,6 +76,8 @@ import { openCityViewer } from './city-viewer';
 import { tycoonEnding } from './tycoon-ending';
 import { finaleResults } from './finale-ending'; // 大富翁城 (docs/rules/19)
 import { fetchHeadCount, inParty } from './party-presence';
+import { netConfig } from './net-peer';
+import { probe } from './private-server';
 import { PingTags, seatPing } from './party-hud';
 import { askDoing, LOCAL_DOING } from './party-doing';
 import { ActsLine, heldDiff, heldOf, type Held } from './party-acts';
@@ -86,12 +92,18 @@ import { prepareAh11 } from './ah11';
 import { prepareCityLots } from './city-lots';
 import { FINALE_MAP } from '../core/casino-rules';
 import { KB_MAP } from '../core/kabukicho';
+import '../core/changan'; // 長安's rules (RULE_SETS.changan: 博戲坊)
+import '../core/qingming'; // 清明上河's rules (map 111: 漕運, 梁山令, 聚義廳, the 水滸 squares)
 import { mapAnimMode, prepareKabukicho, setMapAnimMode, STREET_MODES } from './kabukicho'; // 歌舞伎町 (docs/rules/21)
-import { JQ_QUALITIES, jqMusicMode, jqMusicQuality, musicSetFor, setJqMusicMode, setJqMusicQuality } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
+import { JQ_QUALITIES, QM_MAP_ID, jqMusicMode, jqMusicQuality, musicSetFor, setJqMusicMode, setJqMusicQuality } from './jq-music'; // 激情歲月's own music (docs/rules/24 §16)
 import { JQ_MAP, loudspeakerMode, prepareJiqingPlaces, quotesMode, setLoudspeakerMode, setQuotesMode } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { applyJqTheme } from './jq-theme';
+import { applyCnTheme } from './cn-theme';
 import { setEraLine } from './era-line';
 import { playJqIntro } from './screens/jq-intro';
+import { playCnIntro } from './screens/cn-intro';
+import { CHANGAN_MAP } from '../core/changan';
+import { QINGMING_MAP } from '../core/qingming';
 import { magicHintMode, setMagicHintMode } from './screens/magic'; // 魔法屋提示對象 (issue #8)
 import './tycoon-onway';
 import { setToolAnimMode, TOOL_ANIM_MODES, toolAnimMode } from './tool-cinema'; // 道具 / 高級卡片 cinematics: wraps the tool and card use (visual only)
@@ -235,13 +247,16 @@ function title() {
   // The title plays MIDI01 (rich4_ui_main.asm:483); buttons have the hover / click sounds.
   audio.setMusicSet(null); // the title and everything outside 激情歲月 play the original's music
   if (audio.music?.kind !== 'theme' || audio.music.index !== Theme.title) audio.theme(Theme.title, true);
+  // (updated in the game: the program without the 1.3 installer's two maps — the user 2026-11-25: 「1.3.0 simple版」)
+  const edition = Object.keys(FULL_ONLY).some(id => mapLacks(Number(id))) ? ' simple' : '';
   app.innerHTML = `<div class="title" style="${bg ? `--title-bg:url('${abs(bg.src)}');` : ''}${tall ? `--title-bg-tall:url('${abs(tall.src)}')` : ''}">
     <button class="title-cards" data-act="cards" aria-label="圖鑑"><img class="tc-icon" src="${ASSETS}/maps/remake/challenge/icon.webp" alt=""><img class="tc-label hant" src="${ASSETS}/maps/remake/challenge/label-hant.webp" alt=""><img class="tc-label hans" src="${ASSETS}/maps/remake/challenge/label-hans.webp" alt=""></button>
     <button class="title-ranks" data-act="ranks" aria-label="排行榜"><img class="tr-icon" src="${ASSETS}/maps/remake/ranks/icon.webp" alt=""><img class="tr-label" src="${ASSETS}/maps/remake/ranks/label.webp" alt=""></button>
     <div class="title-buttons">${btn('start', 1, '開始遊戲')}${party}${maker}${btn('load', 3, '讀取進度')}${btn('option', 5, '設定')}</div>
     <div class="title-note">${phrases('這款遊戲是大家一起完成的，感謝 GitHub 回報問題的朋友和 B 站留言區的每一條意見。')}</div>
     <button class="title-log" data-act="log">更新日誌</button>
-    ${canUpdate() ? `<button class="title-ver" data-act="ver" aria-label="選擇版本">v${__APP_VERSION__} ▾</button>` : `<div class="title-ver">v${__APP_VERSION__}</div>`}</div>`;
+    ${isDesktop() ? `<button class="title-quit" data-act="quit" aria-label="回到桌面"><img class="tq-icon" src="${ASSETS}/maps/remake/quit/icon.webp" alt=""><img class="tq-label" src="${ASSETS}/maps/remake/quit/label.webp" alt=""></button>` : ''}
+    ${canUpdate() ? `<button class="title-ver" data-act="ver" aria-label="選擇版本">v${__APP_VERSION__}${edition} ▾</button>` : `<div class="title-ver">v${__APP_VERSION__}${edition}</div>`}</div>`;
   buttonSounds(app.querySelector('.title-buttons')!, '.title-btn');
   watchParty(app.querySelector<HTMLElement>('.party-live')!);
   app.onclick = async e => {
@@ -249,13 +264,16 @@ function title() {
     if (act) stopWatchingParty();
     if (act === 'start') newGame();
     // 派對模式 on a version that plays with the newest (update.ts: one of its family since 1.2.2); alone, any version.
-    if (act === 'party') void partyNeedsUpdate(app).then(go => { if (go) openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => {} }); else title(); });
+    if (act === 'party') void partyNeedsUpdate(app).then(go => { if (go) openParty({ app, bank: bank!, maps, play: (settings, room) => start(settings, room), back: () => { const el = app.querySelector<HTMLElement>('.party-live'); if (el) watchParty(el); } }); else title(); });
     if (act === 'load') void openLoad();
     if (act === 'option') options();
     if (act === 'maker') openMaker(app, () => title(), settings => start(settings));
     if (act === 'cards') void openCollection(app, mapName); // 挑戰模式's picture cards (docs/rules/26 §7.2)
     if (act === 'ranks') void openRanks(app, bank!, maps); // 排行榜 (ranks.ts)
     if (act === 'log') void openChangelog(app); // 更新日誌 (changelog.ts)
+    // the PC / Mac app (the user 2026-11-23: 「Windows 版和 Mac 版…加一個回到桌面的按鈕」, then 「做個圖標，放排行榜下面」 — beside
+    // 更新日誌 it was tapped by mistake): an icon under 排行榜, top right
+    if (act === 'quit') void uiConfirm('回到桌面？', '離開').then(ok => { if (ok) quitDesktop(); });
     if (act === 'ver') void pickVersion(app); // 版本選擇 (update.ts): back to an older 1.2.x, or up again
   };
   afterLoadTrouble();
@@ -320,11 +338,18 @@ function watchParty(el: HTMLElement) {
   let online = 0, stats = { privateRooms: 0, waiting: 0 };
   const draw = () => {
     if (titleLobby !== lobby || !el.isConnected) { if (!el.isConnected) stopWatchingParty(); return; }
-    el.hidden = !(online || stats.privateRooms || stats.waiting);
-    el.innerHTML = `${online ? `<b>派對模式 ${online} 人在線</b>` : ''}${stats.privateRooms ? `<b>私享房間 ${stats.privateRooms}</b>` : ''}${stats.waiting ? `<b>等待夥伴 ${stats.waiting} 人</b>` : ''}`;
+    // on a 私服 (the user 2026-11-23: 「連接上私服的玩家，在主界面的派對模式按鈕上方，應該顯示當前在私服模式」): that line first,
+    // and the head count is the 私服's own
+    const srv = netConfig.server;
+    el.hidden = !(srv || online || stats.privateRooms || stats.waiting);
+    el.innerHTML = `${srv ? `<b class="srv">目前在私服模式：${srv.name.replace(/[&<>"]/g, '')}</b>` : ''}${online ? `<b>${srv ? '私服' : '派對模式'} ${online} 人在線</b>` : ''}${stats.privateRooms ? `<b>私享房間 ${stats.privateRooms}</b>` : ''}${stats.waiting ? `<b>等待夥伴 ${stats.waiting} 人</b>` : ''}`;
   };
   lobby.onStats = s => { stats = s; draw(); };
-  const count = async () => { const n = await fetchHeadCount(); if (titleLobby !== lobby) return; online = n?.online ?? 0; draw(); };
+  const count = async () => {
+    const srv = netConfig.server;
+    const n = srv ? (await probe(srv.addr))?.info : await fetchHeadCount();
+    if (titleLobby !== lobby) return; online = n?.online ?? 0; draw();
+  };
   void count();
   titleCount = window.setInterval(() => void count(), 20_000);
   void lobby.start();
@@ -458,6 +483,8 @@ function options() {
 onPlayLib((m, thumb) => newGame({ m, thumb }));
 
 const LIB_PICK = '@lib';
+/** The new-game sheet's smallest scale on a portrait screen (a 320 px phone is ~0.57): only shorter screens than that (a folded phone) scroll the settings (the user 2026-11-23: 「盡可能不要上下滑動，實在實在實在很極端的情況下不行的情況再滑動」). */
+const NG_MIN_SCALE = 0.5;
 /** `lib`: a map from 創作樂園 played as it is (直接玩), first among 我的地圖 and picked. */
 function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
   prefetchTicket(); // 排行榜's 開局券, while the settings are chosen
@@ -475,6 +502,8 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
     /** 玩法 (docs/rules/31): 0 回合制, 1 即時制（測試版）; its length RT_LENGTHS[rtLen] (the user: 20 minutes first, 無限制 too). */
     realtime: 0,
     rtLen: 0,
+    /** 遊戲節奏 (docs/rules/36, the user 2026-11-23): 0 慢節奏, 1 原版 (the default), 2 快節奏 (settings.pace). */
+    pace: 1,
     kind: (lib ? 'mine' : 'orig') as MapInfo['kind'] | 'tycoon' | 'challenge' | 'mine',
     /** 我的地圖 (自建地圖, ui/maker): the map picked there (`lib`'s: LIB_PICK). */
     mine: lib ? LIB_PICK : '',
@@ -499,22 +528,40 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
   reroll();
   // The new-game screen plays MIDI02 (rich4_new_game.asm:4009, flag 0x8001: nothing to come back to).
   audio.theme(Theme.setup, true);
-  /** The sheet is laid out on a fixed canvas (960×540 / 540×960) and scaled to fit, so everything shows at once. */
+  /**
+   * The sheet is laid out on a fixed canvas (960×540 / 540×960) and scaled to fit, so everything shows at once. On a
+   * short portrait screen (the user 2026-11-23: 「萬一豎屏被摺疊了，要允許他們上下滑動開局設置的開關」) it is scaled no
+   * smaller than NG_MIN_SCALE (nor wider than the screen): the sheet is cut to the screen's height and the settings
+   * scroll up and down, 返回 / 開始遊戲 staying under them; landscape's settings scroll in their column as well.
+   */
   const fit = () => {
     const sheet = app.querySelector<HTMLElement>('.ng-sheet');
     if (!sheet) return;
     const w = app.clientWidth, h = app.clientHeight, portrait = h > w;
     sheet.classList.toggle('portrait', portrait);
+    sheet.classList.remove('scroll');
+    sheet.style.height = '';
     // Portrait: as tall as its content (style.css: height auto, the settings two to a row), at most 900.
-    const [dw, dh] = portrait ? [540, Math.min(900, sheet.offsetHeight || 900)] : [960, 540];
+    const natural = portrait ? sheet.offsetHeight || 900 : 540;
+    const [dw, dh] = portrait ? [540, Math.min(900, natural)] : [960, 540];
     // room above for the ribbon (it sits half over the top edge)
-    const k = Math.min((w - 12) / dw, (h - 12) / (dh + 34));
+    const kw = (w - 12) / dw;
+    let k = Math.min(kw, (h - 12) / (dh + 34));
+    if (portrait) {
+      k = Math.max(k, Math.min(kw, NG_MIN_SCALE));
+      const room = Math.floor((h - 12) / k - 34);
+      if (natural > room) { sheet.style.height = `${room}px`; sheet.classList.add('scroll'); }
+    }
     sheet.style.top = `calc(50% + ${Math.round(14 * k)}px)`;
     sheet.style.transform = `translate(-50%, -50%) scale(${k})`;
     shrinkText(sheet, '.ng-seat b, .ng-map span, .ng-pick span', 9);
+    const opts = sheet.querySelector<HTMLElement>('.ng-opts');
+    if (opts) { const more = () => opts.classList.toggle('more', opts.scrollTop + opts.clientHeight < opts.scrollHeight - 2); opts.onscroll = more; more(); }
   };
   window.addEventListener('resize', fit);
   /** 即時制 alone: one player against the computers (the user 2026-11-08: one phone, one view; several only in 派對模式). */
+  /** 遊戲節奏: 原版 is no field at all (as every game before it). */
+  const pace = () => (state.pace === 0 || state.pace === 2 ? { pace: state.pace as 0 | 2 } : {});
   const rtSolo = () => state.kind !== 'tycoon' && state.kind !== 'challenge' && !!state.realtime && rtOk(state.mapId);
   const render = () => {
     // 大富豪模式 (docs/rules/17): the five cities, your character against the other eleven.
@@ -534,6 +581,7 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
         <button class="val" data-step="${key}" data-n="${items.length}" data-d="1">${items[v]}</button>
         <button data-step="${key}" data-n="${items.length}" data-d="1">›</button></div></div>`;
     };
+    const scrolled = app.querySelector<HTMLElement>('.ng-opts')?.scrollTop ?? 0; // (a tap on a lower setting keeps the list where it was)
     app.querySelector('.ng')?.remove();
     // 回合制 / 即時制: with the rules (the user 2026-11-13: beside the map tabs it broke their names onto two lines)
     const modeHtml = ty || cm || mine ? '' : `<div class="ng-mode${rtOk(state.mapId) ? '' : ' off'}" title="即時制是測試版"><button class="${state.realtime ? '' : 'on'}" data-opt="realtime" data-v="0">回合制</button><button class="${state.realtime ? 'on' : ''}" data-opt="realtime" data-v="1">即時制</button></div>`;
@@ -547,7 +595,7 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
           <button class="chip${ty ? ' on' : ''}" data-maps="tycoon">大富豪模式</button></div>
 </div>
         ${ty ? `<div class="ng-tycoon">${TYCOON_MAPS.map(id => `<figure><img src="${cityThumb(id)}" alt="" style="--cc:${CITY_COLORS[id]}"><figcaption>${CITY_NAMES[id]}</figcaption></figure>`).join('')}
-          <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : mine ? `<div class="ng-maps-wrap"><div class="ng-maps">${lib ? `<button class="ng-map ng-mine${state.mine === LIB_PICK ? ' on' : ''}" data-mine="${LIB_PICK}">${lib.thumb ? `<img src="${escHtml(lib.thumb)}" alt="">` : `<i>${lib.m.w} × ${lib.m.h}</i>`}<em class="mk-st pub">創作樂園</em><span>${escHtml(lib.m.name)}</span></button>` : ''}${myMaps().filter(e => !lib || e.id !== lib.m.id).map(e => `<button class="ng-map ng-mine${e.id === state.mine ? ' on' : ''}" data-mine="${escHtml(e.id)}">${(t => (t ? `<img src="${t}" alt="">` : `<i>${e.w} × ${e.h}${e.by ? `<br>${escHtml(e.by)} 做的` : ''}</i>`))(myMapThumb(e.id))}${myMapTag(e)}<span>${escHtml(e.name)}</span></button>`).join('') || (lib ? '' : '<p class="info-none">還沒有自己的地圖：在標題畫面按「自建地圖」做一張，或從創作樂園下載</p>')}</div></div>` : `<div class="ng-maps-wrap"><div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span>${clearStamp(m.id, 'ng-clear')}</button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>
+          <p class="ng-tycoon-note">${phrases('你一人對上其他 11 位角色，大家隨機分散在五座城市。\n搭新幹線、飛機往來各地，讓所有對手破產，就能成為「首富大富豪」。')}</p></div>` : mine ? `<div class="ng-maps-wrap"><div class="ng-maps">${lib ? `<button class="ng-map ng-mine${state.mine === LIB_PICK ? ' on' : ''}" data-mine="${LIB_PICK}">${lib.thumb ? `<img src="${escHtml(lib.thumb)}" alt="">` : `<i>${lib.m.w} × ${lib.m.h}</i>`}<em class="mk-st pub">創作樂園</em><span>${escHtml(lib.m.name)}</span></button>` : ''}${myMaps().filter(e => !lib || e.id !== lib.m.id).map(e => `<button class="ng-map ng-mine${e.id === state.mine ? ' on' : ''}" data-mine="${escHtml(e.id)}">${(t => (t ? `<img src="${t}" alt="">` : `<i>${e.w} × ${e.h}${e.by ? `<br>${escHtml(e.by)} 做的` : ''}</i>`))(myMapThumb(e.id))}${myMapTag(e)}<span>${escHtml(e.name)}</span></button>`).join('') || (lib ? '' : '<p class="info-none">還沒有自己的地圖：在標題畫面按「自建地圖」做一張，或從創作樂園下載</p>')}</div></div>` : `<div class="ng-maps-wrap"><div class="ng-maps">${shown.map(m => `<button class="ng-map${m.id === state.mapId ? ' on' : ''}" data-map="${m.id}"><img src="${m.thumbnail}" alt=""><span>${m.name}</span>${m.lacks ? '<em class="ng-lacks">需完整版</em>' : clearStamp(m.id, 'ng-clear')}</button>`).join('') || '<p class="info-none">沒有可用的地圖</p>'}</div>
           ${pages > 1 ? `<button class="ng-pg prev" data-page="-1"${page === 0 ? ' disabled' : ''} aria-label="上一頁">‹</button><button class="ng-pg next" data-page="1"${page >= pages - 1 ? ' disabled' : ''} aria-label="下一頁">›<small>${page + 1}/${pages}</small></button>` : ''}</div>`}</section>
       <section class="ng-players-sec"><div class="ng-head"><h3>${several ? `${who + 1}P ` : ''}選擇角色</h3><div class="chips">${ty ? '<span class="ng-ty-who">選你的角色，其他 11 位都是電腦</span>' : `${[2, 3, 4].map(n => `<button class="chip${state.count === n ? ' on' : ''}" data-count="${n}">${n} 人</button>`).join('')}
           <button class="chip" data-reroll="1">重新抽選</button>`}</div></div>
@@ -576,11 +624,14 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
         ${opt('電腦難度', 'aiLevel', AI_LEVEL_NAMES)}
         ${state.mapId === FINALE_MAP || mine ? '' : opt('挑戰模式', 'monthTasks', ['關', '每月 1 張', '每月 2 張', '完成就抽'], state.monthTasks ? ' hot on' : ' hot')}`}
         ${modeHtml ? `<div class="ng-opt ng-mode-opt"><span>玩法</span>${modeHtml}</div>` : ''}
-        <p class="ng-date">開局日期 ${format(today())}</p>
+        ${ty || cm ? '' : opt('遊戲節奏', 'pace', PACE_NAMES)}
+        ${ty || cm || state.pace === 1 ? '' : `<p class="ng-date ng-pace">${PACE_HINTS[state.pace]}・不上排行榜</p>`}
       </section>
-      <div class="choices ng-actions"><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
+      <div class="choices ng-actions"><span class="ng-start">開局日期<br>${format(today())}</span><button class="candy ghost" data-back="1">返回</button><button class="candy yes" data-go="1">開始遊戲</button></div></div>`;
     app.append(sheet);
     fit();
+    const opts = sheet.querySelector<HTMLElement>('.ng-opts');
+    if (opts && scrolled) { opts.scrollTop = scrolled; opts.onscroll?.(new Event('scroll')); }
   };
   // A swipe across the maps turns their page (the arrows beside them do too).
   let swipe: number | null = null;
@@ -616,10 +667,12 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
       page = 0;
     } else if (d.maps) {
       state.kind = d.maps as MapInfo['kind'];
-      const first = maps.find(m => m.kind === state.kind && !m.hidden);
-      if (first && !maps.some(m => m.id === state.mapId && m.kind === state.kind && !m.hidden)) state.mapId = first.id;
+      const first = maps.find(m => m.kind === state.kind && !m.hidden && !m.lacks);
+      if (first && !maps.some(m => m.id === state.mapId && m.kind === state.kind && !m.hidden && !m.lacks)) state.mapId = first.id;
       page = 0;
     }
+    const lacks = d.map ? maps.find(m => m.id === Number(d.map) && m.lacks) : undefined;
+    if (lacks) { audio.ui('error'); void uiAlert(fullOnlyMsg(lacks.name)); return; }   // (its pictures are only in the full installer, assets.ts FULL_ONLY)
     if (d.map) state.mapId = Number(d.map);
     if (d.count) { state.count = Number(d.count); reroll(); }
     if (d.reroll) reroll();
@@ -667,7 +720,7 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
         start({
           mapId, players, fundIndex: state.fundIndex, traffic: state.traffic, landLimitIndex: state.landLimitIndex,
           daysLimitIndex: state.daysLimitIndex, victoryIndex: state.victoryIndex, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
-          ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}), ...extra, myMap: savedMyMap(m),
+          ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}), ...pace(), ...extra, myMap: savedMyMap(m),
         });
       }).catch(err => { t.textContent = '開始遊戲'; (t as HTMLButtonElement).disabled = false; void uiAlert(`地圖準備失敗：${(err as Error).message}`); });
       return;
@@ -682,7 +735,7 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
         start({
           mapId: state.mapId, players: players.map((p, i) => ({ ...p, human: i === 0 })), fundIndex: state.fundIndex, traffic: state.traffic,
           landLimitIndex: state.landLimitIndex, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: (Math.random() * 2 ** 32) >>> 0,
-          ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}), realtime: { length: RT_LENGTHS[state.rtLen] * 60_000 },
+          ...(state.aiLevel ? { aiLevel: state.aiLevel } : {}), ...pace(), realtime: { length: RT_LENGTHS[state.rtLen] * 60_000 },
         });
         return;
       }
@@ -691,6 +744,7 @@ function newGame(lib?: { m: import('./maker/model').MakerMap; thumb: string }) {
         // (排行榜: the server's 開局券 gives the seed — a game that may rank cannot be picked for its luck, ranks.ts)
         daysLimitIndex: cm ? 0 : state.daysLimitIndex, victoryIndex: cm ? 0 : state.victoryIndex, startDate: today(), seed: ticketSeed() ?? (Math.random() * 2 ** 32) >>> 0,
         ...(cm ? { challenge: true, challengeYears: CHALLENGE_YEARS[state.yearsIndex], challengeMonthly: !!state.monthly } : state.aiLevel ? { aiLevel: state.aiLevel } : {}),
+        ...(cm ? {} : pace()),
         // 大富翁城 has no 挑戰模式 (the user 2026-11-03).
         ...(!cm && state.monthTasks && state.mapId !== FINALE_MAP ? { monthTasks: state.monthTasks as 1 | 2 | 3 } : {}),
       });
@@ -718,6 +772,15 @@ let bank: SpriteBank | null = null;
 let session = 0;
 let currentView: BoardView | null = null;
 let currentWeather: WeatherFx | null = null;
+
+// (dev only: ?play=<map id> starts a game on that map straight away — testing a map's screens without the menus)
+if (import.meta.env.DEV) {
+  const play = Number(new URLSearchParams(location.search).get('play'));
+  // (once the title is up: it is drawn after the assets load and would cover the game)
+  const go = () => (document.querySelector('#app .title') ? start({ mapId: play, players: [6, 0, 4, 11].map((character, i) => ({ character, human: i === 0 })), fundIndex: 1, traffic: 0,
+    landLimitIndex: 0, daysLimitIndex: 0, victoryIndex: 0, startDate: today(), seed: 12345 }) : setTimeout(go, 300));
+  if (play) setTimeout(go, 300);
+}
 
 function start(settings: GameSettings, room?: Room) {
   // 派對模式, back after the app closed (issue #50): the game from the room's newest turn, the answers since follow.
@@ -845,7 +908,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     await prepareCityLots(bank, mapId); // the five cities' own shops on the small lots (ui/city-lots.ts)
     if (ty || mapId === FINALE_MAP) await prepareFinale(bank); // 大富翁城's halls (docs/rules/19)
     if (mapId === KB_MAP) prepareKabukicho(bank); // 歌舞伎町's tool icons (docs/rules/21 §7.5)
-    await prepareJiqingPlaces(bank, mapId === JQ_MAP); // 激情歲月's place screens (docs/rules/24 §11.3); off on every other map
+    await prepareJiqingPlaces(bank, mapId === JQ_MAP || (art.theme ?? false)); // 激情歲月's / 長安's place screens (docs/rules/24 §11.3); off on every other map
     game = make(art.board);
     chipGame.game = ty ? null : game;
     // 排行榜: a game loaded from a save never ranks (the user 2026-11-16: 存讀檔一次的就不上排行榜)
@@ -866,6 +929,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   shell.className = 'game';
   setEraLine(null); // a map's own wording of the place screens: only 激情歲月's (below)
   if (mapId === JQ_MAP) applyJqTheme(shell); // 激情歲月's skin and words (docs/rules/24 §3, §11)
+  if (art.theme === 'changan' || art.theme === 'qingming') applyCnTheme(shell, art.theme); // 長安's / 清明上河's words and skin: 文, 博戲坊 / 交子務 … (ui/cn-theme.ts)
   const toolbar = new Toolbar(bank);
   const stage = document.createElement('section');
   stage.className = 'stage';
@@ -938,6 +1002,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   };
   const hud = new Hud(stage, game, bank, panel, calendar);
   hud.shell = shell;
+  hud.facSprites = art.builds?.fac ?? null;
   // 派對模式: every phone plays the 小遊戲 by hand (issue #100: the setting is each phone's own, and one 自動結算 while
   // another played by hand split the game — the others waited for a 小遊戲 that was never played)
   for (const c of ty?.world.cities ?? [game]) c.animation = game.settings.party ? true : miniGameMode() === 0;
@@ -950,8 +1015,10 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     ending: ty ? (winner: number) => tycoonEnding(hud.context(shell), ty.world, winner) : undefined,
     results: (winner: number) => (ty ? tycoonEnding(hud.context(shell), ty.world, winner, () => Promise.resolve(false))
       : showResults(bank!, shell, gameResults(game, winner), { mapName: mapName(game.settings.mapId), next: () => nextGame(shell, game.settings, game.players.filter(p => p.human).map(p => p.character), game.settings.mapId) })) };
+  // 狀態條 (ui/status-strip.ts): the timed states running (坐牢還剩3天, 股市休市 …) at the map's top right
+  const statusStrip = new StatusStrip(stage, game, bank);
   const baseRefresh = hud.refresh.bind(hud);
-  hud.refresh = () => { baseRefresh(); today.update(); if (shell.classList.contains('gaps')) strip.update(); if (layout !== 0 || shell.classList.contains('portrait') || shell.classList.contains('roomy')) minimap.update(); };
+  hud.refresh = () => { baseRefresh(); today.update(); statusStrip.update(); if (shell.classList.contains('gaps')) strip.update(); if (layout !== 0 || shell.classList.contains('portrait') || shell.classList.contains('roomy')) minimap.update(); };
   // 視窗組 (RICH4.CFG +5): what the right column shows; kept between games.
   const LAYOUTS = ['日曆', '小地圖', '全部'];
   let layout = 0;
@@ -1152,10 +1219,25 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           { label: '畫面', opts: ORIENTATIONS, cur: () => orientationMode(), pick: i => void setOrientation(i) },
           // the PC / Mac app (issue #72): full screen or a window, and a way out (the game is saved each turn)
           ...(isDesktop() ? [{ label: '視窗', opts: ['全螢幕', '視窗'], cur: () => (desktopFull() ? 0 : 1), pick: (i: number) => void setDesktopFull(i === 0).then(render) },
-            { label: '結束遊戲', opts: ['結束'], cur: () => -1, pick: () => { void uiConfirm('結束遊戲？\n（自動存檔在每回合開始時）', '結束').then(ok => { if (ok) quitDesktop(); }); } }] : []),
+                { label: '結束遊戲', opts: ['結束'], cur: () => -1, pick: () => { void uiConfirm('結束遊戲？\n（自動存檔在每回合開始時）', '結束').then(ok => { if (ok) quitDesktop(); }); } }] : []),
           { label: '天氣', opts: [...WEATHER_MODES], cur: () => weatherMode(), pick: i => { setWeatherMode(i); hud.refresh(); } },
           // 歌舞伎町's living street (docs/rules/21 §8).
           ...(mapId === KB_MAP ? [{ label: '地圖動畫', opts: STREET_MODES, cur: () => mapAnimMode(), pick: (i: number) => setMapAnimMode(i) }] : []),
+          // 長安: its intro again
+          // 清明上河: its intro again (the same opening, its own set)
+          ...(mapId === QINGMING_MAP ? [{ label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } }] : []),
+          ...(mapId === CHANGAN_MAP ? [{ label: '穿越片頭', opts: ['重播'], cur: () => -1, pick: () => { replayIntro = true; } },
+            { label: '專屬音樂', opts: STREET_MODES, cur: () => jqMusicMode(), pick: (i: number) => {
+              setJqMusicMode(i);
+              audio.setMusicSet(musicSetFor(mapId, { tycoon: !!ty }), true);
+              syncTracks();
+            } }] : []),
+          // 清明上河: its own music too (jq-music.ts qmMusicSet), the same setting
+          ...(mapId === QM_MAP_ID ? [{ label: '專屬音樂', opts: STREET_MODES, cur: () => jqMusicMode(), pick: (i: number) => {
+              setJqMusicMode(i);
+              audio.setMusicSet(musicSetFor(mapId, { tycoon: !!ty }), true);
+              syncTracks();
+            } }] : []),
           // 激情歲月 (docs/rules/24 §7–§10): its street, the loudspeakers, the quotations, the intro again.
           ...(mapId === JQ_MAP ? [{ label: '地圖動畫', opts: STREET_MODES, cur: () => mapAnimMode(), pick: (i: number) => setMapAnimMode(i) },
             { label: '大喇叭廣播', opts: STREET_MODES, cur: () => loudspeakerMode(), pick: (i: number) => setLoudspeakerMode(i) },
@@ -1221,7 +1303,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
           const ask = newer ? '已經有新版本了：現在離開的話，更新後版本不同，就回不到這一局了。\n建議打完這局再離開。確定要離開嗎？' : room ? '離開這一局？（電腦會接手你的位置）' : '回到標題畫面？（未存檔的進度會遺失）';
           void uiConfirm(ask).then(ok => { if (ok) location.reload(); });
         }
-        if (replayIntro) await playJqIntro(shell, game, bank!, scale());
+        if (replayIntro) await (mapId === CHANGAN_MAP || mapId === QINGMING_MAP ? playCnIntro(shell, game, bank!, scale(), mapId === QINGMING_MAP ? 'qingming' : 'changan') : playJqIntro(shell, game, bank!, scale()));
         return;
       }
       case 'info':
@@ -1323,6 +1405,12 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   if (me !== session) return;
   // 激情歲月's 「穿越」 intro (docs/rules/24 §10): once when a new game on the map starts, never for a loaded one.
   if (mapId === JQ_MAP && !loaded && !ty) { await playJqIntro(shell, game, bank!, scale()); if (me !== session) return; audio.fanfare(); }
+  // 長安's 「穿越到開元盛世」 intro (screens/cn-intro.ts), the same way.
+  if (mapId === CHANGAN_MAP && !loaded && !ty) { await playCnIntro(shell, game, bank!, scale()); if (me !== session) return; audio.fanfare(); }
+  // 清明上河's 「穿越到汴京」 (the user 2026-11-23: 「也沒有開場穿越動畫」), the same opening with its own set.
+  if (mapId === QINGMING_MAP && !loaded && !ty) { await playCnIntro(shell, game, bank!, scale(), 'qingming'); if (me !== session) return; }
+  // 清明上河's jingle (jq-music.ts qm-fanfare) as a new game starts (after its opening, when it has one)
+  if (mapId === QM_MAP_ID && !loaded && !ty) audio.fanfare();
   /** The original's small map effects and lines for each event (docs/rules/11). */
   const director = new MapDirector(game, view, hud);
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.director = director;
@@ -1332,6 +1420,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     day: game.daysElapsed, current: game.current, view: view.debugState(), director: director.debugState(),
   }), () => view.unstick());
   wd.start();
+  // the error log (log.ts): where the game is
+  setLogState(() => `map ${mapId} day ${game.daysElapsed} player ${game.current}${ty ? ' tycoon' : ''}${room ? ' party' : ''} stage ${wd.stage} idle ${Math.round(wd.idle() / 1000)}s${wd.human ? ' (human)' : ''} ${me === session ? '' : '(left) '}mem ${JSON.stringify(memReport(bank, view))}`);
   (window as unknown as { __rich4: Record<string, unknown> }).__rich4.watch = () => wd.report();
   (window as unknown as { __rich4Mem: unknown }).__rich4Mem = () => memReport(bank, view); // memory by kind (ui/mem-report.ts)
   const stopWatch = () => { wd.stop(); };
@@ -1341,7 +1431,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
   // for). Giving up logs it, finishes what the view holds, closes screens left open and stops looping sounds, and the
   // game goes on with the next event — the rules never wait on the screen, so nothing of the game is lost.
   const LONG_FX = new Set(['month-report', 'auction', 'auction-end', 'lottery-draw', 'dividends', 'finale-start', 'finale-blinds',
-    'casino-result', 'tycoon-title', 'travel-onway', 'travel-depart', 'magic']);
+    'casino-result', 'tycoon-title', 'travel-onway', 'travel-depart', 'magic', 'cn-cock-fight', 'cn-exam-result', 'cn-post-ride']);
   const limitFor = (long: boolean) => () => (long ? 150000 : 40000) * (0.5 + scale()) * (wd.human ? 3 : 1);
   /** The screens over the map or the whole game screen (an event's own, the wheel, the films …). */
   const overlays = () => [...shell.querySelectorAll<HTMLElement>('.fx-overlay, .pl-scene, .tc')];
@@ -1592,7 +1682,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       spectatorBar?.destroy(); spectatorBar = null;
       net0.onSeats = prevSeats;
       gameEnd('quit', 'map');
-      if (s.seats[net0.myId] !== undefined) gameStart(`${net0.code}-${s.settings.seed}`, () => net0.link().via, { map: s.settings.mapId, humans: s.settings.players.filter(p => p.human).length, total: s.settings.players.length });
+      if (s.seats[net0.myId] !== undefined) gameStart(`${net0.code}-${s.settings.seed}`, () => net0.link().via, { map: s.settings.mapId, humans: s.settings.players.filter(p => p.human).length, total: s.settings.players.length, title: net0.mapTitle(s.settings.mapId) });
       start(s.settings, net0);
     };
     room.onSeats = () => {
@@ -1641,6 +1731,8 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
    * A question for a human on this screen, the controller of that seat in charge (pad.ts padFor: 1P–4P with a
    * controller each, the user 2026-11-08); with two controllers or more, whose turn it is shows as it opens.
    */
+  /** 冬眠: their turn passes with a message only, the camera never goes to them (the user 2026-11-25: 「一局切換好幾個人看著亂糟糟的」). */
+  const dozing = (id: number) => { const q = game.players[id]; return !!q && q.placed && q.sleep > 0 && !q.leaving && !game.offRoad(q); };
   const localAnswer = async (s: Ask): Promise<Answer> => {
     const humans = game.players.filter(q => q.human).map(q => q.id), k = room ? -1 : humans.indexOf(s.p);
     if (k < 0) return localAsk(s);
@@ -1769,7 +1861,9 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     // else): one never stopped is stopped for the player after a long while, rather than holding the game for good.
     const asked = s.t === 'wheel' || s.t === 'slot-machine' ? shown(`ask ${s.t}`, () => hud.ask(s), 0 as unknown) : hud.ask(s);
     // (a 小遊戲 is a scene of its own that dismiss does not close: it stayed over the game after the time ran out, #100)
-    answer = await timed(asked as Promise<Answer>, expires(s.p), () => { hud.dismiss(); if (s.t === 'mini-game') closeQuestionScenes(); return autoAnswer(s); });
+    // (清明上河's three mini-games end by themselves within 15 s: never cut by a short 派對 turn clock)
+    const untimed = s.t === ('qm-tiger' as never) || s.t === ('qm-boar' as never) || s.t === ('qm-wrestle' as never) || s.t === ('qm-shell' as never);
+    answer = await timed(asked as Promise<Answer>, untimed ? null : expires(s.p), () => { hud.dismiss(); if (s.t === 'mini-game') closeQuestionScenes(); return autoAnswer(s); });
     wd.setHuman(false);
     return answer;
   };
@@ -2422,6 +2516,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     try {
     await shown('losses', () => losses.before(s), undefined);
     wd.beat('ask' in s ? `ask:${s.t}` : s.t === 'fx' ? `fx:${s.kind}` : s.t);
+    logStep(wd.stage);
     if (!('ask' in s) && (s.t === 'step' || s.t === 'actor-step')) {
       await shown('director.idle', () => director.idle(), undefined);
       if (s.t === 'actor-step') director.actorStep(s);
@@ -2445,7 +2540,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
     settle();
     if ('ask' in s) {
       await shown('director.idle', () => director.idle(), undefined);
-      view.followActor(s.p);
+      if (!(dozing(s.p) && (s.t === 'auto-turn' || s.t === 'seat'))) view.followActor(s.p);
       hud.refresh();
       if (room) {
         const seq = askSeq++;
@@ -2540,6 +2635,7 @@ async function begin(mapId: number, make: (board: import('../core/board').Board)
       case 'turn':
         turnDeadline = 0; // 派對模式: a new turn, a new clock
         view.unmark();
+        if (dozing(s.p)) break; // the camera stays: only the message 「XX冬眠中，還剩N天」 (map-fx.ts say)
         view.followActor(s.p);
         // Anyone's turn (a computer's too): the big clips of the tools they hold start loading in idle time.
         warmFor(game.players[s.p]);

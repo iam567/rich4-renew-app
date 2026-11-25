@@ -119,6 +119,11 @@
 .bk-exit .h { opacity: 0; }
 .bk-exit:active .h { opacity: 1; }
 .bk-exit::after { content: ''; position: absolute; inset: 0; border-radius: 8px; animation: bk-glow 1.6s .8s ease-in-out infinite; }
+.bk-exit.cn .h { display: none; }
+.bk-exit-cn { position: absolute; inset: 4px 6px; display: flex; align-items: center; justify-content: center; border-radius: 8px;
+  font: 30px/1 "LXGW WenKai TC", "Kaiti TC", "STKaiti", serif; color: #ffe3a0; letter-spacing: 4px; text-shadow: 0 2px 0 #3a0a06;
+  background: linear-gradient(#8e1c15, #560b08); border: 2px solid #e6b448; box-shadow: 0 0 0 2px #5a3208, 0 4px 8px rgba(0, 0, 0, .5); }
+.bk-exit.cn:active .bk-exit-cn { transform: translate(1px, 2px); background: linear-gradient(#ffe9a8, #e0b24a); color: #5a2a00; text-shadow: none; }
 .bk-bubble { position: absolute; left: 240px; top: 80px; width: 195px; height: 142px; pointer-events: none; transform-origin: 0 60%; }
 .bk-bubble-bg { left: 0; top: 0; width: 195px; height: 142px; }
 .bk-bubble.talk { animation: bk-talk .35s cubic-bezier(.3, 1.6, .5, 1); }

@@ -437,3 +437,131 @@
 /* 局域網房間 on a phone: only the PC versions open the room */
 .pt-lanwho { margin: 4px 0 8px; padding: 6px 10px; border-radius: 10px; background: rgba(255, 225, 74, .14); color: #ffe9a8; }
 .pt-lanwho b { color: #ffd84a; }
+
+/* 私服房間 (the user 2026-11-18): lists of servers scroll inside the sheet, buttons stay below */
+.pt-srvadd { display: grid; gap: 6px; width: 100%; margin: 2px 0 6px; }
+.pt-srvadd .pt-input { width: 100%; box-sizing: border-box; font-size: 16px; letter-spacing: .02em; text-align: left; padding: 8px 12px; }
+.pt-srvadd .pt-input::placeholder { font-size: 14px; letter-spacing: 0; }
+.pt-srvadd .pt-kinds { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.pt-srvadd .candy { font-size: 18px; padding: 8px 14px; }
+.pt-srvlist { display: grid; gap: 6px; width: 100%; max-height: 38vh; max-height: 38dvh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; margin: 4px 0 6px; }
+.pt-srv { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 8px 10px; border-radius: 12px; background: rgba(0, 0, 0, .22); }
+.pt-srvgo { display: grid; grid-template-columns: 1fr auto; grid-template-areas: "n p" "s p"; align-items: center; column-gap: 10px; border: 0; padding: 0; background: none; font: inherit; color: #fff; text-align: left; cursor: pointer; min-width: 0; }
+.pt-srvgo b { grid-area: n; display: flex; align-items: center; min-width: 0; color: #ffe14a; font-size: 16px; }
+.pt-srvgo b span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.pt-srvgo b .pt-tag { flex: none; }
+.pt-srvgo small { grid-area: s; font-size: 12px; opacity: .8; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-srvping { grid-area: p; display: flex; align-items: center; gap: 4px; font-size: 13px; white-space: nowrap; }
+.pt-srvping em { font-style: normal; font-variant-numeric: tabular-nums; }
+.pt-srvping em.off { color: #ff8a7a; }
+.pt-srvtools { display: flex; gap: 6px; justify-content: flex-end; flex-wrap: wrap; }
+.pt-srvtools .chip { padding: 2px 10px; font-size: 13px; }
+.pt-tag { font-style: normal; font-size: 11px; font-weight: 700; margin-left: 6px; padding: 1px 6px; border-radius: 8px; vertical-align: 2px; }
+.pt-tag.on { background: #3aa83a; color: #fff; } .pt-tag.busy { background: #e0a020; color: #fff; } .pt-tag.off { background: #8a8a8a; color: #fff; }
+.pt-srvaddr { display: block; font-size: 11px; opacity: .8; }
+.pt-srvcols { display: grid; gap: 4px; width: 100%; }
+.pt-srvcol { display: flex; flex-direction: column; min-width: 0; }
+@media (orientation: landscape) and (max-height: 560px) {
+  .pt-srvcols { grid-template-columns: 1fr 1fr; gap: 14px; align-items: start; }
+  .pt.sheet:has(.pt-srvcols) { width: min(860px, 96vw); max-width: min(860px, 96vw); }
+  .pt-srvcols .pt-srvlist { max-height: 56vh; max-height: 56dvh; }
+}
+
+/* 私服列表 (the user 2026-11-23): 收藏 star, 推薦, each one's 公告/活動 line; a 私服's page (公告, 活動, 私信) */
+.pt-srv.lead { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 8px; }
+.pt-srv.lead > .pt-srvtools { grid-column: 1 / -1; }
+.pt-srvfav { border: 0; background: none; padding: 4px 2px; font-size: 22px; line-height: 1; color: rgba(255, 255, 255, .7); cursor: pointer; }
+.pt-srvfav.on { color: #ffe14a; text-shadow: 0 1px 0 #7a5a00; }
+.pt-srvgo { grid-template-areas: "n p" "s p" "x x"; }
+.pt-srvnews { grid-area: x; display: grid; min-width: 0; font-size: 12px; color: #fff3b0; }
+.pt-srvnews:empty { display: none; }
+.pt-srvnews span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-srvnews em { font-style: normal; opacity: .85; }
+.pt-tag.best { background: #e8402a; color: #fff; } .pt-tag.lock { background: rgba(0, 0, 0, .35); color: #ffe14a; } .pt-tag.mail { background: #2a6fe0; color: #fff; }
+.pt-menu .candy small .pt-tag.mail { font-size: 12px; margin: 0; }
+.pt-sec small { font-size: 11px; color: #fff; opacity: .7; margin-left: 8px; }
+.pt-sphead { display: flex; flex-direction: column; align-items: center; gap: 2px; color: #fff; min-width: 0; max-width: 100%; }
+.pt-sphead b { font-size: 20px; color: #ffe14a; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100%; }
+.pt-sphead small { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 4px; font-size: 12px; opacity: .9; }
+.pt-sphead small em { font-style: normal; } .pt-sphead small em.off { color: #ff8a7a; }
+.pt-sptabs { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+.pt-sptabs .chip { font-size: 14px; padding: 3px 12px; }
+.pt-sptabs .pt-tag { margin-left: 4px; }
+.pt-sppanel { display: grid; align-content: start; gap: 6px; width: 100%; height: 42vh; height: 42dvh; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.pt-spcard { padding: 8px 10px; border-radius: 12px; background: rgba(0, 0, 0, .22); color: #fff; text-align: left; min-width: 0; }
+.pt-spcard.pin { box-shadow: inset 0 0 0 2px #ffe14a; }
+.pt-spcard.mine { box-shadow: inset 0 0 0 2px #7be07b; }
+.pt-spcard.ended { opacity: .6; }
+.pt-spcard p { margin: 4px 0 0; font-size: 13px; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+.pt-sptop { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; min-width: 0; }
+.pt-sptop b { color: #ffe14a; font-size: 15px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.pt-sptop small { flex: none; font-size: 12px; opacity: .85; white-space: nowrap; }
+.pt-spcard p.pt-spprize { color: #ffd0a0; font-weight: 700; }
+.pt-spfoot { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-top: 6px; flex-wrap: wrap; }
+.pt-spfoot small { font-size: 12px; opacity: .85; }
+.pt-spfoot .chip { font-size: 13px; padding: 2px 10px; }
+.pt-spfoot .pt-spsign { font-size: 15px; padding: 4px 14px; }
+.pt-spstate { font-size: 12px; padding: 1px 8px; border-radius: 8px; background: #8a8a8a; color: #fff; margin-left: auto; }
+.pt-spstate.on { background: #3aa83a; }
+/* the owner's Banner (3:1) and 私服介紹 under the head line; 舉報 small in the corner (the user 2026-11-23) */
+.pt-spreport.chip { position: absolute; top: 13px; right: 16px; z-index: 1; font-size: 12px; line-height: 1.5; padding: 1px 10px; background: rgba(0, 0, 0, .28); color: #ffd0c8; border: 1px solid rgba(255, 208, 200, .5); box-shadow: none; }
+.pt-spreport + .pt-sphead { padding-inline: 46px; box-sizing: border-box; }
+.pt-sppromo { display: grid; gap: 6px; width: 100%; flex: none; min-width: 0; }
+.pt-sppromo[hidden] { display: none; }
+.pt-spbanner { display: block; width: 100%; aspect-ratio: 3 / 1; margin: 0 auto; padding: 0; border: 0; border-radius: 12px; overflow: hidden; background: rgba(0, 0, 0, .25); font: inherit; }
+.pt-spbanner.link { cursor: pointer; box-shadow: 0 0 0 2px rgba(255, 225, 74, .55); }
+.pt-spbanner.link:active { transform: scale(.98); }
+.pt-spbanner img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.pt-spintro { margin: 0; max-height: 4.6em; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; padding: 4px 10px; border-radius: 10px; background: rgba(0, 0, 0, .18);
+  font-size: 13px; line-height: 1.5; color: #fff; text-align: left; overflow-wrap: anywhere; word-break: break-word; user-select: text; -webkit-user-select: text; }
+.pt.sheet:has(.pt-sppromo:not([hidden])) .pt-sppanel { height: 32vh; height: 32dvh; }
+/* 服主社交帳號 under the 介紹; 滾動公告 on the 私服's page and at the top of the 派對模式 screens while on that 私服 */
+.pt-spsoc { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 6px; min-width: 0; }
+.pt-soc { display: inline-flex; min-width: 0; max-width: 100%; }
+.pt-soc .chip { font-size: 12px; line-height: 1.5; padding: 1px 9px; min-width: 0; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pt-soc .chip em { font-style: normal; font-weight: 700; margin-right: 4px; opacity: .75; }
+.pt-soc .chip:first-child:not(:last-child) { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+.pt-soc .pt-socgo { flex: none; margin-left: 1px; border-top-left-radius: 0; border-bottom-left-radius: 0; }
+.pt-spticker { width: 100%; flex: none; min-width: 0; }
+.pt-spticker[hidden] { display: none; }
+.pt-ticker { position: relative; overflow: hidden; white-space: nowrap; width: 100%; box-sizing: border-box; padding: 0 10px; border-radius: 999px; cursor: pointer;
+  background: rgba(0, 0, 0, .42); border: 1px solid rgba(255, 225, 74, .55); color: #ffe14a; font-size: 13px; line-height: 22px; text-align: left; }
+.pt-tickin { display: inline-block; padding-left: 100%; animation: pt-tick var(--dur, 14s) linear infinite; will-change: transform; }
+@keyframes pt-tick { from { transform: translateX(0); } to { transform: translateX(-100%); } }
+.pt-ticker:hover .pt-tickin, .pt-ticker.paused .pt-tickin { animation-play-state: paused; }
+@media (prefers-reduced-motion: reduce) {
+  .pt-ticker { white-space: normal; line-height: 1.45; padding: 3px 12px; border-radius: 12px; }
+  .pt-tickin { display: inline; padding-left: 0; animation: none; }
+}
+.pt-toptick { position: absolute; z-index: 3; top: max(6px, env(safe-area-inset-top)); left: 0; right: 0; margin: 0 auto; width: min(760px, calc(100% - 24px)); }
+.pt-toptick[hidden] { display: none; }
+.slots-overlay.pt-ov.pt-hastick { padding-top: max(60px, calc(env(safe-area-inset-top) + 48px)); }
+/* (a 私服's own page shows its 滾動公告 itself) */
+.pt-ov:has(.pt-sphead) > .pt-toptick { display: none; }
+.slots-overlay.pt-ov.pt-hastick:has(.pt-sphead) { padding-top: max(30px, calc(env(safe-area-inset-top) + 18px)); }
+.pt-flash { position: fixed; z-index: 70; left: 0; right: 0; margin: 0 auto; width: max-content; max-width: min(420px, 90vw); box-sizing: border-box; bottom: max(18px, calc(env(safe-area-inset-bottom) + 10px));
+  padding: 6px 14px; border-radius: 14px; background: rgba(20, 30, 80, .92); border: 2px solid #ffe14a; color: #fff; font-size: 14px; pointer-events: none; overflow-wrap: anywhere; animation: srv-toast-in .2s ease-out; }
+.pt-report .pt-rnote { resize: none; font-size: 15px; line-height: 1.4; }
+.pt-rmsg { margin: 0; font-size: 14px; color: #8fffb0; }
+.pt-rmsg.bad { color: #ffe14a; }
+@media (orientation: landscape) and (max-height: 560px) {
+  .pt.sheet:has(.pt-sppanel) { width: min(760px, 96vw); max-width: min(760px, 96vw); }
+  .pt-sppanel { height: 46vh; height: 46dvh; }
+  .pt-sphead { flex-direction: row; align-items: baseline; gap: 10px; }
+  .pt-spbanner { width: min(100%, 54vh); width: min(100%, 54dvh); }
+  .pt-sppromo.both { grid-template-columns: min(54vh, 50%) minmax(0, 1fr); grid-template-columns: min(54dvh, 50%) minmax(0, 1fr); align-items: start; }
+  .pt-sppromo.both .pt-spbanner { width: 100%; }
+  .pt-sppromo.both .pt-spintro { max-height: 18vh; max-height: 18dvh; }
+  .pt-sppromo.both .pt-spsoc { grid-column: 1 / -1; }
+  .pt.sheet:has(.pt-sppromo:not([hidden])) .pt-sppanel { height: 34vh; height: 34dvh; }
+  .pt-publist { max-height: 46vh; max-height: 46dvh; }
+}
+/* 服主私信 while playing: a small notice at the top, never in the way (private-server-news.ts) */
+.srv-mailtoast { position: fixed; left: 0; right: 0; margin: 0 auto; width: max-content; box-sizing: border-box; top: max(10px, env(safe-area-inset-top)); z-index: 9999; display: grid; grid-template-columns: auto minmax(0, 1fr); column-gap: 8px;
+  max-width: min(420px, 92vw); padding: 6px 14px; border-radius: 14px; background: rgba(20, 30, 80, .9); border: 2px solid #ffe14a; color: #fff; font-size: 13px; pointer-events: none;
+  animation: srv-toast-in .25s ease-out; transition: opacity .5s; }
+@keyframes srv-toast-in { from { opacity: 0; margin-top: -8px; } }
+.srv-mailtoast b { color: #ffe14a; white-space: nowrap; }
+.srv-mailtoast span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srv-mailtoast small { grid-column: 2; font-size: 11px; opacity: .75; }
+.srv-mailtoast.out { opacity: 0; }

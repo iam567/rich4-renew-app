@@ -1,0 +1,24 @@
+/* 開元盛世's 小事件 card (cn-move.ts): a small paper card in a lacquer-red rim over the dimmed map. Stage 900 × 600 (upright 600 × 900). */
+.fx-overlay.cnm-ov { position: absolute; inset: 0; z-index: 55; background: rgba(20, 10, 4, .42); }
+.cnm-scene { position: absolute; left: 50%; top: 50%; font-family: 'Huninn', 'PingFang TC', sans-serif; user-select: none;
+  --brush: "LXGW WenKai TC", "Kaiti TC", "STKaiti", "BiauKai", serif; }
+.cnm-card { position: absolute; left: 50%; top: 50%; width: 340px; margin-left: -170px; transform-origin: 50% 50%; translate: 0 -50%;
+  box-sizing: border-box; padding: 18px 18px 20px; border-radius: 22px; border: 4px solid #9e1b14; text-align: center; color: #3a2210;
+  background: radial-gradient(120% 90% at 50% 0%, #fffaf0, #f0dfba);
+  box-shadow: 0 0 0 4px #e0b24a, 0 0 0 7px #6e4512, 0 14px 26px rgba(0, 0, 0, .55); }
+.cnm-tag { position: absolute; left: 50%; top: -20px; transform: translateX(-50%); padding: 2px 18px; border-radius: 12px; font-family: var(--brush);
+  font-size: 22px; letter-spacing: 6px; color: #ffe6b0; background: linear-gradient(#b42a20, #7a120c); border: 2px solid #f0c860; white-space: nowrap; }
+.cnm-pic { width: 296px; height: 296px; margin: 4px auto 0; border-radius: 14px; background: #d8c49a center/cover no-repeat;
+  box-shadow: inset 0 0 0 3px rgba(122, 74, 16, .55), 0 2px 6px rgba(0, 0, 0, .25); }
+.cnm-head { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 12px; }
+.cnm-scene .cnm-head img { position: static; flex: none; width: 44px; height: 44px; border-radius: 10px; border: 2px solid #c9962c; }
+.cnm-head b { font-family: var(--brush); font-weight: normal; font-size: 38px; letter-spacing: 4px; color: #9e1b14; white-space: nowrap; }
+.cnm-text { margin-top: 6px; font-size: 20px; line-height: 1.45; color: #4a3018; }
+.cnm-text em { font-style: normal; font-family: var(--brush); font-size: 30px; letter-spacing: 2px; color: #1a1410; }
+/* 清明上河's (data.set 'qingming'): the map's own red tag (qm-ui: 347 × 101) and the 文楷 brush, a celadon-and-ink rim */
+.cnm-qm { font-family: 'LXGW WenKai TC', 'Huninn', 'PingFang TC', serif; --brush: 'LXGW WenKai TC', "Kaiti TC", "STKaiti", serif; }
+.cnm-qm .cnm-card { border-color: #5a3a1a; background: radial-gradient(120% 90% at 50% 0%, #fdf8ea, #eadfc2);
+  box-shadow: 0 0 0 4px #c9a55a, 0 0 0 7px #3e5a4c, 0 14px 26px rgba(0, 0, 0, .55); }
+.cnm-qm .cnm-tag { top: -30px; height: 52px; aspect-ratio: 347 / 101; padding: 0 0 2px; display: flex; align-items: center; justify-content: center;
+  border: 0; border-radius: 0; background: var(--qm-tag) center / 100% 100% no-repeat; text-shadow: 0 2px 0 #3e0804; }
+.cnm-qm .cnm-head b { color: #8e1a12; }

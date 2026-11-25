@@ -547,6 +547,8 @@ class AudioEngine {
   get bgmCount(): number { return bgmCount(this.mset); }
   /** Whether a map's own music is in use. */
   get ownMusic(): boolean { return !!this.mset; }
+  /** The map's music set has its own screen piece at this index (長安's 鬥雞場 / 貢院 / 博戲坊 beyond the original's). */
+  hasTheme(i: number): boolean { return !!this.mset?.themes?.[i]; }
 
   /**
    * Uses a map's own music, or the original's again (null). `now`: switch what plays at once (the setting changed in

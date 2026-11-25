@@ -388,9 +388,11 @@ export class MapDirector {
     // A turn spent in prison or hospital (fcn_0040c912): on rand() & 1 the prisoner's / patient's event[19] /
     // [20] (face 2), then 「%s坐牢中\n\n還剩%d天！」 for 1500 ms.
     const stuck = parseStuck(s.text);
+    // 冬眠: the message alone, the camera stays where it is (the user 2026-11-25); main.ts 'turn' does not go there either.
+    if (stuck?.what === '冬眠中') { await this.hud.flash(`${stuck.name}冬眠中\n\n還剩${stuck.days}天！`, 1200); return true; }
     if (stuck) {
       // The camera on them where they sit it out (docs/rules/11 §7.1): the hospital or the prison (shown there in
-      // the gown / prison clothes while the notice is up), a hotel's square, a sleeper on the road.
+      // the gown / prison clothes while the notice is up), a hotel's square.
       const v = this.view, at = this.where(p.id), inside = stuck.what === '住院中' || stuck.what === '坐牢中';
       if (at) {
         if (p.node) v.markNodes.add(p.node);
@@ -559,6 +561,38 @@ export class MapDirector {
         await v.fx.glide({ res: 395 + type, dir: o?.dir ?? 0, from: this.pos(p.id), to: { x: node.x, y: node.y }, wait: 100 });
         audio.sfx(PLACE_SOUND[type] ?? -1);
         v.hiddenObjects.delete(node.id);
+        return true;
+      }
+      // 梁山令 (core/qingming-ling.ts scatter / roadblocks): everything put out at once rains down onto its squares, a
+      // little apart, the camera on the middle of them (the user 2026-11-24: 「從天上往下降，像下雨一樣」)
+      case 'qm-rain': {
+        const type = Number(s.data?.type), ids = (Array.isArray(s.data?.nodes) ? s.data.nodes as number[] : []).filter(id => this.game.node(id));
+        if (!ids.length) return true;
+        const pts = ids.map(id => this.game.node(id)), mid = { x: pts.reduce((t, n) => t + n.x, 0) / pts.length, y: pts.reduce((t, n) => t + n.y, 0) / pts.length };
+        const near = pts.reduce((a, b) => (Math.hypot(b.x - mid.x, b.y - mid.y) < Math.hypot(a.x - mid.x, a.y - mid.y) ? b : a));
+        for (const id of ids) v.hiddenObjects.add(id);
+        await v.panTo(near.x, near.y);
+        const objs = this.game.objects.slots as { type: number; node: number; dir: number }[];
+        const step = Math.max(45, Math.min(110, 1800 / ids.length));
+        await Promise.all(pts.map((n, i) => v.fx.fall({
+          res: 395 + type, dir: objs.find(o => o.node === n.id && o.type === type)?.dir ?? 0, at: { x: n.x, y: n.y }, delay: i * step,
+          land: () => { v.hiddenObjects.delete(n.id); if (i % 3 === 0) audio.sfx(PLACE_SOUND[type] ?? Sfx.roadblock); },
+        })));
+        for (const id of ids) v.hiddenObjects.delete(id);
+        return true;
+      }
+      case 'qm-npc-drop': {
+        const actor = Number(s.data?.actor), node = s.node ? this.game.node(s.node) : null;
+        if (!node || !(actor >= this.game.npcBase)) return true;
+        v.falling.add(actor);
+        v.syncAll();
+        await v.panTo(node.x, node.y);
+        const npc = (this.game.places.npcs as { dir: number }[])[actor - this.game.npcBase];
+        const res = 0x16c + (actor - this.game.npcBase + 4) * 4, frames = v.bank.board('Data', res);
+        await v.fx.fall({ res, dir: npc?.dir ?? 0, fpd: frames ? Math.max(1, frames.length >> 3) : 1, at: { x: node.x, y: node.y }, ms: 640,
+          land: () => { v.falling.delete(actor); v.syncAll(); audio.sfx(Sfx.roadblock); } });
+        v.falling.delete(actor);
+        v.syncAll();
         return true;
       }
       case 'roadblock':
@@ -1111,7 +1145,16 @@ export class MapDirector {
     if (place) v.markNodes.add(place);
     // Players named but out of sight (in the hospital, the prison): their squares are ringed.
     if (!lots.length && !spot) for (const id of people) if (!v.actorAt(id)?.visible) { const q = this.player(id); if (q?.node) v.markNodes.add(q.node); }
-    await v.showSpots(pts);
+    // Two players or more (土地稅 for everyone, a card on several): no camera round from one to the next — the box
+    // lists them all at once (the user 2026-11-24: 「全體性的或者2個人以上的，沒必要每個人都攝像機跟隨一下，直接出來一個界面
+    // 顯示大家列表就行了」); the rings and the effect still show wherever the camera is.
+    const several = new Set(r.lines.map(l => l.p).filter(id => id !== undefined)).size >= 2;
+    // A result about lots: the camera to the lots only, once (the user 2026-11-24: 「直接哪個地方流失、哪個地方升一級，
+    // 就直接移到這個地上，然後出現這個對話框就可以了，不要移到這個人身上」) — several far apart: the one nearest their middle.
+    if (lots.length) {
+      if (!several) await v.showSpots(lots);
+      else { const m = middle(lots), near = lots.reduce((a, b) => (Math.hypot(b.x - m.x, b.y - m.y) < Math.hypot(a.x - m.x, a.y - m.y) ? b : a)); await v.panTo(near.x, near.y); }
+    } else if (!several) await v.showSpots(pts);
     if (flash) { await v.flashLots(r.refs ?? []); v.thawLots(); }
     for (const l of r.lines) {
       const who = l.p !== undefined ? g.name(l.p) : '';
@@ -1126,12 +1169,12 @@ export class MapDirector {
       }),
       playEventFx(v, r.fx, { spot, refs: r.refs, players: shown, actor: s.p }),
     ]);
-    const pi = this.pi, a = r.amount ?? 0;
+    const pi = this.pi, a = r.amount ?? 0, here = lots.length > 0;   // (lots: the line where the camera is, no move to the speaker)
     const speaker = r.line === 'gain' || r.line === 'cry' ? r.lines[0]?.p ?? s.p : s.p;
-    if (r.line === 'gain' && a >= 2000 * pi) await this.ev(speaker, a >= 9000 * pi ? 6 : a >= 5000 * pi ? (this.rand2() ? 6 : 7) : 8, Face.laugh);
-    else if (r.line === 'loss' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 9 : a >= 5000 * pi ? (this.rand2() ? 9 : 10) : 11, Face.cry);
-    else if (r.line === 'free' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 12 : a >= 5000 * pi ? (this.rand2() ? 12 : 13) : 14, Face.laugh);
-    else if (r.line === 'cry') { await sleep(300); await this.ev(speaker, this.rand2() ? 3 : 4, Face.cry); }
+    if (r.line === 'gain' && a >= 2000 * pi) await this.ev(speaker, a >= 9000 * pi ? 6 : a >= 5000 * pi ? (this.rand2() ? 6 : 7) : 8, Face.laugh, here);
+    else if (r.line === 'loss' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 9 : a >= 5000 * pi ? (this.rand2() ? 9 : 10) : 11, Face.cry, here);
+    else if (r.line === 'free' && a > 0) await this.ev(speaker, a >= 9000 * pi ? 12 : a >= 5000 * pi ? (this.rand2() ? 12 : 13) : 14, Face.laugh, here);
+    else if (r.line === 'cry') { await sleep(300); await this.ev(speaker, this.rand2() ? 3 : 4, Face.cry, here); }
     v.unmark();
     v.refollow();
   }

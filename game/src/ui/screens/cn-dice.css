@@ -1,0 +1,69 @@
+/* 長安's 博戲坊 (screens/cn-dice.ts): the stage is 1600 × 900 (900 × 1600 upright), scaled to fit by fitOverlay. */
+.cnd-ov { position: absolute; inset: 0; z-index: 60; background: #140c08; }
+.cnd-scene { position: absolute; left: 50%; top: 50%; overflow: hidden; font-family: 'Huninn', 'PingFang TC', sans-serif; color: #fff; user-select: none; }
+.cnd-bg { position: absolute; inset: 0; background: var(--art) center / cover; }
+.cnd-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 70%, rgba(20, 8, 4, .05), rgba(20, 8, 4, .55)); }
+/* the panels: drawn frames, not pictures (the user 2026-11-19: the pictured frame stretched out of shape at every size,
+   its right end cut off — 「還不如用個矢量框」): red lacquer, a double gold rim, a gold diamond at each corner */
+.cnd-frame { position: absolute; box-sizing: border-box; border-radius: 16px; border: 3px solid #ffe08a;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 190, 120, .22), transparent 70%), linear-gradient(#a3221a, #6e0f0b);
+  box-shadow: 0 0 0 3px #7a4a10, 0 0 0 7px #e6b448, 0 0 0 9px #5a3208, inset 0 0 0 3px #6e0f0b, inset 0 0 0 5px rgba(255, 214, 120, .75), 0 10px 18px rgba(0, 0, 0, .55); }
+.cnd-frame::before, .cnd-frame::after { content: ''; position: absolute; width: 14px; height: 14px; top: 50%; margin-top: -7px; transform: rotate(45deg);
+  background: linear-gradient(135deg, #fff3c0, #e6a52c); box-shadow: 0 0 0 2px #7a4a10; }
+.cnd-frame::before { left: -14px; }
+.cnd-frame::after { right: -14px; }
+.cnd-lbl { position: absolute; inset: 10px 26px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap;
+  color: #ffe3a0; text-shadow: 0 2px 0 #4a120a, 0 0 6px rgba(0, 0, 0, .6); }
+.cnd-plaque { left: 50%; top: 18px; width: 300px; height: 84px; transform: translateX(-50%); }
+.cnd-plaque .cnd-lbl { inset: 4px 20px; font-size: 44px; letter-spacing: 14px; padding-left: 14px; color: #fff1b8; }
+.cnd-status { left: 26px; top: 26px; width: 520px; height: 60px; }
+.cnd-status .cnd-lbl { font-size: 22px; }
+.cnd-dealer { position: absolute; left: 20px; bottom: -20px; height: 700px; filter: drop-shadow(0 10px 10px rgba(0, 0, 0, .5)); }
+.cnd-say { left: 330px; top: 130px; width: 800px; height: 140px; }
+.cnd-say .cnd-lbl { font-size: 26px; line-height: 1.45; white-space: normal; }
+.cnd-say b { color: #fff; }
+.cnd-table { position: absolute; left: 600px; top: 300px; width: 620px; height: 420px; }
+.cnd-tray { position: absolute; left: 110px; top: 120px; width: 400px; height: 300px; background: center / contain no-repeat; }
+.cnd-cup { position: absolute; left: 185px; top: 40px; width: 250px; height: 250px; background: center / contain no-repeat; transform-origin: 50% 90%; z-index: 3; }
+.cnd-dice { position: absolute; left: 150px; top: 190px; width: 320px; height: 130px; display: flex; gap: 16px; justify-content: center; align-items: center; z-index: 2; }
+.cnd-die { width: 84px; height: 84px; filter: drop-shadow(0 6px 4px rgba(0, 0, 0, .45)); }
+.cnd-sum { position: absolute; left: 0; right: 0; top: -6px; text-align: center; font-size: 44px; color: #fff6c0; text-shadow: 0 0 10px #ff7a00, 0 4px 0 #6a1a00; opacity: 0; z-index: 4; }
+.cnd-sum span { font-size: 56px; }
+.cnd-bets { position: absolute; right: 40px; top: 300px; width: 330px; display: flex; flex-direction: column; gap: 26px; align-items: center; }
+.cnd-scene .cnd-tile { position: relative; width: 220px; height: 220px; border: 0; background: center / contain no-repeat transparent; cursor: pointer; transition: transform .15s; font-family: inherit; }
+.cnd-scene .cnd-tile b { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 96px; font-weight: normal; color: #fff7d0;
+  text-shadow: 0 5px 0 rgba(0, 0, 0, .45), 0 0 14px rgba(0, 0, 0, .4); }
+.cnd-scene .cnd-tile i { position: absolute; left: 0; right: 0; bottom: -30px; font-style: normal; font-size: 22px; color: #ffe7b0; text-shadow: 0 2px 3px #000; }
+.cnd-scene .cnd-tile.sel { transform: scale(1.12); filter: drop-shadow(0 0 22px #ffd34a); }
+.cnd-scene .cnd-tile.dim { filter: grayscale(.7) brightness(.6); transform: scale(.92); }
+.cnd-timer { left: 600px; top: 750px; width: 620px; height: 70px; }
+.cnd-timer .cnd-lbl { font-size: 24px; }
+.cnd-result { position: absolute; left: 50%; top: 690px; width: 760px; height: 150px; margin-left: -380px; opacity: 0; z-index: 6; }
+.cnd-plate { inset: 0; }
+.cnd-result.lose .cnd-plate { border-color: #e4ecf6; background: linear-gradient(#55606e, #2c333d);
+  box-shadow: 0 0 0 3px #3a4250, 0 0 0 7px #b8c4d4, 0 0 0 9px #222833, inset 0 0 0 3px #2c333d, inset 0 0 0 5px rgba(220, 230, 245, .7), 0 10px 18px rgba(0, 0, 0, .55); }
+.cnd-result.lose .cnd-plate::before, .cnd-result.lose .cnd-plate::after { background: linear-gradient(135deg, #fff, #9aa8bc); box-shadow: 0 0 0 2px #3a4250; }
+.cnd-icon { position: absolute; left: -46px; top: -30px; width: 170px; filter: drop-shadow(0 8px 6px rgba(0, 0, 0, .5)); animation: cnd-bob .7s ease-in-out infinite; }
+.cnd-result.lose .cnd-icon { animation: cnd-wobble .5s ease-in-out 3; }
+.cnd-txt { position: absolute; left: 150px; right: 30px; top: 12px; bottom: 12px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+.cnd-t { font-size: 54px; line-height: 1.1; letter-spacing: 8px; padding: 0 6px; white-space: nowrap; -webkit-background-clip: text; background-clip: text; color: transparent;
+  background-image: linear-gradient(#fff7c2 10%, #ffd34a 45%, #e88a12 80%, #fff0a0);
+  filter: drop-shadow(2px 0 0 #4a1206) drop-shadow(-2px 0 0 #4a1206) drop-shadow(0 2px 0 #4a1206) drop-shadow(0 -2px 0 #4a1206) drop-shadow(0 4px 2px rgba(0, 0, 0, .5)); }
+.cnd-result.lose .cnd-t { background-image: linear-gradient(#fff 10%, #cfd8e4 50%, #7d8a9c 85%);
+  filter: drop-shadow(2px 0 0 #1e2632) drop-shadow(-2px 0 0 #1e2632) drop-shadow(0 2px 0 #1e2632) drop-shadow(0 -2px 0 #1e2632) drop-shadow(0 4px 2px rgba(0, 0, 0, .5)); }
+.cnd-s { margin-top: 6px; font-size: 26px; white-space: nowrap; color: #fff4d6; text-shadow: 0 2px 0 #4a120a, 0 0 6px rgba(0, 0, 0, .7); }
+.cnd-s b { font-size: 32px; font-weight: normal; color: #ffe27a; }
+.cnd-result.lose .cnd-s b { color: #ffb0a0; }
+.cnd-fx { position: absolute; inset: 0; pointer-events: none; z-index: 7; }
+.cnd-fxi { position: absolute; pointer-events: none; }
+@keyframes cnd-bob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-14px); } }
+@keyframes cnd-wobble { 0%, 100% { transform: rotate(0); } 25% { transform: rotate(-8deg); } 75% { transform: rotate(8deg); } }
+/* upright */
+.cnd-scene.tall .cnd-status { left: 50%; top: 130px; transform: translateX(-50%); width: 620px; height: 60px; }
+.cnd-scene.tall .cnd-dealer { left: -30px; top: 190px; bottom: auto; height: 640px; }
+.cnd-scene.tall .cnd-say { left: 320px; top: 230px; width: 550px; height: 180px; }
+.cnd-scene.tall .cnd-say .cnd-lbl { font-size: 25px; }
+.cnd-scene.tall .cnd-table { left: 200px; top: 660px; }
+.cnd-scene.tall .cnd-bets { left: 0; right: 0; top: 1090px; width: auto; flex-direction: row; justify-content: center; gap: 70px; }
+.cnd-scene.tall .cnd-timer { left: 140px; top: 1420px; }
+.cnd-scene.tall .cnd-result { top: 1360px; width: 800px; margin-left: -400px; height: 160px; }

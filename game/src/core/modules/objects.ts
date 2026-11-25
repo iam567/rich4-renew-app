@@ -82,11 +82,11 @@ export class Objects {
   /** New game: fixed slot types, then the starting objects on random free nodes (01 §2.4). */
   init(): void {
     this.slots = SLOT_TYPES.map(type => ({ type, node: 0, dir: 0, life: 0, owner: 0 }));
-    for (const type of [1, 3, 5, 7, 9, 11, 13, 14]) this.put(type, this.g.randomFreeNode().id);
+    for (const type of [1, 3, 5, 7, 9, 11, 13, 14]) this.put(type, this.g.randomFreeNode(undefined, type).id);
     // 道具禮物箱: the map's extra gift boxes, slots after the 46 (a save keeps them as it keeps the others)
     for (let k = 1; k < this.giftCount(); k++) {
       this.slots.push({ type: OBJ.Gift, node: 0, dir: 0, life: 0, owner: 0 });
-      this.put(OBJ.Gift, this.g.randomFreeNode().id);
+      this.put(OBJ.Gift, this.g.randomFreeNode(undefined, OBJ.Gift).id);
     }
   }
 
@@ -175,7 +175,7 @@ export class Objects {
       const pair = id % 2 ? id + 1 : id - 1, other = this.slots[pair - 1];
       if (!other.node && !other.owner) {
         const near = origin ? this.g.node(origin) : undefined;
-        this.put(other.type, this.g.randomFreeNode(near).id);
+        this.put(other.type, this.g.randomFreeNode(near, other.type).id);
       }
     }
   }
@@ -232,9 +232,10 @@ export class Objects {
 
   /**
    * _rich4_attach_god (06 §5.1-§5.2): an old god leaves first, then the new one attaches for 7 days (Death 13),
-   * adds its luck values and gives its one-off effect.
+   * adds its luck values and gives its one-off effect. `auto` (清明上河's 梁山令): nobody is asked, the slot machine's
+   * lever is pulled by itself as for a computer.
    */
-  *attach(p: Player, id: number): Flow {
+  *attach(p: Player, id: number, auto = false): Flow {
     const o = this.slots[id - 1];
     if (!o || p.id >= this.g.npcBase || !p.whoPlays) return;
     const rules = this.g.rules;
@@ -251,17 +252,17 @@ export class Objects {
     yield { t: 'fx', kind: 'god-attach', p: p.id, data: { type } };
     yield { t: 'board' };
     yield* this.say(p, `${OBJECT_NAMES[type - 1]}附身${rules?.godNote?.(type) ?? ''}`);
-    if (!rules?.godsCasinoOnly) yield* this.attachEffect(p, type);
+    if (!rules?.godsCasinoOnly) yield* this.attachEffect(p, type, auto);
   }
 
   /** One-off effects on attaching (jump table ref_0040ea9b, rich4_gods.asm:540-1194). */
-  private *attachEffect(p: Player, type: number): Flow {
+  private *attachEffect(p: Player, type: number, auto = false): Flow {
     const g = this.g;
     const opponents = () => g.players.filter(q => q.id !== p.id && q.whoPlays !== 0);
     switch (type) {
       case OBJ.SmallWealth: {
         // Animation, slot machine, every opponent pays into your cash, then over 700 your line [8] (gods.asm:555-631).
-        const amount = yield* this.slotMachine(p, type);
+        const amount = yield* this.slotMachine(p, type, auto);
         for (const q of opponents()) {
           if (!q.whoPlays || g.over) continue;
           yield* g.transfer(q.id, p.id, amount, 1, OBJECT_NAMES[0]);
@@ -272,7 +273,7 @@ export class Objects {
       case OBJ.BigWealth: {
         // fcn_0041d3f4(p, amount, 1), then from 5000 × F the gain line fcn_0044f354: [6] from 9000 × F, else
         // [6 + rand() & 1] (gods.asm:640-692, player_say_on_events.asm:152-200).
-        const amount = yield* this.slotMachine(p, type);
+        const amount = yield* this.slotMachine(p, type, auto);
         g.gain(p, amount, 1);
         if (amount >= 5000 * g.priceIndex) {
           const line = amount >= 9000 * g.priceIndex ? 6 : 6 + (g.rng.rand() & 1);
@@ -282,13 +283,14 @@ export class Objects {
       }
       case OBJ.SmallFortune: case OBJ.BigFortune:
         for (let i = type === OBJ.BigFortune ? 2 : 1; i > 0; i--) {
-          const card = yield* g.cards.receiveRandom(p);
+          // (auto: a full hand drops its cheapest card, as a computer's, instead of asking)
+          const card = auto ? this.autoCard(p) : yield* g.cards.receiveRandom(p);
           if (card) yield { t: 'fx', kind: 'card-received', p: p.id, data: { card } };
         }
         break;
       case OBJ.SmallPoor: {
         // You pay every opponent the amount, into their bank (gods.asm:821-889).
-        const amount = yield* this.slotMachine(p, type);
+        const amount = yield* this.slotMachine(p, type, auto);
         for (const q of opponents()) {
           if (!p.whoPlays || g.over) break;
           yield* g.transfer(p.id, q.id, amount, 0, OBJECT_NAMES[4]);
@@ -297,7 +299,7 @@ export class Objects {
       }
       case OBJ.BigPoor: {
         // You pay the amount to the system: the lottery pool (gods.asm:890-942).
-        const amount = yield* this.slotMachine(p, type);
+        const amount = yield* this.slotMachine(p, type, auto);
         yield* g.transfer(p.id, -1, amount, 0, OBJECT_NAMES[5]);
         break;
       }
@@ -315,16 +317,22 @@ export class Objects {
     }
   }
 
+  /** A card drawn as Cards.receiveRandom draws it, into the hand with no question (a full hand drops its cheapest). */
+  private autoCard(p: Player): number {
+    const g = this.g, id = g.cards.drawId(false, g.hellRules() ? c => g.cards.hellHeld(p, c) : undefined);
+    return id && g.cards.receive(p, id) ? id : 0;
+  }
+
   /**
    * The slot machine fcn_00440706(type − 1) (06 §5.7, slot-machine.ts): shown for everybody. A human not on
    * autopilot and not sleepwalking pulls the lever with a tap (the answer is the frame of the pull); anyone else's
    * lever is pulled at frame 39. The amount is not × F.
    */
-  private *slotMachine(p: Player, type: number): Flow<number> {
+  private *slotMachine(p: Player, type: number, auto = false): Flow<number> {
     const g = this.g, big = type === OBJ.BigWealth || type === OBJ.BigPoor;
     // The original asks the current player (_rich4_current_player +21 == 1 and +55 == 0), not the god's holder.
     const cur = g.current < g.npcBase ? g.players[g.current] : undefined;
-    const human = !!cur && g.isHuman(cur) && !cur.sleepwalk;
+    const human = !auto && !!cur && g.isHuman(cur) && !cur.sleepwalk;
     const pull = human ? Number(yield ask({ t: 'slot-machine', p: cur.id, god: type, big })) : SLOT_AUTO_PULL;
     const run = runSlotMachine(() => g.rng.rand(), big, pull > 0 ? pull : SLOT_AUTO_PULL);
     const mult = slotBonus(big ? run.digits : run.digits.slice(1)), amount = run.amount * mult;
@@ -394,13 +402,13 @@ export class Objects {
     for (const id of [OBJ.Gift, OBJ.Chest]) {
       const o = this.slots[id - 1], origin = o.node;
       Object.assign(o, { node: 0, life: 0, owner: 0 });
-      this.put(o.type, this.g.randomFreeNode(origin ? this.g.node(origin) : undefined).id);
+      this.put(o.type, this.g.randomFreeNode(origin ? this.g.node(origin) : undefined, o.type).id);
     }
     // 道具禮物箱: every other gift box on a new square too, the taken ones back
     if (this.giftLevel()) {
       const extra = this.slots.slice(SLOT_TYPES.length).filter(o => o.type === OBJ.Gift);
       for (const o of extra) Object.assign(o, { node: 0, life: 0, owner: 0 });
-      for (let k = 0; k < extra.length; k++) this.put(OBJ.Gift, this.g.randomFreeNode().id);
+      for (let k = 0; k < extra.length; k++) this.put(OBJ.Gift, this.g.randomFreeNode(undefined, OBJ.Gift).id);
     }
     yield { t: 'board' };
   }

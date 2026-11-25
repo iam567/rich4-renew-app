@@ -9,7 +9,7 @@
  *
  * Real time played (最快榜) is counted here, while a game is on screen and the app in front (keepPlayClock).
  */
-import type { Game } from '../core/game';
+import { PACE_NAMES, type Game } from '../core/game';
 import { Recorder, type GameLog } from '../core/replay';
 import { BOARD_NAMES, BOARDS, FIERCE, LEVEL_NAMES, mapKey, notRanked, scores, WOE, type BoardKey, type RankEntry } from '../core/ranks';
 import { ledgerOf, type Ledger } from '../core/stats';
@@ -98,7 +98,7 @@ export function keepPlayClock(g: Game | null) {
 
 export const fmtMoney = (n: number) => (n >= 1e8 ? `${(n / 1e8).toFixed(2)}億` : n >= 1e4 ? `${Math.round(n / 1e4).toLocaleString()}萬` : n.toLocaleString());
 export const fmtTime = (ms: number) => { const s = Math.floor(ms / 1000), h = Math.floor(s / 3600), m = Math.floor(s / 60) % 60; return h ? `${h}小時${String(m).padStart(2, '0')}分` : `${m}分${String(s % 60).padStart(2, '0')}秒`; };
-interface Row { id?: string; name: string; region: string; social: { k: string; v: string } | null; char: number; rich: number; ms: number; days: number; fierce: number; woe: number; at: number; place?: number }
+interface Row { id?: string; map?: string; name: string; region: string; social: { k: string; v: string } | null; char: number; rich: number; ms: number; days: number; fierce: number; woe: number; at: number; place?: number }
 const value = (k: BoardKey, r: Pick<Row, 'rich' | 'ms' | 'days' | 'fierce' | 'woe'>): [string, string] =>
   k === 'rich' ? [fmtMoney(r.rich), `${r.days} 天`] : k === 'fast' ? [fmtTime(r.ms), `${r.days} 天`] : [`${(k === 'fierce' ? r.fierce : r.woe).toLocaleString()} 分`, `${r.days} 天`];
 const date = (t: number) => { const d = new Date(t); return `${d.getMonth() + 1}月${d.getDate()}日`; };
@@ -138,7 +138,8 @@ export async function afterWin(root: HTMLElement, g: Game, winner: number, mapNa
   if (!e) {
     // a game that would rank but for how it was played: say why (the user's rules, 2026-11-16)
     const why = notRanked(g, winner);
-    if (why === 'loaded') await uiAlert('這局讀過存檔，成績不能上排行榜\n（從頭一口氣打完的局才能上榜）');
+    if (why === 'pace') await uiAlert(`${PACE_NAMES[g.pace]}對局不計入排行榜\n（只有原版節奏的對局才能上榜）`);
+    else if (why === 'loaded') await uiAlert('這局讀過存檔，成績不能上排行榜\n（從頭一口氣打完的局才能上榜）');
     else if (!why) await uiAlert('這局開始時沒有連上網路，成績不能上排行榜');
     return;
   }
@@ -218,13 +219,35 @@ function form(root: HTMLElement, p: Pending, hits: BoardKey[], places: Partial<R
 
 // ---------------------------------------------------------------- the boards
 
+const ORDER: Record<BoardKey, (a: Row, b: Row) => number> = {   // tools/party-relay/ranks.mjs order
+  rich: (a, b) => b.rich - a.rich || a.at - b.at,
+  fast: (a, b) => a.ms - b.ms || a.days - b.days || a.at - b.at,
+  fierce: (a, b) => b.fierce - a.fierce || a.at - b.at,
+  woe: (a, b) => b.woe - a.woe || a.at - b.at,
+};
+/** 總榜 put together from each map's board (a server before 總榜): every row marked with its map, each player once, the top 50. */
+async function mergedBoards(q: URLSearchParams, maps: string[], board: BoardKey): Promise<{ rows: Row[]; mine?: Row }> {
+  const base = await libraryBase();
+  const parts = await Promise.all(maps.map(async map => {
+    const u = new URLSearchParams(q); u.set('map', map);
+    try { const j = await (await fetch(`${base}/ranks?${u}`, { cache: 'no-store' })).json() as { rows?: Row[]; mine?: Row }; return { map, rows: j.rows ?? [], mine: j.mine }; } catch { return { map, rows: [] as Row[], mine: undefined }; }
+  }));
+  const who = (r: Row) => `${r.name}|${r.region}|${r.social?.k ?? ''}|${r.social?.v ?? ''}`;
+  const all = parts.flatMap(p => p.rows.filter(r => board !== 'fast' || r.ms).map(r => ({ ...r, map: p.map }))).sort(ORDER[board]);
+  const seen = new Set<string>(), rows: Row[] = [];
+  for (const r of all) { if (seen.has(who(r))) continue; seen.add(who(r)); rows.push(r); if (rows.length >= 50) break; }
+  const best = parts.flatMap(p => (p.mine ? [{ ...p.mine, map: p.map }] : [])).sort(ORDER[board])[0];
+  const at = best ? rows.findIndex(r => who(r) === who(best)) : -1;
+  return { rows, ...(best ? { mine: { ...best, place: at >= 0 ? at + 1 : undefined } } : {}) };
+}
+
 const VIEW = 'rich4.ranks.view';
 /** The boards over `root`: `maps` the game's own maps (開始遊戲's, original then the remake's). */
 export function openRanks(root: HTMLElement, bank: SpriteBank, maps: MapInfo[]): Promise<void> {
   return new Promise(done => {
     const own = maps.filter(m => !m.hidden).sort((a, b) => (a.kind === b.kind ? 0 : a.kind === 'orig' ? -1 : 1));
     const saved = (() => { try { return JSON.parse(store.get(VIEW) ?? '{}'); } catch { return {}; } })();
-    const view = { board: (BOARDS.includes(saved.board) ? saved.board : 'fast') as BoardKey, map: String(saved.map ?? `m${own[0]?.id ?? 0}`), level: Number.isInteger(saved.level) ? saved.level : 3 };
+    const view = { board: (BOARDS.includes(saved.board) ? saved.board : 'fast') as BoardKey, map: String(saved.map ?? 'all'), level: Number.isInteger(saved.level) ? saved.level : 3 };
     const ov = document.createElement('div');
     ov.className = 'slots-overlay rk-ov';
     ov.innerHTML = `<div class="msg sheet rk-sheet"><div class="ribbon">排行榜</div>
@@ -237,18 +260,22 @@ export function openRanks(root: HTMLElement, bank: SpriteBank, maps: MapInfo[]):
     root.append(ov);
     const $ = (s: string) => ov.querySelector<HTMLElement>(s)!;
     const face = (c: number) => bank.art('Data', 2, c)?.src ?? '';
+    const mapName = new Map(own.map(m => [`m${m.id}`, m.name]));
     const item = (r: Row, n: number, me = false) => {
       const [v, sub] = value(view.board, r);
+      // 總榜 (the user 2026-11-17): after the figure, the map it was won on
+      const onMap = view.map === 'all' && r.map && mapName.has(r.map) ? `<span class="rk-onmap">${esc(mapName.get(r.map))}</span>` : '';
       return `<li class="rk-item${me ? ' me' : ''}"><span class="rk-no${n <= 3 ? ` g${n}` : ''}">${n}</span><img class="rk-face" src="${esc(face(r.char))}" alt="">
         <span class="rk-who"><b>${r.region ? `<span class="rk-reg${OVERSEAS.includes(r.region) || r.region === '海外' ? ' o' : ''}">${esc(r.region)}</span>` : ''}${esc(r.name)}</b><small>${me ? '我的最好成績' : r.social ? socialTag(r.social) : date(r.at)}</small></span>
-        <span class="rk-val">${v}<small>${sub}</small></span></li>`;
+        <span class="rk-val">${v}<small>${onMap}${sub}</small></span></li>`;
     };
     let seq = 0;
     const draw = async () => {
       store.set(VIEW, JSON.stringify(view));
       ov.querySelectorAll<HTMLElement>('[data-b]').forEach(b => b.classList.toggle('on', b.dataset.b === view.board));
       ov.querySelectorAll<HTMLElement>('[data-lv]').forEach(b => b.classList.toggle('on', Number(b.dataset.lv) === view.level));
-      const chips = own.map(m => ({ map: `m${m.id}`, name: m.name }));
+      // 總榜 first (every map together), then each map
+      const chips = [{ map: 'all', name: '總榜' }, ...own.map(m => ({ map: `m${m.id}`, name: m.name }))];
       if (!chips.some(c => c.map === view.map)) view.map = chips[0]?.map ?? 'm0';
       $('.rk-maps').innerHTML = chips.map(c => `<button class="chip${c.map === view.map ? ' on' : ''}" data-map="${esc(c.map)}">${esc(c.name)}</button>`).join('');
       ov.querySelector('.rk-maps .on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
@@ -257,7 +284,9 @@ export function openRanks(root: HTMLElement, bank: SpriteBank, maps: MapInfo[]):
       const me = ++seq;
       try {
         const q = new URLSearchParams({ map: view.map, level: String(view.level), board: view.board, dev: deviceId() ?? '' });
-        const j = await (await fetch(`${await libraryBase()}/ranks?${q}`, { cache: 'no-store' })).json() as { rows: Row[]; mine?: Row };
+        let j = await (await fetch(`${await libraryBase()}/ranks?${q}`, { cache: 'no-store' })).json() as { rows: Row[]; mine?: Row; total?: number };
+        // 總榜 from a server that does not know it yet (no `total`): each map's board, put together here
+        if (view.map === 'all' && j.total === undefined) j = await mergedBoards(q, own.map(m => `m${m.id}`), view.board);
         if (me !== seq) return;
         top.innerHTML = j.rows.length ? j.rows.map((r, i) => item(r, i + 1)).join('') : '<li class="rk-none">還沒有人上榜：1 個玩家打 3 個電腦，第一個通關的就是第 1 名！</li>';
         mine.innerHTML = j.mine ? item(j.mine, j.mine.place ?? 0, true) : '';
@@ -273,7 +302,7 @@ export function openRanks(root: HTMLElement, bank: SpriteBank, maps: MapInfo[]):
       if (b.dataset.lv) { view.level = Number(b.dataset.lv); audio.ui('click'); void draw(); return; }
       if (b.dataset.a === 'how') {
         audio.ui('click');
-        void uiAlert(`最富榜：通關時的總資產\n最快榜：通關用的實際時間（遊戲畫面開著的時間），一樣快的比天數\n\n最狠榜（狠分）：讓一個電腦破產 ${FIERCE.broke}、好神附身 ${FIERCE.god}、用整人的卡片 ${FIERCE.card}、用路障地雷飛彈等道具 ${FIERCE.tool}、好事 ${FIERCE.lucky}、每收 1 萬過路費 ${FIERCE.toll}\n\n最慘榜（慘分）：壞神附身 ${WOE.god}、被電腦用卡片或道具整 ${WOE.attacked}、住院坐牢每天 ${WOE.day}、倒楣事 ${WOE.unlucky}、每付 1 萬過路費 ${WOE.toll}\n\n每個人在每張地圖、每個難度只顯示最好的一次。\n\n讀過一次存檔（SL）、用了修改器，或開局時沒有連網（離線玩）的局，都不會計入排行榜。`, '怎麼算分');
+        void uiAlert(`最富榜：通關時的總資產\n最快榜：通關用的實際時間（遊戲畫面開著的時間），一樣快的比天數\n\n最狠榜（狠分）：讓一個電腦破產 ${FIERCE.broke}、好神附身 ${FIERCE.god}、用整人的卡片 ${FIERCE.card}、用路障地雷飛彈等道具 ${FIERCE.tool}、好事 ${FIERCE.lucky}、每收 1 萬過路費 ${FIERCE.toll}\n\n最慘榜（慘分）：壞神附身 ${WOE.god}、被電腦用卡片或道具整 ${WOE.attacked}、住院坐牢每天 ${WOE.day}、倒楣事 ${WOE.unlucky}、每付 1 萬過路費 ${WOE.toll}\n\n總榜：所有地圖一起排名，每一條都標出是在哪張地圖打的。\n\n每個人在每張地圖、每個難度只顯示最好的一次（總榜也是每人一次）。\n\n讀過一次存檔（SL）、用了修改器，或開局時沒有連網（離線玩）的局，都不會計入排行榜。`, '怎麼算分');
         return;
       }
       if (b.dataset.a === 'close') { audio.ui('click'); ov.remove(); done(); }

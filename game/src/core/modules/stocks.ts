@@ -21,6 +21,9 @@ export const LEVERAGE = [2, 3, 5];
  * entry / lev). Losing the whole margin closes it (爆倉).
  */
 export interface Position { id: number; p: number; slot: number; long: boolean; lev: number; shares: number; entry: number; margin: number }
+
+/** The official maps made in the map editor (exported as map files): their own companies link like a player's map's. */
+export const EDITOR_MADE_MAPS = new Set([110, 111]);   // 長安, 清明上河
 import { WheelKind } from './wheel';
 
 const f32 = Math.fround;
@@ -190,7 +193,10 @@ export class Stocks {
     // A remake city names the slots itself (its local firms, 03 §2.4); the numbers are the table's.
     const names = g.board.stockNames;
     // a player's map's own companies (企業大樓) may stand on a stock the table does not flag: theirs too
-    const own = g.board.mapId >= 5000 && ruleOn(g.settings.level, 'maker-companies') ? new Set(g.board.companies.map(c => c.stockSlot)) : new Set<number>();
+    // (and an official map made in the editor, exported as a map file — 長安: its 企業大樓 on stocks the table does not
+    // flag were left unlinked, no shares to subscribe, no fee: the user 2026-11-19 「好多公司的建築停了之後都沒反應」)
+    const own = (g.board.mapId >= 5000 && ruleOn(g.settings.level, 'maker-companies')) || EDITOR_MADE_MAPS.has(g.board.mapId)
+      ? new Set(g.board.companies.map(c => c.stockSlot)) : new Set<number>();
     this.stocks = STOCK_TABLE[group].map((t, i): Stock => ({
       name: names?.[i] || t.name, companyId: t.linked || own.has(i) ? 1 : 0, suspendDays: 0, forced: 0, floatPool: t.float, turnQuota: 0,
       basePrice: f32(t.price), prevClose: f32(t.price), price: f32(t.price), volatility: f32(t.vol),
@@ -211,6 +217,13 @@ export class Stocks {
       if (!s.companyId) return;
       g.board.companies.forEach((c, j) => { if (c.stockSlot === slot) s.companyId = j + 1; });
     });
+    // an editor-made official map's new companies (長安's 西域駝隊, 長安車坊, 將作監: stocks the table floats whole) keep
+    // half their shares to subscribe, as the template companies do — a stop on them asks 是否認購股份
+    if (EDITOR_MADE_MAPS.has(g.board.mapId)) for (const c of g.board.companies) {
+      const t = STOCK_TABLE[group][c.stockSlot];
+      if (t && !t.linked && c.stockSlot < 12) this.stocks[c.stockSlot].floatPool = Math.min(this.stocks[c.stockSlot].floatPool, 5000);
+    }
+    if (EDITOR_MADE_MAPS.has(g.board.mapId)) this.ownShares = true;
     for (const c of g.board.companies) c.freeShares = c.stockSlot < 12 ? 10000 - this.stocks[c.stockSlot].floatPool : 0;
     this.ranks = g.board.companies.map(c => [c.controller, 0, 0, 0]);
     this.refreshQuotas();
@@ -368,9 +381,47 @@ export class Stocks {
 
   /** fcn_0042915a: quota = float when ≤ 1000, else 10%..29.99% of it. */
   refreshQuotas(): void {
-    for (const s of this.stocks) {
-      s.turnQuota = s.floatPool <= 1000 ? s.floatPool : Math.trunc((s.floatPool * (1000 + this.g.rng.rand() % 2000)) / 10000);
+    for (const [i, s] of this.stocks.entries()) {
+      const pool = this.onMarket(i);
+      s.turnQuota = pool <= 1000 ? pool : Math.trunc((pool * (1000 + this.g.rng.rand() % 2000)) / 10000);
     }
+    if (this.openShares()) this.openQuotas = true;
+  }
+  /** The editor-made map's own companies have their stocks and their 保留股份 (in the save; none in an older one). */
+  declare ownShares?: boolean;
+  /**
+   * An editor-made official map's companies in a save from before they were linked (長安 2026-11-19, 清明上河 2026-11-25):
+   * each its stock, up to half the shares of those the table floats whole taken out of what is still on the market as
+   * its 保留股份 — whoever has bought some already (the user 2026-11-25: 「為啥我停在官窯這裡沒提示我是否認購」) — and the
+   * biggest holder its 董事長. Once (`ownShares`).
+   */
+  relink(saved: { ownShares?: boolean } | undefined): void {
+    const g = this.g;
+    if (!EDITOR_MADE_MAPS.has(g.board.mapId) || saved?.ownShares) return;
+    const table = STOCK_TABLE[stockGroup(g.board)];
+    g.board.companies.forEach((c, j) => {
+      const st = this.stocks[c.stockSlot];
+      if (!st || c.stockSlot >= 12) return;
+      st.companyId ||= j + 1;
+      if (table?.[c.stockSlot]?.linked) return;
+      if (c.freeShares <= 0) { const n = Math.min(5000, st.floatPool); st.floatPool -= n; c.freeShares = n; }
+      for (const p of g.players) if (p.whoPlays && this.holdings[p.id]?.[c.stockSlot]?.shares > 0) this.rerank(p.id, c.stockSlot);
+    });
+    this.ownShares = true;
+  }
+  /** The turn's volumes were counted with the 保留股份 (in the save; no field of its own until then: a save takes no undefined). */
+  declare openQuotas?: boolean;
+  /**
+   * A save from before open-shares has this turn's volumes without the 保留股份 — none at all for a stock whose shares are
+   * all the company's (the user 2026-11-25, loading one: 「為啥股票還是買不了」): a fifth of them is added at once.
+   */
+  afterLoad(saved: { openQuotas?: boolean } | undefined): void {
+    if (saved?.openQuotas || !this.openShares()) return;
+    for (const [i, s] of this.stocks.entries()) {
+      const own = this.onMarket(i) - s.floatPool;
+      if (own > 0) s.turnQuota += own <= 1000 ? own : Math.trunc(own / 5);
+    }
+    this.openQuotas = true;
   }
 
   /** Daily settlement part (01 §4.2 steps 7, 8 and 10): rest counter, temporary counters, price update. */
@@ -469,11 +520,19 @@ export class Stocks {
 
   // ---------------------------------------------------------------- trading primitives
 
+  /** A company's 保留股份 can be bought on the market as well (the user 2026-11-25, compat 'open-shares'). */
+  private openShares(): boolean { return ruleOn(this.g.settings.level, 'open-shares'); }
+  /** What the market holds of a stock: the floating shares and, with open-shares, the company's own. */
+  onMarket(slot: number): number { return this.stocks[slot].floatPool + (this.openShares() ? Math.max(0, this.companyOf(slot)?.freeShares ?? 0) : 0); }
+
   /** _rich4_buy_stock market mode (03 §5.2): from the bank deposit, within the turn quota. */
   buyMarket(p: Player, slot: number, n: number): boolean {
     const s = this.stocks[slot];
     const cost = Math.trunc(n * s.price);
     s.turnQuota -= n; s.floatPool -= n;
+    // (the floating ones first, then the company's own — open-shares)
+    const c = s.floatPool < 0 && this.openShares() ? this.companyOf(slot) : undefined;
+    if (c) { c.freeShares += s.floatPool; s.floatPool = 0; }
     p.bank -= cost;
     return this.addShares(p.id, slot, n, cost);
   }
@@ -905,10 +964,10 @@ export class Stocks {
 
   /** Stopping on a company tile: controller services, fees, then the share subscription offer (02 §5, 03 §5.5). */
   *landOnCompany(p: Player, c: Company): Flow {
-    const g = this.g;
-    if (c.controller === p.id + 1) yield* this.controllerService(p, c);
+    const g = this.g, at = p.node;
+    if (c.controller === p.id + 1) { const ship = g.rules?.companyShip?.(g, p, c); if (ship) yield* ship.boss(); else yield* this.controllerService(p, c); }
     else if (c.controller) yield* this.companyFee(p, c);
-    if (g.over || !p.whoPlays) return;
+    if (g.over || !p.whoPlays || p.node !== at) return;   // (shipped off: no shares from there)
     yield* this.subscribe(p, c);
   }
 
@@ -936,9 +995,11 @@ export class Stocks {
   /** Someone else's company (02 §5): fee by category into the company funds, through the payment chain. */
   private *companyFee(p: Player, c: Company): Flow {
     const g = this.g, PI = g.priceIndex;
+    if (g.rules?.companyFeeOff?.(g, c)) return;
     const idx = g.board.companies.indexOf(c) + 1;
     const boss = g.name(c.controller - 1);
-    const fee = FEE_NAME[c.category] ?? '過路費';
+    const ship = g.rules?.companyShip?.(g, p, c);
+    const fee = ship?.fee ?? g.rules?.companyFeeName?.(c) ?? FEE_NAME[c.category] ?? '過路費';
     const price = c.baseFee;
     let amount = 0, travel = 0;
     switch (c.category) {
@@ -958,7 +1019,8 @@ export class Stocks {
         break;
       }
       case 5: case 6: {
-        const v = p.traffic & 3;
+        // (the shipper: on foot as on a motorbike, as at a 漕運處)
+        const v = ship ? Math.min(2, Math.max(1, p.traffic & 3)) : p.traffic & 3;
         amount = v ? price * (1 << (v - 1)) * g.diceTotal * PI : 0;
         break;
       }
@@ -981,6 +1043,7 @@ export class Stocks {
       if (paid) yield* g.transfer(paid.payer, 100 + idx, paid.amount, 0, fee);
     }
     if (travel && p.whoPlays && !g.over) yield* g.vanish(p, travel, false);
+    if (ship && p.whoPlays && !g.over) yield* ship.go();
   }
 
   /** The core's payment chain for company fees (02 §5): payer's god, passive cards, then Death/chest paying instead. */

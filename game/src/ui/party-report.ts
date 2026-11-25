@@ -6,7 +6,7 @@
  */
 import { Capacitor } from '@capacitor/core';
 import { relays } from './net-peer';
-import { deviceId, partyPlace, setPresenceApp } from './party-presence';
+import { deviceId, partyPlace, setPresenceApp, setPresenceRoom } from './party-presence';
 import { PARTY_VERSION } from './party-net';
 import { setHelloApp } from './relay-peer';
 
@@ -42,19 +42,22 @@ export async function reportParty(kind: ReportKind, msg: string, extra: { detail
 }
 
 /** The game this phone has a seat in: how far it got comes from main.ts, its way to the room from the room. */
-let playing: { gid: string; via: () => string } | null = null;
+let playing: { gid: string; via: () => string; title?: string } | null = null;
 export const gameAt = { days: 0 };
+// a 私服's 管理頁: the room, the day and the map with this phone's presence (party-presence.ts, on a 私服 only)
+setPresenceRoom(() => ({ room: reportCtx.room, day: playing ? gameAt.days + 1 : 0, map: playing?.title }));
 let watchingExit = false;
 
 const gameEvent = (stage: string, gid: string, extra: Record<string, unknown>) =>
   reportParty('game', stage, { detail: JSON.stringify({ gid, days: gameAt.days, ...extra }) });
 
-/** A game begins on this phone (the phones of one game share `gid`): the admin page counts how many get finished. */
-export function gameStart(gid: string, via: () => string, info: { map: number; humans: number; total: number }) {
+/** A game begins on this phone (the phones of one game share `gid`): counted, with how many get finished. */
+export function gameStart(gid: string, via: () => string, info: { map: number; humans: number; total: number; title?: string }) {
   if (playing?.gid === gid) return;
-  playing = { gid, via };
+  playing = { gid, via, title: info.title };
   gameAt.days = 0;
-  void gameEvent('start', gid, { ...info, via: via() });
+  const { title: _t, ...rest } = info; void _t;
+  void gameEvent('start', gid, { ...rest, via: via() });
   if (watchingExit || typeof window === 'undefined') return;
   watchingExit = true;
   window.addEventListener('pagehide', () => gameEnd('quit', 'closed'));
@@ -97,7 +100,7 @@ export function watchErrors() {
   watching = true;
   window.addEventListener('error', e => {
     // The browser's own note that a layout fitting itself (fitToScreen, shrinkText) took one more frame: harmless, never
-    // reported (2026-11-04: it was nearly every 「程序錯誤」 on the admin page).
+    // reported (2026-11-04: it was nearly every 「程序錯誤」).
     if (/ResizeObserver loop/.test(String(e.message))) return;
     if (partyPlace()) void reportParty('error', String(e.message || 'error'), { detail: `${e.filename ?? ''}:${e.lineno ?? ''}:${e.colno ?? ''}\n${(e.error as Error | undefined)?.stack ?? ''}` });
   });

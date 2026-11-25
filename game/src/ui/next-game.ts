@@ -13,8 +13,8 @@ import type { GameSettings } from '../core/types';
 /** What the run of games so far has done (memory only, like the original's tables): maps cleared, characters beaten. */
 export interface RunRecord { cleared: number[]; defeated: number[] }
 
-/** The settings that carry over to the next game (01 §2.1: the new-game screen's six options; the remake's 電腦難度). */
-export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex' | 'aiLevel' | 'monthTasks' | 'realtime'>;
+/** The settings that carry over to the next game (01 §2.1: the new-game screen's six options; the remake's 電腦難度 and 遊戲節奏). */
+export type CarriedSettings = Pick<GameSettings, 'fundIndex' | 'traffic' | 'landLimitIndex' | 'daysLimitIndex' | 'victoryIndex' | 'aiLevel' | 'monthTasks' | 'realtime' | 'pace'>;
 
 export const OPPONENTS = 3;
 
@@ -54,5 +54,7 @@ export function nextSettings(carried: CarriedSettings, mapId: number, humans: nu
     // 挑戰模式 goes on into the next game (issue #68; never on 大富翁城), 即時制 too (on a standard map)
     ...(carried.monthTasks && mapId !== 105 && !carried.realtime ? { monthTasks: carried.monthTasks } : {}),
     ...(carried.realtime && rtMapOk(mapId) ? { realtime: carried.realtime } : {}),
+    // 遊戲節奏 (docs/rules/36): 慢 / 快 go on too; 原版 is none, as before
+    ...(carried.pace === 0 || carried.pace === 2 ? { pace: carried.pace } : {}),
   };
 }

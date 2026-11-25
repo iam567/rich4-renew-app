@@ -1,0 +1,9 @@
+/* 清明上河's 黃泥岡 slot (qm-slot.ts): the gods' machine (slot-machine.css) with five narrower reels in its window. */
+.qms-window { position: absolute; z-index: 1; border-radius: 4px; background: #141414; }
+.sm-reel.qms-reel { z-index: 2; }
+.qms-reel .sm-strip b { height: 36px; line-height: 36px; font-size: 25px; }
+.qms-reel.spin .sm-strip { animation: qms-spin .32s linear infinite; filter: blur(1.4px); }
+@keyframes qms-spin { from { transform: translateY(0); } to { transform: translateY(-360px); } }
+.qms-reel.land .sm-strip b { animation: sm-land .28s cubic-bezier(.3, 1.8, .5, 1); }
+.qms-scene .sm-msg .sm-text { gap: 0; }
+.qms-sub { font-size: 13px; color: #cfe0ff; }

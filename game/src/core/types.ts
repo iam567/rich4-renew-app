@@ -52,6 +52,8 @@ export interface GameSettings {
   monthTasks?: 0 | 1 | 2 | 3;
   /** 自建地圖's own rules (the map's maker switches them on, ui/maker/rules.ts; none: the game's as ever). */
   mapRules?: MapSwitches;
+  /** An official map in the editor's format with rules of its own (core/game.ts RULE_SETS): 'changan' (長安, core/changan.ts). */
+  ruleSet?: string;
   /**
    * 自建地圖's 試玩 (the user 2026-11-12): played to try a map out — no saving; the first bankruptcy lets the map be
    * published (ui/main.ts). The rules play as in any game.
@@ -63,6 +65,12 @@ export interface GameSettings {
    * gave 「讀取存檔失敗：Load failed」). Not on 試玩 (never saved) nor 派對模式 (libMap).
    */
   myMap?: { name: string } & Record<string, unknown>;
+  /**
+   * 遊戲節奏 (the user 2026-11-23, docs/rules/36; Game.pace, core/game.ts PACE): 0 慢節奏 (the 物價指數 by the fund × 2,
+   * 資產清算 before bankruptcy), 1 原版, 2 快節奏 (the 物價指數 by the fund × 0.5, the lots' prices and building costs × 1.2).
+   * None / 1: the original's, as every game and save before it. Not 挑戰模式 nor 大富豪模式.
+   */
+  pace?: 0 | 1 | 2;
   /** 派對模式 on a map from the 地圖庫 (ui/maker/party-lib.ts): its library id; every phone builds it before the game. */
   libMap?: string;
   /** (this phone has built it: party.ts, never sent) */
@@ -97,6 +105,10 @@ export const FUNDS = [300000, 200000, 100000, 50000, 30000, 10000];
 export const DAY_LIMITS = [0, 730, 365, 182, 91, 30];
 export const VICTORY_MULTIPLES = [0, 100, 50, 10, 5, 3];
 /** 土地權限 in months (0 = unlimited): 無限期/二年/一年/六個月/三個月/一個月. */
+/** 遊戲節奏 (GameSettings.pace, core/game.ts PACE). */
+export const PACE_NAMES = ['慢節奏', '原版', '快節奏'] as const;
+/** 遊戲節奏's one-line hint (the new-game screen, the 派對 room). */
+export const PACE_HINTS = ['物價漲得慢・過路費六折・周轉不靈可清算資產', '', '物價漲得快・房價地價×1.2'] as const;
 export const LAND_LIMIT_MONTHS = [0, 24, 12, 6, 3, 1];
 
 /** Player state (docs/rules/07 §2 player structure). */

@@ -1,9 +1,15 @@
 /* 排行榜 (ui/ranks.ts): the title's button under 圖鑑, the boards, the 新紀錄 form. */
-.title-ranks { position: absolute; right: 12px; top: calc(14px + clamp(64px, 11vmin, 104px) * 1.18); z-index: 3; display: grid; justify-items: center; padding: 0; background: none; border: 0;
-  width: clamp(64px, 11vmin, 104px); cursor: pointer; }
+.title-ranks { position: absolute; right: 12px; top: calc(20px + clamp(52px, 8.5vmin, 80px) * 1.38); z-index: 3; display: grid; justify-items: center; padding: 0; background: none; border: 0;
+  width: clamp(52px, 8.5vmin, 80px); cursor: pointer; }
 .title-ranks img.tr-icon { width: 100%; height: auto; filter: drop-shadow(0 4px 6px rgba(0, 20, 60, .45)); transition: transform .15s; }
 .title-ranks:hover img.tr-icon, .title-ranks:active img.tr-icon { transform: scale(1.08) rotate(3deg); }
-.title-ranks img.tr-label { margin-top: -12%; width: 82%; height: auto; }
+.title-ranks img.tr-label { margin-top: 3px; width: 82%; height: auto; }
+/* 回到桌面 (the PC / Mac app only, ui/main.ts; tools/tycoon-art/quit_icon.py): the same kind of button under 排行榜 */
+.title-quit { position: absolute; right: 12px; top: calc(32px + clamp(52px, 8.5vmin, 80px) * 2.70); z-index: 3; display: grid; justify-items: center; padding: 0; background: none; border: 0;
+  width: clamp(52px, 8.5vmin, 80px); cursor: pointer; }
+.title-quit img.tq-icon { width: 100%; height: auto; filter: drop-shadow(0 4px 6px rgba(0, 20, 60, .45)); transition: transform .15s; }
+.title-quit:hover img.tq-icon, .title-quit:active img.tq-icon { transform: scale(1.08) rotate(-3deg); }
+.title-quit img.tq-label { margin-top: 3px; width: 96%; height: auto; }
 
 .msg.sheet.rk-sheet { width: min(620px, 96vw); max-width: 96vw; max-height: 94vh; display: flex; flex-direction: column; gap: 8px; padding-top: 30px; }
 .rk-sheet .rk-l, .rk-sheet .rk-r { display: contents; }
@@ -41,6 +47,7 @@
 .rk-who small:has(.rk-acc) { white-space: normal; align-items: flex-start; }
 .rk-reg { display: inline-block; font-size: 11px; font-weight: 800; padding: 1px 6px; margin-right: 5px; border-radius: 6px; background: #e8463c; color: #fff; vertical-align: 2px; }
 .rk-reg.o { background: #2fa36b; }
+.rk-onmap { display: inline-block; font-size: 10.5px; font-weight: 800; padding: 0 5px; margin-right: 4px; border-radius: 5px; background: #3b6fd8; color: #fff; white-space: nowrap; }
 .rk-snsrow select.rk-region { flex: 1; width: auto; } .rk-snsrow select.rk-country { flex: 1; width: auto; }
 .rk-snsrow select[hidden] { display: none; }
 .rk-sns { flex: none; font-size: 10px; font-weight: 800; padding: 0 5px; border-radius: 4px; background: var(--c); color: #fff; border: 1px solid rgba(255, 255, 255, .5); }

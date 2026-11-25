@@ -15,6 +15,8 @@ import type { Ask, Player } from '../../core/types';
 import { askScreens, type ScreenContext } from './registry';
 import { audio, Sfx, Theme, voiceOf } from '../audio';
 import { centreWords } from '../bubble-text';
+import { CHANGAN_MAP } from '../../core/changan';
+import { QINGMING_MAP } from '../../core/qingming';
 import './bank.css';
 
 type BankAsk = Extract<Ask, { t: 'bank' }>;
@@ -476,6 +478,10 @@ function counterScreen(ctx: ScreenContext, a: BankAsk): Promise<unknown> {
     Object.assign(exit.style, hd ? { left: '481px', top: '406px', width: '142px', height: '62px' } : { left: '548px', top: '431px', width: '81px', height: '41px' });
     const ex1 = art(ctx, 'Panel', 23, 19, 0, 0, 'h', exit);
     if (ex1) Object.assign(ex1.style, { left: '0', top: '0', width: '100%', height: '100%' });
+    // 長安's 櫃坊 hall is its own picture with no EXIT painted on it (the user 2026-11-20: 「退出按鈕好像被隱藏了」):
+    // a lacquer plaque in the same place.
+    // (清明上河's 交子務 hall too)
+    if (ctx.game.settings.mapId === CHANGAN_MAP || ctx.game.settings.mapId === QINGMING_MAP) { exit.classList.add('cn'); exit.append(el('span', 'bk-exit-cn', '離　開')); }
     hall.append(exit);
     // The clerk's heart-shaped speech box (frame 21 at (240,80); the original centres the text on (357,151), here
     // on the heart's body, left of its tail: bubble-text.ts).

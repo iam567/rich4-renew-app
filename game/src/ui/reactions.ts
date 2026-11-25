@@ -70,7 +70,7 @@ export function stuckLament(what: string, coin: boolean): number | null {
 export const isWaivedNotice = (text: string) => /免收.+！$/.test(text);
 
 /** Fees paid to another player that make both speak like a toll (tolls core:908-966, facilities core:1533-1549; 消費 and 遊樂場費用: 歌舞伎町's shops). */
-export const OWNER_FEES = new Set(['過路費', '住宿費', '購物費', '加油費', '消費', '遊樂場費用']);
+export const OWNER_FEES = new Set(['過路費', '住宿費', '購物費', '加油費', '漕運費', '消費', '遊樂場費用']);
 
 /**
  * Who speaks after a payment: 'toll' = the payer (event[18] at the most hated owner for big sums, else

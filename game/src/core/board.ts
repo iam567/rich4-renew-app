@@ -111,6 +111,11 @@ export interface Board {
   stockGroup?: number;
   /** A map on stacked levels (重慶, docs/rules/33, core/chongqing.ts): absent on every other map. */
   levels?: BoardLevels;
+  /**
+   * The map's own squares by square id (長安: 'exam' 貢院, 'cock' 鬥雞場, 'post-w' / 'post-c' / 'post-e' 驛站, 'exile'
+   * 發配所 — core/changan.ts), from an editor-made map's `specials`.
+   */
+  specials?: Record<number, string>;
 }
 
 /**
@@ -151,6 +156,8 @@ export interface RawMap {
   stock_group?: number;
   /** A stacked map's levels (重慶). */
   levels?: BoardLevels;
+  /** The map's own squares by square id (Board.specials). */
+  specials?: Record<string, string>;
 }
 
 class Bytes {
@@ -216,6 +223,7 @@ export function parseBoard(raw: RawMap): Board {
   const board: Board = { name: raw.name, mapId: raw.map_id, size: raw.width ?? 2304, nodes, lands, facilities, companies, landscapes };
   if (raw.stock_names?.length === 12) board.stockNames = [...raw.stock_names];
   if (raw.stock_group != null) board.stockGroup = (((raw.stock_group | 0) % 8) + 8) % 8;
+  if (raw.specials) board.specials = Object.fromEntries(Object.entries(raw.specials).map(([k, v]) => [Number(k), v]));
   if (raw.levels) {
     const l = raw.levels;
     board.levels = { node: [...l.node], lands: [...l.lands], facilities: [...l.facilities], companies: [...l.companies],

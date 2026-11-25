@@ -1,0 +1,36 @@
+/* 清明上河's screens' painted parts (rich4-redraw-company/qingming/screens/ui → maps/remake/qingming/ui; the user
+   2026-11-20: redrawn buttons and dialog boxes and a nicer font for this map): the lacquer buttons (gold rim red /
+   black), the paper scroll dialog, the small red tag and the dragon title board — each shown at its own aspect, never
+   stretched out of shape; the bundled 文楷 brush font. Inside a scaled stage (fitOverlay), sizes in stage px. */
+.qm-scene { position: absolute; left: 50%; top: 50%; overflow: hidden; user-select: none; -webkit-user-select: none; color: #fff;
+  font-family: 'LXGW WenKai TC', 'Huninn', 'PingFang TC', serif;
+  -webkit-tap-highlight-color: transparent; }
+.qm-scene button { font-family: inherit; }
+.fx-scene.qm-scene img { position: static; }
+/* the buttons: 545 × 149 pictures */
+.qm-scene button.qm-btn { position: relative; display: inline-flex; flex-direction: column; align-items: center; justify-content: center; box-sizing: border-box;
+  width: 360px; height: 98px; padding: 0 56px 4px; border: 0; cursor: pointer; white-space: nowrap; background: center / 100% 100% no-repeat;
+  font-size: 36px; line-height: 1.05; color: #ffeab0; text-shadow: 0 2px 0 #4a0806, 0 0 6px rgba(0, 0, 0, .55); transition: transform .12s, filter .12s;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .45)); }
+.qm-scene button.qm-btn small { font-size: 22px; color: #fff6d8; opacity: .92; margin-top: 2px; }
+.qm-scene button.qm-btn.gold { background-image: var(--qm-btn-gold); }
+.qm-scene button.qm-btn.ink { background-image: var(--qm-btn-ink); color: #f3e2b8; text-shadow: 0 2px 0 #000; }
+.qm-scene button.qm-btn:not(:disabled):hover { filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .45)) brightness(1.12); }
+.qm-scene button.qm-btn:not(:disabled):active { transform: translateY(3px) scale(.98); }
+.qm-scene button.qm-btn:disabled { filter: grayscale(.85) brightness(.7); cursor: default; }
+/* the scroll dialog: 1200 × 282 (the paper inside 4 %..96 % × 18 %..83 %) */
+.qm-dialog { position: absolute; box-sizing: border-box; aspect-ratio: 1200 / 282; background: var(--qm-dialog) center / 100% 100% no-repeat;
+  filter: drop-shadow(0 10px 14px rgba(0, 0, 0, .5)); }
+.qm-dialog .qm-say { position: absolute; left: 6.5%; right: 6.5%; top: 18%; bottom: 16%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+  text-align: center; color: #4a2a12; font-size: 40px; line-height: 1.35; overflow: hidden; }
+.qm-dialog .qm-say b { color: #a8160e; font-weight: normal; }
+.qm-dialog .qm-say small { font-size: .72em; color: #7a5532; }
+/* the little red tag (347 × 101) and the dragon board (1473 × 197) */
+.qm-tag { position: absolute; box-sizing: border-box; aspect-ratio: 347 / 101; display: flex; align-items: center; justify-content: center; padding: 0 16% 2px;
+  background: var(--qm-tag) center / 100% 100% no-repeat; color: #ffe6a6; font-size: 30px; white-space: nowrap; text-shadow: 0 2px 0 #3e0804;
+  filter: drop-shadow(0 4px 4px rgba(0, 0, 0, .45)); }
+.qm-title { position: absolute; box-sizing: border-box; aspect-ratio: 1473 / 197; display: flex; align-items: center; justify-content: center; padding: 0 14% 3px;
+  background: var(--qm-title) center / 100% 100% no-repeat; color: #ffe39a; font-size: 50px; letter-spacing: .3em; text-indent: .3em; white-space: nowrap;
+  text-shadow: 0 3px 0 #3e0804, 0 0 10px rgba(0, 0, 0, .5); filter: drop-shadow(0 6px 8px rgba(0, 0, 0, .5)); }
+@keyframes qm-pop { from { transform: scale(.3); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+@keyframes qm-fade { from { opacity: 0; } to { opacity: 1; } }

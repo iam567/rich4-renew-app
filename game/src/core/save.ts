@@ -7,7 +7,7 @@
  */
 import type { Board } from './board';
 import { Game } from './game';
-import { STOCK_TABLE, stockGroup } from './modules/stocks';
+import { EDITOR_MADE_MAPS, STOCK_TABLE, stockGroup } from './modules/stocks';
 import { daySeed } from './rng';
 import type { GameSettings, Player } from './types';
 import type { FinaleState } from './finale';
@@ -94,6 +94,30 @@ export function adoptMapNames(g: Game, map: Board): void {
 }
 
 /**
+ * The map's own squares and scenery as the map is now (長安's 貢院 / 驛站 / 鬥雞場 / 發配所, Board.specials; the landscapes): a save keeps the whole
+ * board, so a game saved before they were wired had none (the user 2026-11-19: 「讀原來的存檔，貢院還是進不去」). Only
+ * when the squares are the same; they are layout, not the game's state. And 長安's own companies linked to their
+ * stocks (EDITOR_MADE_MAPS, stocks.ts init) when the save never had them: half their shares to subscribe.
+ */
+export function adoptMapSquares(g: Game, map: Board): void {
+  const b = g.board;
+  if (map.mapId !== b.mapId || map.nodes.length !== b.nodes.length) return;
+  if (map.specials) b.specials = { ...map.specials }; else delete b.specials;
+  // the scenery too (landscapes: walls, gates, landmarks — layout, not state): a game saved before 清明上河's city wall
+  // showed none (the user 2026-11-24: 「城牆沒顯示出來」)
+  b.landscapes = map.landscapes.map(l => ({ ...l }));
+  // and what each square is (its event: a 點券 square made a 梁山令 one, 2026-11-24) — layout too; same squares, same ids
+  if (map.nodes.every((n, i) => n.id === b.nodes[i].id)) b.nodes.forEach((n, i) => { n.event = map.nodes[i].event; });
+  if (!EDITOR_MADE_MAPS.has(b.mapId)) return;
+  // (their links to the stocks: stocks.ts relink)
+  b.companies.forEach((c, j) => {
+    // (what the company is: 清明上河's 東京車坊 takes the petrol station's fee since 2026-11-25)
+    const now = map.companies[j];
+    if (now && now.stockSlot === c.stockSlot) { c.category = now.category; c.baseFee = now.baseFee; }
+  });
+}
+
+/**
  * Rebuilds a game from a save; `run()` then continues with the saved actor's turn. With `map` (the map as loaded now)
  * the stock and company names are the map's (adoptMapNames).
  */
@@ -113,7 +137,8 @@ export function loadGame(s: SaveData, map?: Board): Game {
   for (const name of MODULES) Object.assign(g[name] as unknown as object, plain(s.modules[name] ?? {}));
   repairCardPool(g);
   g.forks.afterLoad(s.modules.forks);
-  if (map) adoptMapNames(g, map);
+  if (map) { adoptMapNames(g, map); adoptMapSquares(g, map); g.stocks.relink(s.modules.stocks as { ownShares?: boolean } | undefined); }
+  g.stocks.afterLoad(s.modules.stocks as { openQuotas?: boolean } | undefined);
   if (s.stats) attachLedger(g.players, Ledger.load(s.stats, g.players.length));
   if (s.mapRules !== undefined) g.rules?.loadState?.(plain(s.mapRules));
   if (s.challenge) g.challengeTracker?.load(plain(s.challenge));
@@ -140,6 +165,8 @@ export interface WorldSaveData {
     lastTrip?: number[]; lastFrom?: number[]; wantedFrom?: number[][]; overlords?: number[];
     /** The cities share one card pool (17 §3.10); older saves kept one per city. */
     sharedPool?: boolean;
+    /** The pool's copies × 3 (2026-11-20); a save without it has the × 5 pool, cut down on loading. */
+    pool3?: boolean;
     /** 大富翁城, the finale (docs/rules/19): set once it has started (the sixth city is in `cities` then). */
     finale?: FinaleState;
   };
@@ -182,7 +209,7 @@ export function saveWorld(w: World): WorldSaveData {
     world: {
       date: w.date, daysElapsed: w.daysElapsed, monthsElapsed: w.monthsElapsed, priceIndex: w.priceIndex,
       current: w.current, rng: w.rng.seed, ...(w.rngSalt ? { rngSalt: w.rngSalt } : {}), landed: [...w.landed], log: plain(w.log), fallen: plain(w.fallen),
-      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords], sharedPool: true,
+      history: plain(w.history), visited: plain(w.visited), lastTrip: [...w.lastTrip], lastFrom: [...w.lastFrom], wantedFrom: plain(w.wantedFrom), overlords: [...w.overlords], sharedPool: true, pool3: true,
       ...(w.finale.active || w.finale.city >= 0 ? { finale: w.finale.save() } : {}),
     },
     ...(ledgerOf(w.players) ? { stats: ledgerOf(w.players)!.save() } : {}),
@@ -215,6 +242,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
     repairCardPool(g);
     g.forks.afterLoad(c.modules.forks);
     if (maps?.[i]) adoptMapNames(g, maps[i]);
+    g.stocks.afterLoad(c.modules.stocks as { openQuotas?: boolean } | undefined);
     if (c.challenge) g.challengeTracker?.load(plain(c.challenge));
   });
   const x = s.world;
@@ -229,7 +257,7 @@ export function loadWorld(s: WorldSaveData, maps?: Board[]): World {
   w.finale.restore(x.finale);
   // One nationwide card pool (17 §3.10): the cities' saved copies are the same array again (an older save's own pools
   // are added up); each city's 通緝卡 follows wantedFrom.
-  w.sharePool(x.sharedPool ? 'saved' : 'merge');
+  w.sharePool(x.sharedPool ? 'saved' : 'merge', !x.pool3);
   w.syncWanted();
   w.resumeAtTurn = true;
   w.mask(w.view());

@@ -195,7 +195,7 @@ export class InfoScreen {
       for (const f of board.facilities) {
         if (f.owner !== me) continue;
         rows.push({
-          name: f.name, stage: f.level ? `${(this.game.settings.mapId === CQ_MAP ? CQ_FAC_NAMES[f.type] : undefined) ?? FACILITY_TYPES[f.type]}${f.level > 1 ? ` ${f.level}級` : ''}` : '空　地',
+          name: f.name, stage: f.level ? `${(this.game.settings.mapId === CQ_MAP ? CQ_FAC_NAMES[f.type] : this.game.rules?.facilityNames?.[f.type]) ?? FACILITY_TYPES[f.type]}${f.level > 1 ? ` ${f.level}級` : ''}` : '空　地',
           price: f.price * F, fee: (f.fees[f.level] ?? 0) * F, lease: lease(f.expire), facility: true,
         });
       }

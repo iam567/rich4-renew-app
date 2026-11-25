@@ -220,6 +220,14 @@ async function drawScreen(ctx: ScreenContext, fx: Fx): Promise<void> {
       let host = s.art('Panel', 15, 1, 472, 66, 'ld-host pl-bob', view);
       // `累積獎金` 20 px 0x4f35b1 at (77,193) and the pool in red at (77,228), on the girl's board.
       const poolBox = s.box('ld-pool', 23, 176, 116, 70, `<span>累積獎金</span><b>$${money(pool)}</b>`, view);
+      // A redrawn girl whose board is elsewhere (長安, the user 2026-11-20: 「獎金都串位置了」): the words on her board.
+      const onBoard = (frame: number, x: number, y: number) => {
+        const a = ctx.bank.art('Panel', 15, frame), sp = a?.spot;
+        if (!a || !sp) return false;
+        Object.assign(poolBox.style, { left: `${x - a.ax + sp[0]}px`, top: `${y - a.ay + sp[1]}px`, width: `${sp[2]}px`, height: `${sp[3]}px` });
+        return true;
+      };
+      onBoard(3, 7, 66);
       // It is the monthly draw: say so, with the date, on the pedestal above the result window.
       s.box('ld-date pl-pop', 226, 342, 188, 24, `${month(g.date)}月${day(g.date)}日・每月15日開獎`, view);
       // Speech box #15.22 at (300,47); the original centres the text at (383,117), here on the heart's body.
@@ -271,7 +279,7 @@ async function drawScreen(ctx: ScreenContext, fx: Fx): Promise<void> {
         girl = s.art('Panel', 15, 6, 0, 0, 'ld-girl pl-pop', view);
         host = s.art('Panel', 15, 5, 505, 66, 'ld-host pl-bob', view);
         // The pool goes up with the raised board: (91,19) / (91,56).
-        Object.assign(poolBox.style, { left: '33px', top: '3px' });
+        if (!onBoard(6, 0, 0)) Object.assign(poolBox.style, { left: '33px', top: '3px' });
         // The explosion (#15.24) with the winner's name: the original centres it on the globe at (320,200);
         // here it sits at the top of the stage (the redrawn one has no title), smaller, so the machine and the
         // drawn balls stay in view.

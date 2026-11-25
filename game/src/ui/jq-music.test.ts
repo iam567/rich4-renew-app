@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BGM, THEMES, Theme, bgmCount, musicName } from './audio';
-import { JQ_FANFARE, JQ_TRACKS, jqMusicQuality, musicSetFor } from './jq-music';
+import { CN_THEME, CN_TRACKS, JQ_FANFARE, JQ_TRACKS, QM_THEME, QM_TRACKS, jqMusicQuality, musicSetFor } from './jq-music';
 
 describe('激情歲月 own music (docs/rules/24 §16)', () => {
   it('is used only on 激情歲月 in a normal game: every other map and mode keeps the original music', () => {
@@ -40,5 +40,25 @@ describe('激情歲月 own music (docs/rules/24 §16)', () => {
     expect(clean.tracks.every(t => /\/maps\/remake\/jiqing\/music\/jq-[a-z-]+-clean\.m4a$/.test(t.url))).toBe(true);
     expect(musicSetFor(107, { on: false, clean: true })).toBeNull();
     expect(musicSetFor(0, { on: true, clean: true })).toBeNull();
+  });
+});
+
+describe('清明上河 own music (map 111)', () => {
+  it('rotates its six Song pieces, its jingle and its screens\' pieces; 長安 keeps its own', () => {
+    const qm = musicSetFor(111)!, cn = musicSetFor(110)!;
+    expect(qm.tracks.map(t => t.name)).toEqual([...QM_TRACKS]);
+    expect(bgmCount(qm)).toBe(6);
+    expect(qm.tracks.every(t => /\/maps\/remake\/qingming\/music\/qm-[a-z-]+\.m4a$/.test(t.url))).toBe(true);
+    expect(qm.fanfare?.name).toBe('qm-fanfare');
+    for (const [k, i] of Object.entries(QM_THEME)) {
+      expect(i).toBeGreaterThanOrEqual(THEMES.length);
+      expect(musicName(qm, { kind: 'theme', index: i })).toBe(`qm-${k}`);
+    }
+    // cn-exam.ts asks for CN_THEME.exam: the Song piece on 清明上河, the Tang one on 長安
+    expect(musicName(qm, { kind: 'theme', index: CN_THEME.exam })).toBe('qm-exam');
+    expect(musicName(cn, { kind: 'theme', index: CN_THEME.exam })).toBe('cn-exam');
+    expect(cn.tracks.map(t => t.name)).toEqual([...CN_TRACKS]);
+    expect(musicSetFor(111, { on: false })).toBeNull();
+    expect(musicSetFor(111, { tycoon: true, on: true })).toBeNull();
   });
 });

@@ -9,10 +9,11 @@
  * - Things: the landmarks, buildings and props, each at its facing and size, lower ones over upper ones.
  */
 import { ASSETS } from '../assets';
-import { CELL, companyKind, evInfo, isWater, PAD_W, ROAD_STYLES, type MakerMap, type MkLot, type MkNode, type MkThing } from './model';
+import { pieceDir, pieceFrames } from './pieces';
+import { CELL, companyKind, evInfo, isWater, PAD_W, padUrl, ROAD_STYLES, SMALL_PAD_GROW, SMALL_PAD_W, type MakerMap, type MkLot, type MkNode, type MkThing } from './model';
 
 const TEX = `${ASSETS}/maps/remake/maker`;
-const ROAD_TEX = ['asphalt', 'asphalt', 'mud', 'red-earth', 'gravel', 'flagstone', ''];
+const ROAD_TEX = ['asphalt', 'asphalt', 'mud', 'red-earth', 'gravel', 'flagstone', '', 'gravel'];
 export const ROAD_W = 30;               // a road's surface width in world px (the verge adds 5 each side)
 
 const imgs = new Map<string, HTMLImageElement>();
@@ -38,13 +39,13 @@ export const primeFrames = (res: number, f: Frames | null) => { framesOf.set(res
 export function frames(res: number, onload: () => void): Frames | null {
   const f = framesOf.get(res);
   if (f === undefined) {
-    framesOf.set(res, fetch(`${ASSETS}/maps/remake/sprites/${res}/frames.json`).then(r => r.json())
-      .then(j => { framesOf.set(res, { frames: Array.isArray(j) ? j : j.frames }); onload(); }).catch(() => { framesOf.set(res, null); }));
+    framesOf.set(res, pieceFrames(res)
+      .then(f => { framesOf.set(res, { frames: f }); onload(); }).catch(() => { framesOf.set(res, null); }));
     return null;
   }
   return f instanceof Promise ? null : f;
 }
-export const spriteUrl = (res: number, file: string) => `${ASSETS}/maps/remake/sprites/${res}/${file}`;
+export const spriteUrl = (res: number, file: string) => `${ASSETS}/${pieceDir(res)}/${file}`;
 
 export const wx = (n: MkNode) => (n.cx + 0.5) * CELL;
 export const wy = (n: MkNode) => (n.cy + 0.5) * CELL;
@@ -64,7 +65,9 @@ export function drawRoads(c: CanvasRenderingContext2D, m: MakerMap, redraw: () =
   const wet = (n: MkNode) => isWater(m.cells[Math.floor(n.cy + .5) * m.w + Math.floor(n.cx + .5)]);
   // and none under an event square either: the road stops half a step before its pad, as the original maps' roads run
   // in pieces between the pads (the user 2026-11-12, the original editor: 「路是一段一段的…給這個事件格留出一個空間」)
-  const ls = links(m).flatMap(([a, b]) => [half(a, b), half(b, a)]).filter(([a]) => !wet(a) && !a.ev);
+  // (an official map with its own painted ground runs its roads on under the pads: the painting has its streets, and
+  // a road in pieces between many pads looked chopped up — the user 2026-11-19, 長安)
+  const ls = links(m).flatMap(([a, b]) => [half(a, b), half(b, a)]).filter(([a]) => !wet(a) && (!a.ev || !!m.paint));
   if (!ls.length && !m.nodes.length) return;
   const styleOf = ([a]: [MkNode, MkNode]) => ROAD_STYLES[a.style] ?? ROAD_STYLES[0];
   const path = (w: number, color: string | CanvasPattern, pick: (s: (typeof ROAD_STYLES)[number]) => boolean = () => true, dash: number[] = []) => {
@@ -77,17 +80,22 @@ export function drawRoads(c: CanvasRenderingContext2D, m: MakerMap, redraw: () =
     c.setLineDash([]);
   };
   // a soft shadow under the roads, then each style's bands
-  c.save(); c.translate(3, 4); path(ROAD_W + 12, 'rgba(0, 0, 0, .22)'); c.restore();
+  const widthOf = (st: (typeof ROAD_STYLES)[number]) => ('w' in st ? st.w : ROAD_W);
+  const used = (st: (typeof ROAD_STYLES)[number], si: number) => ls.some(l => styleOf(l) === st) || m.nodes.some(n => !n.links.length && n.style === si);
+  c.save(); c.translate(3, 4);
+  ROAD_STYLES.forEach((st, si) => { if (used(st, si)) path(widthOf(st) + 12, 'rgba(0, 0, 0, .22)', s => s === st); });
+  c.restore();
   ROAD_STYLES.forEach((st, si) => {
     const mine = (s: (typeof ROAD_STYLES)[number]) => s === st;
-    if (!ls.some(l => styleOf(l) === st) && !m.nodes.some(n => !n.links.length && n.style === si)) return;
-    path(ROAD_W + 10, st.verge, mine);
+    if (!used(st, si)) return;
+    const ROAD_W = widthOf(st);   // (this style's own width)
+    path(ROAD_W + (ROAD_W < 20 ? 6 : 10), st.verge, mine);
     if (st.edge) path(ROAD_W + 1, st.edge, mine);
     const t = ROAD_TEX[si] ? img(`${TEX}/ground-${ROAD_TEX[si]}.webp`, redraw) : null;
     let surface: string | CanvasPattern = st.surface;
     if (t) {
       const p = c.createPattern(t, 'repeat');
-      if (p) { p.setTransform(new DOMMatrix().scale(0.3)); surface = p; }
+      if (p) { p.setTransform(new DOMMatrix().scale(si === 7 ? 0.12 : 0.3)); surface = p; }   // (細碎石路: small stones)
     }
     path(ROAD_W - (st.edge ? 4 : 0), st.surface, mine);
     c.globalAlpha = 0.55; path(ROAD_W - (st.edge ? 4 : 0), surface, mine); c.globalAlpha = 1;
@@ -207,6 +215,9 @@ export function drawSquares(c: CanvasRenderingContext2D, m: MakerMap, redraw: ()
   c.stroke(); c.setLineDash([]);
   for (const n of m.nodes) {
     const e = evInfo(n.ev);
+    const own = padUrl(m, n, `${ASSETS}/maps/remake/maker`);   // an official map's own pads (長安)
+    const op = own ? img(own, redraw) : null;
+    if (op) { const w = PAD_W * (op.width / 496) * (op.width <= SMALL_PAD_W ? SMALL_PAD_GROW : 1), h = (op.height / op.width) * w; c.drawImage(op, wx(n) - w / 2, wy(n) - h / 2, w, h); continue; }
     if (e.pad >= 0) {
       const p = img(`${ASSETS}/hd/map/0024-SMP/frame-${String(e.pad).padStart(3, '0')}.webp`, redraw);
       if (p) { const w = PAD_W, h = (p.height / p.width) * w; c.drawImage(p, wx(n) - w / 2, wy(n) - h / 2, w, h); continue; }

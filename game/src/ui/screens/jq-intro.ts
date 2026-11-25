@@ -37,7 +37,8 @@ export function playJqIntro(shell: HTMLElement, game: Game, bank: SpriteBank, pa
   const k = Math.max(0.6, Math.min(1, pace));
   const root = document.createElement('div');
   root.className = 'jq-intro';
-  const players = game.players.filter(p => p.whoPlays !== 0 || p.human).slice(0, 8);
+  // (every player: when a new game begins nobody has landed yet — whoPlays is still 0 for the computers)
+  const players = game.players.filter(p => !p.bankrupt).slice(0, 8);
   const photos = players.map((p, i) => {
     const ch = CHARACTERS[p.character], a = ch ? bank.art('Data', 2, ch.id) : null;
     const ang = (i / Math.max(1, players.length)) * Math.PI * 2 - Math.PI / 2;

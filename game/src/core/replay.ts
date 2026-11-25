@@ -17,6 +17,12 @@ import './casino-rules'; // the maps' own rules (MAP_RULES), as the game loads t
 import './kabukicho';
 import './jiqing';
 import './chongqing';
+import './changan';
+import './qingming';
+import { installCinemaSteps } from './cinema-steps';
+
+// the screen's steps: the films' announcements are steps of the record too (installed by the screen as well)
+installCinemaSteps();
 
 /** One game's answers: `a` [step, answer] for each step answered (the others got none), `t` [step, kind, value] the screen's changes. */
 export interface GameLog { v: 1; anim: boolean; a: [number, Answer][]; t: [number, 'auto-off' | 'anim', number][] }

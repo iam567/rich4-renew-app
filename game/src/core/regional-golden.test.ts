@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseBoard, type RawMap } from './board';
-import { DOOR_STEP, Game, HOLIDAY_GIFT, REMAKE_CARD_POOL, REMAKE_FREE_BUILD, REMAKE_HOTEL } from './game';
+import { DOOR_STEP, Game, HOLIDAY_GIFT, REMAKE_CARD_POOL, REMAKE_FRAME_CHAIN, REMAKE_FREE_BUILD, REMAKE_HOTEL, REMAKE_HOTEL_BLAST } from './game';
 import { pack } from './date';
 import { saveGame } from './save';
 import { REMAKE_CARD_SUPPLY } from './modules/cards';
@@ -44,7 +44,7 @@ const have = MAPS.every(id => existsSync(mapFile(id)));
 
 /**
  * The rules level the runs play at (core/compat.ts): 1.2.2, before the auction ceiling on the reserve (1.2.3, the
- * user 2026-11-15) — so every hash below stays; AUCTION holds the runs with it (level none: all on).
+ * user 2026-11-15) — so every hash below stays; AUCTION holds the runs with it (1.2.9, before the 保留股份 on the market, 1.3.0); OPEN at level none: all on.
  */
 let goldenLevel: string | undefined = '1.2.2';
 export function goldenRun(mapId: number, days: number): string {
@@ -105,6 +105,25 @@ const TAX: Record<number, string> = { ...HOLIDAY, 4: '4419de6945338937' };
 
 /** The runs as the game plays now: TAX with a computer's auction ceiling on the reserve (1.2.3, compat 'auction-cap'). */
 const AUCTION: Record<number, string> = { ...TAX, 6: 'a395d6d52a753c2d', 7: '987496a163a69af4', 102: '43cd0d0c5ea97696' };
+
+/** The runs as the game plays now: AUCTION with the 嫁禍卡 passed on and a blast's hotel guests to the hospital (2026-11-24). */
+const NOW: Record<number, string> = { ...AUCTION };
+/** NOW with a company's 保留股份 on the market (compat 'open-shares', 2026-11-25). */
+const OPEN: Record<number, string> = {
+  0: '16f7db74a17819ae',
+  1: 'cf839ee2e25c3a8b',
+  2: 'e86c41e6161d3480',
+  3: '4798bedb22d6b931',
+  4: '94873037f329c253',
+  5: '2e766bdb77fc7ecf',
+  6: '22d2675f9d586169',
+  7: '96627c743e785d7e',
+  100: '95284cc5eac66cb2',
+  101: '6c41c467c3391ba0',
+  102: '6db26e5c0012da4f',
+  103: 'db95a5693b2a61b2',
+  104: '302ea4bafb22490c',
+};
 
 /** Hashes with the least recently taken way out of every fork (FORK_LRU, 2026-10-23; docs/rules/14 §2). */
 const GOLDEN: Record<number, string> = {
@@ -203,10 +222,30 @@ describe.skipIf(!have)('normal mode is unchanged by 大富豪模式 local events
   // them off every map gives GOLDEN.)
   // (likewise 證交稅 without × F, issue #87 of 2026-11-11: on, as the original, every run below plays as before; TAX
   // holds the runs as the game plays now — only map 4 meets that news with shares held.)
-  beforeAll(() => { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; });
-  afterAll(() => { HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; });
-  it('as the game plays now (the 1.2.3 auction ceiling on the reserve, holiday gifts, 證交稅 without × F) every map plays as AUCTION', () => {
-    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; goldenLevel = undefined;
+  // (the 嫁禍卡 passed on and the hotel guests hurt by a blast, 2026-11-24, are off here too: the hashes below are from
+  // before them; NOW holds the runs with them, as the game plays now.)
+  beforeAll(() => { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; REMAKE_FRAME_CHAIN.on = false; REMAKE_HOTEL_BLAST.on = false; });
+  afterAll(() => { HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; REMAKE_FRAME_CHAIN.on = true; REMAKE_HOTEL_BLAST.on = true; });
+  it('as the game plays now (NOW with the 保留股份 on the market, 2026-11-25) every map plays as OPEN', () => {
+    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; goldenLevel = undefined; REMAKE_FRAME_CHAIN.on = true; REMAKE_HOTEL_BLAST.on = true;
+    try {
+      const got: Record<number, string> = {};
+      for (const id of MAPS) got[id] = goldenRun(id, 200);
+      if (process.env.RICH4_PRINT_GOLDEN) console.log('OPEN', JSON.stringify(got));
+      expect(got).toEqual(OPEN);
+    } finally { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; goldenLevel = '1.2.2'; REMAKE_FRAME_CHAIN.on = false; REMAKE_HOTEL_BLAST.on = false; }
+  }, 120_000);
+  it('until 1.3 (AUCTION with the 嫁禍卡 passed on and the hotel guests hurt by a blast) every map plays as NOW', () => {
+    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; goldenLevel = '1.2.9'; REMAKE_FRAME_CHAIN.on = true; REMAKE_HOTEL_BLAST.on = true;
+    try {
+      const got: Record<number, string> = {};
+      for (const id of MAPS) got[id] = goldenRun(id, 200);
+      if (process.env.RICH4_PRINT_GOLDEN) console.log('NOW', JSON.stringify(got));
+      expect(got).toEqual(NOW);
+    } finally { HOLIDAY_GIFT.on = false; STOCK_TAX_INDEX.on = true; goldenLevel = '1.2.2'; REMAKE_FRAME_CHAIN.on = false; REMAKE_HOTEL_BLAST.on = false; }
+    }, 120_000);
+  it('until 1.3 (the 1.2.3 auction ceiling on the reserve, holiday gifts, 證交稅 without × F) every map plays as AUCTION', () => {
+    HOLIDAY_GIFT.on = true; STOCK_TAX_INDEX.on = false; goldenLevel = '1.2.9';
     try {
       const got: Record<number, string> = {};
       for (const id of MAPS) got[id] = goldenRun(id, 200);

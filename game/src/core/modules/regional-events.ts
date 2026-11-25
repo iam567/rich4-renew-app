@@ -45,6 +45,9 @@ export const regional: {
 
 const CITY: Record<number, string> = { 100: '東京', 101: '大阪', 102: '札幌', 103: '九州', 104: '沖繩' };
 
+/** What an event gives away: the tools a shop sells, 1..8, never the research institute's (the user 2026-11-25: 「只送市面上能買到的道具」). */
+const SHOP_TOOLS = 8;
+
 /** The event behind a board id (1000 + index), for the screens. */
 export function regionalEvent(id: number): RegionalEvent | undefined {
   return id >= REGIONAL_ID_BASE ? REGIONAL_EVENTS[id - REGIONAL_ID_BASE] : undefined;
@@ -312,7 +315,7 @@ function* runFate(g: Game, p: Player, e: RegionalEvent, fx: FateEffect, rng: Rng
     }
     case 'tool': {
       yield* show(g, p, e, fill(g, e.text, {}));
-      const id = fx.id || 1 + rng.below(13);
+      const id = fx.id || 1 + rng.below(SHOP_TOOLS);
       const name = TOOLS[id - 1]?.name ?? '道具';
       if (p.tools[id - 1] < MAX_HELD) {
         p.tools[id - 1] += 1;
@@ -489,7 +492,7 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
       yield* show(g, p, e, text());
       if (fx.slots === 'all') g.stocks.forceLimit(-1, fx.up, fx.days);
       else for (const s of fx.slots) if (g.stocks.stocks[s]) g.stocks.forceLimit(s, fx.up, fx.days);
-      const names = fx.slots === 'all' ? `${CITY[e.map]}的12支股票` : fx.slots.map(s => g.stocks.stocks[s]?.name).filter(Boolean).join('、');
+      const names = fx.slots === 'all' ? (CITY[e.map] ? `${CITY[e.map]}的12支股票` : '12支股票全部') : fx.slots.map(s => g.stocks.stocks[s]?.name).filter(Boolean).join('、');
       yield* result(g, p, e, fx.up ? 'stock-up' : 'stock-down', [{ text: `${names}${fx.up ? '上漲' : '下跌'}一成${fx.days > 1 ? `，連${fx.days}天` : ''}` }]);
       return;
     }
@@ -524,7 +527,7 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
       if (!best) return;
       g.gain(best, amount, 1);
       yield { t: 'pay', from: -1, to: best.id, amount, reason: '表揚獎金', quiet: true };
-      yield* result(g, p, e, 'award', [{ p: best.id, text: `${CITY[e.map]}第一大地主（${bestN}處）`, amount }], { focus: [best.id], line: 'gain', amount });
+      yield* result(g, p, e, 'award', [{ p: best.id, text: `${CITY[e.map] ?? '全城'}第一大地主（${bestN}處）`, amount }], { focus: [best.id], line: 'gain', amount });
       return;
     }
     case 'renovate': {
@@ -555,7 +558,7 @@ function* runNews(g: Game, p: Player, e: RegionalEvent, fx: NewsEffect, rng: Rng
       const lines: ResultLine[] = [];
       for (const q of who) {
         if (fx.t === 'tools-all') {
-          const id = 1 + rng.below(13);
+          const id = 1 + rng.below(SHOP_TOOLS);
           if (q.tools[id - 1] < MAX_HELD) { q.tools[id - 1] += 1; lines.push({ p: q.id, text: `得到${TOOLS[id - 1]?.name ?? '道具'}` }); }
         } else {
           const held = q.tools.map((x, i) => (x > 0 ? i : -1)).filter(i => i >= 0);

@@ -9,7 +9,7 @@ import { shortMoney } from './rt-rank';
 import { nodeById, worldSize } from '../core/board';
 import { month } from '../core/date';
 import type { PickSpot, Player } from '../core/types';
-import type { MapArt } from './assets';
+import { ASSETS, type MapArt } from './assets';
 import type { Archive, Frame, SpriteBank } from './sprites';
 import { audio, Sfx } from './audio';
 import { Effects, TOP, type FxHost } from './effects';
@@ -25,10 +25,16 @@ import { kbBadges, kbFigures, kbHouseSprite, kbPadSprite, kbRules, kbShopSprite,
 import type { StreetView } from './kb-ambient';
 import { jqBadges, jqFacSprite, jqHouseSprite, jqPadSprite, jqRules } from './jiqing'; // 激情歲月 (docs/rules/24)
 import { JqStreet } from './jq-street';
+import { MkStreet } from './mk-street';
 import { cqCompanySprite, cqFacSprite, cqHouseSprite, LEVEL_NAMES, nodeLevel } from './chongqing'; // 重慶's stacked levels (docs/rules/33)
 import type { BoardNode } from '../core/board';
 import { timeout, watch } from './watchdog';
+
+/** A map made in the editor (a player's, ids 5000.., or an official one such as 長安): its bank and store companies have no plot. */
+import { EDITOR_MADE_MAPS } from '../core/modules/stocks';
+const plotless = (mapId: number) => mapId >= 5000 || EDITOR_MADE_MAPS.has(mapId);
 import { pickAt, visible as shapeVisible, type Piece, type Shape } from './pick-hit';
+import { SMALL_PAD_GROW, SMALL_PAD_W } from './maker/model';
 
 const S = 1.2175, K = Math.SQRT1_2;
 /** Original view: 440×440, the camera point at its centre. */
@@ -36,6 +42,12 @@ const VIEW = 440;
 
 /** Frames per direction [character][slot] = resource frames / 8 (08 §1.4); the code derives it the same way. */
 const CHAR_BASE = 128, CHAR_STRIDE = 21;
+/**
+ * Pictures the original drew out of scale, drawn at this size: the 間諜's speedboat (Data#394) shows him about twice his
+ * walking size (87×110 against the other NPCs' 43–64 wide boats) — the user 2026-11-24: 「間諜坐船這個建模…變大了」. At 0.6
+ * his head is his walking head's size and his boat the other NPCs' (one character, one scale).
+ */
+const SPRITE_SIZE: Record<number, number> = { 394: 0.6 };
 /** Attached god / carried bomb offsets in screen pixels by the player's screen direction (08 §3.5). */
 const ATTACH = [[-10, -22], [-22, -10], [-22, 10], [-10, 22], [10, 22], [22, 10], [22, -10], [10, -22]];
 const ATTACH_FAR = [[-18, -44], [-44, -18], [-44, 18], [-18, 44], [18, 44], [44, 18], [44, -18], [18, -44]];
@@ -98,9 +110,14 @@ const buildingFrame = (facing: number, rot: number) => (8 - facing - rot) & 7;
  */
 const houseSet = (b: { mapId: number; stockGroup?: number }) => (b.mapId >= 5000 ? ((b.stockGroup ?? 0) % 8 + 8) % 8 : b.mapId);
 
+/** Pads drawn at the 小事件's size whatever their picture (清明上河's 梁山 mini-games: 景陽岡, 野豬林, 相撲, 黃泥岡, 十字坡). */
+const MINI_GAME_PAD = /\/pad-(tiger|pig|wrestle|gang|inn)\.webp$/;
+
 export class BoardView {
   readonly canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D;
+  /** 清明上河's 梁山旗 (MapRules.lotFlag), loaded the first time a lot carries one. */
+  private flagImg: HTMLImageElement | null = null;
   private actors = new Map<number, Actor>();
   /** Camera in world pixels, view rotation 0..7, zoom = screen px per original px. */
   private cam = { x: 1152, y: 1152 };
@@ -138,22 +155,27 @@ export class BoardView {
   readonly fx: Effects;
   /** Nodes whose object is not drawn on the node right now (it is still flying there). */
   readonly hiddenObjects = new Set<number>();
+  /** Actors not drawn yet (an NPC falling from the sky, map-fx 'qm-npc-drop'). */
+  readonly falling = new Set<number>();
   /** The map info box (09 §6.4) shown by a plain tap. */
   private readonly info: InfoBubble;
   /** A redrawn ground style drawn instead of the original (null: the original). */
   private tiled: TiledGround | null = null;
   /** 歌舞伎町's passers-by and neon (docs/rules/21 §8), 激情歲月's street (24 §8); null on every other map. */
-  private readonly street: KbStreet | JqStreet | null;
+  private readonly street: KbStreet | JqStreet | MkStreet | null;
 
   constructor(parent: HTMLElement, readonly game: Game, readonly art: MapArt, readonly bank: SpriteBank) {
+    if (import.meta.env.DEV) (window as unknown as { __board?: BoardView }).__board = this;   // (dev only: tests drive the view)
+    if (art.reveal) this.revealMode = (() => { try { const v = localStorage.getItem('rich4.reveal'); return v === 'fade' || v === 'off' ? v : 'cutout'; } catch { return 'cutout'; } })();
     this.canvas = document.createElement('canvas');
     this.canvas.className = 'board';
     parent.append(this.canvas);
     liveViews.add(this);
     this.info = new InfoBubble(parent, bank);
-    this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : jqRules(game) ? new JqStreet(game, art.walkers ?? []) : null;
+    this.street = kbRules(game) ? new KbStreet(game, art.walkers ?? []) : jqRules(game) ? new JqStreet(game, art.walkers ?? [])
+      : art.walkerKinds?.length ? new MkStreet(game, art.walkers ?? [], art.walkerKinds, art.walkerHot, art.walkerAreas) : null;   // (長安's passers-by)
     // 激情歲月's street keeps its people and vehicles off the players' and NPCs' tokens (the user 2026-10-23).
-    if (this.street instanceof JqStreet) this.street.tokens = () => [...this.actors.values()].filter(x => x.visible).map(x => this.at(x));
+    if (this.street instanceof JqStreet || this.street instanceof MkStreet) this.street.tokens = () => [...this.actors.values()].filter(x => x.visible).map(x => this.at(x));
     if (this.street instanceof KbStreet) this.street.ambient.frameInfo = (res, fr) => { const f = this.bank.board('map', res)?.[fr]; return f ? { img: f.img, ax: f.ax, ay: f.ay, w: f.w, h: f.h, scale: f.scale } : null; };
     // Opaque: every frame covers the whole canvas, so the page need not blend it with what is behind.
     this.ctx = this.canvas.getContext('2d', { alpha: false })!;
@@ -531,9 +553,9 @@ export class BoardView {
   private static spotRadius(s: PickSpot): number { return s.at === 'plot' ? 34 : s.at === 'actor' ? 22 : 16; }
 
   /** Screen rectangle of a board frame drawn at (sx, sy), with an alpha test on its picture. */
-  private piece(f: Frame | undefined, sx: number, sy: number, order: number): Piece | null {
+  private piece(f: Frame | undefined, sx: number, sy: number, order: number, size = 1): Piece | null {
     if (!f) return null;
-    const s = this.zoom * f.scale, x = sx - f.ax * s, y = sy - f.ay * s, w = f.w * s, h = f.h * s;
+    const s = this.zoom * f.scale * size, x = sx - f.ax * s, y = sy - f.ay * s, w = f.w * s, h = f.h * s;
     return { x, y, w, h, order, opaque: (tx, ty, r) => this.alphaAround(f.img, x, y, w, h, tx, ty, r) };
   }
 
@@ -570,15 +592,47 @@ export class BoardView {
   private landSprite(l: { level: number; chain: number | boolean; owner: number; facing: number }): { res: number; frame: number; tint?: number } | null {
     const b = this.game.board, lv = this.art.levels, id = (l as { id?: number }).id;
     if (lv && id && l.level) { const res = cqHouseSprite(lv, id - 1, l.level); if (res) return { res, frame: buildingFrame(lv.facing.lands[id - 1][0], this.rot) }; }
+    const mkh = l.level ? this.mkHouse(l as { id?: number; level: number; chain: number | boolean }) : null;
+    const at = l as { x?: number; y?: number };
+    if (mkh) return { res: mkh, frame: buildingFrame(id && at.x !== undefined && at.y !== undefined ? this.doorToRoad(id + 2000, at.x, at.y) : 0, this.rot) };
     if (l.level) return { res: kbHouseSprite(this.game, l) ?? jqHouseSprite(this.game, l) ?? cityLotSprite(this.game, l) ?? (l.chain ? 79 + houseSet(b) : 39 + houseSet(b) * 5 + l.level - 1), frame: buildingFrame(l.facing, this.rot) };
     if (l.owner) return { res: 25, frame: this.game.players[l.owner - 1]?.character ?? 0 };
     return null;
+  }
+
+  /**
+   * 長安 (MakerMap.builds): a small lot's house at its level — one of that level's looks, the same for the lot all game
+   * (by its id) — and a large plot's building; both stand square to the grid, their door to the road
+   * (`doorToRoad`, the user 2026-11-19: 「大門應該沖馬路」).
+   */
+  private mkHouse(l: { id?: number; level: number; chain?: number | boolean }): number | null {
+    // (a 連鎖店 its own piece — the user 2026-11-23: 「長安和清明上河沒單獨做連鎖店的圖標」)
+    if (l.chain && this.art.builds?.chain) return this.art.builds.chain;
+    const row = this.art.builds?.lots[Math.min(5, l.level) - 1];
+    if (!row?.length) return null;
+    const h = Math.imul((l.id ?? 0) ^ 0x9e3779b9, 0x85ebca6b) >>> 0;
+    return row[(h >>> 7) % row.length];
+  }
+  private mkFac(fa: { type: number; level: number }): number | null {
+    const row = this.art.builds?.fac[String(fa.type)];
+    return row?.length ? row[Math.min(fa.level, row.length) - 1] : null;
+  }
+  /**
+   * 長安's buildings: the facing whose door looks at the plot's road — its pieces' front is the world's +y at facing 0
+   * (tools/tycoon-art/changan_turn.py paints the four turns square to the grid). A plot by a diagonal road (24 lots and
+   * 4 plots: the city's corners, the country roads) lies at 45°: an odd facing, the mirrored frame, stands square on it
+   * (the user 2026-11-20: 「個別的小房子還是斜的」).
+   */
+  private doorToRoad(ref: number, x: number, y: number): number {
+    return this.roadFacing(ref, x, y);
   }
 
   private facilitySprite(fa: { level: number; type: number; owner: number }): { res: number; frame: number } | null {
     const b = this.game.board, stage = houseSet(b) >> 2, inStage = houseSet(b) & 3, lv = this.art.levels, fid = (fa as { id?: number }).id;
     if (lv && fid && fa.level && fa.type !== 1) { const res = cqFacSprite(lv, fid - 1, fa); if (res) return { res, frame: buildingFrame(lv.facing.facilities[fid - 1][0], this.rot) }; }
     if (fa.level) {
+      const mkf = this.mkFac(fa), fat = fa as { x?: number; y?: number };
+      if (mkf) return { res: mkf, frame: buildingFrame(fid && fat.x !== undefined && fat.y !== undefined ? this.doorToRoad(fid + 4000, fat.x, fat.y) : 0, this.rot) };
       const jq = jqFacSprite(this.game, fa); // 激情歲月's five facilities (docs/rules/24 §2)
       if (jq) return { res: jq, frame: buildingFrame(0, this.rot) };
       const own = casinoSprite(fa) ?? kbShopSprite(this.game, fa) ?? hotelSprite(fa, this.game.settings.mapId); // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21), the redrawn hotels
@@ -609,7 +663,7 @@ export class BoardView {
       const layer = s.id === this.current ? Layer.current : s.id < g.npcBase ? Layer.player : Layer.npc;
       if (frames) {
         const fpd = Math.max(1, frames.length >> 3);
-        add(this.piece(frames[screenDir(a.dir, this.rot) * fpd + Math.min(a.anim, fpd - 1)], q.x, q.y, q.y * 16 + layer));
+        add(this.piece(frames[screenDir(a.dir, this.rot) * fpd + Math.min(a.anim, fpd - 1)], q.x, q.y, q.y * 16 + layer, SPRITE_SIZE[spr.res]));
       } else add({ x: q.x - 18 * z, y: q.y - 60 * z, w: 36 * z, h: 64 * z, order: q.y * 16 + layer });
       // What rides with the person (a god, a time bomb) is picked as the person (05 §3.9).
       for (const o of this.objectSlots()) {
@@ -1040,7 +1094,7 @@ export class BoardView {
       const a = this.actor(i);
       if (a.phase) continue;
       const n = npc.where === 0 && npc.node > 0 ? nodeById(this.game.board, npc.node) : undefined;
-      a.visible = !!n;
+      a.visible = !!n && !this.falling.has(i);
       if (n) { a.x = n.x; a.y = n.y; a.dir = npc.dir; }
     }
   }
@@ -1403,6 +1457,55 @@ export class BoardView {
   }
 
   // ---------- drawing ----------
+
+  /**
+   * A tall piece (a landscape: a city wall, a tower) in front of an actor opens a soft round hole round it (the user
+   * 2026-11-19 chose 挖洞 over fading: 「挖洞效果有意思」), on the maps that ask for it (MapArt.reveal: 長安 and the new
+   * maps after it, 「先只針對以後的新地圖打開」). localStorage rich4.reveal = off | fade to compare.
+   */
+  private revealMode: 'off' | 'fade' | 'cutout' = 'off';
+  private revealPts: { x: number; y: number }[] = [];
+  private revealCanvas: HTMLCanvasElement | null = null;
+
+  /**
+   * A landscape drawn so the actors behind it stay visible: true when it was drawn here (some actor behind it), false when
+   * the caller draws it as usual. An actor is behind when its foot is above the piece's own on the screen (drawn before
+   * it) and inside the picture; 'fade' draws the piece at 35 %, 'cutout' clears a soft round hole round each such actor.
+   */
+  private revealSprite(archive: Archive, res: number, frame: number, sx: number, sy: number, size: number): boolean {
+    if (this.revealMode === 'off' || !this.revealPts.length) return false;
+    const f = this.bank.board(archive, res)?.[frame];
+    if (!f) return false;
+    const s = this.zoom * f.scale * size, x0 = sx - f.ax * s, y0 = sy - f.ay * s, w = f.w * s, h = f.h * s;
+    // (an actor's point is near its head: the figure is drawn below it, so the hole's centre is a little below the point)
+    const r = 66 * this.zoom, lift = -8 * this.zoom;
+    const behind = this.revealPts.filter(q => q.y < sy && q.x > x0 - r && q.x < x0 + w + r && q.y - lift > y0 - r && q.y - lift < y0 + h + r);
+    if (!behind.length) return false;
+    const ctx = this.ctx;
+    ctx.imageSmoothingEnabled = f.scale !== 1;
+    if (this.revealMode === 'fade') {
+      ctx.save(); ctx.globalAlpha = 0.35; ctx.drawImage(f.img, x0, y0, w, h); ctx.restore();
+      return true;
+    }
+    const cv = (this.revealCanvas ??= document.createElement('canvas'));
+    const W = Math.ceil(w), H = Math.ceil(h);
+    if (cv.width < W || cv.height < H) { cv.width = Math.max(cv.width, W); cv.height = Math.max(cv.height, H); }
+    const o = cv.getContext('2d')!;
+    o.clearRect(0, 0, W, H);
+    o.globalCompositeOperation = 'source-over';
+    o.imageSmoothingEnabled = f.scale !== 1;
+    o.drawImage(f.img, 0, 0, w, h);
+    o.globalCompositeOperation = 'destination-out';
+    for (const q of behind) {
+      const cx = q.x - x0, cy = q.y - lift - y0;
+      const gr = o.createRadialGradient(cx, cy, r * 0.55, cx, cy, r);
+      gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+      o.fillStyle = gr; o.beginPath(); o.arc(cx, cy, r, 0, Math.PI * 2); o.fill();
+    }
+    o.globalCompositeOperation = 'source-over';
+    ctx.drawImage(cv, 0, 0, W, H, x0, y0, W, H);
+    return true;
+  }
 
   private sprite(archive: Archive, res: number, frame: number, sx: number, sy: number, tint?: number, frozen = false, size = 1) {
     const frames = this.bank.board(archive, res);
@@ -1930,7 +2033,7 @@ export class BoardView {
     if (this.art.levels) { this.cqPlots(ctx, only); return; }
     for (const l of b.lands) if (l.owner) plate(l.id + 2000, l.x, l.y, l.owner, 44);
     for (const f of b.facilities) if (f.owner) plate(f.id + 4000, f.x, f.y, f.owner, 86);
-    for (const co of b.companies) if (co.controller && (b.mapId < 5000 || co.resource)) plate(co.id + 6000, co.x, co.y, co.controller, 86); // (a player's map: its bank and store have no plot, its 企業大樓 one)
+    for (const co of b.companies) if (co.controller && (!plotless(b.mapId) || co.resource)) plate(co.id + 6000, co.x, co.y, co.controller, 86); // (a map made in the editor — a player's, 長安: its bank and store have no plot, its 企業大樓 one; the user 2026-11-19 「斜的方塊直接覆蓋在圓形的地塊上，很醜」)
   }
 
   /**
@@ -1979,7 +2082,7 @@ export class BoardView {
     };
     for (const l of b.lands) frame(l.id + 2000, l.x, l.y, l.owner, own('lands', l.id - 1, 54), 8);
     for (const f of b.facilities) frame(f.id + 4000, f.x, f.y, f.owner, own('facilities', f.id - 1, 104), 12);
-    for (const co of b.companies) if (b.mapId < 5000 || co.resource) frame(co.id + 6000, co.x, co.y, co.controller, own('companies', co.id - 1, 104), 12);
+    for (const co of b.companies) if (!plotless(b.mapId) || co.resource) frame(co.id + 6000, co.x, co.y, co.controller, own('companies', co.id - 1, 104), 12);
   }
 
   private edge: string | null = null;
@@ -2065,6 +2168,14 @@ export class BoardView {
       const p = this.project(x, y);
       return p.x > -m && p.x < this.W + m && p.y > -m && p.y < this.H + m * 1.5 ? p : null;
     };
+    // Who a tall piece (a city wall, a tower) must not hide (the user 2026-11-19: 「角色在城牆根下被擋住」): the
+    // actors' screen points; the pieces in front of them fade or open a hole round them (revealMode).
+    this.revealPts = [];
+    if (this.revealMode !== 'off') for (const [id, a] of this.actors) {
+      if (!a.visible) continue;
+      const w = this.at(a), q = visible(w.x, w.y);
+      if (q && (id >= g.npcBase || g.players[id])) this.revealPts.push({ x: q.x, y: q.y });
+    }
 
     // 2. Event icons, flat on the ground (map#24, frame aux - 1, never rotated).
     const drawPad = (n: BoardNode) => {
@@ -2090,6 +2201,25 @@ export class BoardView {
         if (p) this.sprite('map', lv.escalator.includes(n.id) ? 9201 : 9202, 0, p.x, p.y);
         return;
       }
+      // 官方地圖 in the editor's format (長安): its own pads, 4× pictures the size of map#24's (MapArt.padImages)
+      const own = this.art.padImages?.[n.id];
+      if (own) {
+        const p = visible(n.x, n.y, 60);
+        if (p) {
+          // (each picture made the size of map#24's own: 點券 180 px wide, its coin as big as a blank square's dot (the user: 「要和小黃點大小一樣」), 小遊戲 248, the rest 496 — the user 2026-11-19:
+          // 「原版的點券地也沒這麼大的圓」)
+          // (the 小事件 and 點券 pads, the 200 px pictures, a quarter bigger — on every map with its own pads, the standard
+          // from now on: the user 2026-11-23 on 清明上河: 「小事件跟這個點券的這個小地標還是有點小…再稍微大一點」, then
+          // 「這個大小可以，以後都按這個標準來…長安…也改過來」)
+          const small = own.width <= SMALL_PAD_W ? SMALL_PAD_GROW : 1;
+          // 清明上河's 梁山 mini-games at the 小事件's size (the user 2026-11-24: 「小遊戲的圓地標的大小也改成和小事件一樣大吧」)
+          const game = MINI_GAME_PAD.test(own.src) ? (SMALL_PAD_W * SMALL_PAD_GROW) / own.width : 1;
+          const s = this.zoom * 0.25 * (this.art.padScale ?? 1) * small * game;
+          this.ctx.imageSmoothingEnabled = true;
+          this.ctx.drawImage(own, p.x - (own.width * s) / 2, p.y - (own.height * s) / 2, own.width * s, own.height * s);
+        }
+        return;
+      }
       if (!n.aux) return;
       const p = visible(n.x, n.y, 60);
       // 自建地圖 (ui/maker): the pads at the size the editor shows (a square a step away stays clear of them)
@@ -2099,7 +2229,8 @@ export class BoardView {
     // 岔路箭頭 (docs/rules/14): a small arrow on the grass beside every fork, under buildings and players
     // (歌舞伎町: bigger and glowing, over its busy street, after the sprites below).
     const arrows = () => drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor);
-    if (!this.street && !lv) arrows();
+    const busyStreet = !!this.street && !(this.street instanceof MkStreet);   // (歌舞伎町 / 激情歲月: arrows over the crowd)
+    if (!busyStreet && !lv) arrows();
 
     // 3. Surcharge / seizure diamonds pressed into the ground, then the y-sorted sprites.
     const items: Item[] = [];
@@ -2140,15 +2271,17 @@ export class BoardView {
       if (lvl > top) continue;
       const p = visible(l.x, l.y);
       if (!p) continue;
-      const fr = buildingFrame(lv ? lv.facing.lands[li][0] : l.facing, this.rot);
+      let fr = buildingFrame(lv ? lv.facing.lands[li][0] : l.facing, this.rot);
       if (l.tmpState && !lv) this.decal(fr & 1, l.tmpState & 1, p.x, p.y);
       if (l.level) {
-        const res = (lv ? cqHouseSprite(lv, li, l.level) : undefined) ?? kbHouseSprite(g, l) ?? jqHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + houseSet(b) : 39 + houseSet(b) * 5 + l.level - 1); // 歌舞伎町's houses (21)
+        const mkh = this.mkHouse(l); if (mkh) fr = buildingFrame(this.doorToRoad(l.id + 2000, l.x, l.y), this.rot);
+        const res = mkh ?? (lv ? cqHouseSprite(lv, li, l.level) : undefined) ?? kbHouseSprite(g, l) ?? jqHouseSprite(g, l) ?? cityLotSprite(g, l) ?? (l.chain ? 79 + houseSet(b) : 39 + houseSet(b) * 5 + l.level - 1); // 歌舞伎町's houses (21)
         addAt(lvl, p.y, Layer.building, () => { this.sprite('map', res, fr, p.x, p.y, ownerColor(l.owner)); this.neon(res, fr, p.x, p.y, l.id + 2000); this.flashOver(l.id + 2000, 'map', res, fr, p.x, p.y); });
       } else if (l.owner) {
         const ch = g.players[l.owner - 1]?.character ?? 0;
         addAt(lvl, p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
       }
+      if (g.rules?.lotFlag?.(l.id + 2000)) addAt(lvl, p.y + 1, Layer.building, () => this.lotFlag(p.x, p.y));
       if (this.highlight === l.id - 1) addAt(lvl, p.y, Layer.zzz + 1, () => this.ring(p.x, p.y));
     }
     for (const [fi, live] of b.facilities.entries()) {
@@ -2161,7 +2294,9 @@ export class BoardView {
       if (fa.tmpState && !lv) this.decal(2 + (fr & 1), fa.tmpState & 1, p.x, p.y);
       if (fa.level) {
         const cq = lv && fa.type !== 1 ? cqFacSprite(lv, fi, fa) : undefined; // 重慶's 麻將館, 小吃街, 火鍋店, 研究所 (docs/rules/33 §6)
-        const jq = cq ?? jqFacSprite(g, fa); // 激情歲月's five facilities (docs/rules/24 §2)
+        const mkf = this.mkFac(fa);
+        if (mkf) fr = buildingFrame(this.doorToRoad(fa.id + 4000, fa.x, fa.y), this.rot);   // 長安's: the door to the road
+        const jq = mkf ?? cq ?? jqFacSprite(g, fa); // 長安's (MakerMap.builds), 激情歲月's five facilities (docs/rules/24 §2)
         if (!jq && !lv && hotelSprite(fa, this.game.settings.mapId)) fr = buildingFrame(this.roadFacing(fa.id + 4000, fa.x, fa.y), this.rot); // the new hotels face their road
         const i = fa.type === 0 ? 0 : fa.type === 1 ? fa.level : fa.type === 2 ? 5 + fa.level : fa.type === 3 ? 11 : 11 + fa.level;
         // 大富翁城's casino (docs/rules/19), 歌舞伎町's shops (21)
@@ -2171,6 +2306,7 @@ export class BoardView {
         const ch = g.players[fa.owner - 1]?.character ?? 0;
         addAt(lvl, p.y, Layer.building, () => this.sprite('map', 25, ch, p.x, p.y));
       }
+      if (g.rules?.lotFlag?.(fa.id + 4000)) addAt(lvl, p.y + 1, Layer.building, () => this.lotFlag(p.x, p.y));
     }
     for (const [ci, co] of b.companies.entries()) {
       if (!co.resource) continue;
@@ -2186,7 +2322,8 @@ export class BoardView {
       if (p) addAt(lv ? lv.landscapes[li] : 0, p.y, Layer.building, () => {
         // 重慶: a landmark's own size and facing from the map editor (editor/site/remake.html)
         const res = ls.resource + 38, fr = buildingFrame(lv?.landscape_face?.[li] ?? ls.facing, this.rot);
-        this.sprite('map', res, fr, p.x, p.y, this.bank.placeholderOutline('map', res) ? 0x202020 : undefined, false, lv?.landscape_scale?.[li] ?? this.art.landscapeScale?.[li] ?? 1);
+        const sz = lv?.landscape_scale?.[li] ?? this.art.landscapeScale?.[li] ?? 1;
+        if (!this.revealSprite('map', res, fr, p.x, p.y, sz)) this.sprite('map', res, fr, p.x, p.y, this.bank.placeholderOutline('map', res) ? 0x202020 : undefined, false, sz);
         this.neon(res, fr, p.x, p.y, 8000 + li);
       });
     }
@@ -2257,7 +2394,7 @@ export class BoardView {
         if (!frames) return;
         const fpd = Math.max(1, frames.length >> 3);
         const anim = Math.min(a.anim, fpd - 1);
-        this.sprite('Data', spr.res, screenDir(a.dir, this.rot) * fpd + anim, p.x, p.y, undefined, spr.frozen);
+        this.sprite('Data', spr.res, screenDir(a.dir, this.rot) * fpd + anim, p.x, p.y, undefined, spr.frozen, SPRITE_SIZE[spr.res]);
       });
       if (pl?.sleepwalk) on(() => this.sprite('Data', 414, a.zzz, p.x, p.y));
     }
@@ -2267,7 +2404,7 @@ export class BoardView {
     for (const sp of this.markSpots()) { const p = visible(sp.x, sp.y, 120); if (p) add(p.y, -1, () => this.markDisc(p.x, p.y, sp.r)); }
     // The street maps' glowing fork arrows (over their busy sidewalks) go over every board item but under the
     // effects' speech clouds and pop-ups (TOP + 1, ui/effects.ts): a line is never covered by an arrow.
-    if (this.street) add(TOP - 1, 0, () => drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor, { scale: 1.6, glow: true }));
+    if (busyStreet) add(TOP - 1, 0, () => drawForkArrows(ctx, g, (x, y) => this.project(x, y), this.zoom, this.W, this.H, this.art.decor, { scale: 1.6, glow: true }));
     items.sort((x, y) => x.key - y.key);
     // One picture that fails (released, not decodable) must not take the rest of the frame with it.
     for (const it of items) { try { it.draw(); } catch (err) { this.oops('sprite', err); } }
@@ -2399,6 +2536,19 @@ export class BoardView {
   }
 
   /** map#26 diamond ORed into the ground: red for a surcharge, blue for a seizure (08 §3.2). */
+  /**
+   * 清明上河's 梁山旗 (the 替天行道 banner, maps/remake/qingming/liangshan-flag.webp) standing at the back corner of a lot
+   * that carries one (MapRules.lotFlag), about a house and a half tall (the user 2026-11-24: 「插上梁山旗子的效果為啥沒做出來呢？」).
+   */
+  private lotFlag(x: number, y: number) {
+    if (!this.flagImg) { this.flagImg = new Image(); this.flagImg.src = `${ASSETS}/maps/remake/qingming/liangshan-flag.webp`; }
+    const img = this.flagImg;
+    if (!img.complete || !img.naturalWidth) return;
+    const h = 92 * this.zoom, w = (h * img.naturalWidth) / img.naturalHeight;
+    this.ctx.imageSmoothingEnabled = true;
+    this.ctx.drawImage(img, x + 14 * this.zoom - w / 2, y + 6 * this.zoom - h, w, h);
+  }
+
   private decal(frame: number, kind: number, sx: number, sy: number) {
     const frames = this.bank.board('map', 26), f = frames?.[frame];
     if (!f) return;

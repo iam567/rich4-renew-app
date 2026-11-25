@@ -142,9 +142,10 @@ export const jqTier = () => memTier();
  * The place screens' backgrounds and hostesses in the era's look on this map (tools/tycoon-art/jq_places.py →
  * maps/remake/jiqing/places/places.json); any other map: the originals (the sprite bank is shared between games).
  */
-export async function prepareJiqingPlaces(bank: SpriteBank, on: boolean): Promise<void> {
+export async function prepareJiqingPlaces(bank: SpriteBank, on: boolean | string): Promise<void> {
   if (!on) { bank.setArtOverrides(null); return; }
-  const base = `${ASSETS}/maps/remake/jiqing/places`;
+  // (a set's name: another map's redrawn screens, 長安's 'changan' — tools/tycoon-art/changan_screens.py install)
+  const base = `${ASSETS}/maps/remake/${typeof on === 'string' ? on : 'jiqing'}/places`;
   try {
     const r = await fetch(`${base}/places.json`);
     bank.setArtOverrides(r.ok ? await r.json() as Record<string, [string, number, number, number, number]> : null, base);

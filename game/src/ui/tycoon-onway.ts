@@ -6,7 +6,7 @@
  * the vehicle bobs, speed lines for the train. Travellers elsewhere only get a ticker line.
  */
 import { CHARACTERS } from '../core/characters';
-import { ASSETS } from './assets';
+import { ASSETS, cssUrl } from './assets';
 import { audio, Sfx } from './audio';
 import { fxScreens, type ScreenContext } from './screens/registry';
 import { shrinkText } from './text';
@@ -30,7 +30,7 @@ export async function onwayScene(ctx: ScreenContext, p: number, via: 'station' |
   const strip = plane ? L?.sky : L?.land;
   // Vehicle box in % of the scene: the plane in the middle of the sky, the train on the track of the strip.
   const vw = plane ? 58 : 96, aspect = v ? v.height / v.width : 0.4;
-  box.innerHTML = `<div class="ow-scene" style="--bg:url('${ASSETS}/maps/remake/onway/${plane ? 'sky' : 'land'}.webp');--ratio:${strip ? strip.width / strip.height : 2.6}">
+  box.innerHTML = `<div class="ow-scene" style="--bg:${cssUrl(`${ASSETS}/maps/remake/onway/${plane ? 'sky' : 'land'}.webp`)};--ratio:${strip ? strip.width / strip.height : 2.6}">
       <div class="ow-bg"></div>${plane ? '' : '<div class="ow-speed"></div>'}
       <div class="ow-veh" style="--vw:${vw}%;--asp:${aspect}">
         <img class="ow-img" src="${ASSETS}/maps/remake/onway/${plane ? 'plane' : 'train'}.webp" alt="">

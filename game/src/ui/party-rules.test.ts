@@ -166,3 +166,26 @@ describe('the rules in a room (mocked PeerJS)', () => {
     expect(saved[2]).toBe(saved[0]);
   });
 });
+
+// 遊戲節奏 (docs/rules/36, the user 2026-11-23): the room's 慢 / 快 goes to every phone and into the game; 原版 is no field
+describe('遊戲節奏 in a room', () => {
+  it('only 慢 (0) and 快 (2) are kept; 原版 and bad values are none', () => {
+    expect(cleanRules({ ...DEFAULT_RULES, pace: 0 }).pace).toBe(0);
+    expect(cleanRules({ ...DEFAULT_RULES, pace: 2 }).pace).toBe(2);
+    for (const v of [1, 3, -1, '2', 1.5]) expect('pace' in cleanRules({ ...DEFAULT_RULES, pace: v })).toBe(false);
+  });
+  it('the host picks 快節奏: every phone has it and the game starts with it', async () => {
+    const host = room(0);
+    const code = await host.create('2', false);
+    const a = room(3);
+    await a.join(code); await settle();
+    host.setRules({ pace: 2 });
+    await settle();
+    expect(a.rules.pace).toBe(2);
+    let got: StartMsg | null = null;
+    a.onStart = s => { got = s; };
+    host.start(startMsg(host, 4, pack(2026, 10, 29), 77));
+    await settle();
+    expect(got!.settings.pace).toBe(2);
+  });
+});

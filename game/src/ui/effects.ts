@@ -181,6 +181,31 @@ export class Effects {
   }
 
   /**
+   * Something dropping from the sky onto a square (梁山令's rain of roadblocks, mines, dogs, people — the user
+   * 2026-11-24: 「從天上往下降…像下雨一樣」): from far above, faster and faster, a small bounce on the ground.
+   * `fpd` frames a facing (people walk in several), `land` runs as it touches down.
+   */
+  fall(o: { res: number; dir?: number; fpd?: number; at: Pt; delay?: number; ms?: number; land?: () => void }): Promise<void> {
+    const host = this.host, ms = o.ms ?? 560, delay = o.delay ?? 0, BOUNCE = 160;
+    let start = -1, landed = false;
+    const e: Effect = {
+      done: false,
+      draw: (add, now) => {
+        if (start < 0) start = now;
+        const t = now - start - delay;
+        if (t < 0) return;
+        if (t >= ms && !landed) { landed = true; o.land?.(); }
+        if (t >= ms + BOUNCE) { e.done = true; return; }
+        const q = host.project(o.at.x, o.at.y), k = Math.min(1, t / ms);
+        const h = 620 * host.scale * (1 - k * k) + (t > ms ? Math.sin(((t - ms) / BOUNCE) * Math.PI) * 10 * host.scale : 0);
+        const frame = o.dir !== undefined ? ((o.dir + 8 - host.rot) & 7) * (o.fpd ?? 1) : 0;
+        add(TOP, 1, () => this.sprite('Data', o.res, frame, q.x, q.y - h));
+      },
+    };
+    return this.add(e, `fx.fall ${o.res}`, ms + delay + BOUNCE + 2000);
+  }
+
+  /**
    * A god leaves (`_rich4_detach_god`, rich4_gods.asm:138-415): from where it was drawn it rises 10 px every
    * 60 ms turning through its 8 facings, at most 24 steps, until it is above the view.
    */

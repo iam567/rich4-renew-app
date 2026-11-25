@@ -260,6 +260,16 @@ describe.skipIf(!haveMaps)('cards', () => {
       expect(drive(g.cards.pardonOrFrame(p)).value).toBe(2);
       expect(drive(g.cards.pardonOrFrame(p)).value).toBe(1);
     });
+    it('pardonOrFrame passed on (REMAKE_FRAME_CHAIN, 2026-11-24): the one framed frames on or pardons, until someone has neither', () => {
+      const g = makeGame(), [a, b, c] = [g.players[1], g.players[2], g.players[3]];
+      a.cards = [19]; b.cards = [19]; c.cards = [];
+      a.hostility = [0, 0, 5, 0]; b.hostility = [0, 0, 0, 5];
+      expect(drive(g.cards.pardonOrFrame(a)).value).toBe(3);   // a → b → c
+      expect(a.cards).toEqual([]); expect(b.cards).toEqual([]);
+      a.cards = [19]; b.cards = [21];
+      expect(drive(g.cards.pardonOrFrame(a)).value).toBe(-1);  // a → b, b's 免罪卡: nobody
+      expect(b.cards).toEqual([]);
+    });
   });
 
   describe('computer choices', () => {

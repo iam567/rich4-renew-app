@@ -3,7 +3,7 @@
  * in the original order. Subsystems live in ./modules and are called at the original moments.
  * Turn flow is a generator: it yields events for the screen and questions for human players.
  */
-import { companyOf, facilityOf, landOf, nodeById, type Board, type BoardNode, type Facility, type Land } from './board';
+import { companyOf, facilityOf, landOf, nodeById, type Board, type BoardNode, type Company, type Facility, type Land } from './board';
 import { CHARACTERS, playerName } from './characters';
 import { addDays, addMonths, daysBetween, day as dayOf, lunarNewYearEve, month as monthOf, nextDay, weekday, type PackedDate } from './date';
 import { ask, type Flow } from './flow';
@@ -65,6 +65,8 @@ export interface WorldHooks {
   travelCard(g: Game, p: Player, via: 'station' | 'airport', dest?: number): Flow<boolean>;
   /** The computer's destination for a travel card, or -1 to keep it. */
   aiCardTrip(g: Game, p: Player, via: 'station' | 'airport'): number;
+  /** 遣返卡: the computer's target among the rivals it sees (-1 none). */
+  aiDeport(g: Game, p: Player, seen: Player[], hostile: number): number;
   /** 遣返卡: `victim` flies to a random other city (17 §3.5); `by` used the card. */
   deport(g: Game, victim: Player, by: Player): Flow<boolean>;
   /** 獨裁卡: who would be sent away, the sending, the computer's wish. */
@@ -112,6 +114,8 @@ export interface WorldLink { index: number; hooks: WorldHooks; players: Player[]
  * city in 大富豪模式 (the world link) or the map played in a normal game. Every other map has none.
  */
 export interface MapRules {
+  /** The five facility types' names here (長安's 博戲坊 … 集賢院); the original's when missing. */
+  readonly facilityNames?: string[];
   /** A stop on a large plot handled by the map (the casinos: buy, build, visit); true when handled. */
   landOnFacility?(g: Game, p: Player, f: Facility): Flow<boolean>;
   /** The facility type an effect builds on an empty plot here (a card or tool: no choice), for 大富翁城's halls. */
@@ -187,6 +191,10 @@ export interface MapRules {
   stayLabel?(g: Game, p: Player): string | undefined;
   /** What a vanished player is said to be doing instead of 消失中 (激情歲月, docs/rules/24 §6: 下鄉中 / 下放中). */
   vanishLabel?(g: Game, p: Player): string | undefined;
+  /** A company's own name for its fee (清明上河's 官窯: 瓷器錢). */
+  companyFeeName?(c: { name: string }): string | undefined;
+  /** A company that ships its visitors off after its fee (清明上河's 汴河漕運): the fee's name and the trip; `boss`: its 董事長's own stop. */
+  companyShip?(g: Game, p: Player, c: { name: string }): { fee: string; go: () => Flow; boss: () => Flow } | undefined;
   /**
    * The bubble when a god changes a payment (歌舞伎町, docs/rules/21 §2: the reason first, 「大財神附身，消費免付！」);
    * without it the original's 「…免付！」 / 「…改為N元」.
@@ -213,12 +221,29 @@ export interface MapRules {
   invite?(g: Game, p: Player, node?: number): Flow<boolean>;
   aiInvite?(g: Game, p: Player): number | null;
   aiSendAway?(g: Game, p: Player): boolean;
+  /** Where a random drop may fall (清明上河: players never on 梁山, gods only in the city): `what` 0 a player, else the object type. */
+  dropAllowed?(n: BoardNode, what: number): boolean;
+  /** A company whose fee the map does away with (清明上河's 汴河漕運: its 董事長's due is the boat instead). */
+  companyFeeOff?(g: Game, c: Company): boolean;
+  /** A lot (ref: 2000 + land, 4000 + facility) carrying the map's flag on the board now (清明上河's 梁山旗). */
+  lotFlag?(ref: number): boolean;
+  /** A computer's facility type on an empty large plot here (清明上河's 漕運處); undefined: as on any map. */
+  aiFacilityType?(g: Game, p: Player, f: Facility): number | undefined;
+  // ---- 清明上河's 梁山令 (docs/rules/35, core/qingming-ling.ts): absent on every other map.
+  /** A building that cannot be damaged now (徐寧 / 黃信 / 湯隆: 30 days 拆不掉、炸不掉): Game.damageProperty leaves it. */
+  guardPlot?(g: Game, ref: number): boolean;
+  /** Who collects a lot's toll now instead of its owner (穆弘 / 侯健, 7 days): a player id; undefined the owner. */
+  tollPayee?(g: Game, land: Land): number | undefined;
+  /** No card another player plays works on q now (宋萬's 守寨): the cards leave q and q's plots out of their targets. */
+  cardShield?(g: Game, q: Player): boolean;
   /** The map's own state in a saved game. */
   saveState?(): unknown;
   loadState?(s: unknown): void;
 }
 /** Map rules of normal games by map id, registered by the map's module (core/casino-rules.ts: 105 大富翁城). */
 export const MAP_RULES: Record<number, (g: Game) => MapRules> = {};
+/** Rules by name, for official maps in the editor's format (GameSettings.ruleSet): 'changan' (core/changan.ts). */
+export const RULE_SETS: Record<string, (g: Game) => MapRules> = {};
 
 /**
  * Data of the `month-report` fx (fcn_00439bfa, docs/rules/09 §7.12): one row per living player in id order with
@@ -265,6 +290,16 @@ export const REMAKE_CARD_POOL = { on: true };
  * the golden test proves that nothing else changed.
  */
 export const REMAKE_FREE_BUILD = { on: true };
+/**
+ * 嫁禍卡 passed on (the user 2026-11-24): the one framed for a punishment (hospital, prison …) may use their own 免罪卡 or
+ * 嫁禍卡 in turn, until someone has neither (cards.ts pardonOrFrame). Off: the original — the one framed just takes it.
+ */
+export const REMAKE_FRAME_CHAIN = { on: true };
+/**
+ * A hotel's guests hurt by the missile / nuke that hits the hotel, as anyone on the road there (the user 2026-11-24:
+ * 「旅館有人在裡面住宿被核子飛彈炸平了，在旅館住宿的人應該被送到醫院才對」). Off: the original — they only check out.
+ */
+export const REMAKE_HOTEL_BLAST = { on: true };
 
 /**
  * The walk out of the hospital / prison as in the original (GitHub issue #2, 2026-10-22; docs/rules/06 §9.3.1): the one
@@ -293,6 +328,41 @@ export function keptMoney(p: Pick<Player, 'cash' | 'bank' | 'loan'>, fund: numbe
   const net = Math.max(p.cash + p.bank - p.loan, Math.trunc(fund / 10));
   const cash = Math.min(Math.max(p.cash, 0), net);
   return { cash, bank: net - cash };
+}
+
+/**
+ * 遊戲節奏 (the user 2026-11-23: 「很多玩家說一局太短」; the rules his: 「慢節奏：物價指數用初始資金×2；可以有破產資產清算
+ * ……快節奏：物價指數用初始資金×0.5，房價地價×1.2」, docs/rules/36): 慢節奏 / 原版 / 快節奏.
+ *   `index`     the 物價指數 is the average wealth ÷ (the fund × index), only ever rising as ever (原版 1)
+ *   `liquidate` short of money, everything is sold first (Game.paceLiquidate): the lots and facilities to the bank at
+ *               LIQUIDATE_RENT × their toll (3: the user 2026-11-23 「把清算提高到3倍再試試」, 2 before), the shares at the market price, all into the deposit; bankrupt only if still short
+ *   `toll`      the street tolls and the big plots' fees × this (慢 0.6: the user 2026-11-23 「能提高一倍的遊戲時長就可以了」 —
+ *               the index and the 3 × liquidation alone made 1.54 ×, this brings it to about 2 ×; docs/rules/36 §4)
+ *   `price`     the lots' and facilities' prices and their building costs × this (the map's figures, rounded to 10:
+ *               what one pays, and so what they are worth in one's assets; the tolls as ever)
+ */
+/** 慢節奏's 資產清算: a lot or facility sells to the bank for this many times its toll (× the index). */
+export const LIQUIDATE_RENT = 3;
+export const PACE: readonly { index: number; liquidate: boolean; price: number; toll: number }[] = [
+  { index: 2, liquidate: true, price: 1, toll: 0.6 },
+  { index: 1, liquidate: false, price: 1, toll: 1 },
+  { index: 0.5, liquidate: false, price: 1.2, toll: 1 },
+];
+export { PACE_NAMES } from './types';
+
+/** The 遊戲節奏 a game plays at: settings.pace, but 原版 in 大富豪模式, 挑戰模式, and a 派對 room with an older phone (compat 'pace'). */
+export function paceOf(s: GameSettings, world = false): 0 | 1 | 2 {
+  if (world || s.challenge || (s.pace !== 0 && s.pace !== 2) || !ruleOn(s.level, 'pace')) return 1;
+  return s.pace;
+}
+
+/** 快節奏's prices on the board (a new game's own copy of the map; a save keeps the board as it is, so never twice). */
+export function paceBoard(b: Board, pace: 0 | 1 | 2): void {
+  const k = PACE[pace].price;
+  if (k === 1) return;
+  const r = (x: number) => Math.round((x * k) / 10) * 10;
+  for (const l of b.lands) { l.price = r(l.price); l.perLevel = r(l.perLevel); }
+  for (const f of b.facilities) { f.price = r(f.price); if (f.fees.length) f.fees[0] = r(f.fees[0]); }
 }
 
 export class Game {
@@ -325,6 +395,8 @@ export class Game {
   daysElapsed = 0;
   monthsElapsed = 0;
   priceIndex = 1;
+  /** 遊戲節奏 (settings.pace, docs/rules/36): 0 慢節奏, 1 原版, 2 快節奏 — the one in force (paceOf). */
+  readonly pace: 0 | 1 | 2;
   /** Current actor: players 0..n-1, NPCs npcBase..npcBase+3, the robot doll dollId (4..7 and 8 with up to 4 players). */
   current = 0;
   /** Sum of the dice thrown this turn (ref_0048bafc), used by gas stations and some companies. */
@@ -348,6 +420,8 @@ export class Game {
     this.settings = settings;
     if (link) this.world = { index: link.index, hooks: link.hooks };
     this.board = structuredClone(board);
+    this.pace = paceOf(settings, !!link);
+    if (this.pace !== 1) paceBoard(this.board, this.pace);
     this.rng = new Rng(settings.seed);
     this.fund = FUNDS[settings.fundIndex];
     this.date = settings.startDate;
@@ -388,7 +462,7 @@ export class Game {
     this.blackMarket.init();
     this.forks.init();
     // 大富翁城 (docs/rules/19): its finale city gets the world link's rules, a normal game on it the map's own.
-    this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this);
+    this.rules = link ? (link.hooks as unknown as MapRules) : MAP_RULES[settings.mapId]?.(this) ?? (settings.ruleSet ? RULE_SETS[settings.ruleSet]?.(this) : undefined);
     this.foldChips();
     if (!link) {
       this.challengeTracker = new Challenge(this, settings.challenge ? undefined : taskPool(settings.mapId));
@@ -550,9 +624,11 @@ export class Game {
   }
 
   /** Random free node _rich4_find_random_unoccupied_(distant_)node (docs/rules/01 §6.6). */
-  randomFreeNode(near?: BoardNode): BoardNode {
+  randomFreeNode(near?: BoardNode, what?: number): BoardNode {
     const taken = new Set([...this.players.filter(q => q.placed).map(q => q.node), ...this.objects.slots.filter(o => o.node).map(o => o.node)]);
-    const free = this.board.nodes.filter(n => !n.noDrop && !taken.has(n.id) && n.adjacent.some(Boolean));
+    let free = this.board.nodes.filter(n => !n.noDrop && !taken.has(n.id) && n.adjacent.some(Boolean));
+    // (a map that keeps some drops to a part of it: 清明上河; every other map draws from the same list as before)
+    if (what !== undefined && this.rules?.dropAllowed) { const ok = free.filter(n => this.rules!.dropAllowed!(n, what)); if (ok.length) free = ok; }
     // A small map can have no node 300 px away (大富翁城, docs/rules/19): after many misses the last draw is taken
     // (never reached on the original maps, so their rand() sequence is unchanged).
     for (let tries = 0; ; tries++) {
@@ -654,6 +730,7 @@ export class Game {
    * as needed), or 派對模式's 破產清算 (everything, when the player says so); 0 when nothing is sold.
    */
   private *cover(p: Player, need: number): Flow<number> {
+    if (PACE[this.pace].liquidate) return yield* this.paceLiquidate(p, need);
     const all = !this.canRaise();
     if (all && !(yield* this.wantsLiquidation(p, need))) return 0;
     yield* this.raiseCash(p, all ? Infinity : need);
@@ -673,6 +750,35 @@ export class Game {
     if (!this.liquidateRule(p) || !this.hasAssets(p)) return false;
     if (!this.isHuman(p)) return true;
     return (yield ask({ t: 'yesno', p: p.id, kind: 'liquidate', text: `錢不夠付，還差${need.toLocaleString('en-US')}元\n\n要先清算資產嗎？\n股票全部賣出，地產半價賣給銀行\n賣完還不夠才破產` })) as boolean;
+  }
+  /**
+   * 慢節奏's 資產清算 (PACE.liquidate, docs/rules/36): short of `need` with the cash and the deposit gone, a player —
+   * computer or human, nobody is asked — sells every share and 槓桿 position (the market price), and every lot and
+   * facility of theirs, built or empty, to the bank for LIQUIDATE_RENT (3) × its toll now (a lot its own, level 0 for an empty one, a
+   * chain store 2000; a facility its fee at its level, level 1's for an empty one), all into the deposit; the lots go back to nobody. What is owed comes out of the
+   * deposit; only what is still short bankrupts. Returns what it covers.
+   */
+  private *paceLiquidate(p: Player, need: number): Flow<number> {
+    if (p.bankrupt || !this.hasAssets(p)) return 0;
+    const me = p.id + 1, PI = this.priceIndex, bank0 = p.bank;
+    for (const m of this.markets()) {
+      for (let slot = 0; slot < 12; slot++) { const n = m.holdings[p.id]?.[slot]?.shares ?? 0; if (n > 0) m.sell(p, slot, n, true); }
+      for (const x of m.positions.filter(y => y.p === p.id)) yield* m.closePosition(p, x.id);
+    }
+    const shares = p.bank - bank0;
+    let plots = 0;
+    for (const b of this.boards()) {
+      for (const l of b.lands) if (l.owner === me) { p.bank += LIQUIDATE_RENT * (l.chain ? 2000 : l.tolls[l.level] ?? 0) * PI; l.owner = 0; l.expire = 0; plots++; }
+      for (const f of b.facilities) if (f.owner === me) { p.bank += LIQUIDATE_RENT * (f.fees[Math.max(1, f.level)] ?? 0) * PI; f.owner = 0; f.expire = 0; plots++; }
+      for (const c of b.companies) if (c.controller === me) c.controller = 0;
+    }
+    const got = p.bank - bank0;
+    if (plots) yield { t: 'board' };
+    const what = plots && shares ? `${plots}處房地產和股票` : plots ? `${plots}處房地產` : '股票';
+    yield* this.say(p.id, `${this.name(p.id)}資產清算：賣掉${what}，得${got.toLocaleString('en-US')}元存入銀行`);
+    const c = Math.max(0, Math.min(p.bank, need));
+    p.bank -= c;
+    return c;
   }
   /** Anything to sell: shares, 槓桿 positions, lots or facilities. */
   private hasAssets(p: Player): boolean {
@@ -775,6 +881,7 @@ export class Game {
    * mode 2 flattened but owned. A damaged hotel sends its guests out.
    */
   damageProperty(ref: number, mode: 0 | 1 | 2) {
+    if (this.rules?.guardPlot?.(this, ref)) return; // 清明上河's 梁山令: 拆不掉、炸不掉
     if (ref > 2000 && ref < 4000) {
       const l = this.board.lands[ref - 2001];
       if (mode === 1) { l.owner = 0; l.level = 0; l.chain = false; l.expire = 0; }
@@ -1007,7 +1114,8 @@ export class Game {
     const living = this.living();
     if (!living.length) return;
     const avg = Math.trunc(living.reduce((s, p) => s + this.wealth(p), 0) / living.length);
-    const candidate = Math.trunc(avg / this.fund);
+    // 遊戲節奏 (docs/rules/36): 慢 / 快 divide by a larger / smaller fund; 原版 exactly the original's
+    const candidate = this.pace === 1 ? Math.trunc(avg / this.fund) : Math.trunc(avg / (this.fund * PACE[this.pace].index));
     if (candidate > this.priceIndex) this.priceIndex = candidate;
   }
 
@@ -1251,7 +1359,7 @@ export class Game {
 
   /** First landing fcn_0040829d (docs/rules/01 §2.5): a random free node and a random neighbour as the way in. */
   private *airdrop(p: Player): Flow {
-    const node = this.randomFreeNode();
+    const node = this.randomFreeNode(undefined, 0);
     const ways = node.adjacent.filter(Boolean);
     p.node = node.id;
     p.lastNode = ways[this.rng.below(ways.length)];
@@ -1296,7 +1404,7 @@ export class Game {
     else {
       const forced = this.tools.remoteDice;
       this.tools.remoteDice = 0;
-      const own = !forced && this.rules?.rollDice ? yield* this.rules.rollDice(this, p) : undefined; // 歌舞伎町's dice tools
+      const own = !forced && this.rules?.rollDice ? yield* this.rules.rollDice(this, p) : undefined; // 歌舞伎町's dice tools; 清明上河's forced dice (a 遙控骰子 wins)
       const values = forced ? [forced] : own ?? Array.from({ length: p.dice }, () => this.rng.rand() % 6 + 1);
       yield { t: 'dice', p: p.id, values };
       steps = values.reduce((a, b) => a + b, 0);
@@ -1454,7 +1562,7 @@ export class Game {
   }
 
   /** 城市決戰 (大富豪模式, core/finale.ts): tolls and facility fees ×2 every 20 days of it; 1 anywhere else. */
-  tollBoost(): number { return this.world?.hooks.tollBoost?.() ?? 1; }
+  tollBoost(): number { return this.world?.hooks.tollBoost?.() ?? PACE[this.pace].toll; }
 
   /** Street toll (docs/rules/02 §3.3): one owner's lots sharing the street name add up; chain stores count 2000 each. */
   calcToll(ownerPlus1: number, name: string | null): number {
@@ -1467,6 +1575,9 @@ export class Game {
   }
 
   private *payToll(p: Player, land: Land): Flow {
+    // 清明上河's 梁山令 (穆弘 / 侯健): the street's toll goes to another player for some days — no ally share then
+    const payee = this.rules?.tollPayee?.(this, land);
+    if (payee !== undefined) { yield* this.payTollTo(p, land, this.players[payee]); return; }
     const owner = this.players[land.owner - 1];
     if (!(yield* this.ownerCollects(owner, land.tmpState, '過路費'))) return;
     let base = this.calcToll(land.owner, land.chain ? null : land.name);
@@ -1474,7 +1585,7 @@ export class Game {
     if (land.tmpState) base *= 2;
     if (this.rules?.tollFactor) base = Math.round(base * this.rules.tollFactor(this, land)); // 歌舞伎町 (docs/rules/21 §6, §7.5)
     base = this.debtToll(owner, base);
-    const total = (base + allyPart) * this.tollBoost();
+    const total = Math.round((base + allyPart) * this.tollBoost());
     // The owner's (and ally's) lots of this street, or all their chain stores, flash first when there is more
     // than one, to show the toll is the whole street's (rich4_player_core_actions.asm:550-661, fcn_00451985).
     const linked = this.board.lands.filter(l => (l.owner === land.owner || (owner.ally > 0 && l.owner === owner.ally))
@@ -1491,6 +1602,20 @@ export class Game {
     } else {
       yield* this.transfer(paid.payer, land.owner - 1, paid.amount, 0, '過路費');
     }
+    land.lastToll = paid.amount;
+  }
+
+  /** A toll collected by `payee` instead of the owner (MapRules.tollPayee): the street's toll, paid as any toll. */
+  private *payTollTo(p: Player, land: Land, payee: Player): Flow {
+    if (!(yield* this.ownerCollects(payee, land.tmpState, '過路費'))) return;
+    let base = this.calcToll(land.owner, land.chain ? null : land.name);
+    if (land.tmpState) base *= 2;
+    if (this.rules?.tollFactor) base = Math.round(base * this.rules.tollFactor(this, land));
+    const total = Math.round(base * this.tollBoost());
+    yield* this.say(undefined, `${land.name}插了梁山旗\n過路費${total}元歸${this.name(payee.id)}`);
+    const paid = yield* this.collect(p, payee, total, '過路費', true);
+    if (paid === null) return;
+    yield* this.transfer(paid.payer, payee.id, paid.amount, 0, '過路費');
     land.lastToll = paid.amount;
   }
 
@@ -1601,7 +1726,7 @@ export class Game {
         f.type = this.isHuman(p)
           ? Math.max(0, Math.min(4, Number(yield ask({ t: 'facility-type', p: p.id, price: cost,
             ...(resort > 1 ? { text: `建設費用 ${cost} 元・度假勝地：旅館收入×${resort}` } : {}) })) || 0))
-          : this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1;
+          : this.rules?.aiFacilityType?.(this, p, f) ?? (this.smartAi(p) ? this.smart.facilityType(p, f) : this.rng.rand() % 4 + 1);
         // A computer builds a hotel in a resort city (the draw above is kept, so the rand() sequence is the same).
         if (resort > 1 && !this.isHuman(p)) f.type = 1;
         if (!(yield* this.rtStill(p, cost, () => (f.owner !== me ? `${f.name}已經不是你的了` : f.level ? '已經蓋好了' : null)))) return;
@@ -1631,7 +1756,7 @@ export class Game {
     const owner = this.players[f.owner - 1];
     const fee = ['', '住宿費', '購物費', '加油費'][f.type];
     if (!(yield* this.ownerCollects(owner, f.tmpState, fee))) return;
-    let rate = f.fees[f.level] * this.priceIndex * this.tollBoost();
+    let rate = Math.round(f.fees[f.level] * this.priceIndex * this.tollBoost());
     // 大富豪模式: a resort city's hotels earn more (沖繩, docs/rules/17 §2.4).
     if (this.world && f.type === 1) rate = Math.round(rate * this.world.hooks.resort(this));
     if (f.tmpState && f.type !== 3) rate *= 2;
@@ -1713,7 +1838,8 @@ export class Game {
     const r = yield* this.cards.tollPassive(p, owner.id, amount);
     let payer = r.payer;
     amount = r.amount;
-    if (payer !== p.id) stayer = payer === owner.id ? null : this.players[payer];
+    // 大富豪模式: a 嫁禍 to a rival in another city passes the fee on, not the stay (they are not at this hotel).
+    if (payer !== p.id) stayer = payer === owner.id || (this.world && !this.here(this.players[payer])) ? null : this.players[payer];
     if (amount > 0) {
       const death = this.objects.deathPayer(this.players[payer]);
       if (death !== null) { yield* this.say(undefined, `死神顯靈\n\n由${this.name(death)}賠償${fee}`); payer = death; }
@@ -1750,6 +1876,9 @@ export class Game {
 
   /** Whether the remake's hotel rules are on (REMAKE_HOTEL; read by the modules, which cannot import it). */
   get remakeHotel(): boolean { return REMAKE_HOTEL.on; }
+  /** REMAKE_FRAME_CHAIN / REMAKE_HOTEL_BLAST, read by the modules. */
+  get remakeFrameChain(): boolean { return REMAKE_FRAME_CHAIN.on; }
+  get remakeHotelBlast(): boolean { return REMAKE_HOTEL_BLAST.on; }
   /** Whether the construction company also builds on large plots (REMAKE_FREE_BUILD; read by the stock module). */
   get remakeFreeBuild(): boolean { return REMAKE_FREE_BUILD.on; }
   /** A hotel of this map (the original 旅館, 歌舞伎町's 情人酒店). */

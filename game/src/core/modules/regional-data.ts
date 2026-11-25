@@ -21,7 +21,7 @@ export type FateEffect =
   | { t: 'prison'; days: number }                    // the same, prison
   | { t: 'stay'; turns?: number }                    // luck "misfortune"; stands still one turn (or `turns`)
   | { t: 'card'; id: number; n?: number }            // a card (id 1..30; 0 = one drawn from the pool), n times
-  | { t: 'tool'; id: number }                        // a tool (05 §1 id; 0 = one of 1..13 at random), up to the 9 held
+  | { t: 'tool'; id: number }                        // a tool (05 §1 id; 0 = one of the shop's 1..8 at random), up to the 9 held
   | { t: 'vanish'; days: number; alien: boolean }     // 自建地圖's library: abducted by aliens / a trip abroad (as fate 6 / 7)
   | { t: 'turn' }                                    // 自建地圖's library: turns round
   | { t: 'points'; amount: number }                  // 點券 (negative: lost, not below 0)

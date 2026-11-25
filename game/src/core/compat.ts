@@ -30,6 +30,15 @@ export const CHANGES: readonly Change[] = [
   { id: 'maker-companies', since: '1.2.4', name: '自建地圖的企業大樓（加油站、航空公司、建設公司…）' },
   // the user 2026-11-16: a player's map's 特殊規則 may put many gift boxes on the road (MapSwitches.gifts, objects.ts)
   { id: 'map-gifts', since: '1.2.4', name: '自建地圖的道具禮物箱（多個禮物箱、每天補回）' },
+  // the user 2026-11-17: a full hand was asked to drop a card after a 搶奪卡, and a 搶奪卡 taken from a rival (地獄: one
+  // of a kind) was lost with one's own — now the 搶奪卡 goes first and the card taken takes its place (cards.ts case 13)
+  { id: 'grab-swap', since: '1.2.5', name: '搶奪卡：先用掉搶奪卡再拿對方的卡，卡片欄滿也不用丟卡' },
+  // the user 2026-11-23 (「很多玩家說一局太短」): 遊戲節奏 慢節奏 / 原版 / 快節奏 — the 物價指數, 慢's 資產清算, 快's prices
+  // (core/game.ts PACE, paceOf); a room with a phone without it plays 原版
+  { id: 'pace', since: '1.3.0', name: '遊戲節奏（慢節奏・快節奏）' },
+  // the user 2026-11-25 (「所有股票都能自由買賣，不要非停到建築那裡才能買，全遊戲全局通用」): a company's 保留股份 is on the market
+  // too, at the market's price (modules/stocks.ts onMarket); stopping at its building still offers it at its own
+  { id: 'open-shares', since: '1.3.0', name: '股票：保留股份也能在股市直接買' },
 ];
 
 /** Compares two versions part by part as numbers (1.0.1.5 < 1.2.0 < 1.2.10); a missing part is 0. */

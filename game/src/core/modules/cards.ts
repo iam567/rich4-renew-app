@@ -8,6 +8,7 @@
  */
 import type { BoardNode, Facility, Land } from '../board';
 import { CHARACTERS } from '../characters';
+import { ruleOn } from '../compat';
 import { addMonths } from '../date';
 import { ask, type Flow } from '../flow';
 import { REMAKE_CARD_POOL, type Game } from '../game';
@@ -123,11 +124,13 @@ const TYCOON_DECK: readonly CardDef[] = [...CARDS, ...TYCOON_CARDS, ...KB_CARDS,
 export const deckSupply = (tycoon: boolean): number[] =>
   (tycoon ? TYCOON_DECK : CARDS).map(c => (REMAKE_CARD_SUPPLY.on ? REMAKE_SUPPLY[c.id] ?? c.supply : c.supply));
 /**
- * 大富豪模式's card shop (17 §3.10, the user 2026-10-19): always on the shelf and bought as often as wanted, never
- * taken from the pool — 轉向卡, 停留卡 and the mode's own cards but the 獨裁卡 (one per map: 5 in the nationwide pool)
- * and the 通緝卡 (one per city).
+ * 大富豪模式's nationwide card pool (17 §3.10, the user 2026-11-20: 「全國一個牌池，每種卡張數是普通模式的3倍，取消常備卡」):
+ * every card's copies × 3 (轉向卡, 停留卡 too), but 飛行卡, 電車卡, 遣返卡 and 召集卡 10 each in the whole country.
+ * No card is always on the shelf any more; the 通緝卡 stays one per city (Cards.wanted).
  */
-export const TYCOON_SHOP_ALWAYS: readonly number[] = [6, 14, 31, 32, 33, 35];
+export const TYCOON_POOL_TIMES = 3;
+export const TYCOON_POOL_FIXED: Readonly<Record<number, number>> = { 31: 10, 32: 10, 33: 10, 35: 10 };
+export const tycoonPool = (): number[] => deckSupply(true).map((n, i) => TYCOON_POOL_FIXED[i + 1] ?? n * TYCOON_POOL_TIMES);
 const ALL_CARDS: readonly CardDef[] = TYCOON_DECK;
 export const cardDef = (id: number): CardDef | undefined => ALL_CARDS[id - 1];
 /**
@@ -407,7 +410,7 @@ export class Cards {
       case 1: { // 均富卡 §3.1
         this.consume(p, 1);
         // 大富豪模式: every living player of the world shares (the user's rule, docs/rules/17 §4).
-        const all = g.living();
+        const all = g.living().filter(q => !this.shielded(p, q.id)); // (清明上河's 守寨: not one shielded)
         const avg = Math.trunc(all.reduce((s, q) => s + q.cash, 0) / all.length);
         const before = all.map(q => [q.id, q.cash]);
         for (const q of all) { if (q.cash > avg) g.addHostility(q.id, me, Math.trunc((q.cash - avg) / 100)); q.cash = avg; }
@@ -431,7 +434,7 @@ export class Cards {
       case 3: { // 購地卡 §3.3
         if (g.isBeggar(p)) { if (human) yield* g.say(me, '乞丐不能買地'); return false; } // 派對模式's 乞丐
         const ref = g.node(p.node).ref, plot = this.plot(ref);
-        if (!plot || plot.owner === 0 || plot.owner === me + 1) return false;
+        if (!plot || plot.owner === 0 || plot.owner === me + 1 || this.shieldedRef(p, ref)) return false;
         const level = plot.level;
         // 大富翁城 (docs/rules/19 §3.6): a hall at what was paid for it (plot, build, upgrades).
         const worth = ref > 4000 && g.rules?.facilityWorth ? g.rules.facilityWorth(plot as Facility) : plot.price + level * this.perLevel(ref);
@@ -453,7 +456,7 @@ export class Cards {
       }
       case 4: case 5: { // 換地卡 §3.4 / 換屋卡 §3.5
         const ref = g.node(p.node).ref;
-        if (!this.plot(ref)) return false;
+        if (!this.plot(ref) || this.shieldedRef(p, ref)) return false;
         const big = ref > 4000;
         const other = yield* this.pickRef(p, human, '請選擇另一塊土地', this.plotRefs(r => r !== ref && (r > 4000) === big));
         if (other <= 0) return false;
@@ -510,7 +513,7 @@ export class Cards {
       case 8: { // 拍賣卡 §3.8
         if (g.rt) { if (human) yield* this.say(p, '即時制沒有拍賣'); return false; } // (the user 2026-11-08)
         const ref = g.node(p.node).ref, plot = this.plot(ref);
-        if (!plot) return false;
+        if (!plot || this.shieldedRef(p, ref)) return false;
         if (plot.owner) g.addHostility(plot.owner - 1, me, Math.trunc((plot.price * pi * (plot.level + 2)) / 5));
         // rich4_card_paimaika.asm: the owner's card[2][7] (face 1) before the auction opens.
         if (plot.owner && plot.owner !== me + 1) yield { t: 'fx', kind: 'card-line', p: plot.owner - 1, data: { card: 8, role: 2 } };
@@ -584,7 +587,7 @@ export class Cards {
           ref = t.ref; slot = t.slot;
         } else if (this.aiArg0 >= OBJECT_TARGET) { objectNode = this.aiArg0 - OBJECT_TARGET; slot = g.objects.idAt(objectNode); }
         else ref = this.aiArg0;
-        if (!slot && !objectNode && !this.plot(ref)) return false;
+        if (!slot && !objectNode && (!this.plot(ref) || this.shieldedRef(p, ref))) return false;
         this.consume(p, 12);
         if (slot || objectNode) {
           // _rich4_remove_object: back to the shop's supply; a carried bomb also leaves its carrier (+0x40 = 0).
@@ -620,6 +623,13 @@ export class Cards {
           pick = a;
         } else pick = this.aiArg1;
         let hostility: number;
+        // 1.2.5 (the user 2026-11-17): the 搶奪卡 is given up first, so the card taken goes in its place — a full hand is
+        // not asked to drop a card, and a 搶奪卡 taken (地獄: one of a kind in a hand) stays. Before: 04 Q11, used up last.
+        const swap = ruleOn(g.settings.level, 'grab-swap');
+        if (swap) {
+          if (pick > 100 ? !q.tools[pick - 101] : !q.cards.includes(pick)) return false;
+          this.consume(p, 13);
+        }
         if (pick > 100) {
           const tool = pick - 100;
           if (!q.tools[tool - 1]) return false;
@@ -633,7 +643,7 @@ export class Cards {
           hostility = cardPrice(pick);
         }
         g.addHostility(t, me, hostility);
-        this.consume(p, 13); // silently nothing when a full hand already dropped it (04 Q11)
+        if (!swap) this.consume(p, 13); // silently nothing when a full hand already dropped it (04 Q11)
         // rich4_card_qiangduoka.asm: the robbed player's card[2][12] (face 1) once the card is used up.
         yield { t: 'fx', kind: 'card-result', p: me, target: t, data: { card: 13, ...(pick > 100 ? { tool: pick - 100 } : { got: pick }) } };
         return true;
@@ -652,7 +662,7 @@ export class Cards {
         this.consume(p, 15);
         const who: number[] = [];
         for (const q of g.players) {
-          if (q.id === me || q.whoPlays === 0 || !q.placed || g.offRoad(q)) continue;
+          if (q.id === me || q.whoPlays === 0 || !q.placed || g.offRoad(q) || this.shielded(p, q.id)) continue;
           g.addHostility(q.id, me, 150 * pi);
           q.sleepwalk = 0; q.sleep = 5; q.monthBadDays += 5;
           who.push(q.id);
@@ -719,7 +729,7 @@ export class Cards {
         let slot: number;
         if (human) {
           const options: Option[] = market.stocks.map((x, value) => ({ label: x.name, value }));
-          const a = yield ask({ t: 'choose', p: me, title: id === 24 ? '請選擇要漲停的股票' : '請選擇要跌停的股票', options, cancellable: true });
+          const a = yield ask({ t: 'choose', p: me, title: id === 24 ? '請選擇要漲停的股票' : '請選擇要跌停的股票', options, cancellable: true, screen: 'stock-pick' });
           if (typeof a !== 'number' || !market.stocks[a]) return false;
           slot = a;
         } else slot = this.aiArg0;
@@ -921,7 +931,11 @@ export class Cards {
       return -1;
     }
     const r = yield* this.tryFrame(p, 0, 0, local);
-    return r >= 0 ? r : p.id;
+    if (r < 0 || r === p.id) return p.id;
+    if (!this.g.remakeFrameChain) return r;
+    // the one framed may pardon or frame on in turn, until someone has neither card (the user 2026-11-24: 「別人用嫁禍卡
+    // 嫁禍給我，恰好我也有嫁禍卡，按理說我應該二次嫁禍給別人才對」, 「一直嫁禍到沒有嫁禍卡或免罪卡的人為止」); each step uses a card up
+    return yield* this.pardonOrFrame(this.g.players[r], local, what);
   }
 
   /** 查稅卡's target here: anyone, or on 大富翁城 (docs/rules/19 §3.6) only someone owning a built hall. */
@@ -957,6 +971,9 @@ export class Cards {
   *tryFrame(p: Player, mode: 0 | 1 | 2, amount: number, local = false, payee = -1): Flow<number> {
     if (!this.has(p, 19)) return -1;
     const g = this.g, pi = g.priceIndex;
+    // 大富豪模式: a punishment (hotel, hospital, prison) is a place in this city — passed on only to someone here
+    // (a 嫁禍 of a hotel stay once sent a rival in another city into this city's hotel square, 2026-11-20).
+    if (mode === 0 && g.world) local = true;
     let target: number;
     if (g.isHuman(p)) {
       const cands = g.players.filter(q => q.id !== p.id && q.whoPlays !== 0 && (!local || g.here(q)));
@@ -1231,12 +1248,11 @@ export class Cards {
         return P >= 0 && P !== H && p.ally !== P + 1 && seesPlayer(view(), P) && set(P);
       }
       case 30: return this.aiTurtle(p);
-      case 33: { // 遣返: the most resented rival on screen, else a richer one standing in view (17 §3.5)
+      case 33: { // 遣返: the rival on screen it hurts most — the human first (World.aiDeport, 17 §3.5)
         if (!g.world) return false;
         const v = view().filter(s => s.k === 'player' && s.q.id !== p.id && s.q.whoPlays && !g.offRoad(s.q)) as Extract<Seen, { k: 'player' }>[];
-        if (H >= 0 && v.some(s => s.q.id === H)) return set(H);
-        const rich = v.map(s => s.q).filter(q => g.wealth(q) > g.wealth(p) * 0.8).sort((a, b) => g.wealth(b) - g.wealth(a))[0];
-        return !!rich && set(rich.id);
+        const t = g.world.hooks.aiDeport(g, p, v.map(s => s.q), H);
+        return t >= 0 && set(t);
       }
       case 34: return !!g.world && g.world.hooks.aiDictate(g, p);
       case 35: return !!g.world && g.world.hooks.aiSummon(g, p);
@@ -1460,7 +1476,7 @@ export class Cards {
    */
   private *pickDemolish(p: Player): Flow<{ ref: number; slot: number } | null> {
     const g = this.g, spots: PickSpot[] = [], targets: { ref: number; slot: number }[] = [];
-    for (const ref of this.plotRefs(r => this.builtNotMine(p, r))) {
+    for (const ref of this.plotRefs(r => this.builtNotMine(p, r) && !this.shieldedRef(p, r))) {
       spots.push({ at: 'plot', id: ref, label: this.plotName(ref) });
       targets.push({ ref, slot: 0 });
     }
@@ -1479,6 +1495,18 @@ export class Cards {
     return typeof a === 'number' && targets[a] ? targets[a] : null;
   }
 
+  /** 清明上河's 守寨 (MapRules.cardShield, 宋萬's 梁山令): another player's cards do not work on player `actor` now. */
+  private shielded(p: Player, actor: number): boolean {
+    const r = this.g.rules;
+    return !!r?.cardShield && actor !== p.id && actor >= 0 && actor < this.g.players.length && r.cardShield(this.g, this.g.players[actor]);
+  }
+  /** …nor on that player's lots and facilities. */
+  private shieldedRef(p: Player, ref: number): boolean {
+    if (!this.g.rules?.cardShield) return false;
+    const o = this.plot(ref)?.owner ?? 0;
+    return o > 0 && this.shielded(p, o - 1);
+  }
+
   private opponents(p: Player): Player[] {
     return this.g.players.filter(q => q.id !== p.id && q.whoPlays !== 0);
   }
@@ -1495,7 +1523,7 @@ export class Cards {
    * player's screen; the computer's choice is aiArg0.
    */
   private *pickPlayer(p: Player, human: boolean, title: string, list: number[], harm = true): Flow<number> {
-    list = list.filter(id => !this.indoors(id));
+    list = list.filter(id => !this.indoors(id) && !this.shielded(p, id));
     const t = yield* this.pickOne(p, human, title, list);
     // 即時制: someone else hit by it (RtHooks.struck: 簡單 / 中等 count the hits till their next roll)
     if (harm && t >= 0 && t < this.g.npcBase && t !== p.id) this.g.rt?.struck(t);
@@ -1513,7 +1541,8 @@ export class Cards {
 
   /** Human picks a lot / facility among `refs` on its building (selector types 0x02 / 0x04); the computer's choice is aiArg0. */
   private *pickRef(p: Player, human: boolean, title: string, refs: number[]): Flow<number> {
-    if (!human) return this.plot(this.aiArg0) ? this.aiArg0 : -1;
+    if (!human) return this.plot(this.aiArg0) && !this.shieldedRef(p, this.aiArg0) ? this.aiArg0 : -1;
+    refs = refs.filter(r => !this.shieldedRef(p, r));
     if (!refs.length) return -1;
     // Picked on the map as in the original: only what is on the player's screen.
     const spots: PickSpot[] = refs.map(ref => ({ at: 'plot', id: ref, label: this.plotName(ref) }));

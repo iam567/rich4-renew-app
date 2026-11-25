@@ -1,0 +1,23 @@
+/* 長安's mini-game screens' drawn parts (驛站, 貢院, 鬥雞場; 博戲坊 has its own copy in cn-dice.css): no stretched
+   pictures (the user 2026-11-19: 「邊框都拉伸失真嚴重」) — red lacquer panels with a double gold rim, paper cards,
+   lacquer buttons. Inside a scaled stage (fitOverlay), sizes in stage px. */
+.cn-frame { position: absolute; box-sizing: border-box; border-radius: 16px; border: 3px solid #ffe08a;
+  background: radial-gradient(ellipse at 50% 0%, rgba(255, 190, 120, .22), transparent 70%), linear-gradient(#a3221a, #6e0f0b);
+  box-shadow: 0 0 0 3px #7a4a10, 0 0 0 7px #e6b448, 0 0 0 9px #5a3208, inset 0 0 0 3px #6e0f0b, inset 0 0 0 5px rgba(255, 214, 120, .75), 0 10px 18px rgba(0, 0, 0, .55); }
+.cn-frame::before, .cn-frame::after { content: ''; position: absolute; width: 14px; height: 14px; top: 50%; margin-top: -7px; transform: rotate(45deg);
+  background: linear-gradient(135deg, #fff3c0, #e6a52c); box-shadow: 0 0 0 2px #7a4a10; }
+.cn-frame::before { left: -14px; }
+.cn-frame::after { right: -14px; }
+.cn-lbl { position: absolute; inset: 10px 26px; display: flex; align-items: center; justify-content: center; text-align: center; white-space: nowrap;
+  color: #ffe3a0; text-shadow: 0 2px 0 #4a120a, 0 0 6px rgba(0, 0, 0, .6); }
+.cn-lbl b { color: #fff; font-weight: normal; }
+.cn-card, .cn-scene button.cn-card { position: relative; box-sizing: border-box; border-radius: 14px; border: 3px solid #9e1b14; color: #3a2210; text-align: center;
+  background: radial-gradient(120% 90% at 50% 0%, #fffaf0, #f0dfba); box-shadow: 0 0 0 3px #e0b24a, 0 8px 14px rgba(0, 0, 0, .45); }
+.cn-scene button.cn-btn { position: relative; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; box-sizing: border-box; height: 80px; min-width: 200px; padding: 0 26px; border-radius: 14px; cursor: pointer;
+  border: 3px solid #f0c860; font-family: inherit; font-size: 30px; color: #fff1c8; text-shadow: 0 2px 0 #4a0a06;
+  background: linear-gradient(#b42a20, #7a120c); box-shadow: 0 0 0 3px #6e4512, 0 6px 0 #3e0a06, 0 10px 14px rgba(0, 0, 0, .4); }
+.cn-scene button.cn-btn.ghost { background: linear-gradient(#3a302a, #16110e); border-color: #c9962c; color: #f6e7c0; }
+.cn-scene button.cn-btn:disabled { filter: grayscale(.8) brightness(.7); cursor: default; }
+.cn-scene button.cn-btn img { position: static; height: 44px; vertical-align: middle; margin-right: 6px; }
+@keyframes cn-pop { from { transform: scale(.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.cn-scene button.cn-btn.on { background: linear-gradient(#ffe9a8, #e0b24a); color: #5a2a00; text-shadow: 0 1px 0 #fff3c4; border-color: #fff1c8; }

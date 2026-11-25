@@ -4,7 +4,7 @@
  * relay counts those heard within 35 s (tools/party-relay/relay.mjs /stats). The title only reads the count.
  * Without the relay (unreachable, or none listed) there is no count and nothing is shown.
  */
-import { relays } from './net-peer';
+import { netConfig, relays } from './net-peer';
 
 export interface HeadCount { online: number; menu: number; room: number; game: number }
 export type PartyPlace = 'menu' | 'room' | 'game';
@@ -29,7 +29,7 @@ export async function fetchHeadCount(where?: PartyPlace | 'off'): Promise<HeadCo
   const base = await statsUrl();
   if (!base) return null;
   const app = where && where !== 'off' ? reportApp() : null;
-  const q = where ? `?dev=${deviceId()}&where=${where}${app ? `&v=${encodeURIComponent(app.v)}&plat=${encodeURIComponent(app.plat)}&name=${encodeURIComponent(app.name)}` : ''}` : '';
+  const q = where ? `?dev=${deviceId()}&where=${where}${app ? `&v=${encodeURIComponent(app.v)}&plat=${encodeURIComponent(app.plat)}&name=${encodeURIComponent(app.name)}` : ''}${where !== 'off' ? serverExtra() : ''}` : '';
   try {
     const ctl = new AbortController();
     const t = setTimeout(() => ctl.abort(), 5000);
@@ -40,6 +40,18 @@ export async function fetchHeadCount(where?: PartyPlace | 'off'): Promise<HeadCo
     const n = (k: keyof HeadCount) => (Number.isFinite(j[k]) ? Math.max(0, Math.floor(j[k] as number)) : 0);
     return { online: n('online'), menu: n('menu'), room: n('room'), game: n('game') };
   } catch { return null; }
+}
+
+/**
+ * On a 私服 only (its owner's 管理頁 lists the rooms with their map and day): the room this phone is in, the game's day
+ * and map — set by party-report.ts; never sent to ours.
+ */
+let roomNow: () => { room?: string; day?: number; map?: string } = () => ({});
+export function setPresenceRoom(f: typeof roomNow) { roomNow = f; }
+function serverExtra(): string {
+  if (!netConfig.server) return '';
+  const r = roomNow();
+  return `${r.room ? `&room=${encodeURIComponent(r.room)}` : ''}${r.day ? `&day=${r.day}` : ''}${r.map ? `&map=${encodeURIComponent(r.map.slice(0, 20))}` : ''}`;
 }
 
 let place: PartyPlace | null = null;

@@ -13,9 +13,10 @@ import './casino-rules'; // 大富翁城's map rules (MAP_RULES[105])
 import './kabukicho'; // 歌舞伎町's map rules (MAP_RULES[106])
 import './jiqing'; // 激情歲月's map rules (MAP_RULES[107])
 import './chongqing'; // 重慶's map rules (MAP_RULES[109])
+import './changan'; // 長安's rules (RULE_SETS.changan)
 import type { GameSettings } from './types';
 
-const FILES: Record<number, string> = { 100: 'remake/tokyo', 101: 'remake/osaka', 102: 'remake/sapporo', 103: 'remake/kyushu', 104: 'remake/okinawa', 105: 'remake/finale', 106: 'remake/kabukicho', 107: 'remake/jiqing', 109: 'remake/chongqing' };
+const FILES: Record<number, string> = { 100: 'remake/tokyo', 101: 'remake/osaka', 102: 'remake/sapporo', 103: 'remake/kyushu', 104: 'remake/okinawa', 105: 'remake/finale', 106: 'remake/kabukicho', 107: 'remake/jiqing', 109: 'remake/chongqing', 110: 'remake/changan', 111: 'remake/qingming' };
 export const simMapFile = (id: number) => fileURLToPath(new URL(`../../../editor/site/assets/${FILES[id] ?? `map-${id}`}.json`, import.meta.url));
 export const haveSimMaps = (ids: number[]) => ids.every(id => existsSync(simMapFile(id)));
 

@@ -1,0 +1,109 @@
+/*
+ * 長安's UI skin (the user 2026-11-19: 「什麼股票啊 每月結算啊 …… 是否都變更成唐代風格了」): only under `.game.theme-cn`
+ * (ui/cn-theme.ts adds the class to this map's game shell), as 激情歲月's (theme-jq.css). Looks only, drawn in CSS (no
+ * stretched pictures): message boxes on ivory 宣紙 with a vermilion rim and a gold line, buttons of red lacquer with gold
+ * rims, the sheets (查詢, 系統, 市易司 …) a black-and-red lacquered board with gold edges.
+ */
+
+/* ---------------------------------------------------------------- message boxes and questions */
+.game.theme-cn .msg {
+  color: #3a1a0a;
+  background: radial-gradient(120% 90% at 50% 0%, #fffaf0, #f3e6c8);
+  border: 3px solid #9e1b14;
+  border-radius: 10px;
+  box-shadow: 0 0 0 3px #f6e7c0, 0 0 0 5px #c9962c, 0 12px 30px rgba(0, 0, 0, .45);
+}
+.game.theme-cn .msg::before { inset: 6px; border: 1.5px solid rgba(158, 27, 20, .45); border-radius: 6px; }
+.game.theme-cn .msg-text { text-shadow: none; color: #3a1a0a; }
+.game.theme-cn .msg-text em, .game.theme-cn .msg-text b { color: #a3160f; }
+.game.theme-cn .ribbon {
+  border-radius: 6px; border: 2px solid #f3cf6b; color: #fff1b8; text-shadow: 0 1px 0 #4a0a06;
+  background: linear-gradient(#a3221a, #6e0f0b); box-shadow: 0 0 0 2px #6e4512, 0 4px 10px rgba(0, 0, 0, .35);
+  font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif; font-weight: 900; letter-spacing: 2px;
+}
+.game.theme-cn .ribbon-face { border-color: #f3cf6b; }
+
+/* red lacquer with a gold rim; 否 in black ink lacquer */
+.game.theme-cn .candy {
+  color: #fff1c8; text-shadow: 0 1px 0 #4a0a06; border: 2px solid #f0c860; border-radius: 12px;
+  background: linear-gradient(#b42a20, #7a120c);
+  box-shadow: 0 0 0 2px #6e4512, 0 4px 0 #3e0a06, 0 6px 10px rgba(0, 0, 0, .3);
+}
+.game.theme-cn .candy:active:not(:disabled) { box-shadow: 0 0 0 2px #6e4512, 0 1px 0 #3e0a06, 0 2px 4px rgba(0, 0, 0, .3); }
+.game.theme-cn .candy.no, .game.theme-cn .candy.ghost { color: #f6e7c0; background: linear-gradient(#3a302a, #16110e); border-color: #c9962c; }
+.game.theme-cn .candy.cell { border-radius: 10px; }
+
+/* ---------------------------------------------------------------- sheets with their own light text (查詢, 系統, 市易司 …):
+   black-and-red lacquer with gold edges (the words stay light: they were written for the blue board) */
+.game.theme-cn .msg.sheet, .game.theme-cn .msg.stocks, .game.theme-cn .msg.rs-box {
+  color: #fff3d6;
+  background: radial-gradient(130% 80% at 50% 0%, #5a1810, #2a0b07 70%, #1a0705);
+  border-color: #e0b24a;
+  box-shadow: 0 0 0 3px #3a0a06, 0 0 0 6px #c9962c, 0 12px 30px rgba(0, 0, 0, .5);
+}
+.game.theme-cn .msg.sheet .msg-text, .game.theme-cn .msg.stocks .msg-text { color: #fff3d6; }
+.game.theme-cn .msg.sheet::before { border-color: rgba(240, 200, 96, .45); }
+.game.theme-cn .stk-table { background: rgba(0, 0, 0, .3); border: 1px solid rgba(224, 178, 74, .35); }
+.game.theme-cn .stk-table th { color: #f0c860; }
+.game.theme-cn .stk-trade { background: rgba(30, 8, 4, .65); }
+.game.theme-cn .stk-trade-box { background: linear-gradient(#5a1810, #2a0b07); border-color: #e0b24a; }
+.game.theme-cn .chip { border-color: #c9962c; }
+.game.theme-cn .chip.on { color: #3a1a0a; background: linear-gradient(#ffe9a8, #e0b24a); border-color: #fff1c8; }
+
+/* ---------------------------------------------------------------- 清明上河 (`.game.theme-cn.theme-qm`, the user 2026-11-23:
+   「開元盛世你還單獨做了一套UI，清明上河你也沒做」): 長安's lacquer skin in the Song way, as the map's own screens (qm-ui.css):
+   the sheets a deep 黛青 (blue-green ink) lacquer with gold edges and a thin 天青 (celadon) line inside, the buttons the
+   same red lacquer as its painted buttons (否 in black ink), the message boxes 宣紙 with an ink-teal rim, the title plaques
+   in the bundled 文楷 brush hand. */
+.game.theme-qm .msg {
+  color: #2e2214;
+  background: radial-gradient(120% 90% at 50% 0%, #fffcf2, #efe4c8);
+  border-color: #1f4a48;
+  box-shadow: 0 0 0 3px #f3e8c8, 0 0 0 5px #b98a2e, 0 12px 30px rgba(0, 0, 0, .45);
+}
+.game.theme-qm .msg::before { border-color: rgba(31, 74, 72, .4); }
+.game.theme-qm .msg-text { color: #2e2214; }
+.game.theme-qm .msg-text em, .game.theme-qm .msg-text b { color: #a8160e; }
+.game.theme-qm .ribbon {
+  border-radius: 4px; border: 2px solid #f0cf72; color: #ffe9a6; text-shadow: 0 2px 0 #3e0804;
+  background: linear-gradient(#a8241a 0%, #7a120c 55%, #5e0d08 100%);
+  box-shadow: 0 0 0 2px #3a2208, 0 0 0 4px #c9962c, 0 4px 10px rgba(0, 0, 0, .4);
+  font-family: "LXGW WenKai TC", "Kaiti TC", "STKaiti", serif; font-weight: 400; letter-spacing: 4px;
+}
+.game.theme-qm .candy { font-family: "LXGW WenKai TC", var(--ui-font), serif; }
+.game.theme-qm .candy.no, .game.theme-qm .candy.ghost { background: linear-gradient(#2c3534, #101615); border-color: #c9962c; }
+.game.theme-qm .msg.sheet, .game.theme-qm .msg.stocks, .game.theme-qm .msg.rs-box {
+  color: #f4ecd6;
+  background:
+    radial-gradient(130% 80% at 50% 0%, rgba(120, 190, 176, .16), transparent 60%),
+    linear-gradient(#173a3a, #0f2828 60%, #0a1d1d);
+  border-color: #e0b24a;
+  box-shadow: 0 0 0 3px #0a1a18, 0 0 0 6px #c9962c, 0 12px 30px rgba(0, 0, 0, .5);
+}
+.game.theme-qm .msg.sheet::before, .game.theme-qm .msg.stocks::before, .game.theme-qm .msg.rs-box::before { border-color: rgba(150, 205, 190, .4); }
+.game.theme-qm .msg.sheet .msg-text, .game.theme-qm .msg.stocks .msg-text { color: #f4ecd6; }
+.game.theme-qm .stk-table { background: rgba(0, 0, 0, .28); border-color: rgba(150, 205, 190, .3); }
+.game.theme-qm .stk-trade { background: rgba(4, 18, 18, .65); }
+.game.theme-qm .stk-trade-box { background: linear-gradient(#173a3a, #0a1d1d); }
+
+/* ---------------------------------------------------------------- news / fate boards (長安 and 清明上河, the user 2026-11-24:
+   「命运的新闻的图，是不是不符合框架标准？」): the redrawn frames (maps/remake/<map>/places/0066) have their white window at
+   (40.5,71)–(398.5,293.5), not the original's (25,44)–(413,295), so the picture sits in that window, cropped to fill it; 清明上河's
+   fate window is taller (to y 329) and its text starts below it. */
+.game.theme-cn .nw-pic { left: 40px; top: 70px; width: 359px; height: 224px; border-radius: 2px; }
+.game.theme-cn .nw-pic img { width: 100%; height: 100%; object-fit: cover; }
+.game.theme-qm .nw-scene.fate .nw-pic { height: 260px; }
+.game.theme-qm .nw-scene.fate .nw-text { top: 340px; }
+/* the words on a plain plate the width of the picture window (the user 2026-11-24: 「命运和新闻卡的底纹让文字看着也不清楚，乱七八糟的」):
+   the news a sheet of paper with ink words, the fate a dark lacquer plate with light words; the frame's pattern stays round them. */
+.game.theme-cn .nw-text { left: 50px; right: 51px; top: 308px; bottom: 40px; z-index: 1; }
+.game.theme-cn .nw-scene.fate .nw-text { top: 326px; }
+.game.theme-qm .nw-scene.fate .nw-text { top: 344px; }
+.game.theme-cn .nw-text.with-faces { right: 158px; }
+.game.theme-cn .nw-text::before { content: ''; position: absolute; inset: -6px -10px; z-index: -1; border-radius: 4px;
+  background: rgba(255, 250, 236, .95); box-shadow: 0 0 0 1.5px #8a5a2a, 0 2px 6px rgba(0, 0, 0, .25); }
+.game.theme-cn .nw-text > div { color: #2a1406; text-shadow: none; font-weight: 700; }
+.game.theme-cn .nw-text em { color: #b3131b; }
+.game.theme-cn .nw-scene.fate .nw-text::before { background: rgba(14, 18, 36, .94); box-shadow: 0 0 0 1.5px #c9a24a, 0 2px 6px rgba(0, 0, 0, .3); }
+.game.theme-cn .nw-scene.fate .nw-text > div { color: #fff4d8; }
+.game.theme-cn .nw-scene.fate .nw-text em { color: #ffd34a; }

@@ -1,0 +1,57 @@
+/* 長安's 玄都觀 (cn-magic.ts): stage px of the approved mock (1280×960 landscape, 1280×1520 portrait). */
+.fx-overlay.cnm-ov { position: absolute; inset: 0; z-index: 60; background: #120c08; }
+.fx-scene.cnm-scene { overflow: hidden; font-family: "LXGW WenKai TC", "Kaiti TC", "STKaiti", serif; user-select: none; }
+.cnm-scene .cnm-bg { position: absolute; background: center / cover no-repeat; }
+.cnm-scene .cnm-dim { position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 36%, transparent 30%, rgba(10, 4, 2, .45) 75%); }
+.cnm-scene.tall .cnm-dim { background: radial-gradient(ellipse at 50% 36%, transparent 35%, rgba(10, 4, 2, .45) 75%); }
+.cnm-scene .cnm-ring { position: absolute; width: 0; height: 0; z-index: 2; }
+.cnm-scene .cnm-path { position: absolute; border-radius: 50%; border: 3px solid rgba(255, 214, 120, .35);
+  box-shadow: 0 0 18px rgba(255, 190, 90, .25), inset 0 0 18px rgba(255, 190, 90, .2); }
+.fx-scene.cnm-scene button.cnm-tok { position: absolute; border-radius: 50%; cursor: pointer; transition: transform .18s, filter .18s;
+  filter: drop-shadow(0 6px 6px rgba(0, 0, 0, .6)); }
+.fx-scene.cnm-scene button.cnm-tok img { position: static; width: 100%; height: 100%; }
+.fx-scene.cnm-scene button.cnm-tok.on { transform: scale(1.22); filter: drop-shadow(0 0 14px #ffd36a) drop-shadow(0 0 28px #ffb02e); }
+.cnm-scene .cnm-nm { position: absolute; margin-left: -94px; width: 188px; height: 38px; line-height: 38px; text-align: center; font-size: 25px; white-space: nowrap;
+  color: #ffe3a0; background: linear-gradient(#7e1712, #560b08); border: 2px solid #e6b448; border-radius: 10px; pointer-events: none;
+  box-shadow: 0 0 0 2px #5a3208, 0 4px 8px rgba(0, 0, 0, .5); text-shadow: 0 2px 0 #3a0a06; transition: top .18s; }
+.cnm-scene.tall .cnm-nm { margin-left: -112px; width: 224px; height: 46px; line-height: 46px; font-size: 31px; }
+.cnm-scene .cnm-nm.on { background: linear-gradient(#ffe9a8, #e0b24a); color: #5a2a00; text-shadow: 0 1px 0 #fff3c4; border-color: #fff1c8; }
+.cnm-scene .cnm-oracle { position: absolute; left: 640px; top: 262px; transform: translateX(-50%); text-align: center; z-index: 1; }
+.cnm-scene.tall .cnm-oracle { top: 440px; }
+.cnm-scene .cnm-oracle[hidden] { display: none; }
+.cnm-scene .cnm-halo { position: absolute; left: 50%; top: 62px; width: 330px; height: 330px; margin: -165px 0 0 -165px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255, 220, 140, .45), rgba(255, 190, 90, .12) 55%, transparent 70%); }
+.cnm-scene.tall .cnm-halo { width: 460px; height: 460px; margin: -200px 0 0 -230px; }
+.cnm-scene .cnm-tag { position: relative; margin: 4px auto 10px; font-size: 24px; color: #ffe3a0; letter-spacing: 6px; text-shadow: 0 2px 0 #3a0a06; }
+.cnm-scene .cnm-who { position: relative; font-size: 52px; color: #fff3c8; letter-spacing: 4px; white-space: nowrap;
+  text-shadow: 0 0 12px #ffb02e, 0 3px 0 #4a1a06, 0 0 30px rgba(0, 0, 0, .6); }
+.cnm-scene.tall .cnm-tag { font-size: 30px; margin-bottom: 12px; }
+.cnm-scene.tall .cnm-who { font-size: 66px; }
+.cnm-scene .cnm-faces { position: relative; display: flex; flex-wrap: wrap; gap: 8px 10px; justify-content: center; max-width: 560px; margin: 12px auto 0; }
+.cnm-scene .cnm-face { display: flex; align-items: center; gap: 6px; padding: 4px 14px 4px 4px; border-radius: 24px; background: rgba(40, 14, 8, .8);
+  border: 2px solid #e6b448; color: #ffe3a0; font-size: 24px; white-space: nowrap; }
+.cnm-scene .cnm-face b { font-weight: normal; }
+.fx-scene.cnm-scene .cnm-face img, .cnm-scene .cnm-face i { position: static; display: inline-block; width: 36px; height: 36px; border-radius: 50%; border: 2px solid #fff3c8;
+  object-fit: cover; background: radial-gradient(circle at 40% 35%, #ffd7b0, #c27a48); }
+.cnm-scene.tall .cnm-face { font-size: 30px; padding: 5px 18px 5px 5px; border-radius: 30px; }
+.fx-scene.cnm-scene.tall .cnm-face img, .cnm-scene.tall .cnm-face i { width: 46px; height: 46px; }
+.cnm-scene .cnm-say { left: 70px; top: 770px; width: 780px; height: 150px; z-index: 3; }
+.cnm-scene.tall .cnm-say { left: 70px; top: 1210px; width: 1140px; height: 150px; }
+.cnm-scene .cnm-rib { position: absolute; left: 24px; top: -26px; padding: 4px 22px; font-size: 26px; color: #5a2a00; z-index: 1;
+  background: linear-gradient(#ffe9a8, #e0b24a); border: 2px solid #7a4a10; border-radius: 8px; }
+.cnm-scene .cnm-line { font-size: 40px; line-height: 1.25; white-space: normal; justify-content: flex-start; padding-left: 16px; text-align: left; }
+.cnm-scene.tall .cnm-line { font-size: 46px; justify-content: center; text-align: center; padding-left: 0; }
+.cnm-scene .cnm-go { position: absolute; left: 910px; top: 792px; z-index: 3; }
+.cnm-scene.tall .cnm-go { left: 0; right: 0; top: 1390px; text-align: center; }
+.fx-scene.cnm-scene .cnm-go button.cn-btn { height: 110px; min-width: 290px; font-size: 46px; letter-spacing: 10px; animation: cn-pop .25s ease-out; }
+.fx-scene.cnm-scene.tall .cnm-go button.cn-btn { height: 100px; min-width: 420px; font-size: 48px; letter-spacing: 14px; }
+.fx-scene.cnm-scene .cnm-go button.cn-btn[hidden] { display: none; }
+/* 施法: the tokens flare, the disc blazes, the hall whites out */
+.cnm-scene .cnm-flash { position: absolute; inset: 0; z-index: 9; pointer-events: none; opacity: 0;
+  background: radial-gradient(circle at 50% 36%, #fff6dc 0%, rgba(255, 210, 120, .9) 25%, rgba(255, 160, 60, .5) 55%, rgba(255, 244, 222, .95) 100%); }
+.cnm-scene.casting .cnm-flash { animation: cnm-flash 1.7s ease-in forwards; }
+.cnm-scene.casting button.cnm-tok { animation: cnm-pulse .45s ease-in-out infinite alternate; }
+.cnm-scene.casting .cnm-halo { animation: cnm-blaze 1.2s ease-in forwards; }
+@keyframes cnm-flash { 0%, 45% { opacity: 0; } 85%, 100% { opacity: 1; } }
+@keyframes cnm-pulse { to { filter: drop-shadow(0 0 16px #ffd36a) brightness(1.3); } }
+@keyframes cnm-blaze { to { transform: scale(2.6); opacity: 1; filter: brightness(1.8); } }

@@ -49,8 +49,40 @@ export function jqMusicSet(clean = jqMusicQuality() === 1): MusicSet {
   return { tracks: JQ_TRACKS.map(n => file(n, clean)), fanfare: file(JQ_FANFARE, clean) };
 }
 
-/** Which music a game plays: 激情歲月's own on that map (a normal game, the setting on), else none (the original's). */
+/**
+ * 長安's own music (the user 2026-11-19: 「大唐的輪播bgm，鬥雞、貢院、賭坊的bgm」「用大唐那時候的樂器，做出恢弘的感覺」,
+ * tools/tycoon-art/changan_music_suno.py): four Tang background pieces in rotation, the fanfare at the opening's end
+ * and the screens' own pieces at indices past the original's themes (CN_THEME). The same 專屬音樂 setting.
+ */
+export const CN_MAP_ID = 110;
+// (the user's picks 2026-11-19: 曲江春宴 of the first batch, then five of the cartoon batch —
+// 「唐朝的適合卡通遊戲的歡快的音樂，朗朗上口，容易洗腦」, never march-like)
+export const CN_TRACKS = ['cn-bgm-stroll', 'cn-bgm-market', 'cn-bgm-qujiang', 'cn-bgm-lantern', 'cn-bgm-fortune-a', 'cn-bgm-fortune-b'] as const;
+export const CN_THEME = { cock: 30, exam: 31, dice: 32 } as const;
+const cnFile = (name: string) => ({ name, url: `${ASSETS}/maps/remake/changan/music/${name}.m4a`, len: 0 });
+export function cnMusicSet(): MusicSet {
+  return { tracks: CN_TRACKS.map(cnFile), fanfare: cnFile('cn-fanfare'),
+    themes: { [CN_THEME.cock]: cnFile('cn-cock'), [CN_THEME.exam]: cnFile('cn-exam'), [CN_THEME.dice]: cnFile('cn-dice') } };
+}
+
+/**
+ * 清明上河's own music (the user 2026-11-23: 「開元盛世你還單獨做了一套UI，清明上河你也沒做」 — everything 長安 has;
+ * tools/tycoon-art/qingming_music_suno.py): six cheerful Northern Song pieces in rotation (汴河 morning, 州橋夜市, 瓦舍勾欄,
+ * 虹橋, 金明池, 梁山), the jingle at the opening's end and the screens' own pieces (QM_THEME; 貢院 at 長安's index, so
+ * cn-exam.ts plays the Song one with set 'qingming'). The same 專屬音樂 setting.
+ */
+export const QM_MAP_ID = 111;
+export const QM_TRACKS = ['qm-bgm-bianhe', 'qm-bgm-yeshi', 'qm-bgm-wazi', 'qm-bgm-hongqiao', 'qm-bgm-jinming', 'qm-bgm-liangshan'] as const;
+export const QM_THEME = { exam: CN_THEME.exam, ling: 33, juyi: 34, tiger: 35, boar: 36, wrestle: 37, slot: 38, dock: 39 } as const;
+const qmFile = (name: string) => ({ name, url: `${ASSETS}/maps/remake/qingming/music/${name}.m4a`, len: 0 });
+export function qmMusicSet(): MusicSet {
+  return { tracks: QM_TRACKS.map(qmFile), fanfare: qmFile('qm-fanfare'),
+    themes: Object.fromEntries(Object.entries(QM_THEME).map(([k, i]) => [i, qmFile(`qm-${k}`)])) };
+}
+
+/** Which music a game plays: 激情歲月's, 長安's or 清明上河's own on that map (a normal game, the setting on), else none (the original's). */
 export function musicSetFor(mapId: number, o: { tycoon?: boolean; on?: boolean; clean?: boolean } = {}): MusicSet | null {
-  if (mapId !== JQ_MAP_ID || o.tycoon) return null;
-  return (o.on ?? jqMusicMode() === 0) ? jqMusicSet(o.clean) : null;
+  if (o.tycoon || (mapId !== JQ_MAP_ID && mapId !== CN_MAP_ID && mapId !== QM_MAP_ID)) return null;
+  if (!(o.on ?? jqMusicMode() === 0)) return null;
+  return mapId === CN_MAP_ID ? cnMusicSet() : mapId === QM_MAP_ID ? qmMusicSet() : jqMusicSet(o.clean);
 }

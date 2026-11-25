@@ -1,0 +1,36 @@
+/* 清明上河's 汴河漕運 dock (qm-dock.ts): the stage 1600 × 900 (900 × 1600 upright), scaled by fitOverlay. */
+.qmd-ov { position: absolute; inset: 0; z-index: 60; background: #0d1620; }
+.qmd-scene { background: #0d1620; }
+.qmd-cam { position: absolute; inset: 0; transform-origin: 82% 29%; }
+.qmd-scene.tall .qmd-cam { transform-origin: 80% 23%; }
+.qmd-bg { position: absolute; inset: 0; background: center / cover no-repeat; }
+.qmd-waves { position: absolute; left: 0; right: 0; bottom: 0; height: 42%; opacity: 0; pointer-events: none;
+  background: repeating-linear-gradient(172deg, rgba(255, 255, 255, 0) 0 22px, rgba(255, 255, 255, .22) 22px 25px, rgba(255, 255, 255, 0) 25px 54px);
+  -webkit-mask: linear-gradient(transparent, #000 40%); mask: linear-gradient(transparent, #000 40%); }
+.qmd-title { left: 50%; top: 22px; width: 560px; transform: translateX(-50%); }
+.qmd-status { right: 24px; top: 112px; width: 540px; font-size: 28px; padding: 0 13% 2px; }
+.qmd-dialog { left: 420px; bottom: 132px; width: 1120px; }
+.qmd-who { left: 7%; top: -34px; width: 200px; font-size: 32px; letter-spacing: .2em; text-indent: .2em; }
+.qmd-foot { position: absolute; left: 420px; width: 1120px; bottom: 24px; display: flex; justify-content: center; gap: 60px; }
+.qmd-scene .qmd-foot button.qm-btn.gold:only-child { width: 380px; }
+/* upright: the board at the top, the paper and the buttons under the boatman */
+.qmd-scene.tall .qmd-title { top: 40px; width: 620px; }
+.qmd-scene.tall .qmd-status { left: 50%; right: auto; top: 136px; width: 560px; transform: translateX(-50%); }
+.qmd-scene.tall .qmd-dialog { left: 20px; bottom: 210px; width: 860px; }
+.qmd-scene.tall .qmd-dialog .qm-say { font-size: 34px; }
+.qmd-scene.tall .qmd-foot { left: 20px; width: 860px; bottom: 80px; gap: 40px; }
+/* the crossing: the camera over the water to 梁山 (back: from it), the board and a line */
+.qmd-scene.sailing .qmd-dialog, .qmd-scene.sailing .qmd-foot, .qmd-scene.sailing > .qmd-title, .qmd-scene.sailing .qmd-status { display: none; }
+.qmd-scene.sailing .qmd-cam { animation: qmd-go var(--sail, 2600ms) cubic-bezier(.45, 0, .4, 1) both; }
+.qmd-scene.sailing.back .qmd-cam { animation-name: qmd-back; }
+@keyframes qmd-go { from { transform: scale(1); filter: none; } 80% { filter: none; } to { transform: scale(2.6); filter: brightness(1.15) blur(1px); } }
+@keyframes qmd-back { from { transform: scale(2.6); filter: brightness(1.15) blur(1px); } 20% { filter: none; } to { transform: scale(1); filter: none; } }
+.qmd-scene.sailing .qmd-waves { opacity: 1; animation: qmd-waves .9s linear infinite; }
+@keyframes qmd-waves { from { background-position: 0 0; } to { background-position: -120px 0; } }
+.qmd-banner { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%); display: flex; flex-direction: column; align-items: center; gap: 18px; pointer-events: none; }
+.qmd-banner[hidden] { display: none; }
+.qmd-banner .qm-title { position: relative; width: 620px; font-size: 60px; animation: qm-pop .5s cubic-bezier(.2, 1.6, .4, 1) both; }
+.qmd-note { font-size: 34px; color: #fff3d0; text-align: center; margin: 0 30px; padding: 6px 28px; border-radius: 30px; background: rgba(20, 10, 4, .55); text-shadow: 0 2px 0 #000, 0 0 10px rgba(0, 0, 0, .8); animation: qm-fade .6s .3s both; }
+.qmd-scene.tall .qmd-banner .qm-title { width: 600px; }
+/* upright the boatman stands in the middle: the board and its line go down on the quay, clear of his face */
+.qmd-scene.tall .qmd-banner { top: auto; bottom: 230px; transform: none; }

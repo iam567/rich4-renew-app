@@ -1,8 +1,8 @@
 /**
- * 大富豪模式's shops (docs/rules/17 §3.10, the user 2026-10-19): the card shelf has 轉向卡, 停留卡 and the mode's own
- * cards always (bought as often as wanted), the 通緝卡 while its city's one copy is in, then 6–15 cells drawn from one
- * nationwide pool (each card's copies × 5, shared by the five cities, a cell bought once per visit); the tool shelf
- * has all eight, bought as often as wanted up to the stack of 9. The normal game keeps the original shelves (05 §8.3).
+ * 大富豪模式's shops (docs/rules/17 §3.10, the user 2026-10-19, 2026-11-20): the card shelf has the 通緝卡 while its
+ * city's one copy is in, then 6–15 cells drawn from one nationwide pool (each card's copies × 3, but 飛行卡, 電車卡,
+ * 遣返卡, 召集卡 10 each; shared by the five cities, a cell bought once per visit — no always-stocked cards); the tool
+ * shelf has all eight, bought as often as wanted up to the stack of 9. The normal game keeps the original shelves.
  */
 import { describe, expect, it } from 'vitest';
 import { existsSync, readFileSync } from 'node:fs';
@@ -40,84 +40,92 @@ function shop(g: World['cities'][number], me: World['players'][number], answers:
   return asks;
 }
 
-const ALWAYS = [6, 14, 31, 32, 33, 35];
-
 describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
-  it('one nationwide card pool: copies × 5, the same array in the five cities, kept by a save', async () => {
+  it('one nationwide card pool: copies × 3 (飛行, 電車, 遣返, 召集 10 each), the same array in the five cities, kept by a save', async () => {
     const { w } = world();
     const pool = w.cities[0].cards.remaining;
     expect(w.cities.every(c => c.cards.remaining === pool)).toBe(true);
-    expect(pool[0]).toBe(10); // 均富卡 2 × 5
-    expect(pool[1]).toBe(10); // 均貧卡 2 × 5
-    expect(pool[6]).toBe(20); // 改建卡 4 × 5
-    expect(pool[33]).toBe(5); // 獨裁卡: one per map
+    expect(pool[0]).toBe(6); // 均富卡 2 × 3
+    expect(pool[1]).toBe(6); // 均貧卡 2 × 3
+    expect(pool[5]).toBe(18); // 轉向卡 6 × 3
+    expect(pool[13]).toBe(18); // 停留卡 6 × 3
+    expect(pool[6]).toBe(12); // 改建卡 4 × 3
+    expect([pool[30], pool[31], pool[32], pool[34]]).toEqual([10, 10, 10, 10]); // 飛行, 電車, 遣返, 召集
+    expect(pool[33]).toBe(3); // 獨裁卡: one per map × 3
     expect(pool[35]).toBe(0); // the 通緝卡 is one per city, apart from the pool
     pool[0] = 3;
     const { saveWorld, loadWorld } = await import('../save');
     const v = loadWorld(saveWorld(w));
     expect(v.cities.every(c => c.cards.remaining === v.cities[0].cards.remaining)).toBe(true);
     expect(v.cities[0].cards.remaining[0]).toBe(3);
+    // a save of the old × 5 pool: no more than today's copies
+    const old = saveWorld(w);
+    delete (old.world as { pool3?: boolean }).pool3;
+    old.cities.forEach(c => { (c.modules.cards as { remaining: number[] }).remaining[30] = 20; });
+    expect(loadWorld(old).cities[0].cards.remaining[30]).toBe(10);
   });
 
   it('an older save (one pool per city) adds the cities\' pools up', async () => {
     const { w } = world();
     const { saveWorld, loadWorld } = await import('../save');
     const s = saveWorld(w);
-    delete s.world.sharedPool;
+    delete s.world.sharedPool; delete s.world.pool3;
     s.cities.forEach((c, i) => { (c.modules.cards as { remaining: number[] }).remaining = Array.from({ length: 36 }, () => i); });
     const v = loadWorld(s);
-    expect(v.cities[2].cards.remaining[0]).toBe(0 + 1 + 2 + 3 + 4);
+    expect(v.cities[2].cards.remaining[0]).toBe(6); // 0 + 1 + 2 + 3 + 4, never above × 3
     expect(v.cities[2].cards.remaining[35]).toBe(0);
     expect(v.cities.map(c => c.cards.wanted)).toEqual([1, 1, 1, 1, 1]);
   });
 
-  it('the shelf: the always-stocked cards first, then 6–15 drawn from the pool; all eight tools', () => {
+  it('the shelf: the 通緝卡, then 6–15 drawn from the pool (no always-stocked cards); all eight tools', () => {
     const { g } = world();
     g.tools.shopStock.fill(0);
     for (let k = 0; k < 20; k++) {
       const shelf = g.tools.cardShelf();
-      expect(shelf.slice(0, 7)).toEqual([...ALWAYS, 36]);
-      const drawn = shelf.slice(7);
+      expect(shelf[0]).toBe(36);
+      const drawn = shelf.slice(1);
       expect(drawn.length).toBeGreaterThanOrEqual(6);
       expect(drawn.length).toBeLessThanOrEqual(15);
-      expect(drawn.every(id => (id >= 1 && id <= 30 && id !== 6 && id !== 14) || id === 34)).toBe(true);
+      expect(drawn.every(id => id >= 1 && id <= 35)).toBe(true);
     }
     expect(g.tools.toolShelf()).toEqual([1, 2, 3, 4, 5, 6, 7, 8]);
-    g.cards.remaining.fill(0); // the nationwide pool is empty: only the always-stocked cards
+    g.cards.remaining.fill(0); // the nationwide pool is empty
     g.cards.wanted = 0; // this city's 通緝卡 is out
-    expect(g.tools.cardShelf()).toEqual(ALWAYS);
+    expect(g.tools.cardShelf()).toEqual([]);
   });
 
-  it('always-stocked cards and tools again and again; a pool card once per visit, taken from the pool of every city', () => {
+  it('every card cell once per visit (飛行卡 too), taken from the pool of every city; tools again and again', () => {
     const { w, g, me } = world();
     me.points = 5000; me.cards = []; me.tools = me.tools.map(() => 0);
     g.tools.shopStock.fill(0);
     const pool = g.cards.remaining;
     pool.fill(0);
     pool[2] = 1; // one 購地卡 left in the whole country
+    pool[30] = 1; // and one 飛行卡
     const asks = shop(g, me, [
-      { buy: 'card', index: 0 }, { buy: 'card', index: 0 }, { buy: 'card', index: 1 }, { buy: 'card', index: 7 }, { buy: 'card', index: 7 },
+      { buy: 'card', index: 1 }, { buy: 'card', index: 1 }, { buy: 'card', index: 2 }, { buy: 'card', index: 2 },
       ...Array.from({ length: 10 }, () => ({ buy: 'tool', index: 7 })), null,
     ]);
-    expect(asks[0].cards).toEqual([...ALWAYS, 36, 3]);
-    expect(me.cards).toEqual([6, 6, 14, 3]);
-    expect(asks.at(-1)!.cards[7]).toBe(0);
-    expect(asks.at(-1)!.cards[0]).toBe(6);
+    expect(asks[0].cards[0]).toBe(36); // the city's 通緝卡 first
+    expect([...asks[0].cards.slice(1)].sort((a, b) => a - b)).toEqual([3, 31]);
+    expect(asks[0].always).toBeUndefined();
+    expect([...me.cards].sort((a, b) => a - b)).toEqual([3, 31]);
+    expect(asks.at(-1)!.cards).toEqual([36, 0, 0]);
     expect(me.tools[7]).toBe(9); // up to the stack of 9
     expect(asks.at(-1)!.tools[7]).toBe(8);
     expect(w.cities[3].cards.remaining[2]).toBe(0);
-    expect(pool[5]).toBe(0); // the always-stocked 轉向卡 is not taken from the pool
+    expect(w.cities[3].cards.remaining[30]).toBe(0);
     expect(Math.min(...g.tools.shopStock)).toBe(0);
   });
 
-  it('the 獨裁卡 is one per map: five in the nationwide pool, a shelf cell once per visit', () => {
+  it('the 獨裁卡: three in the nationwide pool, a shelf cell once per visit', () => {
     const { w, g, me } = world();
     me.points = 5000; me.cards = [];
     const pool = g.cards.remaining;
     pool.fill(0);
     pool[33] = 1; // the last 獨裁卡 in the country
-    const asks = shop(g, me, [{ buy: 'card', index: 7 }, { buy: 'card', index: 7 }, null]);
-    expect(asks[0].cards.slice(7)).toEqual([34]);
+    const asks = shop(g, me, [{ buy: 'card', index: 1 }, { buy: 'card', index: 1 }, null]);
+    expect(asks[0].cards.slice(1)).toEqual([34]);
     expect(me.cards).toEqual([34]);
     expect(w.cities[4].cards.remaining[33]).toBe(0);
     expect(w.cities[4].tools.cardShelf()).not.toContain(34);
@@ -137,24 +145,77 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     }
   });
 
+  it('the computer\'s tricks (the user 2026-11-20): 遣返 the human first, fly after the human with a prank, flee tolls, summon into a trap', () => {
+    const { w, g, me } = world();
+    const ai = w.players[1], rich = w.players[2];
+    for (const q of [ai, rich]) { q.map = 0; q.placed = true; q.human = false; q.whoPlays = 2; q.node = me.node; }
+    w.players.slice(3).forEach((q, i) => { q.map = 3 + (i % 2); q.placed = true; q.whoPlays = 2; });
+    w.mask(0);
+    // 遣返: the human before a richer computer
+    rich.cash = me.cash * 3;
+    expect(w.aiDeport(g, ai, [rich, me], -1)).toBe(me.id);
+    // …but not a human about to walk onto the computer's own lots
+    const d = g.smart.maxDice(me), r = g.smart.route(me, 6 * d);
+    const mine = r.slice(d - 1).map(n => g.node(n).ref).filter(ref => ref > 2000 && ref < 4000);
+    for (const ref of mine) Object.assign(g.board.lands[ref - 2001], { owner: ai.id + 1, level: 3 });
+    expect(mine.length).toBeGreaterThanOrEqual(2); expect(w.aiDeport(g, ai, [me], -1)).toBe(-1);
+    for (const ref of mine) Object.assign(g.board.lands[ref - 2001], { owner: 0, level: 0 });
+    // 飛行卡: after the human in 札幌 with a 遣返卡 in hand
+    me.map = 2;
+    ai.cards = [33, 31];
+    w.lastTrip[ai.id] = -999;
+    expect(w.aiCardTrip(g, ai, 'airport')).toBe(2);
+    // no prank in hand, the rivals' tolls ahead too dear: it flees
+    ai.cards = [31]; ai.cash = 100; ai.bank = 0; ai.tools = ai.tools.map(() => 0);
+    const ra = g.smart.route(ai, 6 * g.smart.maxDice(ai));
+    for (const n of ra) { const ref = g.node(n).ref; if (ref > 2000 && ref < 4000) Object.assign(g.board.lands[ref - 2001], { owner: rich.id + 1, level: 5 }); }
+    expect(w.dangerAhead(g, ai).mean).toBeGreaterThan(30); expect(w.aiCardTrip(g, ai, 'airport')).toBeGreaterThan(0);
+    // 召集: its built lots by the airport and the human among few to be summoned
+    g.board.lands.forEach(l => { if (l.owner) { l.owner = 0; l.level = 0; } });
+    expect(w.aiSummon(g, ai)).toBe(false);
+    const air = g.board.nodes.find(n => n.event === 18)!;
+    const near = g.board.nodes.filter(n => n.ref > 2000 && n.ref < 4000 && Math.hypot(n.x - air.x, n.y - air.y) < 400).slice(0, 3);
+    for (const n of near) Object.assign(g.board.lands[n.ref - 2001], { owner: ai.id + 1, level: 1 });
+    for (const q of w.players.slice(3)) q.whoPlays = 0; // only the human elsewhere
+    expect(w.aiSummon(g, ai)).toBe(true);
+  });
+
+  it('the 500-point chest: in one of the five cities only, at the start and every month', async () => {
+    const { OBJ } = await import('./objects');
+    const { w } = world();
+    const chests = () => w.cities.filter(c => c.objects.slots[OBJ.Chest - 1].node > 0).length;
+    expect(chests()).toBe(1);
+    const seen = new Set<number>();
+    for (let m = 0; m < 12; m++) {
+      for (const c of w.cities) { const f = c.objects.monthly(); for (let r = f.next(); !r.done; r = f.next()) { /* board */ } }
+      expect(chests()).toBe(5);
+      (w as unknown as { oneChest(): void }).oneChest();
+      expect(chests()).toBe(1);
+      seen.add(w.cities.findIndex(c => c.objects.slots[OBJ.Chest - 1].node > 0));
+    }
+    expect(seen.size).toBeGreaterThan(1);
+  });
+
   it('a card sold goes back to the nationwide pool, never above its copies', () => {
     const { g, me } = world();
-    me.cards = [1, 1];
+    me.cards = [1, 1, 31];
     g.tools.sellCard(me, 0);
-    expect(g.cards.remaining[0]).toBe(10);
-    g.cards.remaining[0] = 8;
+    expect(g.cards.remaining[0]).toBe(6);
+    g.cards.remaining[0] = 4;
     g.tools.sellCard(me, 0);
-    expect(g.cards.remaining[0]).toBe(9);
+    expect(g.cards.remaining[0]).toBe(5);
+    g.tools.sellCard(me, 0);
+    expect(g.cards.remaining[30]).toBe(10); // 飛行卡: 10 in the country at most
   });
 
   it('the 通緝卡 is sold once per city', () => {
     const { w, g, me } = world();
     me.points = 2000; me.cards = [];
     w.syncWanted();
-    const asks = shop(g, me, [{ buy: 'card', index: 6 }, null]);
+    const asks = shop(g, me, [{ buy: 'card', index: 0 }, null]);
     expect(me.cards).toEqual([36]);
-    expect(asks[0].cards[6]).toBe(36);
-    expect(asks[1].cards[6]).toBe(0);
+    expect(asks[0].cards[0]).toBe(36);
+    expect(asks[1].cards[0]).toBe(0);
     expect(w.cities.map(c => c.cards.wanted)).toEqual([0, 1, 1, 1, 1]);
     expect(g.tools.cardShelf()).not.toContain(36);
   });
@@ -194,6 +255,7 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     expect(me.cards).not.toContain(1);                // the only card alone in its slot
     // The shop: a full hand still takes one more of a card with room in its slot.
     me.points = 5000; g.tools.shopStock.fill(0);
+    g.cards.remaining.fill(0); g.cards.remaining[5] = 1; g.cards.wanted = 0; // a 轉向卡 on the shelf
     const asks = shop(g, me, [{ buy: 'card', index: 0 }, null]);     // 轉向卡: its slot is full (3) → no room
     expect(asks.length).toBeGreaterThan(0);
     expect(me.cards.filter(c => c === 6)).toHaveLength(3);
@@ -239,7 +301,7 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
   it('複製卡 (39): copies any card or tool once and is gone; never on the shelf; the owner\'s gift may be one; old pools get its copies', async () => {
     const { COPY_CARD } = await import('./cards');
     const { w, g, me } = world();
-    expect(g.cards.remaining[COPY_CARD - 1]).toBe(20);            // 4 a map × 5
+    expect(g.cards.remaining[COPY_CARD - 1]).toBe(12);            // 4 a map × 3
     for (let k = 0; k < 30; k++) expect(g.tools.cardShelf()).not.toContain(COPY_CARD);
     const cards = g.cards as unknown as { play(p: unknown, id: number, human: boolean): Flow<boolean> };
     const use = (answers: unknown[]) => { const f = cards.play(me, COPY_CARD, true); let r = f.next(); while (!r.done) r = f.next(('ask' in (r.value as object) ? answers.shift() : undefined) as never); return r.value; };
@@ -276,7 +338,7 @@ describe.skipIf(!have)('大富豪模式 shops (17 §3.10)', () => {
     for (const c of sv.cities) (c.modules.cards as { remaining: number[] }).remaining = (c.modules.cards as { remaining: number[] }).remaining.slice(0, 36);
     const v = loadWorld(sv);
     expect(v.cities[0].cards.remaining).toHaveLength(39);
-    expect(v.cities[0].cards.remaining[COPY_CARD - 1]).toBe(20);
+    expect(v.cities[0].cards.remaining[COPY_CARD - 1]).toBe(12);
   });
 
   it('時空機 sends a thing on the road (a god, a mine) or a rival to a random square of another city', () => {

@@ -1,0 +1,200 @@
+/* 清明上河's 梁山 mini-games (qm-games.ts): the stage 1600 × 900 (900 × 1600 upright), scaled by fitOverlay; sizes in
+   stage px. The pictures cover the stage (.qmg-pic keeps its aspect), the words and bars are drawn over them. */
+.qmg-ov { position: absolute; inset: 0; z-index: 60; background: #0c0806; }
+.qmg-scene { position: absolute; left: 50%; top: 50%; overflow: hidden; font-family: 'Huninn', 'PingFang TC', sans-serif; color: #fff1cc; user-select: none; -webkit-user-select: none;
+  touch-action: none; -webkit-tap-highlight-color: transparent; }
+.qmg-scene img { -webkit-user-drag: none; }
+.qmg-shake { position: absolute; inset: 0; }
+.qmg-pic { position: absolute; background: center / 100% 100% no-repeat; }
+.qmg-fx { position: absolute; inset: 0; pointer-events: none; z-index: 30; }
+
+/* the top: who plays, the game's name, the 點券 so far; the clock under it */
+.qmg-top { position: absolute; inset: 0 0 auto 0; height: 0; z-index: 20; }
+.qmg-title { left: 50%; top: 16px; width: 400px; height: 82px; transform: translateX(-50%); z-index: 20; }
+.qmg-title .cn-lbl { font-size: 40px; letter-spacing: 6px; }
+.qmg-who { position: absolute; left: 14px; top: 16px; height: 64px; max-width: 520px; padding: 0 20px 0 6px; display: flex; align-items: center; gap: 12px; font-size: 28px; color: #ffe9b8;
+  background: rgba(30, 16, 8, .8); border: 2px solid #c9962c; border-radius: 14px; white-space: nowrap; overflow: hidden; }
+.qmg-scene .qmg-who img { position: static; width: 54px; height: 54px; object-fit: contain; flex: none; }
+.qmg-score { position: absolute; right: 14px; top: 16px; height: 64px; min-width: 190px; padding: 0 20px; display: flex; align-items: center; justify-content: center; gap: 12px;
+  background: rgba(30, 16, 8, .8); border: 2px solid #c9962c; border-radius: 14px; font-size: 26px; color: #ffe9b8; }
+.qmg-score b { font-size: 44px; color: #fff; font-weight: normal; text-shadow: 0 0 8px #ffb030; }
+.qmg-clock { position: absolute; left: 470px; right: 470px; top: 116px; height: 30px; border-radius: 15px; background: rgba(20, 10, 4, .8); border: 2px solid #e0b24a; overflow: hidden; z-index: 20; }
+.qmg-clock i { position: absolute; left: 0; top: 0; bottom: 0; width: 100%; background: linear-gradient(90deg, #d0281a, #f0a02a 50%, #ffe27a); }
+.qmg-clock span { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 22px; color: #fff; text-shadow: 0 1px 0 #000, 0 0 4px #000; }
+.qmg-sub { position: absolute; left: 50%; top: 156px; transform: translateX(-50%); padding: 6px 22px; border-radius: 12px; background: rgba(20, 10, 4, .6); font-size: 26px; white-space: nowrap; z-index: 20;
+  text-shadow: 0 2px 0 #000; }
+.qmg-scene.tall .qmg-title { top: 96px; width: 380px; height: 78px; }
+.qmg-scene.tall .qmg-who { max-width: 520px; }
+.qmg-scene.tall .qmg-clock { left: 40px; right: 40px; top: 196px; height: 34px; }
+.qmg-scene.tall .qmg-sub { top: 242px; width: 820px; white-space: normal; text-align: center; font-size: 26px; }
+
+/* the rules before a game, the verdict after */
+.qmg-intro { position: absolute; inset: 0; z-index: 50; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .5); transition: opacity .25s; }
+.qmg-intro.out { opacity: 0; }
+.qmg-intro-card { width: 1000px; padding: 30px 50px 34px; animation: cn-pop .3s ease-out; }
+.qmg-intro-card h2 { margin: 0 0 14px; font-size: 54px; font-weight: normal; color: #9e1b14; letter-spacing: 8px; }
+.qmg-intro-card p { margin: 8px 0; font-size: 32px; line-height: 1.45; text-align: left; }
+.qmg-intro-card p b { color: #b01e18; font-weight: normal; }
+.qmg-go { position: relative; margin-top: 22px; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+.qmg-go i { display: block; width: 260px; height: 8px; border-radius: 4px; background: #b01e18; transform-origin: left; animation: qmg-drain linear forwards; }
+@keyframes qmg-drain { from { transform: scaleX(1); } to { transform: scaleX(0); } }
+.qmg-scene.tall .qmg-intro-card { width: 820px; padding: 30px 40px; }
+.qmg-scene.tall .qmg-intro-card p { font-size: 34px; }
+
+.qmg-banner { position: absolute; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; background: rgba(0, 0, 0, .35); }
+.qmg-banner-box { position: relative; width: 900px; min-height: 230px; padding: 30px 40px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+  animation: qmg-stamp .35s cubic-bezier(.2, 1.6, .5, 1); }
+.qmg-banner-box b { font-size: 86px; font-weight: normal; color: #fff4c8; letter-spacing: 6px; text-shadow: 0 4px 0 #4a0a06, 0 0 18px #ffb030; text-align: center; }
+.qmg-banner-box span { font-size: 40px; color: #ffe3a0; text-shadow: 0 2px 0 #4a120a; text-align: center; }
+.qmg-banner.bad .qmg-banner-box { background: linear-gradient(#3a302a, #16110e); }
+.qmg-banner.bad .qmg-banner-box b { text-shadow: 0 4px 0 #000, 0 0 18px #c02010; }
+@keyframes qmg-stamp { from { transform: scale(2.2); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.qmg-scene.tall .qmg-banner-box { width: 820px; }
+.qmg-scene.tall .qmg-banner-box b { font-size: 76px; }
+
+.qmg-float { position: absolute; font-size: 60px; white-space: nowrap; color: #fff6c0; text-shadow: 0 0 10px #ff7a00, 0 4px 0 #8a1a10, 0 -2px 0 #8a1a10; z-index: 31; }
+.qmg-float.band-red { color: #fff; text-shadow: 0 0 14px #ff2010, 0 4px 0 #6a0a06; font-size: 66px; }
+.qmg-float.band-miss, .qmg-float.band-hurt { color: #e8e0d0; text-shadow: 0 0 8px #000, 0 4px 0 #333; }
+.qmg-burst { position: absolute; pointer-events: none; }
+.qmg-burst svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.qmg-burst polygon { fill: #fff3a8; stroke: #ff8a1a; stroke-width: 3; }
+.qmg-burst svg.qmg-fist { inset: 22%; width: 56%; height: 56%; }
+
+/* 景陽岡: the red spots (the ring closing in is the time left), the claws of the pounce */
+.qmg-spots { position: absolute; inset: 0; }
+/* (bigger and brighter since the user 2026-11-24: 「打虎那個圓點不是很清楚，又小，第一次玩我都沒反應過來」) */
+.qmg-spot { position: absolute; width: 180px; height: 180px; transform: translate(-50%, -50%); cursor: pointer; z-index: 5; }
+.qmg-spot::before { content: ''; position: absolute; inset: -18px; border-radius: 50%; }   /* a finger's room around it */
+.qmg-spot b { position: absolute; inset: 34px; border-radius: 50%; background: radial-gradient(circle at 40% 35%, #ffd0c0, #ff2a1a 45%, #b00c08);
+  border: 6px solid #fff; box-shadow: 0 0 0 4px #b00c08, 0 0 26px 12px rgba(255, 60, 20, .9); animation: qmg-pulse .35s ease-in-out infinite alternate; }
+.qmg-spot i { position: absolute; inset: 0; border-radius: 50%; border: 9px solid #ffe27a; box-shadow: 0 0 10px #ff9a20; animation: qmg-close var(--life, 1s) linear forwards; }
+.qmg-spot { animation: qmg-in .15s ease-out; }
+.qmg-spot.missed b { background: #333; box-shadow: 0 0 20px 8px rgba(0, 0, 0, .6); animation: none; }
+.qmg-spot.missed i { border-color: #888; }
+@keyframes qmg-pulse { from { transform: scale(.9); } to { transform: scale(1.05); } }
+@keyframes qmg-close { from { transform: scale(1.35); opacity: .9; } to { transform: scale(.55); opacity: 1; border-color: #ff3020; } }
+@keyframes qmg-in { from { transform: translate(-50%, -50%) scale(.2); } to { transform: translate(-50%, -50%) scale(1); } }
+.qmg-claws { position: absolute; inset: 0; pointer-events: none; z-index: 25; opacity: 0; }
+.qmg-claws.on { opacity: 1; }
+.qmg-claws i { position: absolute; left: 10%; width: 85%; height: 30px; border-radius: 50%; background: linear-gradient(90deg, transparent, #8a0000 20%, #e01010 50%, #8a0000 80%, transparent);
+  transform: rotate(-28deg) scaleX(0); transform-origin: left; box-shadow: 0 0 20px rgba(160, 0, 0, .8); }
+.qmg-claws i:nth-child(1) { top: 30%; } .qmg-claws i:nth-child(2) { top: 44%; } .qmg-claws i:nth-child(3) { top: 58%; }
+.qmg-claws.on i { animation: qmg-slash .22s ease-out forwards; }
+.qmg-claws.on i:nth-child(2) { animation-delay: .05s; } .qmg-claws.on i:nth-child(3) { animation-delay: .1s; }
+@keyframes qmg-slash { to { transform: rotate(-28deg) scaleX(1); } }
+
+/* 野豬林: the boars down the track, the line, you with the bow */
+.qmg-field { position: absolute; inset: 0; z-index: 3; }
+.qmg-boar { position: absolute; cursor: crosshair; }
+.qmg-boar::before { content: ''; position: absolute; inset: -22px -16px -6px; }   /* a finger's room round a far boar */
+.qmg-boar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 8px 8px rgba(0, 0, 0, .55)); pointer-events: none; }
+.qmg-boar.dead { pointer-events: none; }
+.qmg-stuck { position: absolute; width: 34%; height: 4%; min-height: 3px; background: linear-gradient(90deg, #f0e6d0 0 18%, #6a3a12 18%); border-radius: 2px; transform-origin: 0 50%; pointer-events: none; }
+.qmg-smoke { position: absolute; left: 50%; top: 60%; width: 120%; height: 70%; transform: translate(-50%, -50%) scale(.3); border-radius: 50%; pointer-events: none;
+  background: radial-gradient(circle, rgba(240, 236, 226, .95), rgba(200, 196, 186, .6) 45%, transparent 70%); animation: qmg-smoke .7s ease-out forwards; }
+@keyframes qmg-smoke { 0% { transform: translate(-50%, -50%) scale(.3); opacity: 0; } 30% { opacity: 1; } 100% { transform: translate(-50%, -60%) scale(1.5); opacity: 0; } }
+.qmg-line { position: absolute; left: 0; right: 0; height: 10px; margin-top: -5px; z-index: 2; pointer-events: none;
+  background: repeating-linear-gradient(90deg, #ffde60 0 40px, #c0201a 40px 80px); box-shadow: 0 0 12px rgba(255, 200, 60, .7); opacity: .85; }
+.qmg-archer { position: absolute; left: 50%; bottom: 14px; width: 0; height: 0; z-index: 1000; pointer-events: none; }
+.qmg-archer .qmg-fig { left: 0; top: 0; }
+.qmg-scene.tall .qmg-archer .qmg-fig img { transform: translateX(-50%) scale(1.15); transform-origin: 50% 100%; }
+.qmg-arrow { position: absolute; width: 100px; height: 6px; margin-top: -3px; transform-origin: 0 50%; border-radius: 3px; background: linear-gradient(90deg, #f4ead0 0 20%, #7a4a1a 20% 88%, #d8d8d8 88%); z-index: 32; }
+.qmg-flash { position: absolute; inset: 0; background: #c00; opacity: 0; pointer-events: none; z-index: 40; }
+
+/* 相撲擂台: you and 燕青 on the stage (their 立繪 at their feet), the bars and the clock at the top clear of them, the
+   power bar under their feet (the user 2026-11-23: 「這個血條都蓋住人臉了」) */
+.qmg-ring { position: absolute; inset: 0; }
+.qmg-fig { position: absolute; width: 0; height: 0; }
+.qmg-fig img { position: absolute; left: 0; bottom: 0; max-width: none; transform: translateX(-50%); filter: drop-shadow(0 12px 10px rgba(0, 0, 0, .5)); pointer-events: none; }
+.qmg-fig.qmg-you { z-index: 3; } .qmg-fig.qmg-yan { z-index: 2; }
+.qmg-hp { position: absolute; top: 14px; width: 540px; height: 86px; z-index: 20; }
+.qmg-hp.l { left: 24px; } .qmg-hp.r { right: 24px; }
+.qmg-hp .n { position: absolute; top: 0; height: 44px; max-width: 100%; display: flex; align-items: center; gap: 8px; overflow: hidden; white-space: nowrap; font-size: 28px; color: #fff1cc;
+  text-shadow: 0 2px 0 #000, 0 0 8px #000; }
+.qmg-scene .qmg-hp-face { position: static; width: 42px; height: 42px; object-fit: contain; flex: none; }
+.qmg-hp.l .n { left: 6px; } .qmg-hp.r .n { right: 6px; }
+.qmg-hp .track { position: absolute; top: 48px; left: 0; right: 0; height: 32px; border-radius: 10px; overflow: hidden; background: rgba(40, 16, 8, .85); border: 3px solid #e0b24a; }
+.qmg-hp .track i { position: absolute; top: 0; bottom: 0; width: 100%; background: linear-gradient(#ffe27a, #f0902a 60%, #c8461a); transition: width .35s; }
+.qmg-hp.l .track i { left: 0; } .qmg-hp.r .track i { right: 0; }
+.qmg-g-wrestle .qmg-clock { left: 600px; right: 600px; top: 110px; }
+.qmg-g-wrestle .qmg-score { top: 108px; height: 54px; right: 24px; }
+.qmg-round { position: absolute; left: 50%; top: 152px; transform: translateX(-50%); font-size: 46px; white-space: nowrap; color: #fff4c8; text-shadow: 0 4px 0 #4a0a06, 0 0 12px #000; z-index: 20; pointer-events: none; }
+.qmg-power { position: absolute; left: 50%; bottom: 24px; width: 1100px; transform: translateX(-50%); padding: 20px 30px 10px; border-radius: 20px; background: rgba(20, 10, 4, .8); border: 3px solid #c9962c;
+  z-index: 20; opacity: .7; transition: opacity .2s; }
+.qmg-power.on { opacity: 1; }
+.qmg-bar { position: relative; height: 56px; border-radius: 12px; background: linear-gradient(#5a4a3a, #2a2018); box-shadow: inset 0 3px 6px rgba(0, 0, 0, .6); }
+.qmg-bar i { position: absolute; top: 0; bottom: 0; }
+.qmg-bar .y1, .qmg-bar .y2 { background: #f2d43a; }
+.qmg-bar .o1, .qmg-bar .o2 { background: #f08a1a; }
+.qmg-bar .r { background: #e01a10; box-shadow: 0 0 14px #ff3020; }
+.qmg-needle { position: absolute; top: -16px; bottom: -16px; width: 12px; left: 0; transform: translateX(-50%); border-radius: 6px; background: #fff; border: 3px solid #2a1a10; box-shadow: 0 0 10px #fff; }
+.qmg-tap { margin-top: 10px; text-align: center; font-size: 28px; color: #ffe9b8; }
+.qmg-power.on .qmg-tap { animation: qmg-blink .7s ease-in-out infinite alternate; }
+@keyframes qmg-blink { from { opacity: .55; } to { opacity: 1; } }
+.qmg-float.pts { font-size: 44px; color: #ffe27a; }
+.qmg-scene.tall .qmg-hp { top: 186px; width: 418px; }
+.qmg-scene.tall .qmg-hp.l { left: 20px; } .qmg-scene.tall .qmg-hp.r { right: 20px; }
+.qmg-scene.tall.qmg-g-wrestle .qmg-clock { left: 40px; right: 40px; top: 290px; }
+.qmg-scene.tall.qmg-g-wrestle .qmg-score { top: 340px; right: 20px; }
+.qmg-scene.tall .qmg-round { top: 346px; }
+.qmg-scene.tall .qmg-power { width: 840px; bottom: 110px; }
+.qmg-scene .qmg-board-face { position: static; }
+
+/* the board (a computer's game, 十字坡) */
+.qmg-board .qmg-pic { filter: brightness(.85); }
+.qmg-board-panel { position: absolute; left: 50%; bottom: 50px; width: 1080px; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 26px; z-index: 5;
+  animation: qmg-stamp .35s ease-out; }
+.qmg-scene .qmg-board-panel .cn-frame.qmg-title { position: relative; left: auto; top: auto; transform: none; flex: none; }
+.qmg-board-card { width: 100%; display: flex; align-items: center; gap: 26px; padding: 18px 30px; text-align: left; }
+.qmg-board-face { width: 150px; height: 140px; flex: none; object-fit: contain; }
+.qmg-board-card div { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.qmg-board-card b { font-size: 50px; font-weight: normal; color: #6e0f0b; overflow-wrap: anywhere; }
+.qmg-board-card span { font-size: 36px; color: #3a2210; }
+.qmg-board-panel.bad .qmg-board-card b { color: #3a2a20; }
+.qmg-scene img.qmg-board-boar { position: absolute; left: 1130px; top: 120px; height: 430px; transform: translateX(-50%); filter: drop-shadow(0 10px 12px rgba(0, 0, 0, .6)); z-index: 2; }
+.qmg-board-figs { position: absolute; inset: 0; z-index: 3; }
+.qmg-scene.tall .qmg-board-panel { width: 840px; bottom: 140px; }
+.qmg-scene.tall img.qmg-board-boar { left: 650px; top: 760px; height: 390px; }
+
+/* upright: the whole scene is 900 px wide, so a phone shows it at about 0.4 — the words at the top bigger, the bars,
+   the clock and the score stacked clear of each other (the user 2026-11-23: 「血條都蓋住人臉了，橫屏豎屏UI你都要檢查一下」) */
+.qmg-scene.tall .qmg-who { height: 80px; font-size: 38px; }
+.qmg-scene.tall .qmg-score { font-size: 34px; }
+.qmg-scene.tall .qmg-score b { font-size: 58px; }
+.qmg-scene.tall .qmg-clock { height: 50px; border-radius: 25px; }
+.qmg-scene.tall .qmg-clock span { font-size: 38px; }
+.qmg-scene.tall .qmg-sub { top: 258px; font-size: 34px; }
+.qmg-scene.tall .qmg-hp { height: 112px; }
+.qmg-scene.tall .qmg-hp .n { height: 58px; font-size: 40px; }
+.qmg-scene.tall .qmg-hp-face { width: 54px; height: 54px; }
+.qmg-scene.tall .qmg-hp .track { top: 64px; height: 40px; }
+.qmg-scene.tall.qmg-g-wrestle .qmg-clock { top: 312px; }
+.qmg-scene.tall.qmg-g-wrestle .qmg-score { top: 378px; }
+.qmg-scene.tall .qmg-round { top: 384px; font-size: 56px; }
+.qmg-scene.tall .qmg-tap { font-size: 38px; }
+.qmg-scene.tall .qmg-archer { bottom: 40px; }
+
+/* ---------------------------------------------------------------- 十字坡 鬼手 (qm-shell): the bowls stand on the table by their feet */
+.qmg-g-shell .qmg-bowls { position: absolute; inset: 0; }
+.qmg-bowl { position: absolute; transform: translate(-50%, -100%); aspect-ratio: 1 / .78; pointer-events: none; }
+.qmg-bowl img { position: absolute; left: 0; bottom: 0; width: 100%; height: auto; filter: drop-shadow(0 10px 8px rgba(0, 0, 0, .55)); }
+.qmg-bowl i { position: absolute; left: 50%; bottom: -6%; width: 120%; height: 34%; transform: translateX(-50%); border-radius: 50%; opacity: 0;
+  background: radial-gradient(closest-side, rgba(255, 230, 120, .95), rgba(255, 190, 40, .5) 60%, transparent); z-index: -1; transition: opacity .2s; }
+.qmg-bowl.shown i { opacity: 1; animation: qmg-glow .6s ease-in-out infinite alternate; }
+.qmg-bowl.shown::after { content: '▼'; position: absolute; left: 50%; top: -46%; transform: translateX(-50%); font-size: 64px; color: #ffd84a;
+  text-shadow: 0 3px 0 #6a2a00, 0 0 12px rgba(0, 0, 0, .6); animation: qmg-bob .5s ease-in-out infinite alternate; }
+.qmg-bowl.can { pointer-events: auto; cursor: pointer; }
+.qmg-bowl.can:hover img { filter: drop-shadow(0 10px 8px rgba(0, 0, 0, .55)) brightness(1.15); }
+.qmg-bowl.bad img { filter: drop-shadow(0 10px 8px rgba(0, 0, 0, .55)) hue-rotate(80deg) saturate(1.6); }
+@keyframes qmg-glow { to { transform: translateX(-50%) scale(1.15); } }
+@keyframes qmg-bob { to { transform: translateX(-50%) translateY(14px); } }
+.qmg-shell-say { position: absolute; left: 90px; top: 220px; width: 640px; height: 96px; z-index: 20; }
+.qmg-shell-say .cn-lbl { font-size: 32px; }
+.qmg-shell-say .cn-lbl b { color: #ffd84a; }
+.qmg-scene.tall .qmg-shell-say { left: 60px; right: 60px; width: auto; top: 1310px; height: 100px; }
+.qmg-g-shell.dizzy .qmg-shake { animation: qmg-dizzy 1.2s ease-in-out both; }
+@keyframes qmg-dizzy { 30% { filter: blur(3px) hue-rotate(30deg); transform: rotate(-3deg) scale(1.04); } 70% { filter: blur(6px) brightness(.7); transform: rotate(4deg) scale(1.08); } to { filter: blur(8px) brightness(.4); transform: rotate(-2deg) scale(1.1); } }
+/* (wide: 孫二娘's face is in the middle top — the clock and the round go to the left, over the doorway, with her words) */
+.qmg-g-shell:not(.tall) .qmg-clock { left: 90px; right: 870px; top: 334px; }
+.qmg-g-shell:not(.tall) .qmg-round { left: 410px; top: 140px; }
+.qmg-scene.tall.qmg-g-shell .qmg-round { top: 1430px; }

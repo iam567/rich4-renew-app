@@ -28,6 +28,14 @@ const el = <K extends keyof HTMLElementTagNameMap>(tag: K, cls?: string, html?: 
   return e;
 };
 
+/**
+ * 1.2 s more on every notice, speech cloud and board that closes by itself, scaled by the game speed like the
+ * notice; a tap still closes it at once (players 2026-11-14: 「給人留出讀信息的時間……很多重要信息一閃而過，哪怕加一秒
+ * 都能看清」; the user 2026-11-23: 「不用加設置，就直接多顯示1秒，然後點擊一下能跳過就行了」, then 「如果遊戲速度調快，這個消息的
+ * 時長也同比例縮短的話，那麼我們就可以提高1.2秒」).
+ */
+const READ_MORE = 1200;
+
 export class Hud {
   /** Everything shown, newest first (for the 查詢 screen). */
   readonly log: { text: string; color?: number }[] = [];
@@ -41,6 +49,7 @@ export class Hud {
               readonly panel: PlayerPanel, readonly calendar: Calendar) {
     this.layer = el('div', 'ui-layer');
     area.append(this.layer);
+    new ResizeObserver(() => this.raise()).observe(this.layer);   // (rotation: the box stays at two thirds)
     this.refresh();
   }
 
@@ -71,6 +80,8 @@ export class Hud {
   }
   /** Set by the controller: the game screen element, for full-screen scenes. */
   shell: HTMLElement | null = null;
+  /** Set by the controller: a map's own large buildings by type (MapArt.builds.fac), for the facility picker's icons. */
+  facSprites: Record<string, number[]> | null = null;
 
   /**
    * The layer over the whole game screen (toolbar, map and side panels) for the big sheets — 查詢, 股市, 地圖, 說明,
@@ -110,6 +121,7 @@ export class Hud {
     if (other) { other.classList.remove('show'); other.replaceChildren(); }
     target.replaceChildren(node);
     target.classList.add('show');
+    this.raise();
     // A clause longer than the line: the text a little smaller rather than broken inside the clause.
     for (const t of node.querySelectorAll<HTMLElement>('.msg-text')) fitPhrases(t, 0.8);
     // A long title stays on its ribbon's one line, smaller rather than wider than the dialog.
@@ -120,6 +132,21 @@ export class Hud {
       this.onModal(area.height ? (box.top - area.top) / area.height : null);
     });
   }
+  /**
+   * A box the map layer puts at the bottom (a notice, a cloud, a question) sits with its middle two thirds of the way
+   * down the map instead (the user 2026-11-23: 「狀態標籤、信息標籤能不能稍微往上一點……從上往下2/3的地方」); never lower
+   * than before, and the sheets and boards the layer centres stay where they are.
+   */
+  private raise() {
+    const node = this.layer.firstElementChild as HTMLElement | null;
+    if (!node || !this.layer.classList.contains('show')) return;
+    node.style.marginBottom = '';
+    if (getComputedStyle(this.layer).alignItems !== 'flex-end') return;
+    const H = this.layer.clientHeight, pad = parseFloat(getComputedStyle(this.layer).paddingBottom) || 0;
+    const lift = Math.round(H / 3 - node.offsetHeight / 2 - pad);
+    if (lift > 0) node.style.marginBottom = `${lift}px`;
+  }
+
   /**
    * Clears the dialog layers. With `node`: only while that node is what they show — a screen closing late (its own
    * timer, a tap that came in as the next one opened) must not take the next screen away with it: the game then
@@ -349,7 +376,7 @@ export class Hud {
       };
       const tap = () => end();
       this.layer.addEventListener('pointerup', tap);
-      setTimeout(() => { timeUp = true; if (said) end(); }, ms * this.scale());
+      setTimeout(() => { timeUp = true; if (said) end(); }, (ms + READ_MORE) * this.scale());
       void spoken.then(() => { said = true; if (timeUp) end(); });
     });
   }
@@ -470,8 +497,11 @@ export class Hud {
         box.innerHTML = `${head(a.title ?? '請選擇設施類別')}<div class="msg-text">${a.text ? esc(a.text) : a.price ? `建設費用 ${money(a.price)} 元` : '免費建設'}</div>`;
         row.className = 'choices facilities';
         const strip = this.bank.art('Data', 517, 4), ICON_X = [9, 78, 147, 215, 283];
-        (this.game.settings.mapId === CQ_MAP ? [0, 1, 2, 3, 4].map(i => CQ_FAC_NAMES[i]) : ['公園', '旅館', '購物中心', '加油站', '研究所']).forEach((t, i) => {   // 重慶's own names (docs/rules/33 §6)
-          const pic = strip ? `<span class="fac-pic"><i style="background-image:url('${strip.src}');--x:${ICON_X[i]}"></i></span>` : '';
+        (this.game.settings.mapId === CQ_MAP ? [0, 1, 2, 3, 4].map(i => CQ_FAC_NAMES[i]) : this.game.rules?.facilityNames ?? ['公園', '旅館', '購物中心', '加油站', '研究所']).forEach((t, i) => {   // 重慶's own names (docs/rules/33 §6)
+          // a map with its own buildings and names for them (長安, 清明上河): its own building, not the original's park and
+          // petrol station (the user 2026-11-25: 「漕運處和瓦舍勾欄…小圖標還是公園和加油站」)
+          const ids = this.game.rules?.facilityNames ? this.facSprites?.[i] : undefined, mine = ids?.length ? this.bank.art('map', ids[ids.length >> 1]) : null;
+          const pic = mine ? `<span class="fac-pic"><img class="fac-own" src="${mine.src}" alt=""></span>` : strip ? `<span class="fac-pic"><i style="background-image:url('${strip.src}');--x:${ICON_X[i]}"></i></span>` : '';
           button(`${pic}<span class="fac-name">${t}</span>`, i, 'cell fac-cell');
         });
         if (a.cancellable) {

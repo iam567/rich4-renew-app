@@ -795,7 +795,9 @@ button.title-ver { pointer-events: auto; cursor: pointer; border: 1px solid rgba
 /* a phone held upright: three and two, so every name stays whole */
 @media (max-width: 400px) { .choices.facilities { grid-template-columns: repeat(6, minmax(0, 1fr)); } .choices.facilities > .fac-cell { grid-column: span 2; } .choices.facilities > .fac-cell:nth-child(4) { grid-column: 2 / span 2; } }
 .candy.fac-cell { padding: 6px 4px 8px; gap: 2px; min-width: 0; }
-.fac-pic { display: grid; place-items: center; width: 100%; height: 74px; --u: calc(70px / 68); }
+.fac-pic { display: grid; grid-template-rows: 100%; place-items: center; width: 100%; height: 74px; --u: calc(70px / 68); }
+/* a map's own building */
+.choices .candy.fac-cell .fac-pic > img.fac-own { display: block; max-width: 100%; width: 100%; height: 100%; border-radius: 0; min-height: 0; object-fit: contain; filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .3)); }
 /* one icon of the strip: its 62×68 box at (x, 8) of the 355×83 picture */
 .fac-pic i { display: block; width: calc(62 * var(--u)); height: calc(68 * var(--u)); background: no-repeat calc(var(--x) * var(--u) * -1) calc(8 * var(--u) * -1) / calc(355 * var(--u)) calc(83 * var(--u));
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .25)); }
@@ -976,6 +978,7 @@ button.title-ver { pointer-events: auto; cursor: pointer; border: 1px solid rgba
 
 /* 通關次數 on the new-game screen's map cards (ui/clears.ts, the user 2026-11-08) */
 .ng-map { position: relative; }
+.ng-lacks { position: absolute; top: 4px; right: 3px; padding: 0 5px; border-radius: 5px; font-style: normal; font-size: 10px; line-height: 16px; font-weight: 900; color: #fff; background: #c0392b; white-space: nowrap; }
 .ng-clear { position: absolute; top: 4px; right: 3px; padding: 0 4px; border-radius: 5px; font-style: normal; font-size: 9px; line-height: 14px; font-weight: 900; color: #fff; white-space: nowrap;
   background: #e0303c; border: 1.5px solid #fff; transform: rotate(6deg); box-shadow: 0 1px 2px rgba(0, 0, 0, .35); pointer-events: none; }
 
@@ -1109,14 +1112,32 @@ button.title-ver { pointer-events: auto; cursor: pointer; border: 1px solid rgba
 /* (a long text scrolls inside the box: its buttons stay on screen however short it is — landscape phones, 排行榜's 怎麼算分) */
 .ui-dialog-box { width: min(420px, 100%); max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); display: flex; flex-direction: column; }
 .ui-dialog-box > .choices { flex: none; }
-.ui-dialog-text { margin: 6px 4px 10px; font-size: 16px; line-height: 1.6; text-align: left; white-space: normal; min-height: 0; flex: 0 1 auto; overflow-y: auto; }
+.ui-dialog-text { margin: 6px 4px 10px; font-size: 16px; line-height: 1.6; text-align: left; white-space: normal; overflow-wrap: anywhere; min-height: 0; flex: 0 1 auto; overflow-y: auto; }
 @media (max-height: 500px) { .ui-dialog-text { font-size: 14px; line-height: 1.45; } }
 .ui-dialog-input { width: 100%; box-sizing: border-box; margin: 6px 0 10px; font: inherit; font-size: 17px; padding: 8px 12px; border-radius: 12px; border: 0; }
 /* the wide new-game sheet: 玩法 joined the rules (the user 2026-11-13), the column a little tighter to keep its height */
-.ng-sheet:not(.portrait) .ng-opts { gap: 6px; }
-.ng-sheet:not(.portrait) .ng-opts .stepper button { height: 29px; }
+.ng-sheet:not(.portrait) .ng-opts { gap: 4px; }
+.ng-sheet:not(.portrait) .ng-opts .stepper button { height: 28px; }
 .ng-sheet:not(.portrait) .ng-mode-opt .ng-mode button { padding-top: 3px; padding-bottom: 3px; }
 .ng-sheet:not(.portrait) .ng-mode-opt .ng-mode { max-width: 220px; }
+/* The settings scroll when they do not fit (the user 2026-11-23, main.ts fit): landscape in their column, portrait once the
+   sheet is cut to a short screen (.scroll); the buttons stay below them. Only a sideways swipe on the maps turns their page. */
+.ng-opts { min-height: 0; grid-auto-rows: max-content; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+.ng-sheet:not(.portrait) .ng-opts { align-self: stretch; padding-right: 2px; }
+.msg.sheet.ng-sheet.portrait.scroll { grid-template-rows: auto auto auto auto minmax(0, 1fr) auto; }
+.ng-sheet.portrait.scroll .ng-opts { align-self: stretch; }
+.ng-date.ng-pace { color: #ffe27a; font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* 開局日期 beside the buttons, so the settings column keeps its rows for the settings (the user 2026-11-23: 「設置菜單盡
+   可能要屏幕裝得下，盡可能不要上下滑動」) */
+.ng-actions { align-items: center; flex-wrap: nowrap; }
+.ng-actions .candy { flex: none; white-space: nowrap; }
+.ng-sheet:not(.portrait) .ng-actions { gap: 8px; }
+.ng-sheet:not(.portrait) .ng-actions .candy.yes { min-width: 156px; }
+.ng-start { margin-right: auto; color: #c8d8ff; font-size: 12.5px; line-height: 1.25; text-align: left; white-space: nowrap; }
+.ng-sheet.portrait .ng-start { margin-right: 6px; }
+/* more settings below (main.ts fit / the scroll): the last row fades out */
+.ng-opts.more { -webkit-mask-image: linear-gradient(#000 calc(100% - 26px), transparent); mask-image: linear-gradient(#000 calc(100% - 26px), transparent); }
 /* 新遊戲's 我的地圖: each map's state (maker/model.ts mapStatus) */
 .ng-map.ng-mine .mk-st { display: inline-block; position: absolute; left: 6px; top: 6px; padding: 0 7px; border-radius: 999px; font-style: normal; font-size: 11px; line-height: 17px; color: #fff; }
 .ng-map.ng-mine .mk-st.pub { background: #8a4cf0; } .ng-map.ng-mine .mk-st.won { background: #2dbb48; } .ng-map.ng-mine .mk-st.new { background: rgba(0, 0, 0, .4); }
+.title-btn .party-live b.srv { background: linear-gradient(#ffb84a, #e07a12); color: #fff; font-weight: 600; }

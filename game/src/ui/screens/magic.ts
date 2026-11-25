@@ -13,6 +13,9 @@ import { charColor, el, esc, face, openScene, type Scene } from './place-scene';
 import { audio, Sfx, Theme } from '../audio';
 import { phrases } from '../text';
 import { centreWords } from '../bubble-text';
+import { cnMagicScreen } from './cn-magic';
+import { CHANGAN_MAP } from '../../core/changan';
+import { QINGMING_MAP } from '../../core/qingming';
 import './magic.css';
 
 type Choose = Extract<Ask, { t: 'choose' }>;
@@ -279,6 +282,10 @@ function magicScreen(ctx: ScreenContext, a: Choose, auto?: number): Promise<numb
   const group = Math.max(0, MAGIC_GROUPS.findIndex(n => text.includes(`對象：${n}`)));
   const names = (text.match(/（(.*)）/)?.[1] ?? '').split('、').filter(Boolean);
   const targets = g.players.filter(q => names.includes(nameOf(ctx, q.id)));
+  // 長安's 玄都觀 (the user 2026-11-19/20): its own rebuilt screen, the same steps (ui/screens/cn-magic.ts)
+  // 清明上河's 上清宮 (the user 2026-11-23): the same screen in its own hall
+  if (g.settings.mapId === CHANGAN_MAP || g.settings.mapId === QINGMING_MAP)
+    return cnMagicScreen(ctx, { group: GROUP_LINES[group], targets, hint: magicHintMode() === 0, auto, caster: a.p, theme: g.settings.mapId === QINGMING_MAP ? 'qingming' : 'changan' });
   // The magic house plays MIDI08 (rich4_magic_house.asm:2269).
   audio.theme(Theme.magic);
   return new Promise(resolve => {

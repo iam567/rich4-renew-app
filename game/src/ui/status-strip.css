@@ -1,0 +1,35 @@
+/* 狀態條 (ui/status-strip.ts): a small pill at the map's top right, one running state at a time; ▶ folds it to a tab. */
+.ss { position: absolute; right: 6px; top: 6px; z-index: 3; display: flex; align-items: flex-start; gap: 0;
+  max-width: min(270px, calc(100% - 104px)); font-size: 12px; line-height: 1; pointer-events: none; }
+.ss[hidden] { display: none; }
+.ss button { font: inherit; pointer-events: auto; cursor: pointer; }
+.ss-tog { flex: none; height: 26px; min-width: 20px; padding: 0 5px; border: 1.5px solid rgba(255, 255, 255, .8); border-right: 0;
+  border-radius: 13px 0 0 13px; background: rgba(8, 16, 48, .72); color: #ffe14a; font-size: 10px; line-height: 23px; }
+.ss-main { flex: 1 1 auto; min-width: 0; height: 26px; display: flex; align-items: center; gap: 5px; padding: 0 9px 0 4px;
+  border: 1.5px solid rgba(255, 255, 255, .8); border-left: 0; border-radius: 0 13px 13px 0; background: rgba(8, 16, 48, .62);
+  color: #fff; text-align: left; box-shadow: 0 2px 5px rgba(0, 0, 0, .3); overflow: hidden; }
+.ss-line { flex: 1 1 auto; min-width: 0; display: flex; align-items: center; gap: 4px; white-space: nowrap; overflow: hidden; }
+.ss-line.roll { animation: ss-roll .35s ease-out; }
+@keyframes ss-roll { from { transform: translateY(70%); opacity: 0; } to { transform: none; opacity: 1; } }
+.ss-t { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-weight: 700; text-shadow: 0 1px 0 rgba(0, 0, 0, .6); }
+.ss-d { flex: none; color: #ffe14a; font-weight: 900; text-shadow: 0 1px 0 rgba(0, 0, 0, .6); }
+.ss-n { flex: none; font-size: 9px; color: rgba(255, 255, 255, .6); }
+.ss-face { flex: none; width: 18px; height: 18px; border-radius: 50%; object-fit: cover; background: #fff; box-shadow: 0 0 0 1.5px var(--c, #ffe14a); }
+.ss-dot { flex: none; width: 8px; height: 8px; margin: 0 5px; border-radius: 50%; background: var(--c, #ffe14a); box-shadow: 0 0 0 1.5px rgba(255, 255, 255, .7); }
+/* folded: just the small arrow (the user 2026-11-23: 「合起來以後那個數字就不要顯示了，就一個小三角頭就行了」) */
+.ss.folded .ss-main { display: none; }
+.ss.folded .ss-tog { border-right: 1.5px solid rgba(255, 255, 255, .8); border-radius: 13px; padding: 0 7px; box-shadow: 0 2px 5px rgba(0, 0, 0, .3); }
+/* the whole list under the strip (a tap on it opens / closes) */
+.ss-list { position: absolute; right: 0; top: 30px; width: max-content; max-width: min(300px, calc(100vw - 24px)); max-height: 50vh; overflow-y: auto;
+  display: grid; gap: 3px; padding: 6px 8px; border-radius: 10px; border: 1.5px solid rgba(255, 255, 255, .8);
+  background: rgba(8, 16, 48, .82); color: #fff; box-shadow: 0 4px 12px rgba(0, 0, 0, .4); pointer-events: auto; }
+.ss-list[hidden] { display: none; }
+.ss-row { display: flex; align-items: center; gap: 5px; min-height: 22px; white-space: nowrap; }
+.ss-row .ss-t { overflow: visible; }
+.stage.picking .ss { display: none; }
+
+/* 長安 / 清明上河's lacquer (theme-cn.css): red lacquer with a gold rim; 清明上河 黛青 */
+.game.theme-cn .ss-tog, .game.theme-cn .ss-main, .game.theme-cn .ss-list { border-color: #e0b24a; background: rgba(110, 15, 11, .78); }
+.game.theme-cn .ss-tog { color: #ffe9a6; }
+.game.theme-qm .ss-tog, .game.theme-qm .ss-main, .game.theme-qm .ss-list { border-color: #e0b24a; background: rgba(15, 40, 40, .8); }
+.game.theme-qm .ss-t { font-family: "LXGW WenKai TC", var(--ui-font), serif; }

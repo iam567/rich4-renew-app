@@ -1,7 +1,7 @@
 {
   "name": "rich4-remake",
   "private": true,
-  "version": "1.2.4",
+  "version": "1.3.0",
   "type": "module",
   "description": "High-resolution remake of Rich4 (大富翁4) following the original rules; assets come from the player's own copy.",
   "license": "GPL-3.0-or-later",
@@ -10,6 +10,7 @@
     "build": "tsc --noEmit && vite build",
     "test": "vitest run",
     "assets": "node scripts/link-assets.mjs",
+    "log": "node scripts/read-log.mjs",
     "build:app": "tsc --noEmit && RICH4_NO_ASSETS=1 vite build && RICH4_WEBP=1 node scripts/bundle-assets.mjs && cap sync ios",
     "ios": "node scripts/install-ios.mjs",
     "package": "node scripts/package.mjs"

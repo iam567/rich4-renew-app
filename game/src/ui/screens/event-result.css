@@ -65,3 +65,9 @@
 .er-box.tight .er-amt { font-size: 13px; }
 .er-box.tight .er-common { font-size: 12px; margin-bottom: 4px; }
 .er-box.tight .er-tap { margin-top: 4px; }
+
+/* 超過 RESULT_SCROLL_ROWS 行：只顯示這麼多行，慢慢自己往上滾，手指也能滑（event-result.ts） */
+.er-box.scroll .er-rows { overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; scrollbar-width: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 22px), transparent); }
+.er-box.scroll .er-rows::-webkit-scrollbar { display: none; }
+.er-box.scroll .er-row { animation: none; }

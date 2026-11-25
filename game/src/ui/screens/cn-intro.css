@@ -1,0 +1,86 @@
+/* 長安's 「穿越到開元盛世」 intro (cn-intro.ts). Times are × --k (the game speed). */
+.cn-intro { position: absolute; inset: 0; z-index: 60; overflow: hidden; cursor: pointer; pointer-events: auto; --k: 1; }
+.cn-intro.out { opacity: 0; transition: opacity .45s; }
+main.game.theme-cn.ci-zoom .stage canvas.board { transform: scale(1.08); transition: transform calc(1.4s * var(--k, 1)) ease-in; }
+main.game.theme-cn .stage canvas.board { transition: transform .6s ease-out; }
+
+/* the ink spreading from the middle over today's board */
+.ci-ink { position: absolute; inset: -20%; background: radial-gradient(circle, #14110d 0 30%, rgba(20, 17, 13, .85) 45%, transparent 62%);
+  transform: scale(0); opacity: .95; }
+.cn-intro.p0 .ci-ink { transform: scale(.35); transition: transform calc(1.4s * var(--k)) ease-in; }
+.cn-intro.p1 .ci-ink { transform: scale(2.4); transition: transform calc(1.6s * var(--k)) ease-in; }
+.cn-intro.p3 .ci-ink { opacity: 0; transition: opacity calc(1s * var(--k)) .3s; }
+
+/* the ink-wash whirl */
+.ci-vortex { position: absolute; left: 50%; top: 50%; width: min(80vmin, 660px); aspect-ratio: 1; transform: translate(-50%, -50%) scale(.2); opacity: 0; border-radius: 50%; overflow: hidden;
+  -webkit-mask-image: radial-gradient(circle, #000 50%, transparent 71%); mask-image: radial-gradient(circle, #000 50%, transparent 71%); }
+.ci-vortex img { width: 100%; height: 100%; object-fit: cover; animation: ci-spin 2.6s linear infinite; }
+@keyframes ci-spin { to { transform: rotate(360deg); } }
+.cn-intro.p1 .ci-vortex { opacity: 1; transform: translate(-50%, -50%) scale(1); transition: transform calc(1.8s * var(--k)) cubic-bezier(.2, .8, .3, 1), opacity .4s; }
+.cn-intro.p3 .ci-vortex { opacity: 0; transform: translate(-50%, -50%) scale(2.6); transition: transform .8s ease-in, opacity .8s; }
+
+/* the players on round silk fans (團扇) round the whirl */
+.ci-fans { position: absolute; inset: 0; pointer-events: none; }
+.ci-fan { position: absolute; left: 50%; top: 50%; width: 0; height: 0; }
+.ci-silk { position: absolute; left: -46px; top: -58px; width: 92px; height: 92px; border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 40% 35%, #fffaf0, #f0dfba); border: 4px solid #8a1c12; box-shadow: 0 0 0 2px #e0b24a, 0 6px 14px rgba(0, 0, 0, .5);
+  transform: scale(0) rotate(200deg); opacity: 0; }
+.ci-silk img { width: 100%; height: 100%; object-fit: cover; filter: sepia(.25) saturate(.9); }
+.ci-handle { position: absolute; left: -4px; top: 36px; width: 8px; height: 40px; border-radius: 4px; background: linear-gradient(90deg, #5a3210, #9a6a30, #5a3210); opacity: 0; }
+.ci-name { position: absolute; left: -60px; top: -80px; width: 120px; text-align: center; font-size: 13px; font-weight: 800; color: #ffe9a8; text-shadow: 0 1px 3px #000; opacity: 0;
+  font-family: "Noto Serif TC", "Songti TC", serif; }
+.ci-say { position: absolute; left: -95px; top: 80px; width: 190px; padding: 4px 8px; font-size: 13px; line-height: 1.3; text-align: center; color: #3a1a0a; background: #fffaf0;
+  border: 2px solid #9e1b14; border-radius: 10px; box-shadow: 0 0 0 2px #e0b24a; opacity: 0; transform: translateY(6px); font-weight: 700; }
+.ci-fan.on { transform: translate(calc(var(--x) * min(34vmin, 290px)), calc(var(--y) * min(29vmin, 245px))); transition: transform .7s cubic-bezier(.2, 1.3, .4, 1); }
+.ci-fan.on .ci-silk { opacity: 1; transform: rotate(calc((var(--i) - 3) * 4deg)); transition: transform .7s cubic-bezier(.2, 1.3, .4, 1), opacity .3s; }
+.ci-fan.on .ci-handle, .ci-fan.on .ci-name { opacity: 1; transition: opacity .3s .3s; }
+.ci-fan.on .ci-say { opacity: 1; transform: none; transition: opacity .3s .4s, transform .3s .4s; }
+.cn-intro.p3 .ci-fan { opacity: 0; transition: opacity .6s; }
+
+/* the painting of the city, unrolled between two rollers */
+.ci-scroll { position: absolute; left: 50%; top: 50%; width: min(96vw, 150vh); aspect-ratio: 3 / 2; transform: translate(-50%, -50%); pointer-events: none; }
+.ci-paint { position: absolute; inset: 0; clip-path: inset(0 50% 0 50%); box-shadow: 0 10px 30px rgba(0, 0, 0, .6); border-top: 10px solid #7a1a10; border-bottom: 10px solid #7a1a10; background: #f3e6c8; }
+.ci-paint img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ci-rod { position: absolute; top: -14px; bottom: -14px; width: 22px; border-radius: 11px; background: linear-gradient(90deg, #3a1a08, #8a5428 45%, #3a1a08);
+  box-shadow: 0 6px 12px rgba(0, 0, 0, .5); left: calc(50% - 11px); opacity: 0; }
+.ci-rod::before, .ci-rod::after { content: ''; position: absolute; left: -4px; width: 30px; height: 16px; border-radius: 6px; background: linear-gradient(#ffe08a, #b07818); }
+.ci-rod::before { top: -6px; }
+.ci-rod::after { bottom: -6px; }
+.cn-intro.p3 .ci-paint { clip-path: inset(0 0 0 0); transition: clip-path calc(1.3s * var(--k)) cubic-bezier(.3, .7, .3, 1); }
+.cn-intro.p3 .ci-rod { opacity: 1; transition: left calc(1.3s * var(--k)) cubic-bezier(.3, .7, .3, 1); }
+.cn-intro.p3 .ci-rod.l { left: -11px; }
+.cn-intro.p3 .ci-rod.r { left: calc(100% - 11px); }
+
+/* the title */
+.ci-title { position: absolute; left: 50%; top: 40%; transform: translate(-50%, -50%) scale(.6); opacity: 0; text-align: center; pointer-events: none; white-space: nowrap; }
+.ci-name-big { font-size: clamp(56px, 16vmin, 140px); letter-spacing: .25em; padding-left: .25em; color: #fff3c0; font-weight: 900; font-family: "Noto Serif TC", "Songti TC", "PingFang TC", serif;
+  text-shadow: 0 4px 0 #6a0e08, 0 0 24px rgba(255, 180, 60, .9), 0 0 6px #000; }
+.ci-sub { margin-top: 6px; display: inline-block; padding: 6px 22px; font-size: clamp(16px, 3.6vmin, 28px); letter-spacing: .3em; color: #fff1c8; font-weight: 800;
+  font-family: "Noto Serif TC", "Songti TC", serif; background: linear-gradient(#a3221a, #6e0f0b); border: 2px solid #f0c860; border-radius: 6px; box-shadow: 0 0 0 2px #6e4512, 0 6px 12px rgba(0, 0, 0, .5); }
+.cn-intro.p4 .ci-title { opacity: 1; transform: translate(-50%, -50%) scale(1); transition: transform .6s cubic-bezier(.2, 1.4, .4, 1), opacity .4s; }
+
+/* the year in the corner, a hanging bamboo slip */
+.ci-year { position: absolute; right: 16px; top: 14px; min-width: 92px; padding: 8px 10px; text-align: center; color: #3a1a0a; background: linear-gradient(90deg, #e8d29a, #f6e7bd, #e8d29a);
+  border: 2px solid #7a5a20; border-radius: 6px; box-shadow: 0 6px 14px rgba(0, 0, 0, .45); font-family: "Noto Serif TC", "Songti TC", serif; }
+.ci-year b { display: block; font-size: 28px; color: #9e1b14; font-variant-numeric: tabular-nums; }
+.ci-year small { font-size: 12px; color: #5a4020; }
+.ci-year.tang b { font-size: 26px; letter-spacing: .1em; }
+.cn-intro.p1 .ci-year { animation: ci-shake .12s linear infinite; }
+.cn-intro.p3 .ci-year { animation: none; }
+@keyframes ci-shake { 50% { transform: translate(1px, -1px) rotate(1deg); } }
+.ci-skip { position: absolute; right: 14px; bottom: 10px; font-size: 13px; color: #fff; opacity: .75; text-shadow: 0 1px 3px #000; }
+@media (max-width: 480px) {
+  .ci-silk { left: -34px; top: -44px; width: 68px; height: 68px; } .ci-handle { top: 24px; height: 30px; } .ci-name { top: -62px; font-size: 11px; }
+  .ci-say { width: 136px; left: -68px; top: 58px; font-size: 11px; } .ci-year { min-width: 74px; } .ci-year b { font-size: 22px; }
+}
+
+/* 清明上河's opening (SETS.qingming): the same steps, the Song touches — the fans' rims ink-teal,
+   the subtitle on a 黛青 plaque, the 文楷 brush hand */
+.ci-qingming .ci-name-big { font-family: "LXGW WenKai TC", "Kaiti TC", "STKaiti", serif; font-weight: 400; font-size: clamp(52px, 14vmin, 128px);
+  text-shadow: 0 4px 0 #0f2a28, 0 0 24px rgba(255, 190, 80, .9), 0 0 6px #000; }
+.ci-qingming .ci-sub { font-family: "LXGW WenKai TC", "Kaiti TC", serif; font-weight: 400; letter-spacing: .18em; white-space: nowrap;
+  background: linear-gradient(#1f4a48, #0f2a28); border-color: #e0b24a; box-shadow: 0 0 0 2px #0a1a18, 0 6px 12px rgba(0, 0, 0, .5); }
+.ci-qingming .ci-silk { border-color: #1f4a48; }
+.ci-qingming .ci-say { border-color: #1f4a48; }
+.ci-qingming .ci-paint { border-top-color: #1f4a48; border-bottom-color: #1f4a48; }
+.ci-qingming .ci-year b { color: #1f4a48; }

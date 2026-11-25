@@ -1,6 +1,7 @@
 import UIKit
 import AVFoundation
 import Photos
+import MetricKit
 import Capacitor
 
 @UIApplicationMain
@@ -9,6 +10,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     var window: UIWindow?
 
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
+        NativeLog.start()
         // The game's sound (Web Audio in the web view) plays even when the phone is on silent, like a game you
         // started on purpose; it still mixes with music from other apps. The in-game 靜音 / volume settings apply.
         Self.playSound()
@@ -91,6 +93,73 @@ class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillEnterForeground(_ scene: UIScene) { AppDelegate.playSound() }
 }
 
+/// The native half of the error log (game/src/ui/log.ts, the user 2026-11-25): its own file an hour beside the page's,
+/// Library/rich4-log/n-YYYYMMDD-HH.log, kept 24 hours; read over the cable (game/scripts/read-log.mjs). Launches, the app
+/// to the back and to the front, the system's memory warnings, an uncaught exception, and — at the launch after it — the
+/// system's own report of the last crash (MetricKit). A web view lost to the system shows as the page starting twice
+/// with one launch.
+final class NativeLog: NSObject, MXMetricManagerSubscriber {
+    private static let shared = NativeLog()
+    private static let dir = FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0].appendingPathComponent("rich4-log")
+    private static let lock = NSLock()
+
+    private static func text(_ t: Date, _ f: String) -> String {
+        let d = DateFormatter()
+        d.locale = Locale(identifier: "en_US_POSIX")
+        d.calendar = Calendar(identifier: .gregorian)
+        d.dateFormat = f
+        return d.string(from: t)
+    }
+
+    static func write(_ kind: String, _ what: String) {
+        lock.lock(); defer { lock.unlock() }
+        let now = Date()
+        let line = text(now, "MM-dd HH:mm:ss.SSS") + " " + kind + " " + what.prefix(60000).replacingOccurrences(of: "\n", with: "\n    ") + "\n"
+        let file = dir.appendingPathComponent("n-" + text(now, "yyyyMMdd-HH") + ".log")
+        guard let data = line.data(using: .utf8) else { return }
+        if let h = try? FileHandle(forWritingTo: file) {
+            defer { try? h.close() }
+            if (try? h.seekToEnd()) != nil { try? h.write(contentsOf: data) }
+        } else { try? data.write(to: file) }
+    }
+
+    private static var free: String { "\(os_proc_available_memory() / 1048576) MB left for the app" }
+
+    static func start() {
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        // (the page's and these, older than 24 hours)
+        for f in (try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: [.contentModificationDateKey])) ?? [] where f.pathExtension == "log" {
+            if let t = try? f.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate, t.timeIntervalSinceNow < -86400 { try? FileManager.default.removeItem(at: f) }
+        }
+        let info = Bundle.main.infoDictionary
+        write("LAUNCH", "pid \(ProcessInfo.processInfo.processIdentifier) build \(info?["CFBundleShortVersionString"] ?? "?") iOS \(UIDevice.current.systemVersion) \(free)")
+        NSSetUncaughtExceptionHandler { e in
+            NativeLog.write("CRASH", "\(e.name.rawValue): \(e.reason ?? "")\n" + e.callStackSymbols.joined(separator: "\n"))
+        }
+        let c = NotificationCenter.default
+        for (name, kind) in [(UIApplication.willResignActiveNotification, "INACTIVE"), (UIApplication.didEnterBackgroundNotification, "BACK"),
+                             (UIApplication.didBecomeActiveNotification, "FRONT"), (UIApplication.willTerminateNotification, "QUIT"),
+                             (UIApplication.didReceiveMemoryWarningNotification, "MEMORY-WARNING")] {
+            c.addObserver(forName: name, object: nil, queue: nil) { _ in write(kind, free) }
+        }
+        c.addObserver(forName: ProcessInfo.thermalStateDidChangeNotification, object: nil, queue: nil) { _ in
+            write("HEAT", "state \(ProcessInfo.processInfo.thermalState.rawValue) (0 cool … 3 critical)")
+        }
+        MXMetricManager.shared.add(shared)
+    }
+
+    /// The last run's crash or hang, as the system saw it (given at the launch after it).
+    func didReceive(_ payloads: [MXDiagnosticPayload]) {
+        for p in payloads {
+            for d in p.crashDiagnostics ?? [] {
+                NativeLog.write("CRASH", "\(p.timeStampBegin)–\(p.timeStampEnd) signal \(d.signal ?? 0) exception \(d.exceptionType ?? 0)/\(d.exceptionCode ?? 0) \(d.terminationReason ?? "")\n"
+                    + (String(data: d.callStackTree.jsonRepresentation(), encoding: .utf8) ?? ""))
+            }
+            for d in p.hangDiagnostics ?? [] { NativeLog.write("HANG", "\(p.timeStampBegin) \(d.hangDuration)") }
+        }
+    }
+}
+
 /// The game's web view controller (Main.storyboard): Capacitor's, with the app's own plugins registered.
 class GameViewController: CAPBridgeViewController {
     override func capacitorDidLoad() {
@@ -99,6 +168,15 @@ class GameViewController: CAPBridgeViewController {
     }
 
     override func router() -> Router { UpdateRouter() }
+
+    /// Quick taps low on the screen (野豬林's arrows, the user 2026-11-24: 「點太快的話…直接就回到主界面了」) must not take the
+    /// game home: the bottom edge's swipe (and the top's) first only shows its bar, a second swipe goes — as games do.
+    override var preferredScreenEdgesDeferringSystemGestures: UIRectEdge { [.bottom, .top] }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        setNeedsUpdateOfScreenEdgesDeferringSystemGestures()
+    }
 }
 
 /// 在線更新 (docs/rules/29, game/src/ui/update.ts): a newer version downloaded into Library/rich4-update/v<version>/
@@ -160,7 +238,13 @@ struct UpdateRouter: Router {
 public class LanInfoPlugin: CAPPlugin, CAPBridgedPlugin {
     public let identifier = "LanInfoPlugin"
     public let jsName = "LanInfo"
-    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "find", returnType: CAPPluginReturnPromise)]
+    public let pluginMethods: [CAPPluginMethod] = [CAPPluginMethod(name: "find", returnType: CAPPluginReturnPromise), CAPPluginMethod(name: "caps", returnType: CAPPluginReturnPromise)]
+
+    /// What this installer can do that an older one could not (game/src/ui/private-server.ts): 私服 needs the web
+    /// view let out to any address (Info.plist NSAllowsArbitraryLoadsInWebContent, from 1.3 on).
+    @objc func caps(_ call: CAPPluginCall) {
+        call.resolve(["server": true])
+    }
 
     /// This phone's IPv4 addresses on the local network, Wi-Fi (en0) first.
     static func mine() -> [String] {

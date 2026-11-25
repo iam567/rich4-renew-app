@@ -32,6 +32,9 @@ const LINES = [
   { hello: '歡迎光臨\n道具店！', pick: '您要兌換\n什麼道具？', poor: '對不起，\n您的點券不夠！', full: '很抱歉！您的\n道具欄已滿！', bye: '謝謝惠顧！' },
 ] as const;
 
+/** 地獄難度: a tap on a lab-made tool in the bag (core tools.unsellable). */
+const LAB_NO_SALE = '地獄難度：\n研究所的道具\n不能賣回商店';
+
 /** What each tool does, for the bubble (05 §3). */
 export const TOOL_TEXT: Record<number, string> = {
   1: '往前走九步，清掉路上的路障、地雷與炸彈',
@@ -390,13 +393,17 @@ class ShopScene {
       let k = 0;
       TOOLS.forEach(d => {
         const n = me.tools[d.id - 1];
-        if (!n || this.ctx.game.tools.unsellable(d.id)) return; // 地獄: a lab's tools are not sold back
+        if (!n) return;
+        // 地獄: a lab's tools are not sold back — shown greyed, and a tap says why (issue #131: players took the
+        // missing 核子飛彈 for a bug; the user 2026-11-23: 「加個提示吧，就是地獄難度研究所的道具不能賣回商店」)
+        const locked = this.ctx.game.tools.unsellable(d.id);
         const c = cell(k++), icon = this.art('Panel', 11, d.id + 1), get = sellPrice(d.price);
         c.classList.add('tool');
-        c.innerHTML = `${icon ? `<img class="ic" src="${icon.src}" alt="" style="width:${icon.w}px;height:${icon.h}px">` : ''}<span class="pr">+${get}</span><span class="n">×${n}</span>`;
-        c.title = `賣出一個${d.name}：得 ${get} 點券`;
+        c.classList.toggle('locked', locked);
+        c.innerHTML = `${icon ? `<img class="ic" src="${icon.src}" alt="" style="width:${icon.w}px;height:${icon.h}px">` : ''}${locked ? '' : `<span class="pr">+${get}</span>`}<span class="n">×${n}</span>`;
+        c.title = locked ? LAB_NO_SALE.replace(/\n/g, '') : `賣出一個${d.name}：得 ${get} 點券`;
         if (arrived?.kind === 'tool' && arrived.id === d.id) c.classList.add('pop');
-        this.press(c, () => this.sell({ sell: 'tool', id: d.id }, get, c), () => this.toolInfo(d.id, d.price, true));
+        this.press(c, () => locked ? this.say(LAB_NO_SALE, 2600, true) : this.sell({ sell: 'tool', id: d.id }, get, c), () => this.toolInfo(d.id, d.price, true));
         this.cells.append(c);
       });
       if (!k) this.cells.append(place(el('div', 'shop-empty bag', '沒有道具'), 7, 63, 396, 52));
@@ -538,13 +545,13 @@ class ShopScene {
   private cardInfo(id: number, price: number, held = false) {
     const pic = this.art('Data', 570 + id);
     this.info(`${pic ? `<img class="pic" src="${pic.src}" alt="">` : ''}<div class="txt"><b>${esc(cardName(id))}</b><p>${phrases(cardDef(id)?.text ?? '')}</p>
-      <em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}</em></div>`);
+      <em>${!held ? `售價 ${price} 點` : this.ctx.game.tools.unsellable(id) ? '地獄難度不能賣回' : `賣出得 ${sellPrice(price)} 點`}</em></div>`);
   }
 
   private toolInfo(id: number, price: number, held = false) {
     const icon = this.art('Panel', 11, id + 1), n = this.player.tools[id - 1];
     this.info(`<span class="icb">${icon ? `<img class="ic" src="${icon.src}" alt="" style="width:${icon.w * 1.5}px;height:${icon.h * 1.5}px">` : ''}</span><div class="txt"><b>${esc(TOOLS[id - 1].name)}</b>
-      <p>${phrases(TOOL_TEXT[id] ?? '')}</p><em>${held ? `賣出得 ${sellPrice(price)} 點` : `售價 ${price} 點`}・持有 ${n}/${MAX_HELD}</em></div>`);
+      <p>${phrases(TOOL_TEXT[id] ?? '')}</p><em>${!held ? `售價 ${price} 點` : this.ctx.game.tools.unsellable(id) ? '地獄難度不能賣回' : `賣出得 ${sellPrice(price)} 點`}・持有 ${n}/${MAX_HELD}</em></div>`);
   }
 
   private showBubble() {

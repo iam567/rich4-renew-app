@@ -25,7 +25,8 @@ import { cleanCc } from './region-flag';
 import { deviceId } from './party-presence';
 import { FINALE_MAP } from '../core/casino-rules';
 import { RT_LENGTHS, rtMapOk } from '../core/realtime';
-import { directLine, freshId, netConfig, openNet, type NetConn, type NetPeer } from './net-peer';
+import { directLine, freshId, netConfig, openNet, refusalWhy, type NetConn, type NetPeer } from './net-peer';
+import { claimRoomCode } from './private-server';
 import { gameEnd, postChat, reportCtx, reportParty } from './party-report';
 import { CHARACTERS } from '../core/characters';
 import { hostMismatch, levelNote, partyVersion, refuseGuest, refuseLate, roomLevel, statsByVersion, verKey, verOf } from './party-version';
@@ -40,6 +41,13 @@ export const LOBBY = `${PREFIX}lobby-v2`;
 const roomId = (code: string) => `${PREFIX}room-${code}`;
 /** Where this device keeps its seat in the last party game (issue #50). */
 const SEAT_KEY = 'rich4.party.seat';
+/** The 私服 (its address) of the room `code` this device had a seat in within the last 12 hours, or '' (issue #50 on a 私服). */
+export function rememberedServer(code: string): string {
+  try {
+    const x = JSON.parse(localStorage.getItem(SEAT_KEY) ?? 'null') as { code: string; at: number; srv?: string } | null;
+    return x && x.code === code && Date.now() - x.at < 12 * 3600_000 && typeof x.srv === 'string' ? x.srv : '';
+  } catch { return ''; }
+}
 
 /** `nick`: the name the player gave themself (the user 2026-10-19); `name` is it or the character's. */
 export interface Member { id: string; name: string; character: number; region?: string; /** Its country by the address (region-flag.ts). */ cc?: string; nick?: string; /** In the game: its phone is gone (the host tells everyone). */ away?: boolean; /** 聯絡方式 the player chose to show the room (the user 2026-11-08). */ contact?: Contact; /** Its app's version (1.2.0 on: versions of a family play together, core/compat.ts). */ ver?: string }
@@ -138,6 +146,11 @@ export interface PartyRules {
    * later): a bit for each of EXTRAS, on when set; all on by default.
    */
   extras: number;
+  /**
+   * 遊戲節奏 (docs/rules/36, the user 2026-11-23): 0 慢節奏, 2 快節奏 (settings.pace); none 原版 (so the rules of every
+   * room before it, and their tests, are as they were). A room with an older phone plays 原版 (compat 'pace').
+   */
+  pace?: number;
 }
 /** 追加玩法's switches: the bit, the name on the room screen, and the game setting that turns it off. */
 export const EXTRAS = [
@@ -159,8 +172,8 @@ export const DEFAULT_RULES: Readonly<PartyRules> = { fundIndex: 1, traffic: 0, l
 /** Rules as kept: each a whole number in its range, else the default. */
 export function cleanRules(r: unknown): PartyRules {
   const o = (r ?? {}) as Record<string, unknown>;
-  const at = (k: keyof PartyRules, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
-  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE.length), maxPing: at('maxPing', PING_LIMITS.length), turnSec: at('turnSec', TURN_SECONDS.length), aiLevel: at('aiLevel', AI_LEVELS.length), dropIn: at('dropIn', 2), realtime: at('realtime', 2), rtLen: at('rtLen', RT_LENGTHS.length), extras: at('extras', ALL_EXTRAS + 1) };
+  const at = (k: Exclude<keyof PartyRules, 'pace'>, n: number) => { const v = o[k]; return Number.isInteger(v) && (v as number) >= 0 && (v as number) < n ? v as number : DEFAULT_RULES[k]; };
+  return { fundIndex: at('fundIndex', 6), traffic: at('traffic', 3) as 0 | 1 | 2, landLimitIndex: at('landLimitIndex', 6), daysLimitIndex: at('daysLimitIndex', 6), victoryIndex: at('victoryIndex', 6), challenge: at('challenge', PARTY_CHALLENGE.length), maxPing: at('maxPing', PING_LIMITS.length), turnSec: at('turnSec', TURN_SECONDS.length), aiLevel: at('aiLevel', AI_LEVELS.length), dropIn: at('dropIn', 2), realtime: at('realtime', 2), rtLen: at('rtLen', RT_LENGTHS.length), extras: at('extras', ALL_EXTRAS + 1), ...(o.pace === 0 || o.pace === 2 ? { pace: o.pace } : {}) };
 }
 /** Host: the room's next game on `map` (換地圖): the same seats and rules, a new seed; `players` as they are now. */
 export function nextGameMsg(r: Room, players: GameSettings['players'], map: number, seed: number): StartMsg | null {
@@ -184,14 +197,14 @@ export function startMsg(r: Room, fill: number, startDate: number, seed: number)
   const cpus = fill ? [0, 4, 3, 1, 2, 5, 6, 7, 8, 10, 11, 9].filter(c => !used.has(c)).slice(0, Math.max(0, fill - r.members.length)) : [];
   const players = [...r.members.map(m => ({ character: m.character, human: true, ...(m.nick ? { nick: m.nick } : {}) })), ...cpus.map(c => ({ character: c, human: false }))];
   // 挑戰模式 is the task cards and 獎勵卡 (docs/rules/30; never 大富翁城); the limits are the room's, not the game's.
-  const { challenge, maxPing, turnSec, aiLevel, dropIn, realtime, rtLen, extras, ...rules } = r.rules;
+  const { challenge, maxPing, turnSec, aiLevel, dropIn, realtime, rtLen, extras, pace, ...rules } = r.rules;
   const off = Object.fromEntries(EXTRAS.filter(x => !(extras & x.bit)).map(x => [x.off, true]));
   void maxPing; void turnSec;
   // 即時制 (docs/rules/31): standard maps only; no 挑戰模式, no 途中加入, no day or money target
   const rt = realtime && rtMapOk(Number(r.map));
   const tasks = challenge && !rt && Number(r.map) !== FINALE_MAP ? { monthTasks: challenge as 1 | 2 | 3 } : {};
   return { settings: { mapId: Number(r.map), players, ...rules, ...(rt ? { daysLimitIndex: 0, victoryIndex: 0, realtime: { length: RT_LENGTHS[rtLen] * 60_000 } } : {}),
-    aiLevel: aiLevel as 0 | 1 | 2 | 3, ...tasks, ...(dropIn && !rt ? { dropIn: true } : {}), ...off, ...level(r), startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
+    aiLevel: aiLevel as 0 | 1 | 2 | 3, ...(pace === 0 || pace === 2 ? { pace: pace as 0 | 2 } : {}), ...tasks, ...(dropIn && !rt ? { dropIn: true } : {}), ...off, ...level(r), startDate, seed, party: true }, seats: Object.fromEntries(r.members.map((m, i) => [m.id, i])) };
 }
 
 type Msg =
@@ -550,13 +563,17 @@ export class Room {
     let peer: NetPeer | null = null;
     // 4 digits while they are easy to find free; when the room codes get crowded (the user 2026-11-04: what if there
     // are more than 10 000 rooms?), 5 and then 6 digits — 9 000 + 90 000 + 900 000 rooms open at once.
+    // 私服 (private-server.ts): 6 digits, claimed with ours too, so the code alone finds the room from anywhere
+    const srv = netConfig.server;
     for (let k = 0; k < 12 && !peer; k++) {
-      const digits = k < 6 ? 4 : k < 9 ? 5 : 6, low = 10 ** (digits - 1);
+      const digits = srv ? 6 : k < 6 ? 4 : k < 9 ? 5 : 6, low = 10 ** (digits - 1);
       const code = String(low + Math.floor(Math.random() * 9 * low));
       peer = await openRoom(roomId(code));
+      if (!peer && refusalWhy()) break; // a 私服 saying no (full, its password …): no use trying other codes
+      if (peer && srv && !await claimRoomCode(code, srv.addr)) { peer.destroy(); peer = null; continue; }
       if (peer) this.code = code;
     }
-    if (!peer) throw new Error('無法建立房間（網路連不上）');
+    if (!peer) throw new Error(refusalWhy() || '無法建立房間（網路連不上）');
     this.members = [named({ id: peer.id, ...this.me, ...(this.ver ? { ver: this.ver } : {}) })];
     this.becomeHost(peer);
     return this.code;
@@ -587,6 +604,7 @@ export class Room {
     const me = this.members.find(x => x.id === this.myId);
     if (me) this.members = [me, ...this.members.filter(x => x !== me)];
     peer.on('connection', c => this.guest(c));
+    this.ownerSays(peer);
     peer.on('disconnected', () => { if (!this.closed && this.host) peer.reconnect(); });
     // Back from the background with the room's id taken by a new host: join it as a guest.
     peer.on('error', e => { if (!this.closed && this.host && (e as { type?: string }).type === 'unavailable-id') void this.demote(); });
@@ -618,7 +636,8 @@ export class Room {
   /** This phone's seat in a started game, kept on the device so the room code brings it back (issue #50). */
   private remember() {
     if (!this.started) return;
-    try { localStorage.setItem(SEAT_KEY, JSON.stringify({ code: this.code, id: this.myId, at: Date.now() })); } catch { /* not kept */ }
+    // (on a 私服 its address too: the code brings the player back there even when ours cannot be reached)
+    try { localStorage.setItem(SEAT_KEY, JSON.stringify({ code: this.code, id: this.myId, at: Date.now(), ...(netConfig.server ? { srv: netConfig.server.addr } : {}) })); } catch { /* not kept */ }
   }
   /** The peer id this phone had in the room `code` (a game within the last 12 hours), if any. */
   private remembered(code: string): string | undefined {
@@ -635,7 +654,7 @@ export class Room {
   async join(code: string): Promise<void> {
     this.code = code;
     const peer = await openRoom();
-    if (!peer) throw new Error('網路連不上');
+    if (!peer) throw new Error(refusalWhy() || '網路連不上');
     this.asGuest(peer);
     if (!(await this.reach())) throw new Error('連不上這個房間\n（房間碼不對，或兩邊的網路無法直接連線：可以試試連同一個 Wi-Fi）');
     if (this.ver === null) return; // (a dev test of an old phone: it did not wait)
@@ -653,7 +672,13 @@ export class Room {
     this.host = false;
     this.myId = peer.id;
     this.remember();
+    this.ownerSays(peer);
     peer.on('disconnected', () => { if (!this.closed && !this.host) peer.reconnect(); });
+  }
+
+  /** A 私服's owner sends this phone away (管理頁: 踢人, 封禁, 關閉房間): it leaves the room with the reason. */
+  private ownerSays(peer: NetPeer) {
+    peer.on('error', e => { if (!this.closed && this.peer === peer && (e.type === 'kicked' || e.type === 'banned' || e.type === 'password')) this.leaveRefused(refusalWhy() || e.why || '你被服主請出了這個私服'); });
   }
 
   /** A host whose room id another phone has taken over: a guest of the new host. */

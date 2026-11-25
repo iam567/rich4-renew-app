@@ -26,10 +26,20 @@ const OVERRIDES = '牠 它';
  */
 const TW_VARIANTS = TW_VARIANTS_REV.split('|').filter(e => !e.startsWith('么 ')).join('|');
 
+/**
+ * Words of the history banks (長安, 清明上河) the tables get wrong, or change again on a second pass: 畢昇's own 昇, 著稱 /
+ * 著錄, the place 乾縣, 目乾連, and 「於」＋「戲曲」 (not the old exclamation). Each also as it comes out, so it rests there.
+ */
+const PHRASES = `${TS_PHRASES}|${['畢昇 毕昇', '著稱 著称', '著錄 著录', '乾縣 乾县', '乾連 乾连', '於戲曲 于戏曲', '于闐 于阗']
+  .flatMap(x => { const [a, b] = x.split(' '); return [`${a} ${b}`, `${b} ${b}`]; }).join('|')}`;
+
+/** (the first step would make their 著 a 着) */
+const VARIANT_PHRASES = `${TW_VARIANTS_REV_PHRASES}|著稱 著稱|著錄 著錄|著称 著称|著录 著录`;
+
 const normalize = ConverterFactory([CJK]);
 const segmenter = new Trie();
-segmenter.loadDict(TS_PHRASES);
-const chain = ConverterFactory([TW_VARIANTS_REV_PHRASES, TW_VARIANTS], [TS_PHRASES, TS_CHARACTERS], [OVERRIDES]);
+segmenter.loadDict(PHRASES);
+const chain = ConverterFactory([VARIANT_PHRASES, TW_VARIANTS], [PHRASES, TS_CHARACTERS], [OVERRIDES]);
 
 /** Converts one string (no cache; lang.ts caches). */
 export function toSimplified(s: string): string {

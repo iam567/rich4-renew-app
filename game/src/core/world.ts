@@ -18,8 +18,8 @@ import { ask, type Flow } from './flow';
 import { track } from './challenge';
 import { Finale, FINALE_MAP } from './finale'; // 大富翁城, the finale (docs/rules/19)
 import { Game, type WorldHooks } from './game';
-import { deckSupply } from './modules/cards';
-import { OBJECT_NAMES } from './modules/objects';
+import { deckSupply, tycoonPool } from './modules/cards';
+import { OBJ, OBJECT_NAMES } from './modules/objects';
 import { TYCOON_LABS } from './modules/tools';
 import { Rng, daySeed } from './rng';
 import { ledgerOf, type Ledger } from './stats';
@@ -230,6 +230,9 @@ function resolveSquare(b: Board, sq: TravelSquare, used: Set<number>): BoardNode
 
 // ------------------------------------------------------------------ the world
 
+/** Cards a computer would bring after the human (aiCardTrip): 遣返, 烏龜, 陷害, 查稅, 查封, 搶奪, 購地, 換地, 召集. */
+const AI_PRANK_CARDS: readonly number[] = [33, 30, 17, 26, 28, 13, 3, 4, 35];
+
 export class World implements WorldHooks {
   readonly settings: TycoonSettings;
   readonly players: Player[];
@@ -326,24 +329,27 @@ export class World implements WorldHooks {
     const order = this.shuffle(this.players.map(p => p.id));
     const cityOrder = this.shuffle(this.cities.map((_, i) => i));
     order.forEach((id, k) => { this.players[id].map = cityOrder[k % cityOrder.length]; });
+    this.oneChest();
     for (const p of this.players) this.visit(p);
     this.mask(this.view());
   }
 
   /**
-   * One nationwide card pool (17 §3.10, the user 2026-10-19): the five cities share one `remaining`, each card's copies
-   * × the number of cities (均富卡 2 × 5 = 10 …), so a card bought or drawn in 東京 is gone in 大阪 too. A loaded save
-   * links its cities' copies again ('saved'), a save from before adds the cities' own pools up ('merge'). The 通緝卡
-   * stays one per city (Cards.wanted); 大富翁城 keeps its own pool (its casino rules empty some slots).
+   * One nationwide card pool (17 §3.10, the user 2026-10-19; 2026-11-20 ×3): the five cities share one `remaining`,
+   * each card's copies × 3 (均富卡 2 × 3 = 6 …) but 飛行卡, 電車卡, 遣返卡, 召集卡 10 each (cards.ts tycoonPool), so a
+   * card bought or drawn in 東京 is gone in 大阪 too. A loaded save links its cities' copies again ('saved', never above
+   * today's copies when `cut`: a save of the old × 5 pool), a save from before adds the cities' own pools up ('merge').
+   * The 通緝卡 stays one per city (Cards.wanted); 大富翁城 keeps its own pool (its casino rules empty some slots).
    */
-  sharePool(how: 'new' | 'saved' | 'merge' = 'new'): void {
+  sharePool(how: 'new' | 'saved' | 'merge' = 'new', cut = how === 'merge'): void {
     const cities = this.cities.filter(c => c.settings.mapId !== FINALE_MAP);
-    const fresh = deckSupply(true).map(n => n * cities.length);
+    const fresh = tycoonPool();
     const pool = how === 'saved' ? [...cities[0].cards.remaining]
       : how === 'merge' ? deckSupply(true).map((_, i) => cities.reduce((a, c) => a + (c.cards.remaining[i] ?? 0), 0))
       : fresh;
     // A save from before a card was added (複製卡, 39): its copies join the pool.
     for (let i = pool.length; i < fresh.length; i++) pool.push(fresh[i]);
+    if (cut) for (let i = 0; i < fresh.length; i++) if (i !== WANTED - 1) pool[i] = Math.min(pool[i], fresh[i]); // a save from before × 3
     if (how !== 'saved') pool[WANTED - 1] = 0; // unused (Cards.wanted); a used copy may count up there, kept as saved
     for (const c of cities) c.cards.remaining = pool;
   }
@@ -524,14 +530,75 @@ export class World implements WorldHooks {
     }
     const o = options.find(x => x.map === dest);
     if (!o || !o.affordable) return false;
-    if (!g.isHuman(p)) why = `（用${via === 'station' ? '電車卡' : '飛行卡'}）`;
+    if (!g.isHuman(p)) why = `（用${via === 'station' ? '電車卡' : '飛行卡'}${this.cardWhy[p.id] ? `，${this.cardWhy[p.id]}` : ''}）`;
     return yield* this.leave(g, p, o, via, false, why, p.node);
   }
 
+  /**
+   * The computer's destination for a free ticket (17 §3.5; the user 2026-11-20: 「電腦也要會用…要學會把玩家戲耍和坑玩家」):
+   *  1. chase the human — with a prank in hand (遣返, 烏龜, 陷害, 查稅, 查封, 搶奪, 購地, 換地, 召集 or a 路障 / 地雷) it flies
+   *     after the human to their city;
+   *  2. flee — the rivals' tolls on its next roll would hurt (worst one over 60% of its money and the average over
+   *     20%, or the average alone over 30%): it leaves for the best city it can reach;
+   *  3. else its usual trip evaluation (aiTrip, with the TRIP_REST pause).
+   * The reason goes to the ticker (cardWhy). Never peeks at the random stream.
+   */
   aiCardTrip(g: Game, p: Player, via: 'station' | 'airport'): number {
-    const from = g.world!.index, options = this.cardOptions(from, via, p);
+    const from = g.world!.index, options = this.cardOptions(from, via, p).filter(o => this.population(o.map) < World.CROWD);
+    this.cardWhy[p.id] = '';
     if (!options.length) return -1;
-    return this.aiTrip(p, from, options, 0)?.map ?? -1;
+    const rested = this.daysElapsed - (this.lastTrip[p.id] ?? -999) >= World.TRIP_REST;
+    const prank = AI_PRANK_CARDS.some(c => p.cards.includes(c)) || p.tools[1] > 0 || p.tools[2] > 0;
+    const h = this.players.find(q => q.human && !q.bankrupt && q.whoPlays && !q.trip && q.map !== undefined && q.map >= 0 && q.map !== from);
+    if (h && prank && rested && options.some(o => o.map === h.map)) { this.cardWhy[p.id] = `追著${this.name(h.id)}去`; return h.map!; }
+    const d = this.dangerAhead(g, p), money = Math.max(1, p.cash + p.bank);
+    if (rested && ((d.worst > money * 0.6 && d.mean > money * 0.2) || d.mean > money * 0.3)) {
+      const go = options.reduce((a, b) => (this.cityView(p, b.map).score > this.cityView(p, a.map).score ? b : a));
+      this.cardWhy[p.id] = '躲開前面的高價地段';
+      return go.map;
+    }
+    const t = this.aiTrip(p, from, options, 0);
+    if (t) this.cardWhy[p.id] = t.reason;
+    return t?.map ?? -1;
+  }
+
+  /** The reason of a computer's travel card (aiCardTrip), for the ticker. */
+  private cardWhy: string[] = [];
+
+  /** The worst and the mean fee p would pay where its next roll can end (the smart computer's estimates). */
+  dangerAhead(g: Game, p: Player): { worst: number; mean: number } {
+    const d = g.smart.maxDice(p), r = g.smart.route(p, 6 * d);
+    let worst = 0, sum = 0, n = 0;
+    for (let k = d; k <= 6 * d && k <= r.length; k++) { const f = g.smart.fee(p, r[k - 1], k); worst = Math.max(worst, f); sum += f; n++; }
+    return { worst, mean: n ? sum / n : 0 };
+  }
+
+  /**
+   * 遣返卡's target for a computer (the user 2026-11-20: 坑玩家): among the rivals it sees in this city, the one it hurts
+   * most — the human first, the one it resents, someone who just flew in (the fare wasted), someone rich, someone with
+   * many properties here (sent away from them) — but not a rival about to walk onto its own lots (let them pay).
+   * -1: nobody worth a card.
+   */
+  aiDeport(g: Game, p: Player, seen: Player[], hostile: number): number {
+    const b = g.board, me = p.id + 1;
+    let best = -1, top = 2.5;
+    for (const q of seen) {
+      if (q.id === p.id || !q.whoPlays || g.offRoad(q) || q.trip) continue;
+      const own = b.lands.filter(l => l.owner === q.id + 1).length + b.facilities.filter(f => f.owner === q.id + 1).length;
+      let s = own / 3;
+      if (q.human) s += 3;
+      if (q.id === hostile) s += 2;
+      if (this.daysElapsed - (this.lastTrip[q.id] ?? -999) <= 3) s += 2;
+      if (g.wealth(q) > g.wealth(p)) s += 1;
+      const d = g.smart.maxDice(q), mine = g.smart.route(q, 6 * d).slice(d - 1).filter(n => {
+        const nd = g.node(n), land = nd?.ref && nd.ref > 2000 && nd.ref < 4000 ? b.lands[nd.ref - 2001] : undefined;
+        const fac = nd?.ref && nd.ref > 4000 && nd.ref < 6000 ? b.facilities[nd.ref - 4001] : undefined;
+        return (land && land.owner === me && land.level > 0) || (fac && fac.owner === me && fac.level > 0);
+      }).length;
+      s -= 1.5 * mine;
+      if (s > top) { top = s; best = q.id; }
+    }
+    return best;
   }
 
   /**
@@ -709,11 +776,38 @@ export class World implements WorldHooks {
     yield* this.across(from, this.leave(this.cities[from], q, this.option(here, q), 'airport', false, `（被${this.name(p.id)}召集）`, q.node));
   }
 
-  /** A computer summons when it has built up this city (4+ properties at level 2 or more) and the city has room. */
+  /**
+   * A computer summons when the city has room and someone is likely to pay it (the user 2026-11-20: 坑玩家): it has
+   * built up this city (4+ properties at level 2 or more), or the summoned one lands at the airport with its tolls
+   * close by (3+ of its built properties within 8 squares of the airport; 1+ when the human is a third or more of
+   * those who can be summoned — the pick stays random).
+   */
   aiSummon(g: Game, p: Player): boolean {
     const me = p.id + 1, b = g.board, here = g.world!.index;
+    const list = this.summonable(g, p);
+    if (this.population(here) >= World.CROWD || !list.length) return false;
     const built = b.lands.filter(l => l.owner === me && (l.level >= 2 || l.chain)).length + b.facilities.filter(f => f.owner === me && f.level >= 2).length;
-    return built >= 4 && this.population(here) < World.CROWD && this.summonable(g, p).length > 0;
+    if (built >= 4) return true;
+    const trap = this.trapNearAirport(g, p);
+    return trap >= 3 || (trap >= 1 && list.filter(q => q.human).length * 3 >= list.length);
+  }
+
+  /** p's built properties (level 1+) within 8 squares of this city's airport (breadth-first over the roads). */
+  private trapNearAirport(g: Game, p: Player): number {
+    const start = g.board.nodes.find(n => n.event === 18);
+    if (!start) return 0;
+    const me = p.id + 1, b = g.board, dist = new Map<number, number>([[start.id, 0]]), queue = [start.id];
+    let n = 0;
+    while (queue.length) {
+      const at = queue.shift()!, d = dist.get(at)!, nd = g.node(at);
+      if (!nd) continue;
+      const land = nd.ref > 2000 && nd.ref < 4000 ? b.lands[nd.ref - 2001] : undefined;
+      const fac = nd.ref > 4000 && nd.ref < 6000 ? b.facilities[nd.ref - 4001] : undefined;
+      if ((land && land.owner === me && land.level > 0) || (fac && fac.owner === me && fac.level > 0)) n++;
+      if (d >= 8) continue;
+      for (const a of nd.adjacent) if (a && !dist.has(a) && g.node(a)) { dist.set(a, d + 1); queue.push(a); }
+    }
+    return n;
   }
 
   /** 通緝卡's list (17 §3.5): the other eleven with where they are; those in hospital, prison, 消失 or 在路上 greyed. */
@@ -1387,6 +1481,7 @@ export class World implements WorldHooks {
         yield* this.onCity(i, c.blackMarket.monthly());
         c.monthsElapsed += 1;
       }
+      this.oneChest();
       this.monthsElapsed += 1;
       yield* this.roamingDeath();
       this.history.push({ day: this.daysElapsed, wealth: this.players.map(p => (p.bankrupt ? 0 : this.wealth(p))) });
@@ -1406,6 +1501,18 @@ export class World implements WorldHooks {
    * one it attached to, the next month brings another. Stopping on it, it attaches as any god (13 days, its usual
    * effects); 時空機 can send it to another city.
    */
+  /**
+   * The 500-point treasure chest (the user 2026-11-20: 「每個月的500點券的寶箱只在5個城市中的其中一個城市出現」): each
+   * city's month start puts its chest out as in a normal game; then one city drawn from the world's stream keeps it
+   * and the others' are taken off the road. A chest picked up stays gone until the next month.
+   */
+  private oneChest(): void {
+    const open = this.cities.map((_, i) => i).filter(i => this.finale.runs(i));
+    if (open.length < 2) return;
+    const keep = open[this.rng.below(open.length)];
+    for (const i of open) if (i !== keep) Object.assign(this.cities[i].objects.slots[OBJ.Chest - 1], { node: 0, life: 0, owner: 0 });
+  }
+
   private *roamingDeath(): Flow {
     if (this.finale.active || this.players.filter(p => p.bankrupt).length < 6) return;
     const cities = this.cities.map((c, i) => ({ c, i })).filter(({ i }) => this.finale.runs(i) && this.mapId(i) !== FINALE_MAP);

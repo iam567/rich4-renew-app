@@ -141,7 +141,9 @@ function ask(l: Lane, url: string, blob: Blob, size: Size | undefined, cut: bool
  * for hundreds together; every fetched file then waited in memory for its turn at the worker, and a phone's web view
  * was closed by the system before the board showed. Elsewhere nothing changes.
  */
-const DECODE_SLOTS = () => (isAndroid() ? (memTier().key === 'min' ? 3 : 6) : Infinity);
+// (elsewhere at most 48: 長安's map asked for about 2,000 at once and the browser refused the rest — ERR_INSUFFICIENT_RESOURCES,
+// the toolbar's own pictures among them, 2026-11-19)
+const DECODE_SLOTS = () => (isAndroid() ? (memTier().key === 'min' ? 3 : 6) : 48);
 let decoding = 0;
 const decodeQueue: (() => void)[] = [];
 async function inSlot<T>(run: () => Promise<T>): Promise<T> {

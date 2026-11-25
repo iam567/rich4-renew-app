@@ -184,12 +184,12 @@
 .mk-theme b, .mk-theme small { position: relative; text-shadow: 0 1px 2px #000; }
 .mk-theme b { font-weight: 400; font-size: 20px; }
 .mk-theme small { font-size: 12px; line-height: 1.3; opacity: .95; }
-/* 建築 / 裝飾's kinds (pieces.ts): the first thing in the pieces' grid — slim tabs, a row over the pieces (a column of
+/* 地標 / 建築 / 植被 / 裝飾's kinds (pieces.ts; portrait: two rows, as many columns as kinds — 地標 has five): the first thing in the pieces' grid — slim tabs, a row over the pieces (a column of
    them) or a column kept at the left of a strip of them scrolled sideways */
 .mk-cats { display: flex; gap: 4px; grid-column: 1 / -1; position: sticky; top: 0; z-index: 2; padding: 2px 0 6px; background: #1f57c4; }
 .mk-cats .chip { flex: 1; min-width: 0; padding: 4px 4px; border-radius: 10px; font-size: 13px; white-space: nowrap; }
 @media (orientation: portrait) {
-  .mk-cats { display: grid; grid-template-columns: 40px 40px; grid-auto-rows: 28px; align-content: center; gap: 4px; grid-column: auto; grid-row: 1 / -1; left: 0; top: auto;
+  .mk-cats { display: grid; grid-template-rows: 28px 28px; grid-auto-flow: column; grid-auto-columns: 40px; align-content: center; gap: 4px; grid-column: auto; grid-row: 1 / -1; left: 0; top: auto;
     padding: 0 6px 0 0; box-shadow: 6px 0 6px -4px rgba(0, 0, 0, .35); }
   .mk-grid .mk-cats .chip { width: 40px; height: 28px; min-height: 0; padding: 0; border-radius: 8px; font-size: 12px; line-height: 24px; text-align: center; }
 }
@@ -217,7 +217,10 @@
 .mk-stats svg { width: 14px; height: 14px; }
 .mk-stats .fl { color: #e0457a; }
 /* a map's page */
-.mk-page { width: min(560px, 100%); }
+.mk-page { width: min(560px, 100%); box-sizing: border-box; min-height: 0; max-height: calc(100vh - 40px); max-height: calc(100dvh - 40px); }
+/* issue #120 (a phone on its side, a long 地圖說明): the page's text scrolls, its buttons always stay on the screen */
+.mk-page-body { display: flex; flex-direction: column; align-items: center; width: 100%; flex: 1 1 auto; min-height: 0; overflow-y: auto; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; }
+.mk-page > .choices { flex: none; margin-top: 10px; }
 .mk-page-top { display: flex; gap: 12px; width: 100%; align-items: center; }
 .mk-page-top img, .mk-page-top .mk-noimg { width: 46%; aspect-ratio: 1; object-fit: cover; border-radius: 14px; border: 3px solid #fff; flex: none; }
 .mk-page-info { display: flex; flex-direction: column; gap: 6px; text-align: left; }
@@ -269,6 +272,14 @@
 .mk-ptag { display: inline-block; margin-right: 4px; padding: 0 6px; border-radius: 8px; font-style: normal; font-size: 11px; line-height: 17px; vertical-align: 2px; color: #fff; background: #8a4cf0; }
 .mk-page .choices { display: grid; grid-template-columns: 1fr 1fr; gap: 12px 10px; width: 100%; }
 .mk-page .choices .candy { width: 100%; min-width: 0; margin: 0; padding-left: 6px; padding-right: 6px; font-size: 16px; white-space: nowrap; }
+/* issue #120: a phone on its side — a smaller picture so the text shows, the buttons in one row */
+@media (orientation: landscape) and (max-height: 560px) {
+  .mk-page { width: min(760px, 100%); max-width: min(760px, 100%); padding-top: 18px; padding-bottom: 12px; }
+  .mk-page-top img, .mk-page-top .mk-noimg { width: min(30%, 34vh); width: min(30%, 34dvh); }
+  .mk-note { margin-top: 8px; padding: 6px 12px; font-size: 15px; }
+  .mk-page .choices { grid-template-columns: none; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 8px; }
+  .mk-page .choices .candy { font-size: 14px; padding-left: 4px; padding-right: 4px; }
+}
 /* a map's state (model.ts mapStatus): 已發布 / 試玩通過・可發布 / 未試玩 */
 .mk-st { display: inline-block; flex: none; padding: 1px 8px; border-radius: 999px; font-style: normal; font-size: 12px; line-height: 18px; white-space: nowrap; color: #fff; }
 .mk-st.pub { background: #8a4cf0; }

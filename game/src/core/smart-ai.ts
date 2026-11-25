@@ -22,6 +22,7 @@ import { companyOf, facilityOf, landOf, type Facility, type Land } from './board
 import { daysBetween } from './date';
 import type { Flow } from './flow';
 import type { Game } from './game';
+import { cardPrice } from './modules/cards';
 import type { ForkWalk } from './modules/forks';
 import type { Player } from './types';
 
@@ -185,7 +186,7 @@ export class SmartAi {
     const f = facilityOf(g.board, n);
     if (f) return this.facilityFee(p, f, steps);
     const c = companyOf(g.board, n);
-    if (c && c.controller && c.controller !== p.id + 1) {
+    if (c && c.controller && c.controller !== p.id + 1 && !g.rules?.companyFeeOff?.(g, c)) {
       const v = p.traffic & 3;
       const amount = c.category === 1 || c.category === 4 ? c.baseFee * 3 * PI
         : c.category === 3 ? c.baseFee * g.daysElapsed
@@ -467,7 +468,9 @@ export class SmartAi {
     // 挑戰模式: the cards and tools its open tasks want come first (core/challenge-ai.ts).
     // 地獄 (the user 2026-11-16): the few 遙控骰子 and 路障 of the game into its own hands first
     const hellWishes: (readonly ['card' | 'tool', number, number])[] = this.hellPlus(p) ? [['tool', 8, 9], ['tool', 2, 9]] : [];
-    for (const [kind, id, cap] of [...(g.challengeAi?.shopWishes(p) ?? []), ...hellWishes, ...SHOP_WISHES]) {
+    // 大富豪模式 (the user 2026-11-20): the travel and prank cards — scarce now (10 of each in the country)
+    const tycoonWishes: (readonly ['card' | 'tool', number, number])[] = g.world ? [['card', 33, 2], ['card', 35, 1], ['card', 31, 1], ['card', 32, 1]] : [];
+    for (const [kind, id, cap] of [...(g.challengeAi?.shopWishes(p) ?? []), ...hellWishes, ...tycoonWishes, ...SHOP_WISHES]) {
       if (kind === 'tool') {
         const i = tools.indexOf(id), price = TOOL_POINTS[id - 1];
         if (i < 0 || p.points < price || p.tools[id - 1] >= Math.min(cap, 9)) continue;
@@ -476,7 +479,7 @@ export class SmartAi {
         tools[i] = 0;
         turnover.buy += price * 10;
       } else {
-        const i = cards.indexOf(id), price = CARD_POINTS[id - 1];
+        const i = cards.indexOf(id), price = CARD_POINTS[id - 1] ?? cardPrice(id);
         if (i < 0 || p.points < price || held(id) >= cap || !g.cards.room(p, id) || p.cards.length >= 15) continue;
         p.points = (p.points - price) & 0xffff;
         t.shopCard(p, id);

@@ -15,7 +15,7 @@
  * server needs no new version; an empty list there turns the relay off) and remembered for the next start.
  */
 import Peer, { type DataConnection } from 'peerjs';
-import { openRelay, RelayPeer, type RelayConn } from './relay-peer';
+import { lastRefusal, openRelay, RelayPeer, type RelayConn } from './relay-peer';
 
 /** The relay (tools/party-relay; behind Caddy on 443 with its own certificate, 2026-11-03). */
 export const RELAYS = ['wss://rich.areu.pro'];
@@ -46,10 +46,12 @@ type Handler = (...a: any[]) => void; // eslint-disable-line @typescript-eslint/
  * Settings the tests change: no relay at all (PeerJS only), PeerJS's options. `lan`: 局域網房間 (the PC version's
  * server, desktop/lan-relay.cjs): its relay only, never PeerJS or the internet's relays.
  */
-export const netConfig: { relays: string[] | null; peerOpts: Record<string, unknown>; lan: boolean } = {
+export const netConfig: { relays: string[] | null; peerOpts: Record<string, unknown>; lan: boolean; server: { addr: string; name: string; pw?: string } | null } = {
   relays: typeof process !== 'undefined' && process.env?.VITEST ? [] : null,
   peerOpts: { debug: 0 },
   lan: false,
+  /** 私服 (private-server.ts): the relay of a player's own server, its rooms only (set with `lan`, which means: that relay alone); `pw` its 進服密碼. */
+  server: null,
 };
 
 /** 局域網房間 on the PC: its server's addresses for the phones (shown with the room, and its QR code), set when it starts. */
@@ -58,12 +60,53 @@ export const lanHost: { urls: string[] } = { urls: [] };
 export function useLan(addr: string) {
   netConfig.lan = !!addr;
   netConfig.relays = addr ? [`ws://${addr}`] : null;
+  netConfig.server = null;
+  try { localStorage.removeItem('rich4.party.mode'); } catch { /* none */ }
+}
+/** 私服 (the user 2026-11-18): from now on only that server (`addr` 「1.2.3.4:8842」), like 局域網房間 but on the internet. */
+export function useServer(addr: string, name: string, pw = '') {
+  useLan(addr);
+  netConfig.server = addr ? { addr, name, ...(pw ? { pw } : {}) } : null;
+  try { if (addr) localStorage.setItem(MODE_KEY, JSON.stringify({ addr, name })); } catch { /* not kept */ }
+}
+/**
+ * The 私服 the player is on stays theirs across launches until they leave it (the user 2026-11-23: the title says
+ * 「目前在私服模式」 for a player on one): kept here, put back when the app starts (its password from the device's
+ * 私服 passwords); 局域網房間 is never kept.
+ */
+const MODE_KEY = 'rich4.party.mode';
+(() => {
+  try {
+    const m = JSON.parse(localStorage.getItem(MODE_KEY) || 'null') as { addr?: string; name?: string } | null;
+    if (!m?.addr) return;
+    const pws = JSON.parse(localStorage.getItem('rich4.party.srvpw') || '{}') as Record<string, string>;
+    netConfig.lan = true;
+    netConfig.relays = [`ws://${m.addr}`];
+    netConfig.server = { addr: m.addr, name: String(m.name ?? ''), ...(pws[m.addr] ? { pw: pws[m.addr] } : {}) };
+  } catch { /* none */ }
+})();
+
+/**
+ * Why the relay (a 私服) refused this phone just now, as the game says it ('' none): 私服已滿（N/N 人）, its password,
+ * a ban, the owner sending this player away (the user 2026-11-23: never a silent failure).
+ */
+export function refusalWhy(): string {
+  const r = lastRefusal();
+  if (!r || !netConfig.lan) return '';
+  if (r.t === 'full') return r.max ? `私服已滿（${r.online ?? r.max}/${r.max} 人），等一下再試` : '私服人太多了，等一下再試';
+  if (r.t === 'password') return '進服密碼不對，請回到私服房間重新輸入';
+  if (r.t === 'banned') return '你已被這個私服的服主封禁，無法進入';
+  return r.why || '你被服主請出了這個私服';
 }
 
 let listed: Promise<string[]> | null = null;
 /** The relays to try: the tests' setting, else GitHub's list (3 s), else the last one seen, else the app's. */
 export function relays(): Promise<string[]> {
   if (netConfig.relays) return Promise.resolve(netConfig.relays);
+  return officialRelays();
+}
+/** Ours, whatever room this phone is on (私服列表 lives there): GitHub's list, else the last one seen, else the app's. */
+export function officialRelays(): Promise<string[]> {
   // A developer's own relay (a local test): localStorage rich4.party.relayDev = 'ws://127.0.0.1:8443'.
   try { const dev = localStorage.getItem('rich4.party.relayDev'); if (dev) return Promise.resolve([dev]); } catch { /* none */ }
   listed ??= (async () => {
@@ -97,7 +140,7 @@ async function relayFor(id: string): Promise<RelayPeer | null | 'down'> {
   const list = await relays();
   const order = goodRelay && list.includes(goodRelay) ? [goodRelay, ...list.filter(u => u !== goodRelay)] : list;
   for (const url of order) {
-    const r = await openRelay(url, id, 5000);
+    const r = await openRelay(url, id, 5000, netConfig.server?.pw ? { pw: netConfig.server.pw } : undefined);
     if (r === 'down') continue;
     goodRelay = url;
     return r;
@@ -138,7 +181,7 @@ export class NetPeer {
 
   on(ev: 'connection', fn: (c: NetConn) => void): this;
   on(ev: 'disconnected', fn: () => void): this;
-  on(ev: 'error', fn: (e: { type?: string }) => void): this;
+  on(ev: 'error', fn: (e: { type?: string; why?: string }) => void): this;
   on(ev: string, fn: Handler): this { (this.h.get(ev) ?? this.h.set(ev, []).get(ev)!).push(fn); return this; }
   private emit(ev: string, ...a: unknown[]) { for (const fn of [...(this.h.get(ev) ?? [])]) fn(...a); }
 
@@ -150,7 +193,8 @@ export class NetPeer {
       (p as Peer).on('error', e => { if (!this.relay?.open) this.emit('error', e); });
     } else {
       (p as RelayPeer).on('disconnected', () => { if (!this.destroyed) (p as RelayPeer).reconnect(); });
-      (p as RelayPeer).on('error', (e: { type?: string }) => { if (e.type === 'unavailable-id') this.emit('error', e); });
+      // (a 私服 sending this phone away, or its ban: the room leaves with the reason)
+      (p as RelayPeer).on('error', (e: { type?: string }) => { if (e.type === 'unavailable-id' || e.type === 'kicked' || e.type === 'banned' || e.type === 'password') this.emit('error', e); });
     }
   }
 

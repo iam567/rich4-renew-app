@@ -64,6 +64,12 @@ export const EVENTS = [
 export const PAD_SCALE = 0.58;
 /** A pad's width on the map in world px as the game draws it (124 screen px at the view's 1.2175 scale). */
 export const PAD_W = (124 * PAD_SCALE) / 1.2175;
+/**
+ * Own pad pictures this wide or less (小事件 / 點券, 200 px) are drawn SMALL_PAD_GROW times bigger, in the game and the
+ * editor alike — the standard since the user 2026-11-23 (清明上河: 「小事件跟這個點券的這個小地標還是有點小」, then 「這個大小
+ * 可以，以後都按這個標準來」, 長安 too).
+ */
+export const SMALL_PAD_W = 200, SMALL_PAD_GROW = 1.25;
 export const evInfo = (ev: number) => EVENTS.find(e => e.ev === ev) ?? EVENTS[0];
 /** The roads' looks: surface, verge and markings (drawn as bands along the road, round at every bend). */
 export const ROAD_STYLES = [
@@ -74,6 +80,8 @@ export const ROAD_STYLES = [
   { name: '碎石路', surface: '#a7a39a', verge: '#6d6a63', edge: '', mid: '', dash: [] as number[] },
   { name: '石板路', surface: '#b9b2a6', verge: '#7b7468', edge: '#8e877b', mid: '', dash: [] as number[] },
   { name: '木棧道', surface: '#a8743f', verge: '#5d3c1d', edge: '#7a4f28', mid: '', dash: [] as number[] },
+  // a narrow lane of fine gravel (長安's streets, the user 2026-11-19: 「用細的石頭路」, then 「改成小細碎石路比較好」)
+  { name: '細碎石路', surface: '#b8b0a0', verge: '#857c6c', edge: '', mid: '', dash: [] as number[], w: 16 },
 ] as const;
 export const LAND_PRICES = [500, 800, 1000, 1500, 2000, 2500];
 /**
@@ -150,6 +158,31 @@ export interface MakerMap {
   from?: { id: string; author: string };
   /** 樹林's look (DEFAULT_WOOD when missing). */
   wood?: MkWood;
+  /**
+   * 官方地圖 only (the user 2026-11-18: 「官方做的話肯定要恢宏一些」, players' maps use the editor's textures): a painted
+   * ground — an RGBA picture of the whole map at 1× world px, a file of ours in maps/remake/maker (paintUrl) — drawn over
+   * the editor's ground and under the roads (長安's city, tools/tycoon-art/changan_ground.py).
+   */
+  paint?: string;
+  /** 官方地圖 only: tall pieces open a hole round an actor behind them (MapArt.reveal). */
+  reveal?: boolean;
+  /**
+   * 官方地圖 only (長安, the user 2026-11-19: 「地標小圓盤還沒換過來素材」): the map's own event pads, a set of ours in
+   * maps/remake/maker/pads/<set>/pad-<key>.webp (padKey), drawn instead of map#24's.
+   */
+  pads?: string;
+  /** 官方地圖 only: the map's own squares {square id: kind} (長安's 驛站 / 鬥雞場 / 貢院 / 發配所), their pads by kind. */
+  specials?: Record<string, string>;
+  /** 官方地圖 only: passers-by (ui/mk-street.ts) — their sprites (4 directions × 4 walk phases) and the lanes they walk (world px). */
+  crowd?: { kinds: number[]; paths: [number, number][][]; hot?: [number, number, number, number][]; areas?: [number, number, number, number, number[]][] };
+  // (`areas`: [x0, y0, x1, y1, kinds] — a walker inside one wears its kinds instead: 清明上河's 梁山 walks only 魯智深 and 武松)
+  /**
+   * 官方地圖 only (長安, the user 2026-11-19): the buildings players put up — `lots[level − 1]` the small lots' looks at
+   * that level (one per lot, by its id), `fac[type]` a large plot's by level (one look: every level). Map sprites.
+   */
+  builds?: { lots: number[][]; fac: Record<string, number[]>; chain?: number };
+  /** 官方地圖 only: the map's own rules (GameSettings.ruleSet, core/game.ts RULE_SETS): 'changan'. */
+  rules?: string;
   nodes: MkNode[];
   lots: MkLot[];
   streets: MkStreet[];
@@ -259,6 +292,33 @@ export function saveMap(m: MakerMap): boolean {
 }
 
 /** A map from its saved text form (localStorage, a sample, later a download). */
+/** An official map's pad for a square (its special kind first, else its event), or null (map#24's then). */
+const PAD_KEY: Record<number, string> = { 14: 'bank', 15: 'shop', 2: 'news', 3: 'fate', 13: 'card', 9: 'lotto', 16: 'magic', 10: 'p50', 11: 'p30',
+  12: 'p10', 6: 'sky', 7: 'ball', 8: 'peng', 1: 'park', 5: 'hosp', 4: 'prison' };
+const SPECIAL_PAD: Record<string, string> = { 'post-w': 'post', 'post-c': 'post', 'post-e': 'post', cock: 'cock', exam: 'exam', exile: 'exile', move: 'move',
+  // 清明上河's own squares (its 貢院 is `exam` too: each set has its own pad-exam.webp)
+  boat: 'boat', ling: 'ling', juyi: 'juyi', tiger: 'tiger', gang: 'gang', inn: 'inn', wrestle: 'wrestle', pig: 'pig', land: 'land' };
+export function padUrl(m: { pads?: string; specials?: Record<string, string> }, n: { id: number; ev: number }, dir: string): string | null {
+  if (!m.pads || !/^[a-z0-9-]+$/.test(m.pads)) return null;
+  const key = SPECIAL_PAD[m.specials?.[String(n.id)] ?? ''] ?? PAD_KEY[n.ev];
+  return key ? `${dir}/pads/${m.pads}/pad-${key}.webp` : null;
+}
+
+/** A map's painted ground's address, only ever one of our own files (a name like changan-city.webp). */
+export const paintUrl = (m: { paint?: string }, dir: string) => (m.paint && /^[a-z0-9-]+\.webp$/.test(m.paint) ? `${dir}/${m.paint}` : null);
+const paints = new Map<string, Promise<HTMLImageElement | null>>();
+/** The painted ground's picture, loaded once (null: none, or it failed). */
+export function loadPaint(m: { paint?: string }, dir: string): Promise<HTMLImageElement | null> {
+  const url = paintUrl(m, dir);
+  if (!url) return Promise.resolve(null);
+  let p = paints.get(url);
+  if (!p) {
+    p = new Promise(ok => { const im = new Image(); im.onload = () => ok(im); im.onerror = () => ok(null); im.src = url; });
+    paints.set(url, p);
+  }
+  return p;
+}
+
 export function parseMap(r: { v?: number; w: number; h: number; cells: string } | null): MakerMap | null {
   if (!r || r.v !== 1) return null;
   return { nodes: [], lots: [], streets: [], things: [], nextId: 1, ...(r as object), cells: unpackCells(r.cells, r.w * r.h) } as unknown as MakerMap;

@@ -345,7 +345,11 @@ export class Finale extends CasinoRules implements WorldHooks {
         facilities: facs.map(f => ({ name: f.name, type: f.type, level: f.level })), value: lv + fv, stocks: sv,
       };
     });
-    const total = p.cash + p.bank - p.loan + stocks + property;
+    // The shares' sum as World.wealth adds them (onto the money, in float32 as 02 §7.1), so the total is the wealth to
+    // the yuan (a separate sum could round 1 away).
+    const base = p.cash + p.bank - p.loan;
+    stocks = this.w.cities.reduce((w, c) => c.stocks.holdingsValue(w, p), base) - base;
+    const total = base + stocks + property;
     return { p: p.id, cash: p.cash, bank: p.bank, loan: p.loan, stocks, property, total, cities, sold: [], points: 0 };
   }
 
@@ -501,6 +505,7 @@ export class Finale extends CasinoRules implements WorldHooks {
   allCities(): Game[] { const g = this.game(); return g ? [g] : []; }
   *travelCard(g: Game, p: Player): Flow<boolean> { yield* g.say(p.id, `${FINALE_NAME}不能離開`); return false; }
   aiCardTrip(): number { return -1; }
+  aiDeport(): number { return -1; }
   *deport(): Flow<boolean> { return false; }
   dictateVictims(): Player[] { return []; }
   *dictate(): Flow { /* nobody can be sent away */ }

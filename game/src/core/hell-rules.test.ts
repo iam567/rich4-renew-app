@@ -60,7 +60,7 @@ describe.skipIf(!haveMaps)('地獄 rules (the user 2026-11-16)', () => {
     g.cards.consume(b, 24);
     expect(g.cards.receive(g.players[2], 24)).toBe(true); // back in the pool, taken again
     // draws skip what the hand has
-    for (let i = 0; i < 40; i++) { const id = run(g.cards.receiveRandom(a)); if (id) expect(a.cards.filter(c => c === id).length).toBe(1); }
+    for (let i = 0; i < 40; i++) { const id = run(g.cards.receiveRandom(a)); if (HELL_RARE.has(id) || HELL_PER_HEAD.has(id)) expect(a.cards.filter(c => c === id).length).toBe(1); }
   });
   it("a lab's tools are not sold back; tools 1-8 are", () => {
     const g = hellGame(4), p = g.players[0];
