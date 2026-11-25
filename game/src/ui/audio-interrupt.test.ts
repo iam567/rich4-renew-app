@@ -18,7 +18,7 @@ class FakeContext {
   close() { this.set('closed'); return Promise.resolve(); }
   createGain() { return { gain: { value: 1, setValueAtTime() {}, linearRampToValueAtTime() {}, cancelScheduledValues() {}, setTargetAtTime() {} }, connect: (n: unknown) => n }; }
   createBuffer() { return {}; }
-  createBufferSource() { return { connect: (n: unknown) => n, start() {}, stop() {}, buffer: null }; }
+  createBufferSource() { return { connect: (n: unknown) => n, disconnect() {}, start() {}, stop() {}, buffer: null }; }
   decodeAudioData() { return Promise.reject(new Error('no audio in tests')); }
 }
 

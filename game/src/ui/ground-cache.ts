@@ -97,7 +97,8 @@ export class GroundCache {
         this.chunks.delete(k); this.spare.push(c);
       }
     }
-    this.spare.length = Math.min(this.spare.length, 8);
+    // (their pixels go now, not at the next garbage collection)
+    for (const c of this.spare.splice(8)) c.canvas.width = c.canvas.height = 0;
   }
 
   /** The world area the view and the ring of chunks round it cover (what the ground's tiles are wanted for). */

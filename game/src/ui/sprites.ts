@@ -41,6 +41,8 @@ export class SpriteBank {
   private boardCache = new Map<string, BoardEntry | Promise<Frame[] | null>>();
   /** Decoded bytes of the board's map sprites (`map/…`), which are released over the tier's budget (see `trimBoard`). */
   private mapBytes = 0;
+  /** Decoded bytes of the figures (neither map sprites nor the dice), released over `figureBytes`. */
+  private figBytes = 0;
   /** Device pixels per original pixel the board draws at (0: not known yet, keep full size). */
   private boardPx = 0;
   onLoad: () => void = () => {};
@@ -177,19 +179,23 @@ export class SpriteBank {
   }
 
   /**
-   * Over the tier's budget (ui/mem-tier.ts), the map sprites not drawn for the longest time go, as long as they
-   * have not been drawn for `IDLE_MS`: they are decoded again when seen. The figures and the dice always stay.
+   * Over the tier's budgets (ui/mem-tier.ts), the map sprites not drawn for the longest time go, as long as they
+   * have not been drawn for `IDLE_MS`, and the figures not drawn for `FIGURE_IDLE_MS` (a long game used to keep every
+   * walk, vehicle and effect figure it had shown: 130 MB of them on 2026-11-25): they are decoded again when seen.
+   * The dice (Panel) always stay.
    */
   private trimBoard() {
-    const budget = memTier().spriteBytes;
-    if (this.mapBytes <= budget) return;
+    const tier = memTier(), over = { map: this.mapBytes - tier.spriteBytes, fig: this.figBytes - tier.figureBytes };
+    if (over.map <= 0 && over.fig <= 0) return;
     const now = performance.now();
-    const old = [...this.boardCache].filter((e): e is [string, BoardEntry] => !(e[1] instanceof Promise) && e[1].map && !e[1].next && now - e[1].used > IDLE_MS)
+    const old = [...this.boardCache].filter((e): e is [string, BoardEntry] => !(e[1] instanceof Promise) && !e[1].fixed && !e[1].next && now - e[1].used > (e[1].map ? IDLE_MS : FIGURE_IDLE_MS))
       .sort((a, z) => a[1].used - z[1].used);
     for (const [key, e] of old) {
-      if (this.mapBytes <= budget) break;
+      const kind = e.map ? 'map' : 'fig';
+      if (over[kind] <= 0) continue;
+      over[kind] -= e.bytes;
       this.boardCache.delete(key);
-      this.mapBytes -= e.bytes;
+      if (e.map) this.mapBytes -= e.bytes; else this.figBytes -= e.bytes;
       for (const f of e.frames ?? []) releasePic(f.img);
       const prefix = `${key.slice(0, key.indexOf('@'))}/`;
       for (const k of [...this.tinted.keys()]) if (k.startsWith(prefix)) { releasePic(this.tinted.get(k)!); this.tinted.delete(k); }
@@ -220,10 +226,10 @@ export class SpriteBank {
       if (stale && now !== stale) { if (f) for (const x of f) releasePic(x.img); return f; }
       // A view that grew sharper meanwhile asks again on the next draw.
       const frames = f ?? stale?.frames ?? null, bytes = frames ? frameBytes(frames) : 0;
-      const isMap = archive === 'map';
-      if (isMap) this.mapBytes += bytes - (stale?.bytes ?? 0);
-      this.boardCache.set(key, { frames, px, used: performance.now(), bytes, map: isMap });
-      if (isMap) this.trimBoard();
+      const isMap = archive === 'map', fixed = archive === 'Panel', add = bytes - (stale?.bytes ?? 0);
+      if (isMap) this.mapBytes += add; else if (!fixed) this.figBytes += add;
+      this.boardCache.set(key, { frames, px, used: performance.now(), bytes, map: isMap, fixed });
+      this.trimBoard();
       this.onLoad();
       return f;
     });
@@ -391,12 +397,16 @@ interface BoardEntry {
   /** When it was last drawn (performance.now()). */
   used: number;
   bytes: number;
-  /** A map sprite (released over the budget); the figures and the dice are not. */
+  /** A map sprite (released over `spriteBytes`), else a figure (over `figureBytes`). */
   map: boolean;
+  /** The dice: never released. */
+  fixed?: boolean;
 }
 
 /** A map sprite not drawn for this long may be released over the budget (an effect holding its frames is over by then). */
 const IDLE_MS = 8000;
+/** A figure is more often about to come back, and some effects hold theirs for a while: a minute. */
+const FIGURE_IDLE_MS = 60000;
 
 const frameBytes = (frames: Frame[]) => frames.reduce((s, f) => { const { w, h } = picSize(f.img); return s + w * h * 4; }, 0);
 

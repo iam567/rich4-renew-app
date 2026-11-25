@@ -143,7 +143,7 @@ function ask(l: Lane, url: string, blob: Blob, size: Size | undefined, cut: bool
  */
 // (elsewhere at most 48: 長安's map asked for about 2,000 at once and the browser refused the rest — ERR_INSUFFICIENT_RESOURCES,
 // the toolbar's own pictures among them, 2026-11-19)
-const DECODE_SLOTS = () => (isAndroid() ? (memTier().key === 'min' ? 3 : 6) : 48);
+const DECODE_SLOTS = () => (isAndroid() ? (memTier().key === 'min' ? 3 : 6) : memTier().key === 'high' ? 48 : 16);
 let decoding = 0;
 const decodeQueue: (() => void)[] = [];
 async function inSlot<T>(run: () => Promise<T>): Promise<T> {

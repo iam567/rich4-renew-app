@@ -36,7 +36,7 @@ export interface MemTier {
   spritePx: number;
   /**
    * Decoded map sprites the board keeps (bytes: buildings, landscapes, plants, event pads); beyond it the ones not
-   * drawn for a while are released and decoded again when seen. The figures and the dice are always kept.
+   * drawn for a while are released and decoded again when seen. The figures: `figureBytes`; the dice are always kept.
    */
   spriteBytes: number;
   /** CSS px beyond the first view whose map sprites the loading screen preloads (within 3/4 of `spriteBytes`). */
@@ -53,7 +53,9 @@ export interface MemTier {
   bikes: number;
   vehicles: number;
   crows: number;
-  /** Android only: decoded music kept (bytes) beyond the track playing and those a screen will resume (ui/audio.ts trimMusic). */
+  /** Decoded figures (people, NPCs, vehicles) kept (bytes); beyond it those not drawn for a minute go. The dice always stay. */
+  figureBytes: number;
+  /** Decoded music kept (bytes); the track playing and those a screen will resume always are (ui/audio.ts trimMusic). */
   musicBytes: number;
 }
 
@@ -61,14 +63,14 @@ const MB = 1024 * 1024;
 export const TIERS: Record<TierKey, MemTier> = {
   // An Android phone the system closed while a game loaded (issue #7) gets this on the next start.
   min: { name: 'low', key: 'min', groundBytes: 12 * MB, previewMax: 1024, tilePx: 1.25, prefetch: false, preloadRing: 0, tileParallel: 1,
-    spritePx: 1, spriteBytes: 20 * MB, spriteAhead: 0, chunkViews: 1, clipBytes: 12 * MB, clipCount: 2, clipScale: 1, walkers: 15, bikes: 1, vehicles: 2, crows: 1, musicBytes: 0 },
+    spritePx: 1, spriteBytes: 20 * MB, spriteAhead: 0, chunkViews: 1, clipBytes: 12 * MB, clipCount: 2, clipScale: 1, walkers: 15, bikes: 1, vehicles: 2, crows: 1, figureBytes: 24 * MB, musicBytes: 0 },
   low: { name: 'low', key: 'low', groundBytes: 24 * MB, previewMax: 1536, tilePx: 1.5, prefetch: false, preloadRing: 0, tileParallel: 2,
-    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 30, bikes: 2, vehicles: 4, crows: 2, musicBytes: 64 * MB },
+    spritePx: 1.5, spriteBytes: 32 * MB, spriteAhead: 160, chunkViews: 1, clipBytes: 32 * MB, clipCount: 3, clipScale: 1, walkers: 30, bikes: 2, vehicles: 4, crows: 2, figureBytes: 32 * MB, musicBytes: 32 * MB },
   mid: { name: 'mid', key: 'mid', groundBytes: 48 * MB, previewMax: 2304, tilePx: 2.25, prefetch: true, preloadRing: 256, tileParallel: 2,
-    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 60, bikes: 4, vehicles: 7, crows: 3, musicBytes: 192 * MB },
+    spritePx: 2, spriteBytes: 80 * MB, spriteAhead: 1200, chunkViews: 2, clipBytes: 64 * MB, clipCount: 4, clipScale: 1.5, walkers: 60, bikes: 4, vehicles: 7, crows: 3, figureBytes: 56 * MB, musicBytes: 80 * MB },
   // The limits the game had before the tiers (2026-10-17), with a cap on the map sprites.
   high: { name: 'high', key: 'high', groundBytes: 100 * MB, previewMax: 4096, tilePx: 3, prefetch: true, preloadRing: 512, tileParallel: 3,
-    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 100, bikes: 6, vehicles: 10, crows: 4, musicBytes: Infinity },
+    spritePx: 4, spriteBytes: 192 * MB, spriteAhead: Infinity, chunkViews: 2, clipBytes: 128 * MB, clipCount: 6, clipScale: 4, walkers: 100, bikes: 6, vehicles: 10, crows: 4, figureBytes: 160 * MB, musicBytes: 256 * MB },
 };
 
 const KEY = 'rich4.memTier';

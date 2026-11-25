@@ -53,11 +53,11 @@ describe('memory tiers on Android (issues #7, #13)', () => {
   });
 
   it('min holds less of everything than low, and low less than the tiers above', () => {
-    const k: (keyof Tier['TIERS']['low'])[] = ['groundBytes', 'previewMax', 'tilePx', 'spritePx', 'spriteBytes', 'clipBytes', 'clipCount', 'musicBytes'];
+    const k: (keyof Tier['TIERS']['low'])[] = ['groundBytes', 'previewMax', 'tilePx', 'spritePx', 'spriteBytes', 'clipBytes', 'clipCount', 'figureBytes', 'musicBytes'];
     const order = ['min', 'low', 'mid', 'high'] as const;
     for (let i = 1; i < order.length; i++) for (const f of k) expect(t.TIERS[order[i - 1]][f], `${order[i - 1]}.${f}`).toBeLessThanOrEqual(t.TIERS[order[i]][f] as number);
-    // The desktop keeps every decoded track as before.
-    expect(t.TIERS.high.musicBytes).toBe(Infinity);
+    // No device keeps every decoded track (2026-11-25: 709 MB of music closed the page on an iPhone).
+    expect(t.TIERS.high.musicBytes).toBeLessThan(400 * 1024 * 1024);
   });
 
   it('the measuring switch gives a desktop browser the Android limits', async () => {

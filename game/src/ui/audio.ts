@@ -12,7 +12,7 @@
  * screen closes (fcn_004549cf / fcn_00454bcc), and holiday music that holds for its days.
  */
 import { watch } from './watchdog';
-import { isAndroid, memTier } from './mem-tier';
+import { memTier } from './mem-tier';
 import { ASSETS } from './assets';
 import { CARD_LINES, EVENT_LINES, TOOL_LINES } from './lines';
 import { CARD_VOICE, EVENT_VOICE, TOOL_VOICE, VOICE_TEXT } from './voices';
@@ -238,7 +238,9 @@ class AudioEngine {
     const old = this.ctx;
     if (!old) return;
     const m = this.musicNow, at = m.state ? this.position() : 0;
+    if (m.playing) this.release(m.playing);
     m.playing = null;
+    for (const p of this.effects.values()) this.release(p);
     this.effects.clear();
     this.ctx = null; this.out = null; this.master = null;
     this.interrupted = false; this.selfSuspend = false; this.stopRetry();
@@ -331,14 +333,13 @@ class AudioEngine {
 
   /**
    * Decoded music is big (a 3-minute track is ~70 MB of samples at 48 kHz: all 25 tracks would be ~760 MB, and a long
-   * game used to keep every one it had played; issue #13, Android closing the app late in a game). On Android, beyond
-   * the device's budget (ui/mem-tier.ts `musicBytes`) the least recently played go, never the one playing (`now`) nor the
-   * background tracks a screen will resume; they are decoded again when next played.
+   * game used to keep every one it had played; issue #13, Android closing the app late in a game; 2026-11-25 an iPhone
+   * closing the page at 2,063 MB, 709 MB of it 22 tracks). Everywhere, beyond the device's budget (ui/mem-tier.ts
+   * `musicBytes`) the least recently played go, never the one playing (`now`) nor the background tracks a screen will
+   * resume; they are decoded again when next played.
    */
   private trimMusic(now: string) {
-    // Android only (iOS and the desktop keep every decoded track, as before: the owner 2026-10-26).
-    const budget = isAndroid() ? memTier().musicBytes : Infinity;
-    if (budget === Infinity) return;
+    const budget = memTier().musicBytes;
     const need = new Set([`music/${now}`, ...this.stack.map(s => `music/${musicName(this.mset, { kind: 'bgm', index: s.index })}`)]);
     const size = (b: AudioBuffer) => b.length * b.numberOfChannels * 4;
     let used = 0;
@@ -422,7 +423,7 @@ class AudioEngine {
       src.start();
       const p = { src, gain };
       this.effects.set(id, p);
-      src.onended = () => { if (this.effects.get(id) === p) this.effects.delete(id); };
+      src.onended = () => { if (this.effects.get(id) === p) this.effects.delete(id); this.release(p); };
     });
   }
 
@@ -469,6 +470,17 @@ class AudioEngine {
         p.src.stop(t + fade + 0.01);
       } else p.src.stop();
     } catch { /* already stopped */ }
+    setTimeout(() => this.release(p), fade * 1000 + 150);
+  }
+
+  /**
+   * Lets go of what played: a stopped source can keep its samples (up to 70 MB for a track) as long as WebKit keeps the
+   * node — for good while the context is not running (measured 2026-11-25: 54 MB a track, up to the page's closing).
+   */
+  private release(p: Playing) {
+    p.src.onended = null;
+    try { p.src.disconnect(); p.gain.disconnect(); } catch { /* gone */ }
+    try { p.src.buffer = null; } catch { /* an engine that will not: freed with the node */ }
   }
 
   // ------------------------------------------------------------ voices
@@ -606,6 +618,7 @@ class AudioEngine {
     if (!this.ensure() || !this.out || this.settings.music === 0) return;
     const name = this.nameOf(state);
     if (!this.has('music', name)) return;
+    this.trimMusic(name); // (room first: the new track's decoding needs some of its own)
     void this.buffer('music', name).then(buf => {
       this.trimMusic(this.nameOf(m.state ?? state));
       if (!buf || !this.ctx || !this.out || m.state !== state || m.playing) return;
@@ -628,6 +641,7 @@ class AudioEngine {
       // A background track that ends moves on to the next one (fcn_00454d2c → fcn_00454d91(0)).
       src.onended = () => {
         if (m.playing?.src !== src) return;
+        this.release(m.playing);
         if (state.kind === 'bgm') { m.playing = null; this.background(0); }
         else if (state.kind === 'fanfare') { m.playing = null; this.restore(); }
       };
